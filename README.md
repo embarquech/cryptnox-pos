@@ -10,17 +10,23 @@
 
 [![Platform: ESP32-2432S028R (CYD)](https://img.shields.io/badge/Platform-ESP32--2432S028R%20(CYD)-blue.svg)](https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display)
 [![Framework: ESP-IDF v5.5](https://img.shields.io/badge/Framework-ESP--IDF%20v5.5-blue.svg)](https://docs.espressif.com/projects/esp-idf/en/v5.5/)
+[![SDK: cryptnox-sdk-esp32](https://img.shields.io/badge/SDK-cryptnox--sdk--esp32-blue.svg)](https://github.com/embarquech/cryptnox-sdk-esp32)
 [![License: LGPLv3](https://img.shields.io/badge/License-LGPLv3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
 
 `cryptnox-pos` is a self-contained payment terminal firmware that runs on the
-ESP32-2432S028R "Cheap Yellow Display" (CYD). The user selects a USDC amount
-on the touchscreen, taps a **Cryptnox smart card** on the attached PN532
-reader, and the terminal signs and broadcasts an EIP-1559 transfer on
-Ethereum Sepolia via Infura.
+ESP32-2432S028R "Cheap Yellow Display" (CYD). It also serves as a reference
+**dev kit** showing how to integrate the [`cryptnox-sdk-esp32`](https://github.com/embarquech/cryptnox-sdk-esp32)
+into a real-world end-user product.
 
-The firmware sits on top of [`cryptnox-sdk-esp32`](https://github.com/embarquech/cryptnox-sdk-esp32)
-(secure channel, ECDH/ECDSA, PN532 transport) and pairs it with TFT_eSPI +
-XPT2046_Touchscreen for a native CYD UI.
+The user selects a USDC amount on the touchscreen, taps a **Cryptnox smart
+card** on the attached PN532 reader, and the terminal signs and broadcasts an
+EIP-1559 transfer on Ethereum Sepolia via Infura.
+
+### Built on
+
+- **[`cryptnox-sdk-esp32`](https://github.com/embarquech/cryptnox-sdk-esp32)** (vendored as a git submodule) — secure channel, ECDH/ECDSA, PN532 transport, ESP32 crypto provider
+- **[TFT_eSPI](https://github.com/Bodmer/TFT_eSPI)** + **[XPT2046_Touchscreen](https://github.com/PaulStoffregen/XPT2046_Touchscreen)** — native CYD display + touch
+- **[arduino-esp32](https://github.com/espressif/arduino-esp32)** as an ESP-IDF managed component (Arduino runtime for the UI libraries; the rest of the firmware stays on native IDF)
 
 ---
 
