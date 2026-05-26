@@ -5,3 +5,9 @@ main/config.h
 build/
 sdkconfig
 sdkconfig.old
+
+# IDF managed components — fetched from registry per dependencies.lock
+managed_components/
+
+# Local debug screenshots
+IMG_*.jpg
