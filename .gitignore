@@ -1,0 +1,7 @@
+# Local credentials — copy from config.template.h and fill in
+main/config.h
+
+# IDF build artifacts
+build/
+sdkconfig
+sdkconfig.old
