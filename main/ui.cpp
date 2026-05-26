@@ -150,11 +150,29 @@ static bool poll_touch(int16_t *sx, int16_t *sy) {
     return true;
 }
 
+/* Require a "finger up" moment between taps to suppress the chained-button
+ * cascade that happens when the user holds the screen or taps rapidly while
+ * the screen transitions (Cancel/CONFIRM/Send all sit at the same y). */
+static bool s_finger_lifted = true;
+
 static bool tap(int16_t *x, int16_t *y) {
+    bool pressed_now = touch.tirqTouched() && touch.touched();
+    if (!pressed_now) {
+        s_finger_lifted = true;
+        return false;
+    }
+    if (!s_finger_lifted) {
+        return false;  /* sustained press — already handled */
+    }
     uint32_t now = millis();
-    if (now - s_last_tap_ms < 250) return false;
-    if (!poll_touch(x, y)) return false;
-    s_last_tap_ms = now;
+    if (now - s_last_tap_ms < 150) {
+        return false;
+    }
+    if (!poll_touch(x, y)) {
+        return false;
+    }
+    s_last_tap_ms    = now;
+    s_finger_lifted  = false;
     return true;
 }
 
@@ -245,6 +263,15 @@ static void handle_confirm_tap(int16_t x, int16_t y) {
     if (in_btn(BTN_CANCEL, x, y)) {
         if (s_cb) s_cb(UI_EVENT_CONFIRM_CANCEL, 0);
     } else if (in_btn(BTN_SEND, x, y)) {
+        /* Instant feedback: main is about to block on the RPC nonce call for
+         * a couple seconds before reaching ui_show_tx_status, so we jump to
+         * the Transaction screen ourselves. Main will overwrite the info
+         * text once it reaches the card-wait step. */
+        s_tx_state = UI_TX_STATE_PLACE_CARD;
+        strncpy(s_tx_info, "Preparing...", sizeof(s_tx_info) - 1);
+        s_tx_info[sizeof(s_tx_info) - 1] = '\0';
+        s_screen = UI_SCREEN_TX_STATUS;
+        s_redraw = true;
         if (s_cb) s_cb(UI_EVENT_CONFIRM_OK, 0);
     }
 }

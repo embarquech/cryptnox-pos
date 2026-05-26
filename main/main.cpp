@@ -133,7 +133,9 @@ static void build_usdc_calldata(uint8_t out[68], const char *to_hex, uint64_t am
  * tx_hash_out.  On failure, writes a short error message to err_out.
  ******************************************************************/
 
-static bool sign_and_broadcast(CryptnoxWallet &wallet, uint64_t amount_units,
+static bool sign_and_broadcast(CryptnoxWallet &wallet,
+                                Pn532NfcTransport &transport,
+                                uint64_t amount_units,
                                 char *tx_hash_out, size_t tx_hash_max,
                                 char *err_out, size_t err_max)
 {
@@ -173,15 +175,39 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet, uint64_t amount_units,
     uint8_t hash[CW_HASH_SIZE];
     keccak256(unsigned_tx, unsigned_len, hash);
 
-    ui_show_tx_status(UI_TX_STATE_PLACE_CARD, "Hold card to reader");
+    if (!s_user_cancelled) {
+        ui_show_tx_status(UI_TX_STATE_PLACE_CARD, "Hold card to reader");
+    }
 
+    /* Manual connect loop with cancel checks between PN532 polls — replaces
+     * wallet.connect() so a Cancel from the user aborts within one PN532
+     * timeout (~5 s) instead of the full retry budget (~26 s). */
     CW_SecureSession session;
-    if (!wallet.connect(session)) {
+    bool connected = false;
+    for (int attempt = 0; (attempt < CW_CONNECT_MAX_ATTEMPTS) && !connected; attempt++) {
+        if (s_user_cancelled) {
+            return false;
+        }
+        if (transport.inListPassiveTarget()) {
+            vTaskDelay(pdMS_TO_TICKS(200));
+            if (wallet.establishSecureChannel(session)) {
+                connected = true;
+                break;
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(200));
+    }
+    if (s_user_cancelled) {
+        return false;
+    }
+    if (!connected) {
         (void)snprintf(err_out, err_max, "Card not found");
         return false;
     }
 
-    ui_show_tx_status(UI_TX_STATE_SIGNING, NULL);
+    if (!s_user_cancelled) {
+        ui_show_tx_status(UI_TX_STATE_SIGNING, NULL);
+    }
 
     /* BIP32 Ethereum derivation path: m/44'/60'/0'/0/0 */
     static const uint8_t eth_path[20] = {
@@ -214,7 +240,9 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet, uint64_t amount_units,
     const uint8_t *sig_r = result.signature + CW_SIG_R_OFFSET;
     const uint8_t *sig_s = result.signature + CW_SIG_S_OFFSET;
 
-    ui_show_tx_status(UI_TX_STATE_SENDING, NULL);
+    if (!s_user_cancelled) {
+        ui_show_tx_status(UI_TX_STATE_SENDING, NULL);
+    }
 
     uint8_t v = eth_rpc_ecrecover_parity(hash, sig_r, sig_s);
 
@@ -238,7 +266,7 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet, uint64_t amount_units,
  * Entry point
  ******************************************************************/
 
-#define APP_VERSION_TAG "ui-r23 (drain queue + reset pending_amount after sign)"
+#define APP_VERSION_TAG "ui-r27 (cancellable connect loop)"
 
 extern "C" void app_main(void)
 {
@@ -340,16 +368,10 @@ extern "C" void app_main(void)
                 s_user_cancelled = false;
                 char tx_hash[68] = { 0 };
                 char err_msg[64] = { 0 };
-                bool ok = sign_and_broadcast(wallet, pending_amount,
+                bool ok = sign_and_broadcast(wallet, nfcTransport, pending_amount,
                                               tx_hash, sizeof(tx_hash),
                                               err_msg, sizeof(err_msg));
                 pending_amount = 0U;  /* next sign requires fresh New Payment flow */
-                /* Drain any UI events that were queued during the long sign
-                 * (held touch, resistive screen noise, etc.). */
-                {
-                    ui_msg_t dump;
-                    while (xQueueReceive(s_ui_queue, &dump, 0) == pdTRUE) { }
-                }
                 if (s_user_cancelled) {
                     /* Cancel during PLACE_CARD — UI already on amount entry. */
                 } else if (ok) {
