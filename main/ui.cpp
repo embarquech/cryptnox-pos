@@ -84,12 +84,6 @@ static const Btn BTN_CANCEL_W = { 80, 188, 160, 44, "Cancel",      COL_BTN_NO };
 /******************************************************************
  * Helpers
  ******************************************************************/
-static void format_amount(uint64_t units, char *out, size_t out_size) {
-    uint64_t whole = units / 1000000ULL;
-    uint64_t cents = (units % 1000000ULL) / 10000ULL;
-    snprintf(out, out_size, "%" PRIu64 ".%02" PRIu64 " USDC", whole, cents);
-}
-
 /* Draw "<number> USDC" with big digits (font 6, digits-only) and a smaller
  * "USDC" suffix in font 4 right after it. cx is the centre x coordinate. */
 static void draw_amount_centered(uint64_t units, int cy_digits) {

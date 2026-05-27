@@ -14,6 +14,7 @@
 #include "CryptnoxWallet.h"
 #include "Pn532NfcTransport.h"
 #include "ESP32Logger.h"
+#include "ESP32Platform.h"
 #include "esp32_crypto_provider.h"
 
 /* Quiet CW_Logger — swallows the SDK's verbose connection/retry chatter that
@@ -319,7 +320,8 @@ extern "C" void app_main(void)
     (void)logger.begin(115200UL);
     ESP32CryptoProvider cryptoProvider;
     Pn532NfcTransport   nfcTransport(&nfc, logger);
-    CryptnoxWallet      wallet(nfcTransport, logger, cryptoProvider);
+    ESP32Platform       platform;
+    CryptnoxWallet      wallet(nfcTransport, logger, cryptoProvider, platform);
 
     if (!wallet.begin()) {
         ESP_LOGE(TAG, "Wallet begin failed");

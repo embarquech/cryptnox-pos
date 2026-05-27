@@ -8,13 +8,13 @@
 <br/>
 <br/>
 
-[![Platform: ESP32-2432S028R (CYD)](https://img.shields.io/badge/Platform-ESP32--2432S028R%20(CYD)-blue.svg)](https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display)
+[![Platform: ESP32-2432S028 (CYD)](https://img.shields.io/badge/Platform-ESP32--2432S028%20(CYD)-blue.svg)](https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display)
 [![Framework: ESP-IDF v5.5](https://img.shields.io/badge/Framework-ESP--IDF%20v5.5-blue.svg)](https://docs.espressif.com/projects/esp-idf/en/v5.5/)
 [![SDK: cryptnox-sdk-esp32](https://img.shields.io/badge/SDK-cryptnox--sdk--esp32-blue.svg)](https://github.com/embarquech/cryptnox-sdk-esp32)
 [![License: LGPLv3](https://img.shields.io/badge/License-LGPLv3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
 
 `cryptnox-pos` is a self-contained payment terminal firmware that runs on the
-ESP32-2432S028R "Cheap Yellow Display" (CYD). It also serves as a reference
+ESP32-2432S028 "Cheap Yellow Display" (CYD). It also serves as a reference
 **dev kit** showing how to integrate the [`cryptnox-sdk-esp32`](https://github.com/embarquech/cryptnox-sdk-esp32)
 into a real-world end-user product.
 
@@ -50,7 +50,7 @@ Works with Cryptnox Hardware Wallet smart cards running firmware v1.6.0 or later
 
 | Board | MCU | Display | Touch |
 |-------|-----|---------|-------|
-| [ESP32-2432S028R "Cheap Yellow Display"](https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display) | ESP32-WROOM-32 | ILI9341 320×240 | XPT2046 (resistive) |
+| [ESP32-2432S028 "Cheap Yellow Display"](https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display) | ESP32-WROOM-32 | ILI9341 320×240 | XPT2046 (resistive) |
 
 ---
 
@@ -158,7 +158,7 @@ and fill in:
 ## Troubleshooting
 
 - **Blank or scrambled screen** → the CYD ships with two ILI9341 variants. The firmware uses TFT_eSPI's `ILI9341_2_DRIVER`; if your board uses the standard variant, set `CONFIG_TFT_ILI9341_DRIVER=y` (instead of `_2`) in `sdkconfig.defaults` and rebuild.
-- **Touch hitboxes are offset** → the raw range used by the XPT2046 driver is calibrated for the panel shipped with the 2432S028R. If yours differs, adjust the `map(p.x, 200, 3800, …)` ranges in `main/ui.cpp` (function `poll_touch`).
+- **Touch hitboxes are offset** → the raw range used by the XPT2046 driver is calibrated for the panel shipped with the 2432S028. If yours differs, adjust the `map(p.x, 200, 3800, …)` ranges in `main/ui.cpp` (function `poll_touch`).
 - **`Card not found`** → confirm the PN532 switches are set for I²C, the SDA/SCL wires match GPIO 27/22, and the card is well centred on the antenna.
 - **`ecrecover did not match either parity`** → `ADDR_FROM` in `config.h` does not correspond to the card's `m/44'/60'/0'/0/0` derived key. Verify the seed and the path.
 - **WiFi connect fails** → only WPA2 is supported; check SSID/password.
