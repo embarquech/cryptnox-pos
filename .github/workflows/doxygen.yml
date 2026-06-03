@@ -28,11 +28,15 @@ jobs:
         env:
           DOXYGEN_VERSION: "1.15.0"
         run: |
+          set -ex
           sudo apt-get update
-          sudo apt-get install -y graphviz wget
+          sudo apt-get install -y graphviz
           # Extract in /tmp so the bundled examples/ directory does NOT end
           # up inside the repo and get picked up by INPUT = . recursive.
-          wget -q -O /tmp/doxygen.tar.gz \
+          # Use curl --fail so HTTP errors abort with a readable message
+          # (wget -q on Azure runners has been observed to silently return
+          # exit 8 against doxygen.nl).
+          curl -fsSL -o /tmp/doxygen.tar.gz \
             "https://www.doxygen.nl/files/doxygen-${DOXYGEN_VERSION}.linux.bin.tar.gz"
           tar xf /tmp/doxygen.tar.gz -C /tmp
           sudo install "/tmp/doxygen-${DOXYGEN_VERSION}/bin/doxygen" /usr/local/bin/doxygen
