@@ -1,0 +1,39 @@
+name: Static analysis
+permissions:
+  contents: read
+  pull-requests: write
+on:
+  push:
+  pull_request:
+jobs:
+  cppcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install cppcheck
+        run: sudo apt-get install -y cppcheck
+
+      # Lint only the application sources under main/. The Cryptnox SDK
+      # (cryptnox-sdk-esp32 submodule) is audited separately, and the
+      # vendored TFT_eSPI / XPT2046_Touchscreen components are third-party.
+      # ESP-IDF / Arduino / mbedtls / FreeRTOS headers are not installed in
+      # CI -- suppress missingInclude rather than try to ship the full
+      # toolchain.
+      - name: cppcheck (cryptnox-pos application, C++)
+        run: |
+          cppcheck \
+            --enable=warning,style,performance,portability \
+            --std=c++17 \
+            --language=c++ \
+            --inline-suppr \
+            --error-exitcode=1 \
+            --suppress=missingInclude \
+            --suppress=missingIncludeSystem \
+            --suppress=unusedFunction \
+            -I main \
+            --force \
+            main/
