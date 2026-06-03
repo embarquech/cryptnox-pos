@@ -183,7 +183,7 @@ $(function(){initNavTree('keccak256_8cpp_source.html','',''); });
 <div class="line"><a id="l00080" name="l00080"></a><span class="lineno"><a class="line" href="keccak256_8cpp.html#ac46ff4528d9f4c773725ff87e624b7e7">   80</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="keccak256_8cpp.html#ac46ff4528d9f4c773725ff87e624b7e7">keccak256</a>(<span class="keyword">const</span> uint8_t *input, <span class="keywordtype">size_t</span> length, uint8_t digest[32])</div>
 <div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>{</div>
 <div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>    uint64_t state[<a class="code hl_define" href="keccak256_8cpp.html#a0e4bae187bf2e9a4e989fd84dcce6d1e">KECCAK_STATE_LANE</a>];</div>
-<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>    uint8_t *sb = (uint8_t *)state;</div>
+<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>    uint8_t *sb = <span class="keyword">reinterpret_cast&lt;</span>uint8_t *<span class="keyword">&gt;</span>(state);</div>
 <div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span>    <span class="keywordtype">size_t</span> offset = 0U;</div>
 <div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span>    <span class="keywordtype">size_t</span> i;</div>
 <div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span> </div>
