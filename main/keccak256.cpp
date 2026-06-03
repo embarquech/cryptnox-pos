@@ -80,7 +80,7 @@ static void keccak_f1600(uint64_t st[KECCAK_STATE_LANE])
 void keccak256(const uint8_t *input, size_t length, uint8_t digest[32])
 {
     uint64_t state[KECCAK_STATE_LANE];
-    uint8_t *sb = (uint8_t *)state;
+    uint8_t *sb = reinterpret_cast<uint8_t *>(state);
     size_t offset = 0U;
     size_t i;
 

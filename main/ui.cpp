@@ -299,12 +299,12 @@ static void draw_tx_status_screen(void) {
     if (len <= 28) {
         tft.drawString(s_tx_info, SCR_W / 2, 140, 2);
     } else {
+        /* len > 28 here -- split into two 28-char lines and clamp the tail
+         * (s_tx_info is 64 bytes so the tail can reach 35). */
         char line1[32] = {0}, line2[32] = {0};
-        size_t half = len > 28 ? 28 : len;
-        memcpy(line1, s_tx_info, half);
-        size_t rest = len - half;
-        if (rest > 28) rest = 28;
-        memcpy(line2, s_tx_info + half, rest);
+        memcpy(line1, s_tx_info, 28);
+        size_t rest = (len > 56U) ? 28U : (len - 28U);
+        memcpy(line2, s_tx_info + 28, rest);
         tft.drawString(line1, SCR_W / 2, 135, 2);
         tft.drawString(line2, SCR_W / 2, 155, 2);
     }

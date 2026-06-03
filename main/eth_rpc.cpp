@@ -178,8 +178,8 @@ bool eth_rpc_wifi_connect(const char *ssid, const char *password)
 
     wifi_config_t wifi_cfg;
     (void)memset(&wifi_cfg, 0, sizeof(wifi_cfg));
-    (void)strncpy((char *)wifi_cfg.sta.ssid,     ssid,     sizeof(wifi_cfg.sta.ssid)     - 1U);
-    (void)strncpy((char *)wifi_cfg.sta.password, password, sizeof(wifi_cfg.sta.password) - 1U);
+    (void)strncpy(reinterpret_cast<char *>(wifi_cfg.sta.ssid),     ssid,     sizeof(wifi_cfg.sta.ssid)     - 1U);
+    (void)strncpy(reinterpret_cast<char *>(wifi_cfg.sta.password), password, sizeof(wifi_cfg.sta.password) - 1U);
     wifi_cfg.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
@@ -313,7 +313,7 @@ bool eth_rpc_send_raw_tx(const uint8_t *tx, size_t tx_len,
 {
     /* "0x" + 2 hex chars per byte + NUL */
     size_t hex_str_size = 2U + tx_len * HEX_PER_BYTE + 1U;
-    char *tx_hex = (char *)malloc(hex_str_size);
+    char *tx_hex = static_cast<char *>(malloc(hex_str_size));
     if (tx_hex == NULL) { return false; }
 
     tx_hex[0] = '0';
@@ -323,7 +323,7 @@ bool eth_rpc_send_raw_tx(const uint8_t *tx, size_t tx_len,
 
     /* JSON body */
     size_t body_size = hex_str_size + 128U;
-    char *body = (char *)malloc(body_size);
+    char *body = static_cast<char *>(malloc(body_size));
     if (body == NULL) { free(tx_hex); return false; }
 
     (void)snprintf(body, body_size,
@@ -346,7 +346,7 @@ bool eth_rpc_send_raw_tx(const uint8_t *tx, size_t tx_len,
     }
     result += 10U;  /* skip past "result":" — now at '0x...' */
 
-    char *end = strchr(result, '"');
+    const char *end = strchr(result, '"');
     if (end == NULL) { return false; }
 
     size_t hash_len = (size_t)(end - result);
