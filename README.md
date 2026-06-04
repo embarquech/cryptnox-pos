@@ -22,6 +22,16 @@ The user selects a USDC amount on the touchscreen, taps a **Cryptnox smart
 card** on the attached PN532 reader, and the terminal signs and broadcasts an
 EIP-1559 transfer on Ethereum Sepolia via Infura.
 
+> [!WARNING]
+> **Reference / educational project — not a production-hardened terminal.**
+> The ESP32 is a general-purpose microcontroller, not a tamper-resistant secure
+> element: an attacker with physical access can compromise its runtime and
+> recover its Wi-Fi credentials, which may then be used to reach the card. The
+> card PIN and the destination address are also hard-coded into the build
+> config. **The Cryptnox Hardware Wallet remains the trust anchor**, though —
+> private keys never leave the card, so a compromised ESP32 still cannot sign
+> without the card.
+
 ### Built on
 
 - **[`cryptnox-sdk-esp32`](https://github.com/embarquech/cryptnox-sdk-esp32)** (vendored as a git submodule) — secure channel, ECDH/ECDSA, PN532 transport, ESP32 crypto provider
