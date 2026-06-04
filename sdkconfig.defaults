@@ -35,6 +35,9 @@ CONFIG_TFT_MOSI=13
 CONFIG_TFT_SCLK=14
 CONFIG_TFT_CS=15
 CONFIG_TFT_DC=2
+# CYD: the panel RESET is hard-wired to the board EN line — no GPIO controls it.
+# TFT_eSPI emits "Invalid Reset pin" at build time: expected, the driver falls
+# back to software reset (SWRESET).
 CONFIG_TFT_RST=-1
 CONFIG_ENABLE_BL=y
 CONFIG_TFT_BL=21
@@ -46,3 +49,9 @@ CONFIG_TFT_LOAD_FONT4=y
 CONFIG_TFT_LOAD_FONT6=y
 CONFIG_TFT_LOAD_GFXFF=y
 CONFIG_TFT_SMOOTH_FONT=y
+
+# CYD: the XPT2046 touch controller lives on its own SPI bus (CS=33, CLK=25,
+# MOSI=32, MISO=39, IRQ=36), driven by the XPT2046_Touchscreen component — NOT
+# by TFT_eSPI, whose touch support requires sharing the display bus. The
+# build-time "TOUCH_CS pin not defined" warning is expected; do not enable
+# CONFIG_ENABLE_TOUCH, it would fight the XPT2046 driver over GPIO 33.
