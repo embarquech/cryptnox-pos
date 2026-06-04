@@ -20,6 +20,11 @@
 #include <stdio.h>      /* snprintf */
 #include <inttypes.h>   /* PRIu64 */
 
+/* CW_Utils.h pulls in Arduino.h (via platform_compat.h); it must come before
+ * any lwip-including IDF header (esp_http_client.h, esp_netif.h, ...) so that
+ * IPAddress.h declares INADDR_NONE before lwip defines it as a macro. */
+#include "CW_Utils.h"   /* hardened memory primitives (CODING_RULES §1.4) */
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "esp_wifi.h"
@@ -30,8 +35,6 @@
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
 #include "cJSON.h"
-
-#include "CW_Utils.h"   /* hardened memory primitives (CODING_RULES §1.4) */
 
 static const char *const TAG = "eth_rpc";
 
