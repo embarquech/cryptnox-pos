@@ -533,5 +533,6 @@ bool eth_rpc_send_raw_tx(const uint8_t *tx, size_t tx_len,
                                 reinterpret_cast<const uint8_t *>(result),
                                 hash_len);
     tx_hash_out[hash_len] = '\0';
+    ESP_LOGI(TAG, "Tx hash: %s", tx_hash_out);
     return true;
 }

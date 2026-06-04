@@ -436,11 +436,19 @@ extern "C" void app_main(void)
 #endif
     ESP_LOGI(TAG, "Tag:   %s", APP_VERSION_TAG);
 
-    /* Silence the verbose per-APDU PN532 logs that flood UART during
-     * wallet.connect retries (the "a a a"-looking chatter). */
-    esp_log_level_set("pn532", ESP_LOG_WARN);
+    /* The SDK's per-APDU PN532 log flood was trimmed upstream (SDK main);
+     * INFO now only emits a few init lines worth keeping ("I2C wake-up
+     * trigger", "PN532 initialized"). Keep the adapters at WARN — their
+     * per-APDU chatter is still verbose. */
+    esp_log_level_set("pn532", ESP_LOG_INFO);
     esp_log_level_set("pn532_adapter", ESP_LOG_WARN);
     esp_log_level_set("Pn532NfcTransport", ESP_LOG_WARN);
+
+    /* PN532 I2C busy-polling: the chip NACKs its own address while busy —
+     * that is the normal PN532 I2C protocol, but IDF's i2c.master driver
+     * logs a 4-line error burst for every poll. Mute the tag; real I2C
+     * failures still propagate through the SDK's return codes. */
+    esp_log_level_set("i2c.master", ESP_LOG_NONE);
 
     /* ── UI first: splash visible while the rest boots ───────── */
     s_ui_queue = xQueueCreate(8, sizeof(ui_msg_t));
