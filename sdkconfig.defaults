@@ -10,6 +10,10 @@ CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
 # HTTPS support in the HTTP client
 CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS=y
 
+# CYD ships with a Boya SPI flash chip — link its dedicated driver so IDF
+# doesn't fall back to the generic one (silences the boot-time warning)
+CONFIG_SPI_FLASH_SUPPORT_BOYA_CHIP=y
+
 # CYD has 4 MB flash — custom 3 MB app partition
 CONFIG_ESPTOOLPY_FLASHSIZE_2MB=n
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
