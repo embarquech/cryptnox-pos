@@ -1,3 +1,17 @@
+/*
+ * SPDX-License-Identifier: LGPL-3.0-or-later
+ * Copyright (c) 2026 Cryptnox SA
+ */
+
+/**
+ * @file eth_rpc.cpp
+ * @brief WiFi bring-up, SNTP sync and Ethereum JSON-RPC client implementation.
+ */
+
+/******************************************************************
+ * 1. Included files
+ ******************************************************************/
+
 #include "eth_rpc.h"
 
 #include <string.h>
@@ -11,9 +25,13 @@
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_netif.h"
+#include "esp_netif_sntp.h"
 #include "esp_log.h"
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
+#include "cJSON.h"
+
+#include "CW_Utils.h"   /* hardened memory primitives (CODING_RULES §1.4) */
 
 static const char *const TAG = "eth_rpc";
 
@@ -28,20 +46,44 @@ static const char *const TAG = "eth_rpc";
 /* Hex chars per byte */
 #define HEX_PER_BYTE  2U
 
+/* F-12: never dump full RPC responses (they can echo credentials embedded
+ * in the URL) — log at most this many bytes on parse failures. */
+#define RESP_LOG_MAX  80
+
+/* F-09: sanity bound for the account nonce — a real terminal never gets
+ * anywhere near 2^32 transactions, so anything above is a bogus response. */
+#define NONCE_MAX  0xFFFFFFFFULL
+
+/* Largest expected "result" string: 0x + 64 hex chars + NUL, rounded up. */
+#define RESULT_STR_MAX  80U
+
 /******************************************************************
- * Module state
+ * 2. Constants and module state
  ******************************************************************/
 
-static const char *s_rpc_url   = NULL;
-static const char *s_from_addr = NULL;
+static const char *s_rpc_url     = NULL;
+static const char *s_from_addr   = NULL;
+static const char *s_project_id  = NULL;
+static const char *s_api_secret  = NULL;
 
 static EventGroupHandle_t s_wifi_event_group;
 static int                s_retry_num = 0;
 
 /******************************************************************
- * WiFi event handler
+ * 3. WiFi event handler
  ******************************************************************/
 
+/**
+ * @brief WiFi/IP event handler driving the connect retry state machine.
+ *
+ * Retries the association up to @ref WIFI_MAX_RETRY times, then signals
+ * @ref WIFI_FAIL_BIT; signals @ref WIFI_CONNECTED_BIT once an IP is bound.
+ *
+ * @param[in] arg        Unused.
+ * @param[in] event_base Event base (WIFI_EVENT or IP_EVENT).
+ * @param[in] event_id   Event identifier within @p event_base.
+ * @param[in] event_data Unused.
+ */
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
                                int32_t event_id, void *event_data)
 {
@@ -68,16 +110,28 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 }
 
 /******************************************************************
- * HTTP helper
+ * 4. HTTP helper
  ******************************************************************/
 
-/*
- * POST 'body' to s_rpc_url over HTTPS and read the response into
- * resp_buf (NUL-terminated on success).  Returns true if data was read.
+/**
+ * @brief POST a JSON-RPC body to the configured endpoint over HTTPS.
+ *
+ * Applies HTTP Basic Auth when credentials were set via
+ * @ref eth_rpc_set_auth.  The response is read until EOF or buffer-full
+ * and is always NUL-terminated.
+ *
+ * @param[in]  body          JSON request body (NUL-terminated).
+ * @param[out] resp_buf      Response buffer, NUL-terminated on return.
+ * @param[in]  resp_buf_size Capacity of @p resp_buf.
+ * @return true only if at least one byte was read AND the server answered
+ *         HTTP 200 (F-09); false on transport error or non-200 status.
  */
 static bool do_post(const char *body, char *resp_buf, size_t resp_buf_size)
 {
     bool success = false;
+
+    bool use_auth = ((s_project_id != NULL) && (s_project_id[0] != '\0') &&
+                     (s_api_secret != NULL) && (s_api_secret[0] != '\0'));
 
     esp_http_client_config_t cfg;
     (void)memset(&cfg, 0, sizeof(cfg));
@@ -85,6 +139,11 @@ static bool do_post(const char *body, char *resp_buf, size_t resp_buf_size)
     cfg.method            = HTTP_METHOD_POST;
     cfg.timeout_ms        = 15000;
     cfg.crt_bundle_attach = esp_crt_bundle_attach;
+    if (use_auth) {
+        cfg.username  = s_project_id;
+        cfg.password  = s_api_secret;
+        cfg.auth_type = HTTP_AUTH_TYPE_BASIC;
+    }
 
     esp_http_client_handle_t client = esp_http_client_init(&cfg);
     if (client == NULL) {
@@ -94,7 +153,7 @@ static bool do_post(const char *body, char *resp_buf, size_t resp_buf_size)
 
     (void)esp_http_client_set_header(client, "Content-Type", "application/json");
 
-    int body_len = (int)strlen(body);
+    int body_len = static_cast<int>(strlen(body));
     esp_err_t err = esp_http_client_open(client, body_len);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "HTTP open: %s", esp_err_to_name(err));
@@ -113,14 +172,21 @@ static bool do_post(const char *body, char *resp_buf, size_t resp_buf_size)
         int total = 0;
         int read;
         do {
-            int space = (int)(resp_buf_size - 1U) - total;
+            int space = static_cast<int>(resp_buf_size - 1U) - total;
             if (space <= 0) { break; }
             read = esp_http_client_read(client, resp_buf + total, space);
             if (read > 0) { total += read; }
         } while (read > 0);
 
         resp_buf[total] = '\0';
-        success = (total > 0);
+
+        /* F-09: a 4xx/5xx body that happens to contain "result" must not
+         * be mistaken for a successful JSON-RPC response. */
+        int status = esp_http_client_get_status_code(client);
+        if (status != 200) {
+            ESP_LOGE(TAG, "HTTP status %d: %.*s", status, RESP_LOG_MAX, resp_buf);
+        }
+        success = ((total > 0) && (status == 200));
     }
 
 cleanup:
@@ -130,14 +196,28 @@ cleanup:
 }
 
 /******************************************************************
- * Hex utilities
+ * 5. Hex utilities
  ******************************************************************/
 
+/**
+ * @brief Convert a nibble value to its lowercase ASCII hex digit.
+ *
+ * @param[in] n Nibble value; only the range 0–15 is meaningful.
+ * @return '0'–'9' or 'a'–'f'.
+ */
 static char hex_nibble(uint8_t n)
 {
-    return (n < 10U) ? (char)('0' + n) : (char)('a' + n - 10U);
+    return (n < 10U) ? static_cast<char>('0' + n)
+                     : static_cast<char>('a' + n - 10U);
 }
 
+/**
+ * @brief Hex-encode a byte buffer (lowercase, no prefix, no NUL).
+ *
+ * @param[in]  data Input bytes.
+ * @param[in]  len  Number of input bytes.
+ * @param[out] out  Output buffer of at least 2*len chars; not NUL-terminated.
+ */
 static void bytes_to_hex(const uint8_t *data, size_t len, char *out)
 {
     size_t i;
@@ -148,13 +228,78 @@ static void bytes_to_hex(const uint8_t *data, size_t len, char *out)
 }
 
 /******************************************************************
- * Public API
+ * 6. JSON helper
+ ******************************************************************/
+
+/**
+ * @brief Extract the top-level @c "result" string from a JSON-RPC response.
+ *
+ * Uses a real JSON parser (cJSON) instead of strstr so that JSON-RPC error
+ * objects, HTTP error bodies, or look-alike substrings are rejected (F-09).
+ *
+ * @param[in]  resp     NUL-terminated response body.
+ * @param[out] out      NUL-terminated "result" value on success; untouched
+ *                      on failure.
+ * @param[in]  out_size Capacity of @p out.
+ * @return true on success; false if the body is not valid JSON, "result"
+ *         is absent or not a string, or the value does not fit in @p out.
+ */
+static bool json_get_result_string(const char *resp, char *out, size_t out_size)
+{
+    bool ok = false;
+    cJSON *root = cJSON_Parse(resp);
+    if (root == NULL) {
+        return false;
+    }
+    const cJSON *result = cJSON_GetObjectItemCaseSensitive(root, "result");
+    if (cJSON_IsString(result) && (result->valuestring != NULL)) {
+        size_t len = strlen(result->valuestring);
+        if ((len + 1U) <= out_size) {
+            ok = CW_Utils::safe_memcpy(
+                reinterpret_cast<uint8_t *>(out), out_size,
+                reinterpret_cast<const uint8_t *>(result->valuestring),
+                len + 1U);
+        }
+    }
+    cJSON_Delete(root);
+    return ok;
+}
+
+/******************************************************************
+ * 7. Public API
  ******************************************************************/
 
 void eth_rpc_init(const char *rpc_url, const char *from_addr)
 {
     s_rpc_url   = rpc_url;
     s_from_addr = from_addr;
+}
+
+void eth_rpc_set_auth(const char *project_id, const char *api_secret)
+{
+    s_project_id = project_id;
+    s_api_secret = api_secret;
+}
+
+bool eth_rpc_time_sync(uint32_t timeout_ms)
+{
+    esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
+    esp_err_t err = esp_netif_sntp_init(&config);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "SNTP init: %s", esp_err_to_name(err));
+        return false;
+    }
+
+    err = esp_netif_sntp_sync_wait(pdMS_TO_TICKS(timeout_ms));
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "SNTP sync timed out (%s)", esp_err_to_name(err));
+        esp_netif_sntp_deinit();
+        return false;
+    }
+
+    ESP_LOGI(TAG, "System time synced via SNTP");
+    /* Leave SNTP running for periodic background resyncs. */
+    return true;
 }
 
 bool eth_rpc_wifi_connect(const char *ssid, const char *password)
@@ -184,6 +329,10 @@ bool eth_rpc_wifi_connect(const char *ssid, const char *password)
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg));
+    /* The WiFi driver keeps its own copy — scrub the stack copy of the
+     * credentials immediately (CODING_RULES §1.4). */
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(&wifi_cfg),
+                          sizeof(wifi_cfg));
     ESP_ERROR_CHECK(esp_wifi_start());
 
     ESP_LOGI(TAG, "Connecting to \"%s\"...", ssid);
@@ -220,30 +369,50 @@ bool eth_rpc_get_nonce(uint64_t *nonce_out)
         return false;
     }
 
-    /* Extract hex value after "result":"0x */
-    char *result = strstr(resp, "\"result\":\"0x");
-    if (result == NULL) {
-        ESP_LOGE(TAG, "nonce: no result in: %s", resp);
+    char result[RESULT_STR_MAX];
+    if (!json_get_result_string(resp, result, sizeof(result))) {
+        ESP_LOGE(TAG, "nonce: no result in: %.*s", RESP_LOG_MAX, resp);
         return false;
     }
-    result += 12;  /* skip past "result":"0x */
+    if (strncmp(result, "0x", 2U) != 0) {
+        ESP_LOGE(TAG, "nonce: result not hex: %.*s", RESP_LOG_MAX, result);
+        return false;
+    }
 
-    *nonce_out = strtoull(result, NULL, 16);
-    ESP_LOGI(TAG, "Nonce: %" PRIu64, *nonce_out);
+    char *end = NULL;
+    uint64_t nonce = strtoull(result + 2, &end, 16);
+    if ((end == (result + 2)) || (*end != '\0')) {
+        ESP_LOGE(TAG, "nonce: malformed hex: %.*s", RESP_LOG_MAX, result);
+        return false;
+    }
+    /* F-09: strtoull saturates silently — reject absurd values outright. */
+    if (nonce > NONCE_MAX) {
+        ESP_LOGE(TAG, "nonce: out of range: %" PRIu64, nonce);
+        return false;
+    }
+
+    *nonce_out = nonce;
+    ESP_LOGI(TAG, "Nonce: %" PRIu64, nonce);
     return true;
 }
 
-uint8_t eth_rpc_ecrecover_parity(const uint8_t hash[32],
-                                  const uint8_t r[32],
-                                  const uint8_t s[32])
+eth_rpc_parity_result_t eth_rpc_ecrecover_parity(const uint8_t hash[32],
+                                                 const uint8_t r[32],
+                                                 const uint8_t s[32],
+                                                 uint8_t *v_out)
 {
+    /* Track whether at least one eth_call produced a usable recovered
+     * address, so the caller can distinguish "RPC down" from "address
+     * mismatch" (F-10). */
+    bool got_recovered = false;
+
     /* ecrecover precompile input: hash(32) || v_uint256(32) || r(32) || s(32) */
     uint8_t input[128];
     (void)memset(input, 0, sizeof(input));
-    (void)memcpy(input, hash, 32U);
+    (void)CW_Utils::safe_memcpy(input, sizeof(input), hash, 32U);
     /* v occupies the last byte of the second 32-byte slot (index 63) */
-    (void)memcpy(input + 64U, r, 32U);
-    (void)memcpy(input + 96U, s, 32U);
+    (void)CW_Utils::safe_memcpy(input + 64U, sizeof(input) - 64U, r, 32U);
+    (void)CW_Utils::safe_memcpy(input + 96U, sizeof(input) - 96U, s, 32U);
 
     /* Hex-encode the 128-byte input */
     char input_hex[257];
@@ -275,37 +444,39 @@ uint8_t eth_rpc_ecrecover_parity(const uint8_t hash[32],
             continue;
         }
 
-        /* Response: "result":"0x" + 64 hex chars (32 bytes ABI address).
+        /* Expected result: "0x" + 64 hex chars (32-byte ABI-encoded address).
          * The address occupies the last 40 hex chars (bytes 12-31). */
-        char *result = strstr(resp, "\"result\":\"0x");
-        if (result == NULL) { continue; }
-        result += 12U;  /* skip to hex digits */
-
-        size_t result_hex_len = 0U;
-        {
-            const char *p = result;
-            while ((*p != '"') && (*p != '\0') && (*p != ',')) {
-                p++;
-                result_hex_len++;
-            }
-        }
-
-        if (result_hex_len < 64U) {
-            /* Empty result — address not recovered (try other v) */
+        char result[RESULT_STR_MAX];
+        if (!json_get_result_string(resp, result, sizeof(result))) {
+            ESP_LOGW(TAG, "ecrecover v=%u: no result in: %.*s",
+                     v_raw, RESP_LOG_MAX, resp);
             continue;
         }
+        if ((strncmp(result, "0x", 2U) != 0) || (strlen(result) != 66U)) {
+            /* Empty/short result — address not recovered (try other v) */
+            continue;
+        }
+        got_recovered = true;
 
         /* ABI address: 24 hex chars of zeros + 40 hex chars of address */
-        const char *recovered_hex = result + 24U;
+        const char *recovered_hex = result + 2U + 24U;
 
         if (strncasecmp(recovered_hex, from_hex, 40U) == 0) {
             ESP_LOGI(TAG, "v=%u matched ecrecover", v_raw);
-            return v_raw;
+            *v_out = v_raw;
+            return ETH_RPC_PARITY_OK;
         }
     }
 
-    ESP_LOGW(TAG, "ecrecover did not match either parity, defaulting v=0");
-    return 0U;
+    /* F-10: no silent v=0 fallback — broadcasting with a wrong parity just
+     * produces an invalid signature and an opaque failure downstream. */
+    if (got_recovered) {
+        ESP_LOGE(TAG, "ecrecover: neither parity matches from_addr "
+                      "(ADDR_FROM / card mismatch?)");
+        return ETH_RPC_PARITY_MISMATCH;
+    }
+    ESP_LOGE(TAG, "ecrecover: no usable RPC response for either parity");
+    return ETH_RPC_PARITY_RPC_ERROR;
 }
 
 bool eth_rpc_send_raw_tx(const uint8_t *tx, size_t tx_len,
@@ -338,21 +509,26 @@ bool eth_rpc_send_raw_tx(const uint8_t *tx, size_t tx_len,
 
     if (!ok) { return false; }
 
-    /* Extract "result":"0x..." (the tx hash) */
-    char *result = strstr(resp, "\"result\":\"");
-    if (result == NULL) {
-        ESP_LOGE(TAG, "send_raw_tx: no result in: %s", resp);
+    /* Extract the "result" string (the tx hash) with a real JSON parse, so
+     * a JSON-RPC error object is reported as a failure (F-09). */
+    char result[RESULT_STR_MAX];
+    if (!json_get_result_string(resp, result, sizeof(result))) {
+        ESP_LOGE(TAG, "send_raw_tx: no result in: %.*s", RESP_LOG_MAX, resp);
         return false;
     }
-    result += 10U;  /* skip past "result":" — now at '0x...' */
+    if (strncmp(result, "0x", 2U) != 0) {
+        ESP_LOGE(TAG, "send_raw_tx: result not a hash: %.*s",
+                 RESP_LOG_MAX, result);
+        return false;
+    }
 
-    const char *end = strchr(result, '"');
-    if (end == NULL) { return false; }
-
-    size_t hash_len = (size_t)(end - result);
+    size_t hash_len = strlen(result);
     if ((hash_len + 1U) > tx_hash_max) { return false; }
 
-    (void)memcpy(tx_hash_out, result, hash_len);
+    (void)CW_Utils::safe_memcpy(reinterpret_cast<uint8_t *>(tx_hash_out),
+                                tx_hash_max,
+                                reinterpret_cast<const uint8_t *>(result),
+                                hash_len);
     tx_hash_out[hash_len] = '\0';
     return true;
 }

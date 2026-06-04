@@ -118,18 +118,22 @@ and fill in:
 | Field | Description |
 |-------|-------------|
 | `WIFI_SSID` / `WIFI_PASSWORD` | WPA2 credentials for the terminal's STA connection |
-| `RPC_URL` | Ethereum JSON-RPC endpoint (Sepolia by default) |
-| `RPC_PROJECT_ID` / `RPC_API_SECRET` | Infura project credentials (Basic Auth) |
+| `RPC_URL` | Ethereum JSON-RPC endpoint (PublicNode Sepolia by default; an Infura variant is provided commented-out) |
+| `RPC_PROJECT_ID` / `RPC_API_SECRET` | Optional — only when using Infura (HTTP Basic Auth); leave undefined for PublicNode |
 | `ADDR_FROM` | Ethereum address of the **card** (`m/44'/60'/0'/0/0`) — used to fetch the nonce and validate the ecrecover parity |
 | `ADDR_TO` | Destination address for every transfer |
 | `ADDR_USDC` | USDC ERC-20 contract address on the target chain (Sepolia testnet by default) |
-| `CARD_PIN` | PIN configured on the Cryptnox card (default `"000000000"` for demo) |
-| `AMOUNT_USDC` | Unused; the on-screen UI is the source of truth for the amount |
+| `CARD_PIN` / `CARD_PIN_LEN` | PIN configured on the Cryptnox card (4–9 ASCII digits) and its length |
+| `CHAIN_ID_SEPOLIA`, `MAX_PRIORITY_FEE`, `MAX_FEE`, `GAS_LIMIT_ERC20` | Chain ID and EIP-1559 gas parameters |
+
+The transfer amount is selected on the touchscreen at run time; it is not a
+config.h field.
 
 > [!WARNING]
-> The PIN `"000000000"` is a demo placeholder. Set a strong PIN when
-> initialising the card, change any factory default before storing real
-> funds, and never commit `main/config.h`.
+> Set a strong, unique `CARD_PIN` when initialising the card and never commit
+> `main/config.h`. The build fails with a `static_assert` if `CARD_PIN` is the
+> demo placeholder `"000000000"`; define `CRYPTNOX_POS_ALLOW_DEMO_PIN` only for
+> throwaway bench builds, never on a deployed terminal.
 
 ---
 

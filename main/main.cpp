@@ -1,7 +1,25 @@
+/*
+ * SPDX-License-Identifier: LGPL-3.0-or-later
+ * Copyright (c) 2026 Cryptnox SA
+ */
+
+/**
+ * @file main.cpp
+ * @brief cryptnox-pos entry point: touchscreen USDC payment terminal.
+ *
+ * Drives the amount → confirm → sign → broadcast flow on the Cheap Yellow
+ * Display, signing EIP-1559 USDC transfers on a Cryptnox card via PN532.
+ */
+
+/******************************************************************
+ * 1. Included files
+ ******************************************************************/
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <inttypes.h>
+#include <atomic>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -12,6 +30,7 @@
 #include "nvs_flash.h"
 
 #include "CryptnoxWallet.h"
+#include "CW_Utils.h"
 #include "Pn532NfcTransport.h"
 #include "ESP32Logger.h"
 #include "ESP32Platform.h"
@@ -49,6 +68,32 @@ extern "C" {
 
 #include "config.h"
 
+/******************************************************************
+ * 2. Configuration guards and constants
+ ******************************************************************/
+
+/* F-14: refuse to build an image with the demo PIN baked in.  Define
+ * CRYPTNOX_POS_ALLOW_DEMO_PIN explicitly for throwaway bench builds. */
+#ifndef CRYPTNOX_POS_ALLOW_DEMO_PIN
+/**
+ * @brief Compare two NUL-terminated strings at compile time.
+ *
+ * Compile-time `constexpr` recursion only (MISRA deviation D-2); used by the
+ * demo-PIN `static_assert` below and never evaluated at run time.
+ *
+ * @param[in] a First string.
+ * @param[in] b Second string.
+ * @return true if both strings are byte-for-byte identical.
+ */
+static constexpr bool cfg_str_eq(const char *a, const char *b)
+{
+    return (*a == *b) && ((*a == '\0') || cfg_str_eq(a + 1, b + 1));
+}
+static_assert(!cfg_str_eq(CARD_PIN, "000000000"),
+              "CARD_PIN is the demo placeholder \"000000000\" - set a real PIN in "
+              "main/config.h (or define CRYPTNOX_POS_ALLOW_DEMO_PIN for bench builds)");
+#endif
+
 static const char *const TAG = "cryptnox_pos";
 
 /* ── Hardware pin assignments — Cheap Yellow Display (ESP32) ───── */
@@ -67,7 +112,7 @@ static const uint8_t TRANSFER_SELECTOR[4] = { 0xa9U, 0x05U, 0x9cU, 0xbbU };
 #define TX_BUF_SIZE 300U
 
 /******************************************************************
- * UI ↔ main task message queue
+ * 3. UI ↔ main task message queue
  ******************************************************************/
 
 typedef struct {
@@ -79,9 +124,21 @@ static QueueHandle_t s_ui_queue = NULL;
 
 /* Set from the UI task when the user taps Cancel during PLACE_CARD; checked
  * by the main task after sign_and_broadcast returns so we skip the FAILED
- * flash and stay on the amount-entry screen. */
-static volatile bool s_user_cancelled = false;
+ * flash and stay on the amount-entry screen.  std::atomic (seq_cst) rather
+ * than volatile so the cross-task access is well-defined per the C++ memory
+ * model (F-11). */
+static std::atomic<bool> s_user_cancelled{false};
 
+/**
+ * @brief UI-task callback: forward a touch event to the main task queue.
+ *
+ * Runs in the UI task context.  A Cancel tap also raises the atomic
+ * @ref s_user_cancelled flag so the in-flight signing flow can abort
+ * without waiting for the queue to drain (F-11).
+ *
+ * @param[in] event   UI event identifier.
+ * @param[in] payload Event payload (amount in USDC base units, or 0).
+ */
 static void ui_event_dispatch(ui_event_t event, uint64_t payload) {
     if (event == UI_EVENT_CONFIRM_CANCEL) {
         s_user_cancelled = true;
@@ -91,62 +148,124 @@ static void ui_event_dispatch(ui_event_t event, uint64_t payload) {
 }
 
 /******************************************************************
- * Helpers
+ * 4. Helpers
  ******************************************************************/
 
-static void parse_address(const char *hex, uint8_t out[20])
+/**
+ * @brief Decode a single ASCII hex digit.
+ *
+ * @param[in] c Character to decode.
+ * @return Nibble value 0–15, or -1 if @p c is not in [0-9a-fA-F].
+ */
+static int hex_nibble_val(char c)
+{
+    if ((c >= '0') && (c <= '9')) { return c - '0'; }
+    if ((c >= 'a') && (c <= 'f')) { return (c - 'a') + 10; }
+    if ((c >= 'A') && (c <= 'F')) { return (c - 'A') + 10; }
+    return -1;
+}
+
+/**
+ * @brief Parse a 20-byte Ethereum address from a hex string.
+ *
+ * Accepts an optional @c 0x / @c 0X prefix, then requires exactly 40 hex
+ * characters and rejects any non-hex input instead of silently decoding
+ * garbage (F-07).
+ *
+ * @param[in]  hex Address string (with or without @c 0x prefix).
+ * @param[out] out 20-byte decoded address; zeroed then left partially
+ *                 written on failure — must not be used unless true is
+ *                 returned.
+ * @return true on success, false on wrong length or non-hex character.
+ */
+static bool parse_address(const char *hex, uint8_t out[20])
 {
     const char *p = hex;
     if ((p[0] == '0') && ((p[1] == 'x') || (p[1] == 'X'))) {
         p += 2;
     }
+    if (strlen(p) != 40U) {
+        return false;
+    }
     (void)memset(out, 0, 20U);
     size_t i;
-    for (i = 0U; (i < 20U) && (p[0] != '\0') && (p[1] != '\0'); i++) {
-        uint8_t hi = (uint8_t)((*p >= 'a') ? (*p - 'a' + 10) :
-                               (*p >= 'A') ? (*p - 'A' + 10) : (*p - '0'));
-        p++;
-        uint8_t lo = (uint8_t)((*p >= 'a') ? (*p - 'a' + 10) :
-                               (*p >= 'A') ? (*p - 'A' + 10) : (*p - '0'));
-        p++;
-        out[i] = (uint8_t)((hi << 4U) | lo);
+    for (i = 0U; i < 20U; i++) {
+        int hi = hex_nibble_val(p[i * 2U]);
+        int lo = hex_nibble_val(p[(i * 2U) + 1U]);
+        if ((hi < 0) || (lo < 0)) {
+            return false;
+        }
+        out[i] = static_cast<uint8_t>((static_cast<uint8_t>(hi) << 4U) |
+                                       static_cast<uint8_t>(lo));
     }
+    return true;
 }
 
-static void build_usdc_calldata(uint8_t out[68], const char *to_hex, uint64_t amount)
+/**
+ * @brief Build the 68-byte ABI-encoded calldata for a USDC @c transfer call.
+ *
+ * Encodes the ERC-20 @c transfer(address,uint256) selector followed by the
+ * ABI-encoded arguments:
+ * @code
+ * selector(4) | zeroes(12) | to(20) | zeroes(24) | amount_be(8)
+ * @endcode
+ *
+ * @param[out] out    68-byte output buffer; contents are undefined on failure.
+ * @param[in]  to_hex Recipient address as hex (with or without @c 0x prefix).
+ * @param[in]  amount Transfer amount in USDC base units (6 decimals).
+ * @return true on success, false if @p to_hex fails address validation (F-07).
+ */
+static bool build_usdc_calldata(uint8_t out[68], const char *to_hex, uint64_t amount)
 {
     (void)memset(out, 0, 68U);
-    (void)memcpy(out, TRANSFER_SELECTOR, 4U);
+    (void)CW_Utils::safe_memcpy(out, 68U, TRANSFER_SELECTOR, 4U);
     uint8_t addr[20];
-    parse_address(to_hex, addr);
-    (void)memcpy(out + 4U + 12U, addr, 20U);
+    if (!parse_address(to_hex, addr)) {
+        return false;
+    }
+    (void)CW_Utils::safe_memcpy(out + 4U + 12U, 68U - (4U + 12U), addr, 20U);
 
     size_t j;
     for (j = 0U; j < 8U; j++) {
-        out[67U - j] = (uint8_t)((amount >> (8U * j)) & 0xFFU);
+        out[67U - j] = static_cast<uint8_t>((amount >> (8U * j)) & 0xFFU);
     }
+    return true;
 }
 
 /******************************************************************
- * Sign + broadcast for a given amount
- *
- * Returns true on success and writes the tx hash (with 0x prefix) to
- * tx_hash_out.  On failure, writes a short error message to err_out.
+ * 5. Sign + broadcast for a given amount
  ******************************************************************/
 
+/**
+ * @brief Sign a USDC transfer on the card and broadcast it via JSON-RPC.
+ *
+ * Full pipeline: build calldata → fetch nonce → RLP-encode + keccak256 →
+ * card connect/sign (cancellable) → ecrecover parity → broadcast.  The card
+ * PIN is copied into the sign request at the last moment and scrubbed with
+ * @c CW_Utils::secure_wipe immediately after signing (F-04).
+ *
+ * @param[in]  wallet       Initialised wallet instance.
+ * @param[in]  transport    PN532 transport, used for the cancellable
+ *                          connect loop.
+ * @param[in]  amount_units Transfer amount in USDC base units (6 decimals).
+ * @param[out] tx_hash_out  "0x..."-prefixed tx hash on success.
+ * @param[in]  tx_hash_max  Capacity of @p tx_hash_out (>= 68 bytes).
+ * @param[out] err_out      Short UI-facing error message on failure.
+ * @param[in]  err_max      Capacity of @p err_out.
+ * @return true on successful broadcast; false on failure or user cancel
+ *         (err_out is only meaningful when @ref s_user_cancelled is clear).
+ */
 static bool sign_and_broadcast(CryptnoxWallet &wallet,
                                 Pn532NfcTransport &transport,
                                 uint64_t amount_units,
                                 char *tx_hash_out, size_t tx_hash_max,
                                 char *err_out, size_t err_max)
 {
-    uint8_t card_pin[CW_MAX_PIN_LENGTH];
-    (void)memset(card_pin, 0U, sizeof(card_pin));
-    (void)memcpy(card_pin, CARD_PIN,
-                 (CARD_PIN_LEN < CW_MAX_PIN_LENGTH) ? CARD_PIN_LEN : CW_MAX_PIN_LENGTH);
-
     uint8_t calldata[68];
-    build_usdc_calldata(calldata, "0x" ADDR_TO, amount_units);
+    if (!build_usdc_calldata(calldata, "0x" ADDR_TO, amount_units)) {
+        (void)snprintf(err_out, err_max, "Bad ADDR_TO in config");
+        return false;
+    }
 
     uint64_t nonce = 0U;
     if (!eth_rpc_get_nonce(&nonce)) {
@@ -164,7 +283,10 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
     tx.eth_value         = 0U;
     tx.calldata          = calldata;
     tx.calldata_len      = sizeof(calldata);
-    parse_address("0x" ADDR_USDC, tx.to);
+    if (!parse_address("0x" ADDR_USDC, tx.to)) {
+        (void)snprintf(err_out, err_max, "Bad ADDR_USDC in config");
+        return false;
+    }
 
     uint8_t unsigned_tx[TX_BUF_SIZE];
     size_t  unsigned_len = eth_rlp_encode_unsigned(&tx, unsigned_tx, sizeof(unsigned_tx));
@@ -227,10 +349,21 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
     req.hashLength       = static_cast<uint8_t>(CW_HASH_SIZE);
     req.derivePath       = eth_path;
     req.derivePathLength = static_cast<uint8_t>(sizeof(eth_path));
-    (void)memcpy(req.pin, card_pin, CW_MAX_PIN_LENGTH);
+
+    /* Copy the PIN into the request as late as possible; req.pin is
+     * zero-initialised by the CW_SignRequest constructor. */
+    const size_t pin_len = (CARD_PIN_LEN < CW_MAX_PIN_LENGTH) ? CARD_PIN_LEN
+                                                              : CW_MAX_PIN_LENGTH;
+    (void)CW_Utils::safe_memcpy(req.pin, sizeof(req.pin),
+                                reinterpret_cast<const uint8_t *>(CARD_PIN),
+                                pin_len);
 
     CW_SignResult result = wallet.sign(req);
     wallet.disconnect(session);
+
+    /* F-04: scrub the PIN immediately after use (secure_wipe is not
+     * dead-store-eliminated); ~CW_SignRequest wipes it again as a backstop. */
+    CW_Utils::secure_wipe(req.pin, sizeof(req.pin));
 
     if (result.errorCode != CW_OK) {
         (void)snprintf(err_out, err_max, "Sign error 0x%02X",
@@ -245,13 +378,31 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
         ui_show_tx_status(UI_TX_STATE_SENDING, NULL);
     }
 
-    uint8_t v = eth_rpc_ecrecover_parity(hash, sig_r, sig_s);
+    /* F-10: the parity recovery now fails explicitly instead of silently
+     * defaulting to v=0, so the operator sees the actual root cause. */
+    uint8_t v = 0U;
+    switch (eth_rpc_ecrecover_parity(hash, sig_r, sig_s, &v)) {
+        case ETH_RPC_PARITY_OK:
+            break;
+        case ETH_RPC_PARITY_MISMATCH:
+            (void)snprintf(err_out, err_max, "Card-address mismatch");
+            return false;
+        case ETH_RPC_PARITY_RPC_ERROR:
+        default:
+            (void)snprintf(err_out, err_max, "RPC error (parity)");
+            return false;
+    }
 
     uint8_t signed_tx[TX_BUF_SIZE];
     size_t  signed_len = eth_rlp_encode_signed(&tx, v, sig_r, sig_s,
                                                signed_tx, sizeof(signed_tx));
     if (signed_len == 0U) {
         (void)snprintf(err_out, err_max, "RLP signed overflow");
+        return false;
+    }
+
+    /* F-11: last cancel check right before the irreversible broadcast. */
+    if (s_user_cancelled) {
         return false;
     }
 
@@ -264,15 +415,25 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
 }
 
 /******************************************************************
- * Entry point
+ * 6. Entry point
  ******************************************************************/
 
 #define APP_VERSION_TAG "ui-r27 (cancellable connect loop)"
 
+/**
+ * @brief ESP-IDF application entry point.
+ *
+ * Brings up the UI (splash), NVS, PN532 reader, wallet, WiFi, and a
+ * blocking SNTP time sync (F-06), then services UI events in the main
+ * interaction loop (amount → confirm → sign+broadcast).
+ */
 extern "C" void app_main(void)
 {
     ESP_LOGI(TAG, "===== cryptnox-pos boot =====");
+#ifdef CRYPTNOX_POS_DEV_BUILD
+    /* F-18: build timestamp helps firmware fingerprinting — dev builds only. */
     ESP_LOGI(TAG, "Build: %s %s", __DATE__, __TIME__);
+#endif
     ESP_LOGI(TAG, "Tag:   %s", APP_VERSION_TAG);
 
     /* Silence the verbose per-APDU PN532 logs that flood UART during
@@ -331,9 +492,20 @@ extern "C" void app_main(void)
 
     /* ── WiFi + RPC ────────────────────────────────────────────── */
     eth_rpc_init(RPC_URL, "0x" ADDR_FROM);
+#if defined(RPC_PROJECT_ID) && defined(RPC_API_SECRET)
+    eth_rpc_set_auth(RPC_PROJECT_ID, RPC_API_SECRET);
+#endif
     if (!eth_rpc_wifi_connect(WIFI_SSID, WIFI_PASSWORD)) {
         ESP_LOGE(TAG, "WiFi connect failed");
         ui_show_tx_status(UI_TX_STATE_FAILED, "WiFi connect failed");
+        return;
+    }
+
+    /* F-06: block on a first SNTP sync so TLS certificate validity-period
+     * checks run against real time instead of the 1970 epoch. */
+    if (!eth_rpc_time_sync(15000U)) {
+        ESP_LOGE(TAG, "SNTP time sync failed");
+        ui_show_tx_status(UI_TX_STATE_FAILED, "Time sync failed");
         return;
     }
 

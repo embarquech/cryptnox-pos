@@ -1,3 +1,18 @@
+/*
+ * SPDX-License-Identifier: LGPL-3.0-or-later
+ * Copyright (c) 2026 Cryptnox SA
+ */
+
+/**
+ * @file ui.cpp
+ * @brief Touchscreen UI implementation: TFT_eSPI screens, XPT2046 touch
+ *        handling and the FreeRTOS UI task.
+ */
+
+/******************************************************************
+ * 1. Included files
+ ******************************************************************/
+
 #include "ui.h"
 
 #include <Arduino.h>
@@ -11,10 +26,12 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 
+#include "CW_Utils.h"   /* hardened memory primitives (CODING_RULES §1.4) */
+
 static const char *TAG = "ui";
 
 /******************************************************************
- * CYD touch pins (separate SPI bus from TFT)
+ * 2. CYD touch pins (separate SPI bus from TFT)
  ******************************************************************/
 #define T_CS    33
 #define T_IRQ   36
@@ -32,7 +49,7 @@ static bool          s_redraw    = true;
 
 /* Amount-entry state */
 static uint64_t s_amount_units   = 1000000ULL;   /* 1.00 USDC */
-static uint64_t s_last_drawn_amt = (uint64_t)-1; /* force first draw */
+static uint64_t s_last_drawn_amt = UINT64_MAX; /* force first draw */
 
 /* Confirm screen data */
 static uint64_t s_confirm_amount = 0ULL;
@@ -46,7 +63,7 @@ static char          s_tx_info[64] = "";
 static uint32_t s_last_tap_ms = 0;
 
 /******************************************************************
- * Layout constants (320x240 landscape)
+ * 3. Layout constants (320x240 landscape)
  ******************************************************************/
 #define SCR_W      320
 #define SCR_H      240
@@ -62,7 +79,7 @@ static uint32_t s_last_tap_ms = 0;
 #define COL_BTN_NO TFT_MAROON
 
 /******************************************************************
- * Button geometry
+ * 4. Button geometry
  ******************************************************************/
 struct Btn { int x, y, w, h; const char *label; uint16_t bg; };
 
@@ -82,7 +99,7 @@ static const Btn BTN_NEW      = { 80, 188, 160, 44, "New payment", COL_BTN_HI };
 static const Btn BTN_CANCEL_W = { 80, 188, 160, 44, "Cancel",      COL_BTN_NO };
 
 /******************************************************************
- * Helpers
+ * 5. Helpers
  ******************************************************************/
 /* Draw "<number> USDC" with big digits (font 6, digits-only) and a smaller
  * "USDC" suffix in font 4 right after it. cx is the centre x coordinate. */
@@ -124,7 +141,7 @@ static void draw_title(const char *txt) {
 }
 
 /******************************************************************
- * Touch (calibrated raw range → screen coords; landscape rotation 1)
+ * 6. Touch (calibrated raw range → screen coords; landscape rotation 1)
  ******************************************************************/
 /* XPT2046_Touchscreen.setRotation(1) already swaps axes for landscape;
  * we just map raw 200..3800 → screen 0..320 / 0..240 like esp32-loot does. */
@@ -171,7 +188,7 @@ static bool tap(int16_t *x, int16_t *y) {
 }
 
 /******************************************************************
- * Splash
+ * 7. Splash
  ******************************************************************/
 static void draw_splash(void) {
     tft.fillScreen(COL_BG);
@@ -184,7 +201,7 @@ static void draw_splash(void) {
 }
 
 /******************************************************************
- * Amount entry
+ * 8. Amount entry
  ******************************************************************/
 static void draw_amount_value(void) {
     tft.fillRect(0, 100, SCR_W, 50, COL_BG);
@@ -203,6 +220,15 @@ static void draw_amount_screen(void) {
     draw_btn(BTN_CONFIRM);
 }
 
+/**
+ * @brief Handle a tap on the amount-entry screen.
+ *
+ * Adjusts the amount by ±1 / ±0.01 USDC, clamped to [0, 99999] USDC on
+ * both increments (F-15), or emits UI_EVENT_AMOUNT_CONFIRMED.
+ *
+ * @param[in] x Screen x coordinate of the tap.
+ * @param[in] y Screen y coordinate of the tap.
+ */
 static void handle_amount_tap(int16_t x, int16_t y) {
     if (in_btn(BTN_MINUS_U, x, y)) {
         if (s_amount_units >= 1000000ULL) s_amount_units -= 1000000ULL;
@@ -213,6 +239,7 @@ static void handle_amount_tap(int16_t x, int16_t y) {
         if (s_amount_units >= 10000ULL) s_amount_units -= 10000ULL;
     } else if (in_btn(BTN_PLUS_C, x, y)) {
         s_amount_units += 10000ULL;
+        if (s_amount_units > 99999000000ULL) s_amount_units = 99999000000ULL;
     } else if (in_btn(BTN_CONFIRM, x, y)) {
         if (s_cb != NULL && s_amount_units > 0ULL) {
             s_cb(UI_EVENT_AMOUNT_CONFIRMED, s_amount_units);
@@ -221,7 +248,7 @@ static void handle_amount_tap(int16_t x, int16_t y) {
 }
 
 /******************************************************************
- * Confirm
+ * 9. Confirm
  ******************************************************************/
 static void draw_confirm_screen(void) {
     tft.fillScreen(COL_BG);
@@ -240,11 +267,13 @@ static void draw_confirm_screen(void) {
     char line1[24] = {0}, line2[24] = {0};
     size_t addr_len = strlen(s_confirm_addr);
     size_t half = addr_len > 22 ? 22 : addr_len;
-    memcpy(line1, s_confirm_addr, half);
+    (void)CW_Utils::safe_memcpy(reinterpret_cast<uint8_t *>(line1), sizeof(line1),
+                                reinterpret_cast<const uint8_t *>(s_confirm_addr), half);
     if (addr_len > half) {
         size_t rest = addr_len - half;
         if (rest > 22) rest = 22;
-        memcpy(line2, s_confirm_addr + half, rest);
+        (void)CW_Utils::safe_memcpy(reinterpret_cast<uint8_t *>(line2), sizeof(line2),
+                                    reinterpret_cast<const uint8_t *>(s_confirm_addr + half), rest);
     }
     tft.drawString(line1, SCR_W / 2, 130, 2);
     tft.drawString(line2, SCR_W / 2, 150, 2);
@@ -271,7 +300,7 @@ static void handle_confirm_tap(int16_t x, int16_t y) {
 }
 
 /******************************************************************
- * Tx status
+ * 10. Tx status
  ******************************************************************/
 static void draw_tx_status_screen(void) {
     tft.fillScreen(COL_BG);
@@ -302,9 +331,11 @@ static void draw_tx_status_screen(void) {
         /* len > 28 here -- split into two 28-char lines and clamp the tail
          * (s_tx_info is 64 bytes so the tail can reach 35). */
         char line1[32] = {0}, line2[32] = {0};
-        memcpy(line1, s_tx_info, 28);
+        (void)CW_Utils::safe_memcpy(reinterpret_cast<uint8_t *>(line1), sizeof(line1),
+                                    reinterpret_cast<const uint8_t *>(s_tx_info), 28U);
         size_t rest = (len > 56U) ? 28U : (len - 28U);
-        memcpy(line2, s_tx_info + 28, rest);
+        (void)CW_Utils::safe_memcpy(reinterpret_cast<uint8_t *>(line2), sizeof(line2),
+                                    reinterpret_cast<const uint8_t *>(s_tx_info + 28), rest);
         tft.drawString(line1, SCR_W / 2, 135, 2);
         tft.drawString(line2, SCR_W / 2, 155, 2);
     }
@@ -328,12 +359,12 @@ static void handle_tx_status_tap(int16_t x, int16_t y) {
         if (s_cb) s_cb(UI_EVENT_CONFIRM_CANCEL, 0);
         s_screen = UI_SCREEN_AMOUNT;
         s_redraw = true;
-        s_last_drawn_amt = (uint64_t)-1;
+        s_last_drawn_amt = UINT64_MAX;
     }
 }
 
 /******************************************************************
- * Main UI task — drives touch + redraws
+ * 11. Main UI task — drives touch + redraws
  ******************************************************************/
 static void ui_task(void *arg) {
     (void)arg;
@@ -368,7 +399,7 @@ static void ui_task(void *arg) {
 }
 
 /******************************************************************
- * Public API
+ * 12. Public API
  ******************************************************************/
 extern "C" void ui_init(ui_event_cb_t cb) {
     s_cb = cb;
@@ -397,7 +428,7 @@ extern "C" void ui_show_splash(void) {
 extern "C" void ui_show_amount_entry(void) {
     s_screen = UI_SCREEN_AMOUNT;
     s_redraw = true;
-    s_last_drawn_amt = (uint64_t)-1;  /* force amount value redraw */
+    s_last_drawn_amt = UINT64_MAX;  /* force amount value redraw */
 }
 
 extern "C" void ui_show_confirm(uint64_t amount_units, const char *dest_addr) {
