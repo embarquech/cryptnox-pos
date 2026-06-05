@@ -37,6 +37,7 @@
 #include "esp_timer.h"
 #include "esp_log.h"
 #include "driver/ledc.h"
+#include "esp_adc/adc_oneshot.h"
 
 #include "CW_Utils.h"   /* hardened memory primitives (CODING_RULES §1.4) */
 
@@ -150,6 +151,10 @@ static void tick_cb(void *arg) {
 #define BL_LEDC_RES    LEDC_TIMER_10_BIT   /* duty 0..1023            */
 #define BL_PWM_HZ      5000                /* above the audible range */
 
+/* Brightness state (here rather than §5 so the LDR helper below can see it). */
+static uint8_t s_brightness     = 80;     /* manual backlight %, restored from NVS */
+static bool    s_auto_brightness = false; /* follow the ambient light sensor        */
+
 static void backlight_set_pct(uint8_t pct) {
     if (pct > 100U) { pct = 100U; }
     uint32_t duty = (1023U * pct) / 100U;
@@ -178,6 +183,43 @@ static void backlight_init(uint8_t pct) {
     backlight_set_pct(pct);
 }
 
+/* ── Ambient light sensor (LDR) on GPIO 34 = ADC1 channel 6 ── */
+#define LDR_ADC_UNIT     ADC_UNIT_1
+#define LDR_ADC_CHANNEL  ADC_CHANNEL_6
+#define LDR_RAW_MIN      150     /* ~dark room   — calibrate on hardware */
+#define LDR_RAW_MAX      3200    /* ~bright room — calibrate on hardware */
+#define LDR_PCT_MIN      15      /* never go fully dark in auto mode     */
+#define LDR_PCT_MAX      100
+
+static adc_oneshot_unit_handle_t s_adc = NULL;
+
+static void ldr_init(void) {
+    adc_oneshot_unit_init_cfg_t u = {};
+    u.unit_id  = LDR_ADC_UNIT;
+    u.ulp_mode = ADC_ULP_MODE_DISABLE;
+    if (adc_oneshot_new_unit(&u, &s_adc) != ESP_OK) { s_adc = NULL; return; }
+
+    adc_oneshot_chan_cfg_t c = {};
+    c.atten    = ADC_ATTEN_DB_12;
+    c.bitwidth = ADC_BITWIDTH_DEFAULT;
+    (void)adc_oneshot_config_channel(s_adc, LDR_ADC_CHANNEL, &c);
+}
+
+/* Map the ambient-light reading to a backlight %. Brighter room -> brighter
+ * screen; if it's backwards on your unit, swap LDR_PCT_MIN/MAX. */
+static uint8_t ldr_brightness_pct(void) {
+    int raw = 0;
+    if ((s_adc == NULL) ||
+        (adc_oneshot_read(s_adc, LDR_ADC_CHANNEL, &raw) != ESP_OK)) {
+        return s_brightness;   /* fall back to the manual level */
+    }
+    if (raw < LDR_RAW_MIN) { raw = LDR_RAW_MIN; }
+    if (raw > LDR_RAW_MAX) { raw = LDR_RAW_MAX; }
+    int pct = LDR_PCT_MIN + (raw - LDR_RAW_MIN) * (LDR_PCT_MAX - LDR_PCT_MIN)
+                              / (LDR_RAW_MAX - LDR_RAW_MIN);
+    return static_cast<uint8_t>(pct);
+}
+
 /******************************************************************
  * 5. Shared state (written by ui_show_* on the main task, read by ui_task)
  ******************************************************************/
@@ -199,9 +241,6 @@ static char          s_tx_info[64] = "";
 
 /* Live handle to the amount label so +/- can update it in place. */
 static lv_obj_t *s_amount_label = NULL;
-
-/* Backlight level (%), applied at boot and adjustable from the settings menu. */
-static uint8_t s_brightness = 80;
 
 /******************************************************************
  * 6. Button actions
@@ -390,6 +429,20 @@ static void brightness_released_cb(lv_event_t *e) {
     settings_set_brightness(s_brightness);
 }
 
+/* Toggle automatic (light-sensor) brightness; disables the manual slider. */
+static void auto_brightness_cb(lv_event_t *e) {
+    lv_obj_t *cb = lv_event_get_target(e);
+    lv_obj_t *sl = static_cast<lv_obj_t *>(lv_event_get_user_data(e));
+    s_auto_brightness = lv_obj_has_state(cb, LV_STATE_CHECKED);
+    settings_set_auto_brightness(s_auto_brightness);
+    if (s_auto_brightness) {
+        if (sl != NULL) { lv_obj_add_state(sl, LV_STATE_DISABLED); }
+    } else {
+        if (sl != NULL) { lv_obj_clear_state(sl, LV_STATE_DISABLED); }
+        backlight_set_pct(s_brightness);   /* back to the manual level */
+    }
+}
+
 static void backdrop_event_cb(lv_event_t *e) {
     (void)e;
     close_settings();   /* tap outside the card dismisses */
@@ -418,7 +471,7 @@ static void open_settings(void) {
     lv_obj_add_event_cb(s_settings, backdrop_event_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *card = lv_obj_create(s_settings);
-    lv_obj_set_size(card, 250, 150);
+    lv_obj_set_size(card, 260, 218);
     lv_obj_center(card);
     lv_obj_set_style_bg_color(card, COL_SURFACE, LV_PART_MAIN);
     lv_obj_set_style_radius(card, 14, LV_PART_MAIN);
@@ -434,8 +487,8 @@ static void open_settings(void) {
                                LV_ALIGN_TOP_RIGHT, -4, 10);
 
     lv_obj_t *sl = lv_slider_create(card);
-    lv_obj_set_width(sl, 200);
-    lv_obj_align(sl, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_width(sl, 210);
+    lv_obj_align(sl, LV_ALIGN_TOP_MID, 0, 46);
     lv_slider_set_range(sl, 10, 100);   /* never fully dark */
     lv_slider_set_value(sl, s_brightness, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(sl, COL_BORDER, LV_PART_MAIN);
@@ -448,8 +501,22 @@ static void open_settings(void) {
     snprintf(b, sizeof(b), "%u%%", static_cast<unsigned>(s_brightness));
     lv_label_set_text(pct, b);
 
+    /* "Auto" checkbox — follow the ambient light sensor. */
+    lv_obj_t *chk = lv_checkbox_create(card);
+    lv_checkbox_set_text(chk, "Auto (light sensor)");
+    lv_obj_align(chk, LV_ALIGN_TOP_LEFT, 4, 92);
+    lv_obj_set_style_text_color(chk, COL_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(chk, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(chk, COL_ACCENT,
+                              LV_PART_INDICATOR | LV_STATE_CHECKED);
+    if (s_auto_brightness) {
+        lv_obj_add_state(chk, LV_STATE_CHECKED);
+        lv_obj_add_state(sl, LV_STATE_DISABLED);
+    }
+    lv_obj_add_event_cb(chk, auto_brightness_cb, LV_EVENT_VALUE_CHANGED, sl);
+
     make_button(card, "Close", COL_ACCENT, COL_BG, 120, 40,
-                LV_ALIGN_BOTTOM_MID, 0, -8, ACT_CLOSE, &lv_font_montserrat_20);
+                LV_ALIGN_BOTTOM_MID, 0, -12, ACT_CLOSE, &lv_font_montserrat_20);
 }
 
 /******************************************************************
@@ -596,8 +663,10 @@ static void ui_task(void *arg) {
     /* Take over the backlight pin with LEDC PWM (after tft.init has touched
      * it) so brightness is dimmable from the settings menu. Restore the saved
      * level from NVS (defaults to 80% if never set). */
-    s_brightness = settings_get_brightness();
+    s_brightness      = settings_get_brightness();
+    s_auto_brightness = settings_get_auto_brightness();
     backlight_init(s_brightness);
+    ldr_init();
 
     lv_disp_draw_buf_init(&s_draw_buf, s_buf, NULL, SCR_W * 40);
     lv_disp_drv_init(&s_disp_drv);
@@ -627,12 +696,20 @@ static void ui_task(void *arg) {
     ESP_LOGI(TAG, "UI initialized (LVGL %d.%d + TFT_eSPI/XPT2046)",
              lv_version_major(), lv_version_minor());
 
+    uint32_t auto_tick = 0;
     while (true) {
         if (s_screen_dirty) {
             s_screen_dirty = false;
             render_requested_screen();
         }
         lv_timer_handler();
+
+        /* Auto-brightness: sample the LDR ~twice a second and track it. */
+        if (s_auto_brightness && (++auto_tick >= 100U)) {
+            auto_tick = 0;
+            backlight_set_pct(ldr_brightness_pct());
+        }
+
         vTaskDelay(pdMS_TO_TICKS(5));
     }
 }
