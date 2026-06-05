@@ -35,6 +35,7 @@
 #include "freertos/task.h"
 #include "esp_timer.h"
 #include "esp_log.h"
+#include "driver/ledc.h"
 
 #include "CW_Utils.h"   /* hardened memory primitives (CODING_RULES §1.4) */
 
@@ -126,6 +127,44 @@ static void tick_cb(void *arg) {
 }
 
 /******************************************************************
+ * 4b. Backlight — LEDC PWM dimming on the CYD's GPIO 21
+ ******************************************************************/
+#define BL_GPIO        21
+#define BL_LEDC_MODE   LEDC_LOW_SPEED_MODE
+#define BL_LEDC_TIMER  LEDC_TIMER_0
+#define BL_LEDC_CH     LEDC_CHANNEL_0
+#define BL_LEDC_RES    LEDC_TIMER_10_BIT   /* duty 0..1023            */
+#define BL_PWM_HZ      5000                /* above the audible range */
+
+static void backlight_set_pct(uint8_t pct) {
+    if (pct > 100U) { pct = 100U; }
+    uint32_t duty = (1023U * pct) / 100U;
+    (void)ledc_set_duty(BL_LEDC_MODE, BL_LEDC_CH, duty);
+    (void)ledc_update_duty(BL_LEDC_MODE, BL_LEDC_CH);
+}
+
+static void backlight_init(uint8_t pct) {
+    ledc_timer_config_t t = {};
+    t.speed_mode      = BL_LEDC_MODE;
+    t.duty_resolution = BL_LEDC_RES;
+    t.timer_num       = BL_LEDC_TIMER;
+    t.freq_hz         = BL_PWM_HZ;
+    t.clk_cfg         = LEDC_AUTO_CLK;
+    (void)ledc_timer_config(&t);
+
+    ledc_channel_config_t c = {};
+    c.gpio_num   = BL_GPIO;
+    c.speed_mode = BL_LEDC_MODE;
+    c.channel    = BL_LEDC_CH;
+    c.timer_sel  = BL_LEDC_TIMER;
+    c.duty       = 0;
+    c.hpoint     = 0;
+    (void)ledc_channel_config(&c);
+
+    backlight_set_pct(pct);
+}
+
+/******************************************************************
  * 5. Shared state (written by ui_show_* on the main task, read by ui_task)
  ******************************************************************/
 static ui_event_cb_t s_cb = NULL;
@@ -147,13 +186,21 @@ static char          s_tx_info[64] = "";
 /* Live handle to the amount label so +/- can update it in place. */
 static lv_obj_t *s_amount_label = NULL;
 
+/* Backlight level (%), applied at boot and adjustable from the settings menu. */
+static uint8_t s_brightness = 80;
+
 /******************************************************************
  * 6. Button actions
  ******************************************************************/
 enum BtnAction {
     ACT_MINUS_U, ACT_PLUS_U, ACT_MINUS_C, ACT_PLUS_C,
     ACT_CONFIRM, ACT_CANCEL, ACT_SEND, ACT_NEW,
+    ACT_SETTINGS, ACT_CLOSE,
 };
+
+/* Settings modal — defined in section 7 (uses the widget helpers). */
+static void open_settings(void);
+static void close_settings(void);
 
 static void request_screen(ui_screen_t s) {
     s_req_screen   = s;
@@ -218,6 +265,12 @@ static void btn_event_cb(lv_event_t *e) {
             break;
         case ACT_NEW:
             if (s_cb != NULL) { s_cb(UI_EVENT_TX_RETRY, 0); }
+            break;
+        case ACT_SETTINGS:
+            open_settings();
+            break;
+        case ACT_CLOSE:
+            close_settings();
             break;
     }
 }
@@ -300,8 +353,91 @@ static void clear_screen(void) {
 }
 
 /******************************************************************
+ * 7b. Settings modal (burger menu → brightness slider)
+ ******************************************************************/
+static lv_obj_t *s_settings = NULL;   /* modal root on the top layer, or NULL */
+
+static void brightness_event_cb(lv_event_t *e) {
+    lv_obj_t *sl  = lv_event_get_target(e);
+    lv_obj_t *lbl = static_cast<lv_obj_t *>(lv_event_get_user_data(e));
+    s_brightness  = static_cast<uint8_t>(lv_slider_get_value(sl));
+    backlight_set_pct(s_brightness);
+    if (lbl != NULL) {
+        char b[8];
+        snprintf(b, sizeof(b), "%u%%", static_cast<unsigned>(s_brightness));
+        lv_label_set_text(lbl, b);
+    }
+}
+
+static void backdrop_event_cb(lv_event_t *e) {
+    (void)e;
+    close_settings();   /* tap outside the card dismisses */
+}
+
+static void close_settings(void) {
+    if (s_settings != NULL) {
+        lv_obj_del(s_settings);
+        s_settings = NULL;
+    }
+}
+
+static void open_settings(void) {
+    if (s_settings != NULL) { return; }
+
+    /* Built on the top layer so it floats above any screen and survives the
+     * per-screen lv_obj_clean() in clear_screen(). */
+    s_settings = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(s_settings);
+    lv_obj_set_size(s_settings, SCR_W, SCR_H);
+    lv_obj_set_style_bg_color(s_settings, lv_color_black(), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(s_settings, LV_OPA_50, LV_PART_MAIN);
+    lv_obj_clear_flag(s_settings, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_settings, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_settings, backdrop_event_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *card = lv_obj_create(s_settings);
+    lv_obj_set_size(card, 250, 150);
+    lv_obj_center(card);
+    lv_obj_set_style_bg_color(card, COL_SURFACE, LV_PART_MAIN);
+    lv_obj_set_style_radius(card, 14, LV_PART_MAIN);
+    lv_obj_set_style_border_width(card, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(card, COL_BORDER, LV_PART_MAIN);
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+    /* Absorb taps on the card so they don't reach the backdrop and dismiss it. */
+    lv_obj_add_flag(card, LV_OBJ_FLAG_CLICKABLE);
+
+    make_label(card, "Brightness", COL_TEXT, &lv_font_montserrat_20,
+               LV_ALIGN_TOP_LEFT, 4, 6);
+    lv_obj_t *pct = make_label(card, "", COL_DIM, &lv_font_montserrat_14,
+                               LV_ALIGN_TOP_RIGHT, -4, 10);
+
+    lv_obj_t *sl = lv_slider_create(card);
+    lv_obj_set_width(sl, 200);
+    lv_obj_align(sl, LV_ALIGN_CENTER, 0, 0);
+    lv_slider_set_range(sl, 10, 100);   /* never fully dark */
+    lv_slider_set_value(sl, s_brightness, LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(sl, COL_BORDER, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(sl, COL_ACCENT, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(sl, COL_ACCENT, LV_PART_KNOB);
+    lv_obj_add_event_cb(sl, brightness_event_cb, LV_EVENT_VALUE_CHANGED, pct);
+
+    char b[8];
+    snprintf(b, sizeof(b), "%u%%", static_cast<unsigned>(s_brightness));
+    lv_label_set_text(pct, b);
+
+    make_button(card, "Close", COL_ACCENT, COL_BG, 120, 40,
+                LV_ALIGN_BOTTOM_MID, 0, -8, ACT_CLOSE, &lv_font_montserrat_20);
+}
+
+/******************************************************************
  * 8. Screen builders
  ******************************************************************/
+/* Small burger button (top-left) that opens the settings modal. */
+static void add_menu_button(void) {
+    make_button(lv_scr_act(), LV_SYMBOL_LIST, COL_SURFACE, COL_TEXT, 42, 30,
+                LV_ALIGN_TOP_LEFT, 4, 4, ACT_SETTINGS, &lv_font_montserrat_20);
+}
+
 static void build_splash(void) {
     clear_screen();
     /* The logo is black-on-white; put the whole splash on white so it blends. */
@@ -320,6 +456,7 @@ static void build_amount(void) {
     make_label(lv_scr_act(), "Amount", COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_MID, 0, 14);
     make_divider(lv_scr_act(), 34);
+    add_menu_button();
 
     char buf[32];
     format_amount(s_amount_units, buf, sizeof(buf));
@@ -347,6 +484,7 @@ static void build_confirm(void) {
     make_label(lv_scr_act(), "Confirm", COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_MID, 0, 12);
     make_divider(lv_scr_act(), 32);
+    add_menu_button();
 
     char buf[40];
     format_amount(s_confirm_amount, buf, sizeof(buf));
@@ -375,6 +513,7 @@ static void build_tx_status(void) {
     make_label(lv_scr_act(), "Transaction", COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_MID, 0, 12);
     make_divider(lv_scr_act(), 32);
+    add_menu_button();
 
     const char *state_str = "";
     lv_color_t  color      = COL_TEXT;
@@ -430,6 +569,10 @@ static void ui_task(void *arg) {
     touchSPI.begin(T_CLK, T_MISO, T_MOSI, T_CS);
     touch.begin(touchSPI);
     touch.setRotation(1);
+
+    /* Take over the backlight pin with LEDC PWM (after tft.init has touched
+     * it) so brightness is dimmable from the settings menu. */
+    backlight_init(s_brightness);
 
     lv_disp_draw_buf_init(&s_draw_buf, s_buf, NULL, SCR_W * 40);
     lv_disp_drv_init(&s_disp_drv);
