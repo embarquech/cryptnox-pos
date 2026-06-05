@@ -30,6 +30,7 @@
 
 #include "lvgl.h"
 #include "logo_img.h"
+#include "settings.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -369,6 +370,13 @@ static void brightness_event_cb(lv_event_t *e) {
     }
 }
 
+/* Persist only when the user lets go of the slider — not on every drag tick,
+ * which would hammer the flash. */
+static void brightness_released_cb(lv_event_t *e) {
+    (void)e;
+    settings_set_brightness(s_brightness);
+}
+
 static void backdrop_event_cb(lv_event_t *e) {
     (void)e;
     close_settings();   /* tap outside the card dismisses */
@@ -376,6 +384,7 @@ static void backdrop_event_cb(lv_event_t *e) {
 
 static void close_settings(void) {
     if (s_settings != NULL) {
+        settings_set_brightness(s_brightness);   /* belt-and-braces save */
         lv_obj_del(s_settings);
         s_settings = NULL;
     }
@@ -420,6 +429,7 @@ static void open_settings(void) {
     lv_obj_set_style_bg_color(sl, COL_ACCENT, LV_PART_INDICATOR);
     lv_obj_set_style_bg_color(sl, COL_ACCENT, LV_PART_KNOB);
     lv_obj_add_event_cb(sl, brightness_event_cb, LV_EVENT_VALUE_CHANGED, pct);
+    lv_obj_add_event_cb(sl, brightness_released_cb, LV_EVENT_RELEASED, NULL);
 
     char b[8];
     snprintf(b, sizeof(b), "%u%%", static_cast<unsigned>(s_brightness));
@@ -455,13 +465,13 @@ static void build_amount(void) {
     clear_screen();
     make_label(lv_scr_act(), "Amount", COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_MID, 0, 14);
-    make_divider(lv_scr_act(), 34);
+    make_divider(lv_scr_act(), 42);
     add_menu_button();
 
     char buf[32];
     format_amount(s_amount_units, buf, sizeof(buf));
     s_amount_label = make_label(lv_scr_act(), buf, COL_TEXT,
-                                &lv_font_montserrat_48, LV_ALIGN_TOP_MID, 0, 46);
+                                &lv_font_montserrat_48, LV_ALIGN_TOP_MID, 0, 52);
     make_label(lv_scr_act(), "USDC", COL_DIM, &lv_font_montserrat_20,
                LV_ALIGN_TOP_MID, 0, 104);
 
@@ -483,14 +493,14 @@ static void build_confirm(void) {
     clear_screen();
     make_label(lv_scr_act(), "Confirm", COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_MID, 0, 12);
-    make_divider(lv_scr_act(), 32);
+    make_divider(lv_scr_act(), 42);
     add_menu_button();
 
     char buf[40];
     format_amount(s_confirm_amount, buf, sizeof(buf));
     strncat(buf, " USDC", sizeof(buf) - strlen(buf) - 1);
     make_label(lv_scr_act(), buf, COL_TEXT, &lv_font_montserrat_28,
-               LV_ALIGN_TOP_MID, 0, 44);
+               LV_ALIGN_TOP_MID, 0, 52);
 
     make_label(lv_scr_act(), "To", COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_MID, 0, 84);
@@ -512,7 +522,7 @@ static void build_tx_status(void) {
     clear_screen();
     make_label(lv_scr_act(), "Transaction", COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_MID, 0, 12);
-    make_divider(lv_scr_act(), 32);
+    make_divider(lv_scr_act(), 42);
     add_menu_button();
 
     const char *state_str = "";
@@ -571,7 +581,9 @@ static void ui_task(void *arg) {
     touch.setRotation(1);
 
     /* Take over the backlight pin with LEDC PWM (after tft.init has touched
-     * it) so brightness is dimmable from the settings menu. */
+     * it) so brightness is dimmable from the settings menu. Restore the saved
+     * level from NVS (defaults to 80% if never set). */
+    s_brightness = settings_get_brightness();
     backlight_init(s_brightness);
 
     lv_disp_draw_buf_init(&s_draw_buf, s_buf, NULL, SCR_W * 40);

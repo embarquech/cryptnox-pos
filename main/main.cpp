@@ -450,12 +450,8 @@ extern "C" void app_main(void)
      * failures still propagate through the SDK's return codes. */
     esp_log_level_set("i2c.master", ESP_LOG_NONE);
 
-    /* ── UI first: splash visible while the rest boots ───────── */
-    s_ui_queue = xQueueCreate(8, sizeof(ui_msg_t));
-    ui_init(ui_event_dispatch);
-    ui_show_splash();
-
-    /* ── NVS (required by WiFi driver) ────────────────────────── */
+    /* ── NVS first: required by the WiFi driver AND by the UI task, which
+     * reads the saved backlight level / Wi-Fi credentials at startup. ── */
     esp_err_t nvs_ret = nvs_flash_init();
     if ((nvs_ret == ESP_ERR_NVS_NO_FREE_PAGES) ||
         (nvs_ret == ESP_ERR_NVS_NEW_VERSION_FOUND)) {
@@ -463,6 +459,11 @@ extern "C" void app_main(void)
         nvs_ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(nvs_ret);
+
+    /* ── UI: splash visible while the rest boots ───────── */
+    s_ui_queue = xQueueCreate(8, sizeof(ui_msg_t));
+    ui_init(ui_event_dispatch);
+    ui_show_splash();
 
     /* ── PN532 NFC reader ──────────────────────────────────────── */
     pn532_t nfc;
