@@ -232,9 +232,31 @@ static lv_obj_t *make_button(lv_obj_t *parent, const char *label, lv_color_t bg,
     lv_obj_t *btn = lv_btn_create(parent);
     lv_obj_set_size(btn, w, h);
     lv_obj_align(btn, align, x, y);
+
+    /* Base look — rounded, flat fill, no default border. */
     lv_obj_set_style_bg_color(btn, bg, LV_PART_MAIN);
-    lv_obj_set_style_radius(btn, 8, LV_PART_MAIN);
-    lv_obj_set_style_shadow_width(btn, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(btn, 10, LV_PART_MAIN);
+    lv_obj_set_style_border_width(btn, 0, LV_PART_MAIN);
+
+    /* Soft drop shadow for depth (floats the button above the background). */
+    lv_obj_set_style_shadow_width(btn, 12, LV_PART_MAIN);
+    lv_obj_set_style_shadow_color(btn, lv_color_black(), LV_PART_MAIN);
+    lv_obj_set_style_shadow_opa(btn, LV_OPA_40, LV_PART_MAIN);
+    lv_obj_set_style_shadow_ofs_y(btn, 4, LV_PART_MAIN);
+
+    /* Secondary (surface) buttons get a hairline border to lift them off the bg.
+     * (Compare the raw RGB565 value — lv_color_eq isn't in this LVGL build.) */
+    if (bg.full == COL_SURFACE.full) {
+        lv_obj_set_style_border_width(btn, 1, LV_PART_MAIN);
+        lv_obj_set_style_border_color(btn, COL_BORDER, LV_PART_MAIN);
+    }
+
+    /* Pressed feedback: darken the fill and sink it into its shadow. */
+    lv_obj_set_style_bg_color(btn, lv_color_mix(lv_color_black(), bg, 70),
+                              LV_PART_MAIN | LV_STATE_PRESSED);
+    lv_obj_set_style_translate_y(btn, 2, LV_PART_MAIN | LV_STATE_PRESSED);
+    lv_obj_set_style_shadow_ofs_y(btn, 1, LV_PART_MAIN | LV_STATE_PRESSED);
+
     lv_obj_add_event_cb(btn, btn_event_cb, LV_EVENT_CLICKED,
                         reinterpret_cast<void *>(static_cast<intptr_t>(act)));
 
@@ -255,6 +277,18 @@ static lv_obj_t *make_label(lv_obj_t *parent, const char *txt, lv_color_t color,
     lv_obj_set_style_text_font(lbl, font, LV_PART_MAIN);
     lv_obj_align(lbl, align, x, y);
     return lbl;
+}
+
+/* Thin horizontal rule under a screen title, for visual structure. */
+static void make_divider(lv_obj_t *parent, lv_coord_t y) {
+    lv_obj_t *d = lv_obj_create(parent);
+    lv_obj_set_size(d, SCR_W - 48, 2);
+    lv_obj_align(d, LV_ALIGN_TOP_MID, 0, y);
+    lv_obj_set_style_bg_color(d, COL_BORDER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(d, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(d, 1, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(d, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(d, LV_OBJ_FLAG_SCROLLABLE);
 }
 
 static void clear_screen(void) {
@@ -285,6 +319,7 @@ static void build_amount(void) {
     clear_screen();
     make_label(lv_scr_act(), "Amount", COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_MID, 0, 14);
+    make_divider(lv_scr_act(), 34);
 
     char buf[32];
     format_amount(s_amount_units, buf, sizeof(buf));
@@ -311,12 +346,13 @@ static void build_confirm(void) {
     clear_screen();
     make_label(lv_scr_act(), "Confirm", COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_MID, 0, 12);
+    make_divider(lv_scr_act(), 32);
 
     char buf[40];
     format_amount(s_confirm_amount, buf, sizeof(buf));
     strncat(buf, " USDC", sizeof(buf) - strlen(buf) - 1);
     make_label(lv_scr_act(), buf, COL_TEXT, &lv_font_montserrat_28,
-               LV_ALIGN_TOP_MID, 0, 38);
+               LV_ALIGN_TOP_MID, 0, 44);
 
     make_label(lv_scr_act(), "To", COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_MID, 0, 84);
@@ -338,6 +374,7 @@ static void build_tx_status(void) {
     clear_screen();
     make_label(lv_scr_act(), "Transaction", COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_MID, 0, 12);
+    make_divider(lv_scr_act(), 32);
 
     const char *state_str = "";
     lv_color_t  color      = COL_TEXT;
