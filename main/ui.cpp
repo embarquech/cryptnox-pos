@@ -609,8 +609,8 @@ static void build_settings(void) {
     make_label(t_wifi, "Current network", COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_LEFT, 0, 0);
     lv_obj_t *cur = make_label(t_wifi, have_wifi ? cur_ssid : "Not configured",
-                               COL_TEXT, &lv_font_montserrat_20,
-                               LV_ALIGN_TOP_LEFT, 0, 22);
+                               COL_TEXT, &lv_font_montserrat_14,
+                               LV_ALIGN_TOP_LEFT, 0, 20);
     lv_label_set_long_mode(cur, LV_LABEL_LONG_DOT);
     lv_obj_set_width(cur, 220);
 
