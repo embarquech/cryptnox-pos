@@ -1,6 +1,6 @@
 idf_component_register(
     SRCS "main.cpp" "keccak256.cpp" "eth_rlp.cpp" "eth_rpc.cpp" "ui.cpp" "logo_img.c"
-         "settings.cpp"
+         "settings.cpp" "usdc_logo.c" "card_img.c"
     INCLUDE_DIRS "."
     REQUIRES pn532 driver esp_adc cryptnox_utils crypto_provider esp32_logger esp32_platform
              secure_channel pn532_nfc_transport
@@ -8,3 +8,7 @@ idf_component_register(
              json lwip
              arduino-esp32 TFT_eSPI XPT2046_Touchscreen lvgl
 )
+
+# LVGL 8 combines LV_PART_*/LV_STATE_* enums with '|', which C++20 flags as
+# -Wdeprecated-enum-enum-conversion. Harmless and unavoidable — silence the noise.
+target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-deprecated-enum-enum-conversion)
