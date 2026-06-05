@@ -242,13 +242,19 @@ static char          s_tx_info[64] = "";
 /* Live handle to the amount label so +/- can update it in place. */
 static lv_obj_t *s_amount_label = NULL;
 
+/* PIN entry — the textarea (password mode) is the live input; s_pin is the
+ * handoff buffer read by main via ui_take_pin() and wiped on read. */
+static lv_obj_t *s_pin_ta      = NULL;
+static char      s_pin[16]     = {0};
+static uint8_t   s_pin_len     = 0;
+
 /******************************************************************
  * 6. Button actions
  ******************************************************************/
 enum BtnAction {
     ACT_MINUS_U, ACT_PLUS_U, ACT_MINUS_C, ACT_PLUS_C,
     ACT_CONFIRM, ACT_CANCEL, ACT_SEND, ACT_NEW,
-    ACT_SETTINGS, ACT_CLOSE,
+    ACT_SETTINGS, ACT_CLOSE, ACT_PIN_CANCEL,
 };
 
 /* Settings modal — defined in section 7 (uses the widget helpers). */
@@ -308,13 +314,14 @@ static void btn_event_cb(lv_event_t *e) {
             if (s_cb != NULL) { s_cb(UI_EVENT_CONFIRM_CANCEL, 0); }
             break;
         case ACT_SEND:
-            /* Instant feedback: main blocks on the RPC nonce call for a moment
-             * before reaching ui_show_tx_status, so jump to the tx screen now. */
-            s_tx_state = UI_TX_STATE_PLACE_CARD;
-            strncpy(s_tx_info, "Preparing...", sizeof(s_tx_info) - 1);
-            s_tx_info[sizeof(s_tx_info) - 1] = '\0';
-            request_screen(UI_SCREEN_TX_STATUS);
-            if (s_cb != NULL) { s_cb(UI_EVENT_CONFIRM_OK, 0); }
+            /* The PIN is no longer hard-coded: collect it on the keypad screen
+             * before signing. */
+            request_screen(UI_SCREEN_PIN);
+            break;
+        case ACT_PIN_CANCEL:
+            CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_pin), sizeof(s_pin));
+            s_pin_len = 0;
+            request_screen(UI_SCREEN_CONFIRM);
             break;
         case ACT_NEW:
             if (s_cb != NULL) { s_cb(UI_EVENT_TX_RETRY, 0); }
@@ -403,6 +410,7 @@ static void clear_screen(void) {
     lv_obj_set_style_bg_color(scr, COL_BG, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, LV_PART_MAIN);
     s_amount_label = NULL;
+    s_pin_ta       = NULL;   /* deleted by lv_obj_clean — drop the dangling ref */
 }
 
 /******************************************************************
@@ -601,6 +609,86 @@ static void build_confirm(void) {
                 LV_ALIGN_BOTTOM_RIGHT, -12, ACT_BTN_Y, ACT_SEND, &lv_font_montserrat_20);
 }
 
+/* OK pressed on the keypad: stash the PIN for main and move to the tx screen. */
+static void pin_submit(void) {
+    if (s_pin_ta == NULL) { return; }
+    const char *p = lv_textarea_get_text(s_pin_ta);
+    size_t len = (p != NULL) ? strlen(p) : 0U;
+    if (len < 4U) { return; }   /* require at least 4 digits */
+
+    strncpy(s_pin, p, sizeof(s_pin) - 1);
+    s_pin[sizeof(s_pin) - 1] = '\0';
+    s_pin_len = static_cast<uint8_t>(strlen(s_pin));
+
+    s_tx_state = UI_TX_STATE_PLACE_CARD;
+    strncpy(s_tx_info, "Preparing...", sizeof(s_tx_info) - 1);
+    s_tx_info[sizeof(s_tx_info) - 1] = '\0';
+    request_screen(UI_SCREEN_TX_STATUS);
+    if (s_cb != NULL) { s_cb(UI_EVENT_PIN_ENTERED, 0); }
+}
+
+static void pin_kbd_cb(lv_event_t *e) {
+    lv_obj_t *bm = lv_event_get_target(e);
+    uint32_t id = lv_btnmatrix_get_selected_btn(bm);
+    const char *txt = lv_btnmatrix_get_btn_text(bm, id);
+    if ((txt == NULL) || (s_pin_ta == NULL)) { return; }
+
+    if (strcmp(txt, LV_SYMBOL_OK) == 0) {
+        pin_submit();
+    } else if (strcmp(txt, LV_SYMBOL_BACKSPACE) == 0) {
+        lv_textarea_del_char(s_pin_ta);
+    } else if ((txt[0] >= '0') && (txt[0] <= '9') && (txt[1] == '\0')) {
+        lv_textarea_add_char(s_pin_ta, static_cast<uint32_t>(txt[0]));
+    }
+}
+
+static void build_pin(void) {
+    clear_screen();
+    /* Wipe any stale PIN from a previous attempt. */
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_pin), sizeof(s_pin));
+    s_pin_len = 0;
+
+    make_label(lv_scr_act(), "Enter PIN", COL_DIM, &lv_font_montserrat_14,
+               LV_ALIGN_TOP_MID, 0, HDR_TITLE_Y);
+    /* Back (cancel) button, top-left like the burger on other screens. */
+    make_button(lv_scr_act(), LV_SYMBOL_LEFT, COL_SURFACE, COL_TEXT,
+                MENU_BTN_W, MENU_BTN_H, LV_ALIGN_TOP_LEFT, MENU_BTN_X, MENU_BTN_Y,
+                ACT_PIN_CANCEL, &lv_font_montserrat_20);
+
+    /* Masked input field (password mode renders bullets). */
+    s_pin_ta = lv_textarea_create(lv_scr_act());
+    lv_textarea_set_password_mode(s_pin_ta, true);
+    lv_textarea_set_one_line(s_pin_ta, true);
+    lv_textarea_set_max_length(s_pin_ta, 9);
+    lv_textarea_set_text(s_pin_ta, "");
+    lv_obj_clear_flag(s_pin_ta, LV_OBJ_FLAG_CLICKABLE);   /* no soft-keyboard popup */
+    lv_obj_set_width(s_pin_ta, 150);
+    lv_obj_align(s_pin_ta, LV_ALIGN_TOP_MID, 0, 34);
+    lv_obj_set_style_text_align(s_pin_ta, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(s_pin_ta, COL_SURFACE, LV_PART_MAIN);
+    lv_obj_set_style_text_color(s_pin_ta, COL_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_border_color(s_pin_ta, COL_BORDER, LV_PART_MAIN);
+
+    /* Numeric keypad. The map is static — lv_btnmatrix keeps the pointer. */
+    static const char *kbd_map[] = {
+        "1", "2", "3", "\n",
+        "4", "5", "6", "\n",
+        "7", "8", "9", "\n",
+        LV_SYMBOL_BACKSPACE, "0", LV_SYMBOL_OK, ""
+    };
+    lv_obj_t *kb = lv_btnmatrix_create(lv_scr_act());
+    lv_btnmatrix_set_map(kb, kbd_map);
+    lv_obj_set_size(kb, 232, 150);
+    lv_obj_align(kb, LV_ALIGN_BOTTOM_MID, 0, -6);
+    lv_obj_set_style_bg_opa(kb, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(kb, 0, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(kb, COL_SURFACE, LV_PART_ITEMS);
+    lv_obj_set_style_text_color(kb, COL_TEXT, LV_PART_ITEMS);
+    lv_obj_set_style_text_font(kb, &lv_font_montserrat_20, LV_PART_ITEMS);
+    lv_obj_set_style_radius(kb, 8, LV_PART_ITEMS);
+    lv_obj_add_event_cb(kb, pin_kbd_cb, LV_EVENT_VALUE_CHANGED, NULL);
+}
+
 static void build_tx_status(void) {
     clear_screen();
     build_header("Transaction");
@@ -640,6 +728,7 @@ static void render_requested_screen(void) {
         case UI_SCREEN_SPLASH:    build_splash();    break;
         case UI_SCREEN_AMOUNT:    build_amount();    break;
         case UI_SCREEN_CONFIRM:   build_confirm();   break;
+        case UI_SCREEN_PIN:       build_pin();       break;
         case UI_SCREEN_TX_STATUS: build_tx_status(); break;
     }
 }
@@ -742,6 +831,19 @@ extern "C" void ui_show_confirm(uint64_t amount_units, const char *dest_addr) {
         s_confirm_addr[0] = '\0';
     }
     request_screen(UI_SCREEN_CONFIRM);
+}
+
+extern "C" size_t ui_take_pin(char *out, size_t n) {
+    if ((out == NULL) || (n == 0U)) { return 0U; }
+    size_t len = s_pin_len;
+    if (len > (n - 1U)) { len = n - 1U; }
+    (void)CW_Utils::safe_memcpy(reinterpret_cast<uint8_t *>(out), n,
+                                reinterpret_cast<const uint8_t *>(s_pin), len);
+    out[len] = '\0';
+    /* The UI no longer needs the PIN — wipe its copy. */
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_pin), sizeof(s_pin));
+    s_pin_len = 0;
+    return len;
 }
 
 extern "C" void ui_show_tx_status(ui_tx_state_t state, const char *info) {

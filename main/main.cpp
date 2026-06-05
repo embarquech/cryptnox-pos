@@ -72,27 +72,9 @@ extern "C" {
  * 2. Configuration guards and constants
  ******************************************************************/
 
-/* F-14: refuse to build an image with the demo PIN baked in.  Define
- * CRYPTNOX_POS_ALLOW_DEMO_PIN explicitly for throwaway bench builds. */
-#ifndef CRYPTNOX_POS_ALLOW_DEMO_PIN
-/**
- * @brief Compare two NUL-terminated strings at compile time.
- *
- * Compile-time `constexpr` recursion only (MISRA deviation D-2); used by the
- * demo-PIN `static_assert` below and never evaluated at run time.
- *
- * @param[in] a First string.
- * @param[in] b Second string.
- * @return true if both strings are byte-for-byte identical.
- */
-static constexpr bool cfg_str_eq(const char *a, const char *b)
-{
-    return (*a == *b) && ((*a == '\0') || cfg_str_eq(a + 1, b + 1));
-}
-static_assert(!cfg_str_eq(CARD_PIN, "000000000"),
-              "CARD_PIN is the demo placeholder \"000000000\" - set a real PIN in "
-              "main/config.h (or define CRYPTNOX_POS_ALLOW_DEMO_PIN for bench builds)");
-#endif
+/* The card PIN is entered by the operator on the touchscreen keypad at sign
+ * time (see ui PIN screen) — it is no longer baked into config.h, so the old
+ * demo-PIN build guard (F-14) is gone. */
 
 static const char *const TAG = "cryptnox_pos";
 
@@ -258,6 +240,7 @@ static bool build_usdc_calldata(uint8_t out[68], const char *to_hex, uint64_t am
 static bool sign_and_broadcast(CryptnoxWallet &wallet,
                                 Pn532NfcTransport &transport,
                                 uint64_t amount_units,
+                                const char *pin, size_t pin_chars,
                                 char *tx_hash_out, size_t tx_hash_max,
                                 char *err_out, size_t err_max)
 {
@@ -350,13 +333,13 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
     req.derivePath       = eth_path;
     req.derivePathLength = static_cast<uint8_t>(sizeof(eth_path));
 
-    /* Copy the PIN into the request as late as possible; req.pin is
-     * zero-initialised by the CW_SignRequest constructor. */
-    const size_t pin_len = (CARD_PIN_LEN < CW_MAX_PIN_LENGTH) ? CARD_PIN_LEN
-                                                              : CW_MAX_PIN_LENGTH;
+    /* Copy the operator-entered PIN into the request as late as possible;
+     * req.pin is zero-initialised by the CW_SignRequest constructor. */
+    const size_t copy_len = (pin_chars < CW_MAX_PIN_LENGTH) ? pin_chars
+                                                            : CW_MAX_PIN_LENGTH;
     (void)CW_Utils::safe_memcpy(req.pin, sizeof(req.pin),
-                                reinterpret_cast<const uint8_t *>(CARD_PIN),
-                                pin_len);
+                                reinterpret_cast<const uint8_t *>(pin),
+                                copy_len);
 
     CW_SignResult result = wallet.sign(req);
     wallet.disconnect(session);
@@ -541,19 +524,27 @@ extern "C" void app_main(void)
                 ui_show_amount_entry();
                 break;
 
-            case UI_EVENT_CONFIRM_OK: {
+            case UI_EVENT_PIN_ENTERED: {
                 if (pending_amount == 0U) {
                     /* No fresh AMOUNT_CONFIRMED preceded this — likely a stale
                      * event from a stuck touch or queue replay. Drop it. */
-                    ESP_LOGW(TAG, "stale CONFIRM_OK ignored");
+                    ESP_LOGW(TAG, "stale PIN_ENTERED ignored");
                     break;
                 }
+                /* Fetch the keypad PIN (UI wipes its own copy on read). */
+                char   pin[16]   = { 0 };
+                size_t pin_chars = ui_take_pin(pin, sizeof(pin));
+
                 s_user_cancelled = false;
                 char tx_hash[68] = { 0 };
                 char err_msg[64] = { 0 };
                 bool ok = sign_and_broadcast(wallet, nfcTransport, pending_amount,
+                                              pin, pin_chars,
                                               tx_hash, sizeof(tx_hash),
                                               err_msg, sizeof(err_msg));
+                /* F-04: scrub our copy of the PIN as soon as signing is done. */
+                CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(pin), sizeof(pin));
+
                 pending_amount = 0U;  /* next sign requires fresh New Payment flow */
                 if (s_user_cancelled) {
                     /* Cancel during PLACE_CARD — UI already on amount entry. */

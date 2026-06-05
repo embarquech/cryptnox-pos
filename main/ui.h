@@ -18,6 +18,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -32,6 +33,7 @@ typedef enum {
     UI_SCREEN_SPLASH,      /**< Boot splash while WiFi/RPC/wallet come up. */
     UI_SCREEN_AMOUNT,      /**< Amount entry with +/- buttons.             */
     UI_SCREEN_CONFIRM,     /**< Amount + destination review.               */
+    UI_SCREEN_PIN,         /**< Numeric keypad to enter the card PIN.      */
     UI_SCREEN_TX_STATUS,   /**< Card wait / signing / broadcast progress.  */
 } ui_screen_t;
 
@@ -40,6 +42,7 @@ typedef enum {
     UI_EVENT_AMOUNT_CONFIRMED,  /**< CONFIRM tapped; payload = amount.     */
     UI_EVENT_CONFIRM_OK,        /**< Send tapped on the Confirm screen.    */
     UI_EVENT_CONFIRM_CANCEL,    /**< Cancel tapped (Confirm or card wait). */
+    UI_EVENT_PIN_ENTERED,       /**< PIN keypad validated; fetch via ui_take_pin. */
     UI_EVENT_TX_RETRY,          /**< New payment tapped after Done/Failed. */
 } ui_event_t;
 
@@ -97,6 +100,18 @@ void ui_show_confirm(uint64_t amount_units, const char *dest_addr);
  *                  internally, may be NULL for none.
  */
 void ui_show_tx_status(ui_tx_state_t state, const char *info);
+
+/**
+ * @brief Copy the most recently entered PIN out and wipe the UI's copy.
+ *
+ * Call once after @ref UI_EVENT_PIN_ENTERED. The internal buffer is
+ * secure-wiped on read, so a second call returns 0.
+ *
+ * @param[out] out  Destination buffer (NUL-terminated on return).
+ * @param[in]  n    Capacity of @p out.
+ * @return number of PIN digits copied (0 if none available).
+ */
+size_t ui_take_pin(char *out, size_t n);
 
 #ifdef __cplusplus
 }
