@@ -35,6 +35,7 @@
 #include "ESP32Logger.h"
 #include "ESP32Platform.h"
 #include "esp32_crypto_provider.h"
+#include "settings.h"
 
 /* Quiet CW_Logger — swallows the SDK's verbose connection/retry chatter that
  * was showing up as 'a a a...' on the UART. Keep ESP_LOGI for our own logs. */
@@ -487,7 +488,20 @@ extern "C" void app_main(void)
 #if defined(RPC_PROJECT_ID) && defined(RPC_API_SECRET)
     eth_rpc_set_auth(RPC_PROJECT_ID, RPC_API_SECRET);
 #endif
-    if (!eth_rpc_wifi_connect(WIFI_SSID, WIFI_PASSWORD)) {
+    eth_rpc_wifi_init();
+
+    /* Prefer the operator-provisioned network from NVS; fall back to the
+     * config.h credentials until the provisioning UI (stage C2) is wired. */
+    char wifi_ssid[33] = { 0 };
+    char wifi_pass[65] = { 0 };
+    bool wifi_ok;
+    if (settings_get_wifi(wifi_ssid, sizeof(wifi_ssid), wifi_pass, sizeof(wifi_pass))) {
+        wifi_ok = eth_rpc_wifi_connect(wifi_ssid, wifi_pass);
+    } else {
+        wifi_ok = eth_rpc_wifi_connect(WIFI_SSID, WIFI_PASSWORD);
+    }
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(wifi_pass), sizeof(wifi_pass));
+    if (!wifi_ok) {
         ESP_LOGE(TAG, "WiFi connect failed");
         ui_show_tx_status(UI_TX_STATE_FAILED, "WiFi connect failed");
         return;

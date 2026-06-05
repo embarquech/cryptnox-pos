@@ -36,6 +36,13 @@ typedef enum {
     ETH_RPC_PARITY_RPC_ERROR,   /**< no usable RPC response for either parity    */
 } eth_rpc_parity_result_t;
 
+/** @brief A scanned access point (subset of fields the UI needs). */
+typedef struct {
+    char   ssid[33];   /**< NUL-terminated SSID (max 32 chars + NUL). */
+    int8_t rssi;       /**< Signal strength, dBm (closer to 0 = stronger). */
+    bool   open;       /**< true if the network is open (no password). */
+} eth_wifi_ap_t;
+
 /******************************************************************
  * 3. Public API
  ******************************************************************/
@@ -66,11 +73,28 @@ void eth_rpc_init(const char *rpc_url, const char *from_addr);
 void eth_rpc_set_auth(const char *project_id, const char *api_secret);
 
 /**
- * @brief Connect to a WiFi network and block until an IP is obtained
- *        (up to 30 s).
+ * @brief Bring up the WiFi driver in station mode (idempotent).
  *
- * @param[in] ssid     WPA2 network SSID.
- * @param[in] password WPA2 passphrase.
+ * Initialises netif, the event loop and the WiFi driver and starts the STA.
+ * Call once before scanning or connecting. Safe to call repeatedly.
+ */
+void eth_rpc_wifi_init(void);
+
+/**
+ * @brief Scan for nearby access points (blocking).
+ *
+ * @param[out] out  Array to fill with de-duplicated APs.
+ * @param[in]  max  Capacity of @p out.
+ * @return number of APs written (0 on error or none found).
+ */
+uint16_t eth_rpc_wifi_scan(eth_wifi_ap_t *out, uint16_t max);
+
+/**
+ * @brief Connect to a WiFi network and block until an IP is obtained
+ *        (up to 30 s). May be called repeatedly to switch networks.
+ *
+ * @param[in] ssid     Network SSID.
+ * @param[in] password Passphrase (empty string for an open network).
  * @return true on success, false on timeout or repeated association failure.
  */
 bool eth_rpc_wifi_connect(const char *ssid, const char *password);
