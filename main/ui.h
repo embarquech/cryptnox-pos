@@ -39,6 +39,7 @@ typedef enum {
     UI_SCREEN_WIFI_LIST,   /**< Scanned Wi-Fi networks to pick from.       */
     UI_SCREEN_WIFI_PASS,   /**< Keyboard to enter the Wi-Fi password.      */
     UI_SCREEN_WIFI_CONNECTING, /**< "Connecting…" while main associates.   */
+    UI_SCREEN_SETTINGS,    /**< Full-screen settings (tabs).               */
     UI_SCREEN_TX_STATUS,   /**< Card wait / signing / broadcast progress.  */
 } ui_screen_t;
 

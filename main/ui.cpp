@@ -30,6 +30,7 @@
 
 #include "lvgl.h"
 #include "logo_img.h"
+#include "logo_small.h"
 #include "usdc_logo.h"
 #include "card_img.h"
 #include "settings.h"
@@ -267,6 +268,10 @@ static lv_obj_t     *s_wifi_pass_ta  = NULL;
 static const char *s_addr_usdc = NULL;
 static const char *s_addr_dest = NULL;
 
+/* Settings bottom-bar buttons (Reset shares the line with Close on About). */
+static lv_obj_t *s_reset_btn = NULL;
+static lv_obj_t *s_close_btn = NULL;
+
 /******************************************************************
  * 6. Button actions
  ******************************************************************/
@@ -276,11 +281,11 @@ enum BtnAction {
     ACT_WIFI, ACT_WIFI_CANCEL, ACT_RESET, ACT_RESET_CONFIRM, ACT_RESET_CANCEL,
 };
 
-/* Settings modal — defined in section 7 (uses the widget helpers). */
-static void open_settings(void);
-static void close_settings(void);
+/* Settings — defined in section 7 (uses the widget helpers). */
+static void settings_persist(void);
 static void open_reset_confirm(void);
 static void close_reset_confirm(void);
+static ui_screen_t s_settings_return = UI_SCREEN_AMOUNT;   /* screen to go back to */
 
 static void request_screen(ui_screen_t s) {
     s_req_screen   = s;
@@ -304,7 +309,7 @@ static void amount_update_display(void) {
         /* Keep the USDC badge glued to the right of the (variable-width) amount. */
         if (s_amount_usdc != NULL) {
             lv_obj_align_to(s_amount_usdc, s_amount_label,
-                            LV_ALIGN_OUT_RIGHT_MID, 8, 2);
+                            LV_ALIGN_OUT_RIGHT_MID, 8, 0);
         }
     }
     s_amount_units = s_amount_cents * 10000ULL;   /* cents -> 6-decimal base units */
@@ -358,13 +363,15 @@ static void btn_event_cb(lv_event_t *e) {
             if (s_cb != NULL) { s_cb(UI_EVENT_TX_RETRY, 0); }
             break;
         case ACT_SETTINGS:
-            open_settings();
+            s_settings_return = s_req_screen;   /* remember where we came from */
+            request_screen(UI_SCREEN_SETTINGS);
             break;
         case ACT_CLOSE:
-            close_settings();
+            settings_persist();
+            request_screen(s_settings_return);
             break;
         case ACT_WIFI:
-            close_settings();
+            settings_persist();
             strncpy(s_wifi_msg, "Scanning...", sizeof(s_wifi_msg) - 1);
             s_wifi_msg[sizeof(s_wifi_msg) - 1] = '\0';
             request_screen(UI_SCREEN_WIFI_CONNECTING);
@@ -466,12 +473,17 @@ static void clear_screen(void) {
     s_amount_usdc  = NULL;
     s_pin_ta       = NULL;   /* deleted by lv_obj_clean — drop the dangling ref */
     s_wifi_pass_ta = NULL;
+    s_reset_btn    = NULL;
+    s_close_btn    = NULL;
 }
 
 /******************************************************************
- * 7b. Settings modal (burger menu → brightness slider)
+ * 7b. Settings — full-screen page (burger menu)
  ******************************************************************/
-static lv_obj_t *s_settings = NULL;   /* modal root on the top layer, or NULL */
+static void settings_persist(void) {
+    settings_set_brightness(s_brightness);
+    settings_set_auto_brightness(s_auto_brightness);
+}
 
 static void brightness_event_cb(lv_event_t *e) {
     lv_obj_t *sl  = lv_event_get_target(e);
@@ -500,58 +512,45 @@ static void auto_brightness_cb(lv_event_t *e) {
     }
 }
 
-static void backdrop_event_cb(lv_event_t *e) {
-    (void)e;
-    close_settings();   /* tap outside the card dismisses */
-}
-
-static void close_settings(void) {
-    if (s_settings != NULL) {
-        /* Persist both settings once, on close — keeps toggling/dragging snappy. */
-        settings_set_brightness(s_brightness);
-        settings_set_auto_brightness(s_auto_brightness);
-        lv_obj_del(s_settings);
-        s_settings = NULL;
+/* Show the Reset button (and shrink Close) only on the About tab. */
+static void tab_change_cb(lv_event_t *e) {
+    lv_obj_t *tabbar = lv_event_get_target(e);
+    bool about = (lv_btnmatrix_get_selected_btn(tabbar) == 3U);   /* About is tab 3 */
+    if (s_reset_btn != NULL) {
+        if (about) { lv_obj_clear_flag(s_reset_btn, LV_OBJ_FLAG_HIDDEN); }
+        else       { lv_obj_add_flag(s_reset_btn, LV_OBJ_FLAG_HIDDEN); }
+    }
+    if (s_close_btn != NULL) {
+        if (about) {
+            lv_obj_set_width(s_close_btn, 108);
+            lv_obj_align(s_close_btn, LV_ALIGN_BOTTOM_RIGHT, -10, ACT_BTN_Y);
+        } else {
+            lv_obj_set_width(s_close_btn, 232);
+            lv_obj_align(s_close_btn, LV_ALIGN_BOTTOM_MID, 0, ACT_BTN_Y);
+        }
     }
 }
 
-static void open_settings(void) {
-    if (s_settings != NULL) { return; }
+static void build_settings(void) {
+    clear_screen();   /* white, full screen */
 
-    /* Built on the top layer so it floats above any screen and survives the
-     * per-screen lv_obj_clean() in clear_screen(). */
-    s_settings = lv_obj_create(lv_layer_top());
-    lv_obj_remove_style_all(s_settings);
-    lv_obj_set_size(s_settings, SCR_W, SCR_H);
-    lv_obj_set_style_bg_color(s_settings, lv_color_black(), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(s_settings, LV_OPA_50, LV_PART_MAIN);
-    lv_obj_clear_flag(s_settings, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(s_settings, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(s_settings, backdrop_event_cb, LV_EVENT_CLICKED, NULL);
-
-    lv_obj_t *card = lv_obj_create(s_settings);
-    lv_obj_set_size(card, 228, 290);
-    lv_obj_center(card);
-    lv_obj_set_style_bg_color(card, COL_SURFACE, LV_PART_MAIN);
-    lv_obj_set_style_radius(card, 14, LV_PART_MAIN);
-    lv_obj_set_style_border_width(card, 1, LV_PART_MAIN);
-    lv_obj_set_style_border_color(card, COL_BORDER, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(card, 0, LV_PART_MAIN);
-    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
-    /* Absorb taps on the card so they don't reach the backdrop and dismiss it. */
-    lv_obj_add_flag(card, LV_OBJ_FLAG_CLICKABLE);
-
-    /* Tabbed layout: Screen / Wi-Fi / About. */
-    lv_obj_t *tv = lv_tabview_create(card, LV_DIR_TOP, 34);
-    lv_obj_set_size(tv, 228, 244);
+    lv_obj_t *tv = lv_tabview_create(lv_scr_act(), LV_DIR_TOP, 42);
+    lv_obj_set_size(tv, SCR_W, SCR_H - 54);
     lv_obj_align(tv, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_set_style_bg_color(tv, COL_SURFACE, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(tv, COL_BG, LV_PART_MAIN);
+    lv_obj_set_style_border_width(tv, 0, LV_PART_MAIN);
 
+    /* Flat tab bar: white, no boxes, black underline under the active tab. */
     lv_obj_t *tabbar = lv_tabview_get_tab_btns(tv);
     lv_obj_set_style_bg_color(tabbar, COL_BG, LV_PART_MAIN);
+    lv_obj_set_style_border_width(tabbar, 0, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(tabbar, LV_OPA_TRANSP, LV_PART_ITEMS);
     lv_obj_set_style_text_color(tabbar, COL_DIM, LV_PART_ITEMS);
-    lv_obj_set_style_text_color(tabbar, COL_ACCENT, LV_PART_ITEMS | LV_STATE_CHECKED);
-    lv_obj_set_style_border_color(tabbar, COL_ACCENT, LV_PART_ITEMS | LV_STATE_CHECKED);
+    lv_obj_set_style_text_color(tabbar, COL_TEXT, LV_PART_ITEMS | LV_STATE_CHECKED);
+    lv_obj_set_style_border_side(tabbar, LV_BORDER_SIDE_BOTTOM,
+                                 LV_PART_ITEMS | LV_STATE_CHECKED);
+    lv_obj_set_style_border_color(tabbar, COL_TEXT, LV_PART_ITEMS | LV_STATE_CHECKED);
+    lv_obj_set_style_border_width(tabbar, 2, LV_PART_ITEMS | LV_STATE_CHECKED);
 
     lv_obj_t *t_screen = lv_tabview_add_tab(tv, "Screen");
     lv_obj_t *t_wifi   = lv_tabview_add_tab(tv, "Wi-Fi");
@@ -559,11 +558,15 @@ static void open_settings(void) {
     lv_obj_t *t_about  = lv_tabview_add_tab(tv, "About");
     lv_obj_t *pages[4] = { t_screen, t_wifi, t_tx, t_about };
     for (int i = 0; i < 4; i++) {
-        lv_obj_set_style_bg_color(pages[i], COL_SURFACE, LV_PART_MAIN);
-        lv_obj_set_style_pad_all(pages[i], 8, LV_PART_MAIN);
+        lv_obj_set_style_bg_color(pages[i], COL_BG, LV_PART_MAIN);   /* flat white */
+        lv_obj_set_style_border_width(pages[i], 0, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(pages[i], 12, LV_PART_MAIN);
         lv_obj_clear_flag(pages[i], LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_add_flag(pages[i], LV_OBJ_FLAG_CLICKABLE);
     }
+    /* About can overflow — let it scroll vertically with a scrollbar. */
+    lv_obj_add_flag(t_about, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(t_about, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(t_about, LV_SCROLLBAR_MODE_AUTO);
 
     /* ── Screen tab: brightness ── */
     make_label(t_screen, "Brightness", COL_TEXT, &lv_font_montserrat_14,
@@ -596,14 +599,26 @@ static void open_settings(void) {
     }
     lv_obj_add_event_cb(chk, auto_brightness_cb, LV_EVENT_VALUE_CHANGED, sl);
 
-    /* ── Wi-Fi tab ── */
-    make_label(t_wifi, "Connect to a Wi-Fi network", COL_DIM,
-               &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0, 4);
+    /* ── Wi-Fi tab: show the currently configured network, then a Scan button ── */
+    char cur_ssid[33] = {0};
+    char cur_pass[65];
+    bool have_wifi = settings_get_wifi(cur_ssid, sizeof(cur_ssid),
+                                       cur_pass, sizeof(cur_pass));
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(cur_pass), sizeof(cur_pass));
+
+    make_label(t_wifi, "Current network", COL_DIM, &lv_font_montserrat_14,
+               LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_obj_t *cur = make_label(t_wifi, have_wifi ? cur_ssid : "Not configured",
+                               COL_TEXT, &lv_font_montserrat_20,
+                               LV_ALIGN_TOP_LEFT, 0, 22);
+    lv_label_set_long_mode(cur, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(cur, 220);
+
     make_button(t_wifi, LV_SYMBOL_WIFI " Scan networks", COL_ACCENT, COL_BG,
                 220, 44, LV_ALIGN_CENTER, 0, 6, ACT_WIFI, &lv_font_montserrat_20);
 
     /* ── Transaction tab: where the funds go (read-only) ── */
-    make_label(t_tx, "USDC contract", COL_DIM, &lv_font_montserrat_14,
+    make_label(t_tx, "USDC contract:", COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_LEFT, 0, 0);
     lv_obj_t *a_usdc = make_label(t_tx, (s_addr_usdc != NULL) ? s_addr_usdc : "-",
                                   COL_TEXT, &lv_font_montserrat_14,
@@ -611,7 +626,7 @@ static void open_settings(void) {
     lv_label_set_long_mode(a_usdc, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(a_usdc, 200);
 
-    make_label(t_tx, "Send to", COL_DIM, &lv_font_montserrat_14,
+    make_label(t_tx, "Send to:", COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_LEFT, 0, 64);
     lv_obj_t *a_dest = make_label(t_tx, (s_addr_dest != NULL) ? s_addr_dest : "-",
                                   COL_TEXT, &lv_font_montserrat_14,
@@ -619,27 +634,36 @@ static void open_settings(void) {
     lv_label_set_long_mode(a_dest, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(a_dest, 200);
 
-    /* ── About tab ── */
+    /* ── About tab: small C logo, name, version, info ── */
+    lv_obj_t *blogo = lv_img_create(t_about);
+    lv_img_set_src(blogo, &logo_small);   /* 40px dedicated image */
+    lv_obj_align(blogo, LV_ALIGN_TOP_MID, 0, 0);
+
     make_label(t_about, "cryptnox-pos", COL_TEXT, &lv_font_montserrat_20,
-               LV_ALIGN_TOP_MID, 0, 0);
+               LV_ALIGN_TOP_MID, 0, 42);
+    make_label(t_about, "v1.0", COL_DIM, &lv_font_montserrat_14,
+               LV_ALIGN_TOP_MID, 0, 70);
     lv_obj_t *about = make_label(t_about,
                                  "USDC payment terminal for Cryptnox cards\n\n"
                                  "Based on cryptnox-sdk-esp32 1.0.0\n"
-                                 "(c) Cryptnox 2026\n"
-                                 "Educational use only",
+                                 "(c) Cryptnox 2026 - Educational use only",
                                  COL_DIM, &lv_font_montserrat_14,
-                                 LV_ALIGN_TOP_MID, 0, 28);
+                                 LV_ALIGN_TOP_MID, 0, 94);
     lv_label_set_long_mode(about, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(about, 200);
+    lv_obj_set_width(about, 210);
     lv_obj_set_style_text_align(about, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
 
-    /* Factory reset lives here, in About. */
-    make_button(t_about, "Reset", COL_DANGER, COL_TEXT, 150, 40,
-                LV_ALIGN_BOTTOM_MID, 0, 0, ACT_RESET, &lv_font_montserrat_20);
-
-    /* Close is shared across tabs; Reset lives in the About tab only. */
-    make_button(card, "Close", COL_ACCENT, COL_BG, 140, 38,
-                LV_ALIGN_BOTTOM_MID, 0, -6, ACT_CLOSE, &lv_font_montserrat_20);
+    /* Bottom bar: Close always; on the About tab a Reset joins it on the same
+     * line (Reset left, Close right). On other tabs Close is full-width. */
+    s_close_btn = make_button(lv_scr_act(), "Close", COL_ACCENT, COL_BG, 232, ACT_BTN_H,
+                              LV_ALIGN_BOTTOM_MID, 0, ACT_BTN_Y, ACT_CLOSE,
+                              &lv_font_montserrat_20);
+    s_reset_btn = make_button(lv_scr_act(), "Reset", COL_DANGER, COL_TEXT, 108, ACT_BTN_H,
+                              LV_ALIGN_BOTTOM_LEFT, 10, ACT_BTN_Y, ACT_RESET,
+                              &lv_font_montserrat_20);
+    lv_obj_add_flag(s_reset_btn, LV_OBJ_FLAG_HIDDEN);   /* shown only on About */
+    lv_obj_add_event_cb(lv_tabview_get_tab_btns(tv), tab_change_cb,
+                        LV_EVENT_VALUE_CHANGED, NULL);
 }
 
 /* Confirmation popup before a factory reset (floats above the settings modal). */
@@ -664,7 +688,7 @@ static void open_reset_confirm(void) {
     lv_obj_add_flag(s_confirm, LV_OBJ_FLAG_CLICKABLE);
 
     lv_obj_t *card = lv_obj_create(s_confirm);
-    lv_obj_set_size(card, 224, 168);
+    lv_obj_set_size(card, 224, 210);
     lv_obj_center(card);
     lv_obj_set_style_bg_color(card, COL_SURFACE, LV_PART_MAIN);
     lv_obj_set_style_radius(card, 14, LV_PART_MAIN);
@@ -678,10 +702,10 @@ static void open_reset_confirm(void) {
                                LV_ALIGN_TOP_MID, 0, 12);
     lv_obj_set_style_text_align(msg, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
 
-    make_button(card, "Cancel", COL_SURFACE, COL_TEXT, 96, 40,
-                LV_ALIGN_BOTTOM_LEFT, 10, -10, ACT_RESET_CANCEL, &lv_font_montserrat_20);
-    make_button(card, "Erase", COL_DANGER, COL_TEXT, 96, 40,
-                LV_ALIGN_BOTTOM_RIGHT, -10, -10, ACT_RESET_CONFIRM, &lv_font_montserrat_20);
+    make_button(card, "Erase", COL_DANGER, COL_TEXT, 196, 40,
+                LV_ALIGN_BOTTOM_MID, 0, -58, ACT_RESET_CONFIRM, &lv_font_montserrat_20);
+    make_button(card, "Cancel", COL_SURFACE, COL_TEXT, 196, 40,
+                LV_ALIGN_BOTTOM_MID, 0, -10, ACT_RESET_CANCEL, &lv_font_montserrat_20);
 }
 
 /******************************************************************
@@ -1088,6 +1112,7 @@ static void render_requested_screen(void) {
         case UI_SCREEN_WIFI_LIST: build_wifi_list(); break;
         case UI_SCREEN_WIFI_PASS: build_wifi_pass(); break;
         case UI_SCREEN_WIFI_CONNECTING: build_wifi_connecting(); break;
+        case UI_SCREEN_SETTINGS:  build_settings();  break;
         case UI_SCREEN_TX_STATUS: build_tx_status(); break;
     }
 }
