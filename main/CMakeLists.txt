@@ -5,5 +5,5 @@ idf_component_register(
              secure_channel pn532_nfc_transport
              esp_wifi esp_event esp_netif esp_http_client nvs_flash mbedtls
              json lwip
-             arduino-esp32 TFT_eSPI XPT2046_Touchscreen
+             arduino-esp32 TFT_eSPI XPT2046_Touchscreen lvgl
 )
