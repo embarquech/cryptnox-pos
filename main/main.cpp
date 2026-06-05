@@ -27,6 +27,7 @@
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "nvs_flash.h"
 
 #include "CryptnoxWallet.h"
@@ -288,12 +289,17 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
 
     /* Manual connect loop with cancel checks between PN532 polls — replaces
      * wallet.connect() so a Cancel from the user aborts within one PN532
-     * timeout (~5 s) instead of the full retry budget (~26 s). */
+     * timeout. Give the user up to 60 s to present the card. */
+    const int64_t card_wait_us = 60LL * 1000000LL;   /* 60 seconds */
+    const int64_t start_us     = esp_timer_get_time();
     CW_SecureSession session;
     bool connected = false;
-    for (int attempt = 0; (attempt < CW_CONNECT_MAX_ATTEMPTS) && !connected; attempt++) {
+    while (!connected) {
         if (s_user_cancelled) {
             return false;
+        }
+        if ((esp_timer_get_time() - start_us) > card_wait_us) {
+            break;   /* timed out waiting for the card */
         }
         if (transport.inListPassiveTarget()) {
             vTaskDelay(pdMS_TO_TICKS(200));
