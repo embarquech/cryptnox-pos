@@ -427,8 +427,11 @@ static lv_obj_t *make_button(lv_obj_t *parent, const char *label, lv_color_t bg,
     lv_obj_set_size(btn, w, h);
     lv_obj_align(btn, align, x, y);
 
-    /* Base look — rounded, flat fill, no default border. */
+    /* Base look — rounded, FLAT fill (kill the default theme's gradient, which
+     * washes a dark fill toward light), no default border. */
     lv_obj_set_style_bg_color(btn, bg, LV_PART_MAIN);
+    lv_obj_set_style_bg_grad_dir(btn, LV_GRAD_DIR_NONE, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_radius(btn, 10, LV_PART_MAIN);
     lv_obj_set_style_border_width(btn, 0, LV_PART_MAIN);
 
@@ -773,7 +776,7 @@ static void build_amount(void) {
     lv_obj_set_style_radius(kb, 8, LV_PART_ITEMS);
     lv_obj_add_event_cb(kb, amount_kbd_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
-    make_button(lv_scr_act(), "Charge", COL_ACCENT, COL_BG, 232, ACT_BTN_H,
+    make_button(lv_scr_act(), "Charge", lv_color_black(), COL_TEXT, 232, ACT_BTN_H,
                 LV_ALIGN_BOTTOM_MID, 0, ACT_BTN_Y, ACT_CONFIRM, &lv_font_montserrat_20);
 
     amount_update_display();   /* keep s_amount_units in sync with the string */
@@ -801,7 +804,7 @@ static void build_confirm(void) {
 
     make_button(lv_scr_act(), "Cancel", COL_SURFACE, COL_TEXT, 104, ACT_BTN_H,
                 LV_ALIGN_BOTTOM_LEFT, 10, ACT_BTN_Y, ACT_CANCEL, &lv_font_montserrat_20);
-    make_button(lv_scr_act(), "Send", COL_ACCENT, COL_BG, 104, ACT_BTN_H,
+    make_button(lv_scr_act(), "Send", lv_color_black(), COL_TEXT, 104, ACT_BTN_H,
                 LV_ALIGN_BOTTOM_RIGHT, -10, ACT_BTN_Y, ACT_SEND, &lv_font_montserrat_20);
 }
 
@@ -1032,6 +1035,7 @@ static void ui_task(void *arg) {
 
     tft.init();
     tft.setRotation(0);          /* portrait, 240x320 */
+    tft.invertDisplay(true);     /* CYD ILI9341 panel renders inverted otherwise */
     tft.fillScreen(TFT_BLACK);
 
     touchSPI.begin(T_CLK, T_MISO, T_MOSI, T_CS);
