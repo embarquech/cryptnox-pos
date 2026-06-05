@@ -411,6 +411,53 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
  * blocking SNTP time sync (F-06), then services UI events in the main
  * interaction loop (amount → confirm → sign+broadcast).
  */
+/**
+ * @brief Bring up Wi-Fi: connect with saved credentials, or run the first-run
+ *        network picker (scan → list → keyboard → connect) until connected.
+ *
+ * Blocks until a connection succeeds; the operator cannot leave setup without
+ * one. config.h Wi-Fi credentials are intentionally not used (NVS only).
+ */
+static void ensure_wifi(void)
+{
+    char ssid[33] = { 0 };
+    char pass[65] = { 0 };
+    if (settings_get_wifi(ssid, sizeof(ssid), pass, sizeof(pass))) {
+        bool ok = eth_rpc_wifi_connect(ssid, pass);
+        CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(pass), sizeof(pass));
+        if (ok) { return; }
+    }
+
+    /* No usable saved network — forced interactive setup. */
+    eth_wifi_ap_t aps[16];
+    uint16_t n = eth_rpc_wifi_scan(aps, 16);
+    ui_show_wifi_list(aps, n);
+
+    ui_msg_t msg;
+    while (true) {
+        if (xQueueReceive(s_ui_queue, &msg, portMAX_DELAY) != pdTRUE) { continue; }
+
+        if (msg.event == UI_EVENT_WIFI_TRY) {
+            char w_ssid[33] = { 0 };
+            char w_pass[65] = { 0 };
+            bool ok = false;
+            if (ui_take_wifi_creds(w_ssid, sizeof(w_ssid),
+                                   w_pass, sizeof(w_pass)) > 0U) {
+                ui_show_wifi_connecting(w_ssid);
+                ok = eth_rpc_wifi_connect(w_ssid, w_pass);
+                if (ok) { settings_set_wifi(w_ssid, w_pass); }
+            }
+            CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(w_pass), sizeof(w_pass));
+            if (ok) { return; }
+        }
+
+        /* WIFI_SCAN, a failed connect, or any stray event: re-scan and show
+         * the list again so the user stays in setup until connected. */
+        n = eth_rpc_wifi_scan(aps, 16);
+        ui_show_wifi_list(aps, n);
+    }
+}
+
 extern "C" void app_main(void)
 {
     ESP_LOGI(TAG, "===== cryptnox-pos boot =====");
@@ -490,23 +537,9 @@ extern "C" void app_main(void)
     eth_rpc_set_auth(RPC_PROJECT_ID, RPC_API_SECRET);
 #endif
     eth_rpc_wifi_init();
-
-    /* Prefer the operator-provisioned network from NVS; fall back to the
-     * config.h credentials until the provisioning UI (stage C2) is wired. */
-    char wifi_ssid[33] = { 0 };
-    char wifi_pass[65] = { 0 };
-    bool wifi_ok;
-    if (settings_get_wifi(wifi_ssid, sizeof(wifi_ssid), wifi_pass, sizeof(wifi_pass))) {
-        wifi_ok = eth_rpc_wifi_connect(wifi_ssid, wifi_pass);
-    } else {
-        wifi_ok = eth_rpc_wifi_connect(WIFI_SSID, WIFI_PASSWORD);
-    }
-    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(wifi_pass), sizeof(wifi_pass));
-    if (!wifi_ok) {
-        ESP_LOGE(TAG, "WiFi connect failed");
-        ui_show_tx_status(UI_TX_STATE_FAILED, "WiFi connect failed");
-        return;
-    }
+    /* Connect with saved creds, or run the first-run picker until connected
+     * (config.h Wi-Fi is no longer used). */
+    ensure_wifi();
 
     /* F-06: block on a first SNTP sync so TLS certificate validity-period
      * checks run against real time instead of the 1970 epoch. Retry a couple

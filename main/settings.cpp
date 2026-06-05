@@ -125,3 +125,14 @@ void settings_set_wifi(const char *ssid, const char *pass)
         ESP_LOGW(TAG, "wifi: nvs_open failed");
     }
 }
+
+void settings_factory_reset(void)
+{
+    nvs_handle_t h;
+    if (nvs_open(NS_SETTINGS, NVS_READWRITE, &h) == ESP_OK) {
+        (void)nvs_erase_all(h);   /* drops brightness, auto flag, Wi-Fi creds */
+        (void)nvs_commit(h);
+        nvs_close(h);
+        ESP_LOGW(TAG, "settings: factory reset");
+    }
+}

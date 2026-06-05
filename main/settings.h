@@ -52,6 +52,9 @@ bool settings_get_wifi(char *ssid, size_t ssid_n, char *pass, size_t pass_n);
 /** @brief Persist Wi-Fi credentials (plaintext — see README threat model). */
 void settings_set_wifi(const char *ssid, const char *pass);
 
+/** @brief Erase all stored settings (brightness, auto, Wi-Fi creds). */
+void settings_factory_reset(void);
+
 #ifdef __cplusplus
 }
 #endif

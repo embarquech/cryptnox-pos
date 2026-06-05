@@ -36,6 +36,7 @@
 #include "freertos/task.h"
 #include "esp_timer.h"
 #include "esp_log.h"
+#include "esp_system.h"   /* esp_restart() for factory reset */
 #include "driver/ledc.h"
 #include "esp_adc/adc_oneshot.h"
 
@@ -52,8 +53,9 @@ static const char *TAG = "ui";
 #define T_MOSI  32
 #define T_MISO  39
 
-#define SCR_W   320
-#define SCR_H   240
+/* Portrait orientation (240x320) — natural for a hand-held POS terminal. */
+#define SCR_W   240
+#define SCR_H   320
 
 static TFT_eSPI            tft;
 static SPIClass            touchSPI(VSPI);
@@ -228,8 +230,8 @@ static ui_event_cb_t s_cb = NULL;
 static volatile bool        s_screen_dirty = true;
 static volatile ui_screen_t s_req_screen   = UI_SCREEN_SPLASH;
 
-/* Amount entry — owned by the UI task once running. 1.00 USDC default. */
-static uint64_t s_amount_units = 1000000ULL;
+/* Amount entry — parsed from the keypad string; starts empty (0). */
+static uint64_t s_amount_units = 0ULL;
 
 /* Confirm-screen payload */
 static uint64_t s_confirm_amount = 0ULL;
@@ -239,8 +241,9 @@ static char     s_confirm_addr[64] = "";
 static ui_tx_state_t s_tx_state    = UI_TX_STATE_PLACE_CARD;
 static char          s_tx_info[64] = "";
 
-/* Live handle to the amount label so +/- can update it in place. */
+/* Amount entry — keypad input string (e.g. "12.50") and its display label. */
 static lv_obj_t *s_amount_label = NULL;
+static char      s_amount_str[12] = {0};
 
 /* PIN entry — the textarea (password mode) is the live input; s_pin is the
  * handoff buffer read by main via ui_take_pin() and wiped on read. */
@@ -265,15 +268,16 @@ static const char *s_addr_dest = NULL;
  * 6. Button actions
  ******************************************************************/
 enum BtnAction {
-    ACT_MINUS_U, ACT_PLUS_U, ACT_MINUS_C, ACT_PLUS_C,
     ACT_CONFIRM, ACT_CANCEL, ACT_SEND, ACT_NEW,
     ACT_SETTINGS, ACT_CLOSE, ACT_PIN_CANCEL,
-    ACT_WIFI, ACT_WIFI_CANCEL,
+    ACT_WIFI, ACT_WIFI_CANCEL, ACT_RESET, ACT_RESET_CONFIRM, ACT_RESET_CANCEL,
 };
 
 /* Settings modal — defined in section 7 (uses the widget helpers). */
 static void open_settings(void);
 static void close_settings(void);
+static void open_reset_confirm(void);
+static void close_reset_confirm(void);
 
 static void request_screen(ui_screen_t s) {
     s_req_screen   = s;
@@ -286,12 +290,69 @@ static void format_amount(uint64_t units, char *out, size_t n) {
     snprintf(out, n, "%" PRIu64 ".%02" PRIu64, whole, cents);
 }
 
-static void update_amount_label(void) {
+/* Parse the typed string (e.g. "12.5") into USDC base units (6 decimals,
+ * 2 entered), clamped to the 99999 cap. */
+static uint64_t amount_str_to_units(const char *s) {
+    uint64_t whole = 0U;
+    uint64_t frac  = 0U;
+    int      fdig  = 0;
+    bool     dot   = false;
+    for (const char *p = s; *p != '\0'; p++) {
+        if (*p == '.') { dot = true; continue; }
+        if ((*p < '0') || (*p > '9')) { continue; }
+        if (!dot) {
+            whole = (whole * 10U) + static_cast<uint64_t>(*p - '0');
+            if (whole > 99999U) { whole = 99999U; }
+        } else if (fdig < 2) {
+            frac = (frac * 10U) + static_cast<uint64_t>(*p - '0');
+            fdig++;
+        }
+    }
+    if (fdig == 1) { frac *= 10U; }   /* "5.2" -> 20 cents */
+    uint64_t units = (whole * 1000000ULL) + (frac * 10000ULL);
+    if (units > 99999000000ULL) { units = 99999000000ULL; }
+    return units;
+}
+
+static void amount_update_display(void) {
     if (s_amount_label != NULL) {
-        char buf[32];
-        format_amount(s_amount_units, buf, sizeof(buf));
+        char buf[24];
+        snprintf(buf, sizeof(buf), "%s USDC",
+                 (s_amount_str[0] != '\0') ? s_amount_str : "0");
         lv_label_set_text(s_amount_label, buf);
     }
+    s_amount_units = amount_str_to_units(s_amount_str);
+}
+
+/* Numeric keypad on the amount screen: digits, one '.', backspace. */
+static void amount_kbd_cb(lv_event_t *e) {
+    lv_obj_t *bm = lv_event_get_target(e);
+    uint32_t id = lv_btnmatrix_get_selected_btn(bm);
+    const char *txt = lv_btnmatrix_get_btn_text(bm, id);
+    if (txt == NULL) { return; }
+
+    size_t len = strlen(s_amount_str);
+    if (strcmp(txt, LV_SYMBOL_BACKSPACE) == 0) {
+        if (len > 0U) { s_amount_str[len - 1U] = '\0'; }
+    } else if (strcmp(txt, ".") == 0) {
+        if ((len > 0U) && (len < sizeof(s_amount_str) - 1U) &&
+            (strchr(s_amount_str, '.') == NULL)) {
+            s_amount_str[len]      = '.';
+            s_amount_str[len + 1U] = '\0';
+        }
+    } else if ((txt[0] >= '0') && (txt[0] <= '9') && (txt[1] == '\0')) {
+        const char *dot = strchr(s_amount_str, '.');
+        if (dot != NULL) {
+            if (strlen(dot + 1) >= 2U) { return; }   /* max 2 decimals */
+        } else if (len >= 5U) {
+            return;                                   /* max 99999 whole */
+        }
+        if (len < sizeof(s_amount_str) - 1U) {
+            s_amount_str[len]      = txt[0];
+            s_amount_str[len + 1U] = '\0';
+        }
+    }
+    amount_update_display();
 }
 
 /* Runs on the UI task (inside lv_timer_handler), so touching shared state and
@@ -301,24 +362,6 @@ static void btn_event_cb(lv_event_t *e) {
         reinterpret_cast<intptr_t>(lv_event_get_user_data(e)));
 
     switch (act) {
-        case ACT_MINUS_U:
-            if (s_amount_units >= 1000000ULL) { s_amount_units -= 1000000ULL; }
-            update_amount_label();
-            break;
-        case ACT_PLUS_U:
-            s_amount_units += 1000000ULL;
-            if (s_amount_units > 99999000000ULL) { s_amount_units = 99999000000ULL; }
-            update_amount_label();
-            break;
-        case ACT_MINUS_C:
-            if (s_amount_units >= 10000ULL) { s_amount_units -= 10000ULL; }
-            update_amount_label();
-            break;
-        case ACT_PLUS_C:
-            s_amount_units += 10000ULL;
-            if (s_amount_units > 99999000000ULL) { s_amount_units = 99999000000ULL; }
-            update_amount_label();
-            break;
         case ACT_CONFIRM:
             if (s_cb != NULL && s_amount_units > 0ULL) {
                 s_cb(UI_EVENT_AMOUNT_CONFIRMED, s_amount_units);
@@ -357,6 +400,18 @@ static void btn_event_cb(lv_event_t *e) {
             CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_wifi_pass),
                                   sizeof(s_wifi_pass));
             request_screen(UI_SCREEN_AMOUNT);
+            break;
+        case ACT_RESET:
+            open_reset_confirm();            /* ask before wiping */
+            break;
+        case ACT_RESET_CONFIRM:
+            /* Wipe stored settings (brightness, auto, Wi-Fi) and reboot — the
+             * device comes back up into first-run Wi-Fi setup. */
+            settings_factory_reset();
+            esp_restart();
+            break;
+        case ACT_RESET_CANCEL:
+            close_reset_confirm();
             break;
     }
 }
@@ -502,7 +557,7 @@ static void open_settings(void) {
     lv_obj_add_event_cb(s_settings, backdrop_event_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *card = lv_obj_create(s_settings);
-    lv_obj_set_size(card, 300, 226);
+    lv_obj_set_size(card, 228, 290);
     lv_obj_center(card);
     lv_obj_set_style_bg_color(card, COL_SURFACE, LV_PART_MAIN);
     lv_obj_set_style_radius(card, 14, LV_PART_MAIN);
@@ -515,7 +570,7 @@ static void open_settings(void) {
 
     /* Tabbed layout: Screen / Wi-Fi / About. */
     lv_obj_t *tv = lv_tabview_create(card, LV_DIR_TOP, 34);
-    lv_obj_set_size(tv, 300, 182);
+    lv_obj_set_size(tv, 228, 244);
     lv_obj_align(tv, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_set_style_bg_color(tv, COL_SURFACE, LV_PART_MAIN);
 
@@ -543,7 +598,7 @@ static void open_settings(void) {
     lv_obj_t *pct = make_label(t_screen, "", COL_DIM, &lv_font_montserrat_14,
                                LV_ALIGN_TOP_RIGHT, 0, 0);
     lv_obj_t *sl = lv_slider_create(t_screen);
-    lv_obj_set_width(sl, 250);
+    lv_obj_set_width(sl, 196);
     lv_obj_align(sl, LV_ALIGN_TOP_MID, 0, 32);
     lv_slider_set_range(sl, 10, 100);   /* never fully dark */
     lv_slider_set_value(sl, s_brightness, LV_ANIM_OFF);
@@ -581,7 +636,7 @@ static void open_settings(void) {
                                   COL_TEXT, &lv_font_montserrat_14,
                                   LV_ALIGN_TOP_LEFT, 0, 18);
     lv_label_set_long_mode(a_usdc, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(a_usdc, 268);
+    lv_obj_set_width(a_usdc, 200);
 
     make_label(t_tx, "Send to", COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_LEFT, 0, 64);
@@ -589,7 +644,7 @@ static void open_settings(void) {
                                   COL_TEXT, &lv_font_montserrat_14,
                                   LV_ALIGN_TOP_LEFT, 0, 82);
     lv_label_set_long_mode(a_dest, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(a_dest, 268);
+    lv_obj_set_width(a_dest, 200);
 
     /* ── About tab ── */
     make_label(t_about, "cryptnox-pos", COL_TEXT, &lv_font_montserrat_20,
@@ -602,12 +657,58 @@ static void open_settings(void) {
                                  COL_DIM, &lv_font_montserrat_14,
                                  LV_ALIGN_TOP_MID, 0, 28);
     lv_label_set_long_mode(about, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(about, 272);
+    lv_obj_set_width(about, 200);
     lv_obj_set_style_text_align(about, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
 
-    /* Close button below the tabview. */
-    make_button(card, "Close", COL_ACCENT, COL_BG, 130, 38,
-                LV_ALIGN_BOTTOM_MID, 0, -4, ACT_CLOSE, &lv_font_montserrat_20);
+    /* Factory reset lives here, in About. */
+    make_button(t_about, "Reset", COL_DANGER, COL_TEXT, 150, 40,
+                LV_ALIGN_BOTTOM_MID, 0, 0, ACT_RESET, &lv_font_montserrat_20);
+
+    /* Close is shared across tabs; Reset lives in the About tab only. */
+    make_button(card, "Close", COL_ACCENT, COL_BG, 140, 38,
+                LV_ALIGN_BOTTOM_MID, 0, -6, ACT_CLOSE, &lv_font_montserrat_20);
+}
+
+/* Confirmation popup before a factory reset (floats above the settings modal). */
+static lv_obj_t *s_confirm = NULL;
+
+static void close_reset_confirm(void) {
+    if (s_confirm != NULL) {
+        lv_obj_del(s_confirm);
+        s_confirm = NULL;
+    }
+}
+
+static void open_reset_confirm(void) {
+    if (s_confirm != NULL) { return; }
+
+    s_confirm = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(s_confirm);
+    lv_obj_set_size(s_confirm, SCR_W, SCR_H);
+    lv_obj_set_style_bg_color(s_confirm, lv_color_black(), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(s_confirm, LV_OPA_70, LV_PART_MAIN);
+    lv_obj_clear_flag(s_confirm, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_confirm, LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t *card = lv_obj_create(s_confirm);
+    lv_obj_set_size(card, 224, 168);
+    lv_obj_center(card);
+    lv_obj_set_style_bg_color(card, COL_SURFACE, LV_PART_MAIN);
+    lv_obj_set_style_radius(card, 14, LV_PART_MAIN);
+    lv_obj_set_style_border_width(card, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(card, COL_BORDER, LV_PART_MAIN);
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(card, LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t *msg = make_label(card, "Erase all settings\n(Wi-Fi, brightness)\nand reboot?",
+                               COL_TEXT, &lv_font_montserrat_14,
+                               LV_ALIGN_TOP_MID, 0, 12);
+    lv_obj_set_style_text_align(msg, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+
+    make_button(card, "Cancel", COL_SURFACE, COL_TEXT, 96, 40,
+                LV_ALIGN_BOTTOM_LEFT, 10, -10, ACT_RESET_CANCEL, &lv_font_montserrat_20);
+    make_button(card, "Erase", COL_DANGER, COL_TEXT, 96, 40,
+                LV_ALIGN_BOTTOM_RIGHT, -10, -10, ACT_RESET_CONFIRM, &lv_font_montserrat_20);
 }
 
 /******************************************************************
@@ -643,27 +744,39 @@ static void build_splash(void) {
 
 static void build_amount(void) {
     clear_screen();
-    build_header("Amount");
+    /* No title/divider here — the keypad needs the vertical space. Keep just
+     * the burger (settings) top-left. */
+    add_menu_button();
 
-    char buf[32];
-    format_amount(s_amount_units, buf, sizeof(buf));
+    char buf[24];
+    snprintf(buf, sizeof(buf), "%s USDC",
+             (s_amount_str[0] != '\0') ? s_amount_str : "0");
     s_amount_label = make_label(lv_scr_act(), buf, COL_TEXT,
-                                &lv_font_montserrat_48, LV_ALIGN_TOP_MID, 0, CONTENT_Y);
-    make_label(lv_scr_act(), "USDC", COL_DIM, &lv_font_montserrat_20,
-               LV_ALIGN_TOP_MID, 0, CONTENT_Y + 52);
+                                &lv_font_montserrat_28, LV_ALIGN_TOP_MID, 0, 8);
 
-    /* Stepper row: -1 / +1 on the left, -.01 / +.01 on the right. */
-    make_button(lv_scr_act(), "-1", COL_SURFACE, COL_TEXT, 70, 44,
-                LV_ALIGN_LEFT_MID, 8, 20, ACT_MINUS_U, &lv_font_montserrat_20);
-    make_button(lv_scr_act(), "+1", COL_SURFACE, COL_TEXT, 70, 44,
-                LV_ALIGN_LEFT_MID, 8, -28, ACT_PLUS_U, &lv_font_montserrat_20);
-    make_button(lv_scr_act(), "-.01", COL_SURFACE, COL_TEXT, 70, 44,
-                LV_ALIGN_RIGHT_MID, -8, 20, ACT_MINUS_C, &lv_font_montserrat_20);
-    make_button(lv_scr_act(), "+.01", COL_SURFACE, COL_TEXT, 70, 44,
-                LV_ALIGN_RIGHT_MID, -8, -28, ACT_PLUS_C, &lv_font_montserrat_20);
+    /* Numeric keypad: digits, decimal point, backspace. */
+    static const char *amap[] = {
+        "1", "2", "3", "\n",
+        "4", "5", "6", "\n",
+        "7", "8", "9", "\n",
+        ".", "0", LV_SYMBOL_BACKSPACE, ""
+    };
+    lv_obj_t *kb = lv_btnmatrix_create(lv_scr_act());
+    lv_btnmatrix_set_map(kb, amap);
+    lv_obj_set_size(kb, 232, 200);
+    lv_obj_align(kb, LV_ALIGN_TOP_MID, 0, 52);
+    lv_obj_set_style_bg_opa(kb, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(kb, 0, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(kb, COL_SURFACE, LV_PART_ITEMS);
+    lv_obj_set_style_text_color(kb, COL_TEXT, LV_PART_ITEMS);
+    lv_obj_set_style_text_font(kb, &lv_font_montserrat_20, LV_PART_ITEMS);
+    lv_obj_set_style_radius(kb, 8, LV_PART_ITEMS);
+    lv_obj_add_event_cb(kb, amount_kbd_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
-    make_button(lv_scr_act(), "Continue", COL_ACCENT, COL_BG, 180, ACT_BTN_H,
+    make_button(lv_scr_act(), "Charge", COL_ACCENT, COL_BG, 232, ACT_BTN_H,
                 LV_ALIGN_BOTTOM_MID, 0, ACT_BTN_Y, ACT_CONFIRM, &lv_font_montserrat_20);
+
+    amount_update_display();   /* keep s_amount_units in sync with the string */
 }
 
 static void build_confirm(void) {
@@ -683,13 +796,13 @@ static void build_confirm(void) {
                                 COL_TEXT, &lv_font_montserrat_14,
                                 LV_ALIGN_TOP_MID, 0, CONTENT_Y + 54);
     lv_label_set_long_mode(addr, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(addr, 280);
+    lv_obj_set_width(addr, 216);
     lv_obj_set_style_text_align(addr, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
 
-    make_button(lv_scr_act(), "Cancel", COL_SURFACE, COL_TEXT, 130, ACT_BTN_H,
-                LV_ALIGN_BOTTOM_LEFT, 12, ACT_BTN_Y, ACT_CANCEL, &lv_font_montserrat_20);
-    make_button(lv_scr_act(), "Send", COL_ACCENT, COL_BG, 130, ACT_BTN_H,
-                LV_ALIGN_BOTTOM_RIGHT, -12, ACT_BTN_Y, ACT_SEND, &lv_font_montserrat_20);
+    make_button(lv_scr_act(), "Cancel", COL_SURFACE, COL_TEXT, 104, ACT_BTN_H,
+                LV_ALIGN_BOTTOM_LEFT, 10, ACT_BTN_Y, ACT_CANCEL, &lv_font_montserrat_20);
+    make_button(lv_scr_act(), "Send", COL_ACCENT, COL_BG, 104, ACT_BTN_H,
+                LV_ALIGN_BOTTOM_RIGHT, -10, ACT_BTN_Y, ACT_SEND, &lv_font_montserrat_20);
 }
 
 /* OK pressed on the keypad: stash the PIN for main and move to the tx screen. */
@@ -745,8 +858,8 @@ static void build_pin(void) {
     lv_textarea_set_max_length(s_pin_ta, 9);
     lv_textarea_set_text(s_pin_ta, "");
     lv_obj_clear_flag(s_pin_ta, LV_OBJ_FLAG_CLICKABLE);   /* no soft-keyboard popup */
-    lv_obj_set_width(s_pin_ta, 150);
-    lv_obj_align(s_pin_ta, LV_ALIGN_TOP_MID, 0, 34);
+    lv_obj_set_width(s_pin_ta, 160);
+    lv_obj_align(s_pin_ta, LV_ALIGN_TOP_MID, 0, 48);
     lv_obj_set_style_text_align(s_pin_ta, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_obj_set_style_bg_color(s_pin_ta, COL_SURFACE, LV_PART_MAIN);
     lv_obj_set_style_text_color(s_pin_ta, COL_TEXT, LV_PART_MAIN);
@@ -761,7 +874,7 @@ static void build_pin(void) {
     };
     lv_obj_t *kb = lv_btnmatrix_create(lv_scr_act());
     lv_btnmatrix_set_map(kb, kbd_map);
-    lv_obj_set_size(kb, 232, 150);
+    lv_obj_set_size(kb, 232, 210);
     lv_obj_align(kb, LV_ALIGN_BOTTOM_MID, 0, -6);
     lv_obj_set_style_bg_opa(kb, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(kb, 0, LV_PART_MAIN);
@@ -884,7 +997,7 @@ static void build_tx_status(void) {
     lv_obj_t *info = make_label(lv_scr_act(), s_tx_info, COL_DIM,
                                 &lv_font_montserrat_14, LV_ALIGN_CENTER, 0, 10);
     lv_label_set_long_mode(info, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(info, 290);
+    lv_obj_set_width(info, 216);
     lv_obj_set_style_text_align(info, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
 
     if (show_new) {
@@ -918,12 +1031,12 @@ static void ui_task(void *arg) {
     lv_init();
 
     tft.init();
-    tft.setRotation(1);
+    tft.setRotation(0);          /* portrait, 240x320 */
     tft.fillScreen(TFT_BLACK);
 
     touchSPI.begin(T_CLK, T_MISO, T_MOSI, T_CS);
     touch.begin(touchSPI);
-    touch.setRotation(1);
+    touch.setRotation(0);        /* match the panel orientation */
 
     /* Take over the backlight pin with LEDC PWM (after tft.init has touched
      * it) so brightness is dimmable from the settings menu. Restore the saved
@@ -996,6 +1109,8 @@ extern "C" void ui_show_splash(void) {
 }
 
 extern "C" void ui_show_amount_entry(void) {
+    s_amount_str[0] = '\0';   /* fresh entry each time */
+    s_amount_units  = 0U;
     request_screen(UI_SCREEN_AMOUNT);
 }
 
