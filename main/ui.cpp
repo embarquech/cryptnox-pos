@@ -29,6 +29,7 @@
 #include <inttypes.h>
 
 #include "lvgl.h"
+#include "logo_img.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -56,15 +57,16 @@ static SPIClass            touchSPI(VSPI);
 static XPT2046_Touchscreen touch(T_CS, T_IRQ);
 
 /******************************************************************
- * 3. Dark-fintech theme
+ * 3. Theme — Cryptnox brand palette (cryptnox.com global colors)
  ******************************************************************/
-#define COL_BG       lv_color_hex(0x0E1116)   /* slate near-black     */
-#define COL_SURFACE  lv_color_hex(0x1A1F27)   /* cards / steppers     */
-#define COL_TEXT     lv_color_hex(0xFFFFFF)
-#define COL_DIM      lv_color_hex(0x8A93A0)
-#define COL_ACCENT   lv_color_hex(0x00D68F)   /* mint — primary action */
-#define COL_DANGER   lv_color_hex(0xFF5A5F)
-#define COL_BORDER   lv_color_hex(0x2A313C)
+#define COL_BG       lv_color_hex(0x101F2E)   /* deep navy — page background  */
+#define COL_SURFACE  lv_color_hex(0x15223D)   /* primary navy — cards/steppers */
+#define COL_TEXT     lv_color_hex(0xFFFFFF)   /* --e-global-color-text         */
+#define COL_DIM      lv_color_hex(0x7C8BA5)   /* muted blue-grey — labels      */
+#define COL_ACCENT   lv_color_hex(0x48ACF0)   /* Cryptnox blue — primary action */
+#define COL_SUCCESS  lv_color_hex(0x34E3E8)   /* brand cyan — "Sent"           */
+#define COL_DANGER   lv_color_hex(0xF6405F)   /* brand red — failures          */
+#define COL_BORDER   lv_color_hex(0x243349)
 
 /******************************************************************
  * 4. LVGL display + input plumbing
@@ -268,10 +270,15 @@ static void clear_screen(void) {
  ******************************************************************/
 static void build_splash(void) {
     clear_screen();
-    make_label(lv_scr_act(), "CRYPTNOX", COL_TEXT, &lv_font_montserrat_28,
-               LV_ALIGN_CENTER, 0, -16);
-    make_label(lv_scr_act(), "Payment terminal", COL_DIM, &lv_font_montserrat_14,
-               LV_ALIGN_CENTER, 0, 20);
+    /* The logo is black-on-white; put the whole splash on white so it blends. */
+    lv_obj_set_style_bg_color(lv_scr_act(), lv_color_white(), LV_PART_MAIN);
+
+    lv_obj_t *logo = lv_img_create(lv_scr_act());
+    lv_img_set_src(logo, &logo_img);
+    lv_obj_align(logo, LV_ALIGN_CENTER, 0, -22);
+
+    make_label(lv_scr_act(), "Payment terminal", lv_color_black(),
+               &lv_font_montserrat_14, LV_ALIGN_CENTER, 0, 80);
 }
 
 static void build_amount(void) {
@@ -340,7 +347,7 @@ static void build_tx_status(void) {
         case UI_TX_STATE_PLACE_CARD: state_str = "Place card";      show_cancel = true; break;
         case UI_TX_STATE_SIGNING:    state_str = "Signing...";      break;
         case UI_TX_STATE_SENDING:    state_str = "Broadcasting..."; break;
-        case UI_TX_STATE_DONE:       state_str = "Sent"; color = COL_ACCENT; show_new = true; break;
+        case UI_TX_STATE_DONE:       state_str = "Sent"; color = COL_SUCCESS; show_new = true; break;
         case UI_TX_STATE_FAILED:     state_str = "Failed"; color = COL_DANGER; show_new = true; break;
     }
 
