@@ -494,10 +494,15 @@ extern "C" void app_main(void)
     }
 
     /* F-06: block on a first SNTP sync so TLS certificate validity-period
-     * checks run against real time instead of the 1970 epoch. */
-    if (!eth_rpc_time_sync(15000U)) {
+     * checks run against real time instead of the 1970 epoch. Retry a couple
+     * of rounds — flaky uplinks (phone hotspots) often need a second try. */
+    bool time_ok = false;
+    for (int attempt = 0; (attempt < 3) && !time_ok; attempt++) {
+        time_ok = eth_rpc_time_sync(15000U);
+    }
+    if (!time_ok) {
         ESP_LOGE(TAG, "SNTP time sync failed");
-        ui_show_tx_status(UI_TX_STATE_FAILED, "Time sync failed");
+        ui_show_tx_status(UI_TX_STATE_FAILED, "Time sync failed - check network");
         return;
     }
 

@@ -286,16 +286,31 @@ void eth_rpc_set_auth(const char *project_id, const char *api_secret)
 
 bool eth_rpc_time_sync(uint32_t timeout_ms)
 {
-    esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
+    /* Several reliable servers — phone hotspots often slow or drop NTP (UDP
+     * 123) to pool.ntp.org, so fall back to Google / Cloudflare time. */
+    esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(3,
+        ESP_SNTP_SERVER_LIST("time.google.com", "pool.ntp.org", "time.cloudflare.com"));
     esp_err_t err = esp_netif_sntp_init(&config);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "SNTP init: %s", esp_err_to_name(err));
         return false;
     }
 
-    err = esp_netif_sntp_sync_wait(pdMS_TO_TICKS(timeout_ms));
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "SNTP sync timed out (%s)", esp_err_to_name(err));
+    /* Poll across the budget so a slow first response doesn't fail us. */
+    const int   attempts = 3;
+    uint32_t    per_wait = timeout_ms / static_cast<uint32_t>(attempts);
+    if (per_wait < 2000U) { per_wait = 2000U; }
+    bool synced = false;
+    for (int i = 0; (i < attempts) && !synced; i++) {
+        if (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(per_wait)) == ESP_OK) {
+            synced = true;
+        } else {
+            ESP_LOGW(TAG, "SNTP: no time yet (%d/%d)", i + 1, attempts);
+        }
+    }
+
+    if (!synced) {
+        ESP_LOGE(TAG, "SNTP sync timed out");
         esp_netif_sntp_deinit();
         return false;
     }
