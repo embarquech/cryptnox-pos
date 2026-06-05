@@ -129,10 +129,26 @@ static bool touch_to_screen(int16_t *sx, int16_t *sy) {
     return true;
 }
 
+/* Swallow taps carried over from the screen we just left: a press is ignored
+ * until this tick (ms) AND until the finger has been released at least once.
+ * Set on every screen (re)build in render_requested_screen(). */
+static uint32_t s_input_block_until = 0;
+static bool     s_wait_release      = false;
+
 static void indev_read(lv_indev_drv_t *drv, lv_indev_data_t *data) {
     (void)drv;
     int16_t x, y;
-    if (touch_to_screen(&x, &y)) {
+    bool pressed = touch_to_screen(&x, &y);
+
+    /* After a screen change, ignore a lingering or reflexive tap from the old
+     * screen (e.g. cancelling the tx right after validating the PIN). */
+    if (lv_tick_get() < s_input_block_until || s_wait_release) {
+        if (!pressed) { s_wait_release = false; }   /* finger lifted — re-arm */
+        data->state = LV_INDEV_STATE_REL;
+        return;
+    }
+
+    if (pressed) {
         data->state   = LV_INDEV_STATE_PR;
         data->point.x = x;
         data->point.y = y;
@@ -1115,6 +1131,17 @@ static void render_requested_screen(void) {
         case UI_SCREEN_SETTINGS:  build_settings();  break;
         case UI_SCREEN_TX_STATUS: build_tx_status(); break;
     }
+
+    /* Guard the freshly built screen against a tap carried over from the
+     * previous one (see indev_read). The "Tap card" screen gets a longer
+     * window because its Cancel button is destructive. */
+    uint32_t lockout = 450U;
+    if (s_req_screen == UI_SCREEN_TX_STATUS &&
+        s_tx_state == UI_TX_STATE_PLACE_CARD) {
+        lockout = 900U;
+    }
+    s_input_block_until = lv_tick_get() + lockout;
+    s_wait_release      = true;
 }
 
 /******************************************************************
