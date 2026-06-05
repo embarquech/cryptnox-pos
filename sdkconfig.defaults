@@ -10,6 +10,9 @@ CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
 # HTTPS support in the HTTP client
 CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS=y
 
+# Allow up to 3 SNTP servers (multi-server time sync fallback in eth_rpc)
+CONFIG_LWIP_SNTP_MAX_SERVERS=3
+
 # CYD ships with a Boya SPI flash chip — link its dedicated driver so IDF
 # doesn't fall back to the generic one (silences the boot-time warning)
 CONFIG_SPI_FLASH_SUPPORT_BOYA_CHIP=y

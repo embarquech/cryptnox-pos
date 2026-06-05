@@ -248,6 +248,19 @@ static lv_obj_t *s_pin_ta      = NULL;
 static char      s_pin[16]     = {0};
 static uint8_t   s_pin_len     = 0;
 
+/* Wi-Fi picker */
+#define WIFI_MAX_APS 16
+static eth_wifi_ap_t s_aps[WIFI_MAX_APS];
+static uint16_t      s_ap_count = 0;
+static char          s_wifi_ssid[33] = {0};   /* selected network          */
+static char          s_wifi_pass[65] = {0};   /* entered passphrase (handoff) */
+static char          s_wifi_msg[64]  = {0};   /* "Scanning…" / "Connecting to <ssid>…" */
+static lv_obj_t     *s_wifi_pass_ta  = NULL;
+
+/* Destination info shown on the settings "Tx" tab (set by main, static). */
+static const char *s_addr_usdc = NULL;
+static const char *s_addr_dest = NULL;
+
 /******************************************************************
  * 6. Button actions
  ******************************************************************/
@@ -255,6 +268,7 @@ enum BtnAction {
     ACT_MINUS_U, ACT_PLUS_U, ACT_MINUS_C, ACT_PLUS_C,
     ACT_CONFIRM, ACT_CANCEL, ACT_SEND, ACT_NEW,
     ACT_SETTINGS, ACT_CLOSE, ACT_PIN_CANCEL,
+    ACT_WIFI, ACT_WIFI_CANCEL,
 };
 
 /* Settings modal — defined in section 7 (uses the widget helpers). */
@@ -331,6 +345,18 @@ static void btn_event_cb(lv_event_t *e) {
             break;
         case ACT_CLOSE:
             close_settings();
+            break;
+        case ACT_WIFI:
+            close_settings();
+            strncpy(s_wifi_msg, "Scanning...", sizeof(s_wifi_msg) - 1);
+            s_wifi_msg[sizeof(s_wifi_msg) - 1] = '\0';
+            request_screen(UI_SCREEN_WIFI_CONNECTING);
+            if (s_cb != NULL) { s_cb(UI_EVENT_WIFI_SCAN, 0); }
+            break;
+        case ACT_WIFI_CANCEL:
+            CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_wifi_pass),
+                                  sizeof(s_wifi_pass));
+            request_screen(UI_SCREEN_AMOUNT);
             break;
     }
 }
@@ -411,6 +437,7 @@ static void clear_screen(void) {
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, LV_PART_MAIN);
     s_amount_label = NULL;
     s_pin_ta       = NULL;   /* deleted by lv_obj_clean — drop the dangling ref */
+    s_wifi_pass_ta = NULL;
 }
 
 /******************************************************************
@@ -430,19 +457,13 @@ static void brightness_event_cb(lv_event_t *e) {
     }
 }
 
-/* Persist only when the user lets go of the slider — not on every drag tick,
- * which would hammer the flash. */
-static void brightness_released_cb(lv_event_t *e) {
-    (void)e;
-    settings_set_brightness(s_brightness);
-}
-
-/* Toggle automatic (light-sensor) brightness; disables the manual slider. */
+/* Toggle automatic (light-sensor) brightness; disables the manual slider.
+ * No flash write here — persistence happens once on close so rapid toggling
+ * stays responsive (an NVS commit would stall the UI task for ~tens of ms). */
 static void auto_brightness_cb(lv_event_t *e) {
     lv_obj_t *cb = lv_event_get_target(e);
     lv_obj_t *sl = static_cast<lv_obj_t *>(lv_event_get_user_data(e));
     s_auto_brightness = lv_obj_has_state(cb, LV_STATE_CHECKED);
-    settings_set_auto_brightness(s_auto_brightness);
     if (s_auto_brightness) {
         if (sl != NULL) { lv_obj_add_state(sl, LV_STATE_DISABLED); }
     } else {
@@ -458,7 +479,9 @@ static void backdrop_event_cb(lv_event_t *e) {
 
 static void close_settings(void) {
     if (s_settings != NULL) {
-        settings_set_brightness(s_brightness);   /* belt-and-braces save */
+        /* Persist both settings once, on close — keeps toggling/dragging snappy. */
+        settings_set_brightness(s_brightness);
+        settings_set_auto_brightness(s_auto_brightness);
         lv_obj_del(s_settings);
         s_settings = NULL;
     }
@@ -479,52 +502,112 @@ static void open_settings(void) {
     lv_obj_add_event_cb(s_settings, backdrop_event_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *card = lv_obj_create(s_settings);
-    lv_obj_set_size(card, 260, 218);
+    lv_obj_set_size(card, 300, 226);
     lv_obj_center(card);
     lv_obj_set_style_bg_color(card, COL_SURFACE, LV_PART_MAIN);
     lv_obj_set_style_radius(card, 14, LV_PART_MAIN);
     lv_obj_set_style_border_width(card, 1, LV_PART_MAIN);
     lv_obj_set_style_border_color(card, COL_BORDER, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(card, 0, LV_PART_MAIN);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
     /* Absorb taps on the card so they don't reach the backdrop and dismiss it. */
     lv_obj_add_flag(card, LV_OBJ_FLAG_CLICKABLE);
 
-    make_label(card, "Brightness", COL_TEXT, &lv_font_montserrat_20,
-               LV_ALIGN_TOP_LEFT, 4, 6);
-    lv_obj_t *pct = make_label(card, "", COL_DIM, &lv_font_montserrat_14,
-                               LV_ALIGN_TOP_RIGHT, -4, 10);
+    /* Tabbed layout: Screen / Wi-Fi / About. */
+    lv_obj_t *tv = lv_tabview_create(card, LV_DIR_TOP, 34);
+    lv_obj_set_size(tv, 300, 182);
+    lv_obj_align(tv, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_set_style_bg_color(tv, COL_SURFACE, LV_PART_MAIN);
 
-    lv_obj_t *sl = lv_slider_create(card);
-    lv_obj_set_width(sl, 210);
-    lv_obj_align(sl, LV_ALIGN_TOP_MID, 0, 46);
+    lv_obj_t *tabbar = lv_tabview_get_tab_btns(tv);
+    lv_obj_set_style_bg_color(tabbar, COL_BG, LV_PART_MAIN);
+    lv_obj_set_style_text_color(tabbar, COL_DIM, LV_PART_ITEMS);
+    lv_obj_set_style_text_color(tabbar, COL_ACCENT, LV_PART_ITEMS | LV_STATE_CHECKED);
+    lv_obj_set_style_border_color(tabbar, COL_ACCENT, LV_PART_ITEMS | LV_STATE_CHECKED);
+
+    lv_obj_t *t_screen = lv_tabview_add_tab(tv, "Screen");
+    lv_obj_t *t_wifi   = lv_tabview_add_tab(tv, "Wi-Fi");
+    lv_obj_t *t_tx     = lv_tabview_add_tab(tv, "Tx");
+    lv_obj_t *t_about  = lv_tabview_add_tab(tv, "About");
+    lv_obj_t *pages[4] = { t_screen, t_wifi, t_tx, t_about };
+    for (int i = 0; i < 4; i++) {
+        lv_obj_set_style_bg_color(pages[i], COL_SURFACE, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(pages[i], 8, LV_PART_MAIN);
+        lv_obj_clear_flag(pages[i], LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(pages[i], LV_OBJ_FLAG_CLICKABLE);
+    }
+
+    /* ── Screen tab: brightness ── */
+    make_label(t_screen, "Brightness", COL_TEXT, &lv_font_montserrat_14,
+               LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_obj_t *pct = make_label(t_screen, "", COL_DIM, &lv_font_montserrat_14,
+                               LV_ALIGN_TOP_RIGHT, 0, 0);
+    lv_obj_t *sl = lv_slider_create(t_screen);
+    lv_obj_set_width(sl, 250);
+    lv_obj_align(sl, LV_ALIGN_TOP_MID, 0, 32);
     lv_slider_set_range(sl, 10, 100);   /* never fully dark */
     lv_slider_set_value(sl, s_brightness, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(sl, COL_BORDER, LV_PART_MAIN);
     lv_obj_set_style_bg_color(sl, COL_ACCENT, LV_PART_INDICATOR);
     lv_obj_set_style_bg_color(sl, COL_ACCENT, LV_PART_KNOB);
     lv_obj_add_event_cb(sl, brightness_event_cb, LV_EVENT_VALUE_CHANGED, pct);
-    lv_obj_add_event_cb(sl, brightness_released_cb, LV_EVENT_RELEASED, NULL);
 
     char b[8];
     snprintf(b, sizeof(b), "%u%%", static_cast<unsigned>(s_brightness));
     lv_label_set_text(pct, b);
 
-    /* "Auto" checkbox — follow the ambient light sensor. */
-    lv_obj_t *chk = lv_checkbox_create(card);
+    lv_obj_t *chk = lv_checkbox_create(t_screen);
     lv_checkbox_set_text(chk, "Auto (light sensor)");
-    lv_obj_align(chk, LV_ALIGN_TOP_LEFT, 4, 92);
+    lv_obj_align(chk, LV_ALIGN_TOP_LEFT, 0, 70);
     lv_obj_set_style_text_color(chk, COL_TEXT, LV_PART_MAIN);
     lv_obj_set_style_text_font(chk, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(chk, COL_ACCENT,
-                              LV_PART_INDICATOR | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(chk, COL_ACCENT, LV_PART_INDICATOR | LV_STATE_CHECKED);
     if (s_auto_brightness) {
         lv_obj_add_state(chk, LV_STATE_CHECKED);
         lv_obj_add_state(sl, LV_STATE_DISABLED);
     }
     lv_obj_add_event_cb(chk, auto_brightness_cb, LV_EVENT_VALUE_CHANGED, sl);
 
-    make_button(card, "Close", COL_ACCENT, COL_BG, 120, 40,
-                LV_ALIGN_BOTTOM_MID, 0, -12, ACT_CLOSE, &lv_font_montserrat_20);
+    /* ── Wi-Fi tab ── */
+    make_label(t_wifi, "Connect to a Wi-Fi network", COL_DIM,
+               &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0, 4);
+    make_button(t_wifi, LV_SYMBOL_WIFI " Scan networks", COL_ACCENT, COL_BG,
+                220, 44, LV_ALIGN_CENTER, 0, 6, ACT_WIFI, &lv_font_montserrat_20);
+
+    /* ── Transaction tab: where the funds go (read-only) ── */
+    make_label(t_tx, "USDC contract", COL_DIM, &lv_font_montserrat_14,
+               LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_obj_t *a_usdc = make_label(t_tx, (s_addr_usdc != NULL) ? s_addr_usdc : "-",
+                                  COL_TEXT, &lv_font_montserrat_14,
+                                  LV_ALIGN_TOP_LEFT, 0, 18);
+    lv_label_set_long_mode(a_usdc, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(a_usdc, 268);
+
+    make_label(t_tx, "Send to", COL_DIM, &lv_font_montserrat_14,
+               LV_ALIGN_TOP_LEFT, 0, 64);
+    lv_obj_t *a_dest = make_label(t_tx, (s_addr_dest != NULL) ? s_addr_dest : "-",
+                                  COL_TEXT, &lv_font_montserrat_14,
+                                  LV_ALIGN_TOP_LEFT, 0, 82);
+    lv_label_set_long_mode(a_dest, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(a_dest, 268);
+
+    /* ── About tab ── */
+    make_label(t_about, "cryptnox-pos", COL_TEXT, &lv_font_montserrat_20,
+               LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_t *about = make_label(t_about,
+                                 "USDC payment terminal for Cryptnox cards\n\n"
+                                 "Based on cryptnox-sdk-esp32 1.0.0\n"
+                                 "(c) Cryptnox 2026\n"
+                                 "Educational use only",
+                                 COL_DIM, &lv_font_montserrat_14,
+                                 LV_ALIGN_TOP_MID, 0, 28);
+    lv_label_set_long_mode(about, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(about, 272);
+    lv_obj_set_style_text_align(about, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+
+    /* Close button below the tabview. */
+    make_button(card, "Close", COL_ACCENT, COL_BG, 130, 38,
+                LV_ALIGN_BOTTOM_MID, 0, -4, ACT_CLOSE, &lv_font_montserrat_20);
 }
 
 /******************************************************************
@@ -689,6 +772,96 @@ static void build_pin(void) {
     lv_obj_add_event_cb(kb, pin_kbd_cb, LV_EVENT_VALUE_CHANGED, NULL);
 }
 
+/* Header with a back arrow (to amount entry) instead of the burger. */
+static void build_header_back(const char *title) {
+    make_label(lv_scr_act(), title, COL_DIM, &lv_font_montserrat_14,
+               LV_ALIGN_TOP_MID, 0, HDR_TITLE_Y);
+    make_divider(lv_scr_act(), HDR_DIVIDER_Y);
+    make_button(lv_scr_act(), LV_SYMBOL_LEFT, COL_SURFACE, COL_TEXT,
+                MENU_BTN_W, MENU_BTN_H, LV_ALIGN_TOP_LEFT, MENU_BTN_X, MENU_BTN_Y,
+                ACT_WIFI_CANCEL, &lv_font_montserrat_20);
+}
+
+static void wifi_item_cb(lv_event_t *e) {
+    intptr_t idx = reinterpret_cast<intptr_t>(lv_event_get_user_data(e));
+    if ((idx < 0) || (idx >= s_ap_count)) { return; }
+    strncpy(s_wifi_ssid, s_aps[idx].ssid, sizeof(s_wifi_ssid) - 1);
+    s_wifi_ssid[sizeof(s_wifi_ssid) - 1] = '\0';
+    request_screen(UI_SCREEN_WIFI_PASS);
+}
+
+static void build_wifi_list(void) {
+    clear_screen();
+    build_header_back("Wi-Fi");
+
+    if (s_ap_count == 0U) {
+        make_label(lv_scr_act(), "No networks found", COL_DIM,
+                   &lv_font_montserrat_14, LV_ALIGN_CENTER, 0, 0);
+        make_button(lv_scr_act(), "Rescan", COL_ACCENT, COL_BG, 140, ACT_BTN_H,
+                    LV_ALIGN_BOTTOM_MID, 0, ACT_BTN_Y, ACT_WIFI,
+                    &lv_font_montserrat_20);
+        return;
+    }
+
+    lv_obj_t *list = lv_list_create(lv_scr_act());
+    lv_obj_set_size(list, SCR_W - 12, SCR_H - 52);
+    lv_obj_align(list, LV_ALIGN_TOP_MID, 0, 48);
+    lv_obj_set_style_bg_color(list, COL_BG, LV_PART_MAIN);
+    lv_obj_set_style_border_width(list, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_row(list, 4, LV_PART_MAIN);
+
+    for (uint16_t i = 0U; i < s_ap_count; i++) {
+        lv_obj_t *btn = lv_list_add_btn(list, LV_SYMBOL_WIFI, s_aps[i].ssid);
+        lv_obj_set_style_bg_color(btn, COL_SURFACE, LV_PART_MAIN);
+        lv_obj_set_style_text_color(btn, COL_TEXT, LV_PART_MAIN);
+        lv_obj_set_style_radius(btn, 8, LV_PART_MAIN);
+        lv_obj_add_event_cb(btn, wifi_item_cb, LV_EVENT_CLICKED,
+                            reinterpret_cast<void *>(static_cast<intptr_t>(i)));
+    }
+}
+
+static void wifi_pass_kb_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_READY) {            /* keyboard check-mark */
+        if (s_wifi_pass_ta != NULL) {
+            const char *p = lv_textarea_get_text(s_wifi_pass_ta);
+            strncpy(s_wifi_pass, (p != NULL) ? p : "", sizeof(s_wifi_pass) - 1);
+            s_wifi_pass[sizeof(s_wifi_pass) - 1] = '\0';
+        }
+        snprintf(s_wifi_msg, sizeof(s_wifi_msg), "Connecting to %s...", s_wifi_ssid);
+        request_screen(UI_SCREEN_WIFI_CONNECTING);
+        if (s_cb != NULL) { s_cb(UI_EVENT_WIFI_TRY, 0); }
+    } else if (code == LV_EVENT_CANCEL) {     /* keyboard close */
+        request_screen(UI_SCREEN_WIFI_LIST);
+    }
+}
+
+static void build_wifi_pass(void) {
+    clear_screen();
+    make_label(lv_scr_act(), s_wifi_ssid, COL_TEXT, &lv_font_montserrat_14,
+               LV_ALIGN_TOP_MID, 0, 6);
+
+    s_wifi_pass_ta = lv_textarea_create(lv_scr_act());
+    lv_textarea_set_one_line(s_wifi_pass_ta, true);
+    lv_textarea_set_text(s_wifi_pass_ta, "");
+    lv_textarea_set_placeholder_text(s_wifi_pass_ta, "Password");
+    lv_obj_set_width(s_wifi_pass_ta, SCR_W - 24);
+    lv_obj_align(s_wifi_pass_ta, LV_ALIGN_TOP_MID, 0, 28);
+    lv_obj_set_style_bg_color(s_wifi_pass_ta, COL_SURFACE, LV_PART_MAIN);
+    lv_obj_set_style_text_color(s_wifi_pass_ta, COL_TEXT, LV_PART_MAIN);
+
+    lv_obj_t *kb = lv_keyboard_create(lv_scr_act());
+    lv_keyboard_set_textarea(kb, s_wifi_pass_ta);
+    lv_obj_add_event_cb(kb, wifi_pass_kb_cb, LV_EVENT_ALL, NULL);
+}
+
+static void build_wifi_connecting(void) {
+    clear_screen();
+    build_header("Wi-Fi");
+    make_label(lv_scr_act(), s_wifi_msg, COL_TEXT, &lv_font_montserrat_20,
+               LV_ALIGN_CENTER, 0, 0);
+}
+
 static void build_tx_status(void) {
     clear_screen();
     build_header("Transaction");
@@ -729,6 +902,9 @@ static void render_requested_screen(void) {
         case UI_SCREEN_AMOUNT:    build_amount();    break;
         case UI_SCREEN_CONFIRM:   build_confirm();   break;
         case UI_SCREEN_PIN:       build_pin();       break;
+        case UI_SCREEN_WIFI_LIST: build_wifi_list(); break;
+        case UI_SCREEN_WIFI_PASS: build_wifi_pass(); break;
+        case UI_SCREEN_WIFI_CONNECTING: build_wifi_connecting(); break;
         case UI_SCREEN_TX_STATUS: build_tx_status(); break;
     }
 }
@@ -810,8 +986,9 @@ extern "C" void ui_init(ui_event_cb_t cb) {
     s_cb           = cb;
     s_req_screen   = UI_SCREEN_SPLASH;
     s_screen_dirty = true;
-    /* LVGL needs a generous stack for rendering; pin nothing special. */
-    xTaskCreate(ui_task, "ui", 8192, NULL, 4, NULL);
+    /* LVGL rendering + nested event callbacks (tabview/modal) + NVS/ADC calls
+     * are stack-heavy; give the task plenty of headroom. */
+    xTaskCreate(ui_task, "ui", 16384, NULL, 4, NULL);
 }
 
 extern "C" void ui_show_splash(void) {
@@ -844,6 +1021,39 @@ extern "C" size_t ui_take_pin(char *out, size_t n) {
     CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_pin), sizeof(s_pin));
     s_pin_len = 0;
     return len;
+}
+
+extern "C" void ui_show_wifi_list(const eth_wifi_ap_t *aps, uint16_t n) {
+    s_ap_count = (n > WIFI_MAX_APS) ? WIFI_MAX_APS : n;
+    for (uint16_t i = 0U; i < s_ap_count; i++) {
+        s_aps[i] = aps[i];
+    }
+    request_screen(UI_SCREEN_WIFI_LIST);
+}
+
+extern "C" void ui_set_addresses(const char *usdc_contract, const char *dest_addr) {
+    s_addr_usdc = usdc_contract;
+    s_addr_dest = dest_addr;
+}
+
+extern "C" void ui_show_wifi_connecting(const char *ssid) {
+    snprintf(s_wifi_msg, sizeof(s_wifi_msg), "Connecting to %s...",
+             (ssid != NULL) ? ssid : "");
+    request_screen(UI_SCREEN_WIFI_CONNECTING);
+}
+
+extern "C" size_t ui_take_wifi_creds(char *ssid, size_t ssid_n,
+                                     char *pass, size_t pass_n) {
+    if ((ssid == NULL) || (pass == NULL) || (ssid_n == 0U) || (pass_n == 0U)) {
+        return 0U;
+    }
+    strncpy(ssid, s_wifi_ssid, ssid_n - 1U);
+    ssid[ssid_n - 1U] = '\0';
+    strncpy(pass, s_wifi_pass, pass_n - 1U);
+    pass[pass_n - 1U] = '\0';
+    /* Wipe the UI's copy of the passphrase. */
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_wifi_pass), sizeof(s_wifi_pass));
+    return strlen(ssid);
 }
 
 extern "C" void ui_show_tx_status(ui_tx_state_t state, const char *info) {

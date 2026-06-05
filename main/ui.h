@@ -20,6 +20,8 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#include "eth_rpc.h"   /* eth_wifi_ap_t for the network picker */
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -34,6 +36,9 @@ typedef enum {
     UI_SCREEN_AMOUNT,      /**< Amount entry with +/- buttons.             */
     UI_SCREEN_CONFIRM,     /**< Amount + destination review.               */
     UI_SCREEN_PIN,         /**< Numeric keypad to enter the card PIN.      */
+    UI_SCREEN_WIFI_LIST,   /**< Scanned Wi-Fi networks to pick from.       */
+    UI_SCREEN_WIFI_PASS,   /**< Keyboard to enter the Wi-Fi password.      */
+    UI_SCREEN_WIFI_CONNECTING, /**< "Connecting…" while main associates.   */
     UI_SCREEN_TX_STATUS,   /**< Card wait / signing / broadcast progress.  */
 } ui_screen_t;
 
@@ -43,6 +48,8 @@ typedef enum {
     UI_EVENT_CONFIRM_OK,        /**< Send tapped on the Confirm screen.    */
     UI_EVENT_CONFIRM_CANCEL,    /**< Cancel tapped (Confirm or card wait). */
     UI_EVENT_PIN_ENTERED,       /**< PIN keypad validated; fetch via ui_take_pin. */
+    UI_EVENT_WIFI_SCAN,         /**< User opened the Wi-Fi picker; main should scan. */
+    UI_EVENT_WIFI_TRY,          /**< Wi-Fi creds entered; fetch via ui_take_wifi_creds. */
     UI_EVENT_TX_RETRY,          /**< New payment tapped after Done/Failed. */
 } ui_event_t;
 
@@ -112,6 +119,36 @@ void ui_show_tx_status(ui_tx_state_t state, const char *info);
  * @return number of PIN digits copied (0 if none available).
  */
 size_t ui_take_pin(char *out, size_t n);
+
+/**
+ * @brief Show the scanned Wi-Fi networks for the user to pick from.
+ *
+ * @param[in] aps Array of scanned APs (copied internally).
+ * @param[in] n   Number of entries in @p aps.
+ */
+void ui_show_wifi_list(const eth_wifi_ap_t *aps, uint16_t n);
+
+/**
+ * @brief Provide the USDC contract and destination addresses for the
+ *        settings "Tx" tab (pointers stored as-is; pass static/literal).
+ */
+void ui_set_addresses(const char *usdc_contract, const char *dest_addr);
+
+/** @brief Show a "Connecting to <ssid>…" screen while main associates. */
+void ui_show_wifi_connecting(const char *ssid);
+
+/**
+ * @brief Fetch the selected SSID + entered password and wipe the UI's copy.
+ *
+ * Call once after @ref UI_EVENT_WIFI_TRY.
+ *
+ * @param[out] ssid    SSID buffer (>= 33 bytes).
+ * @param[in]  ssid_n  Capacity of @p ssid.
+ * @param[out] pass    Password buffer (>= 65 bytes).
+ * @param[in]  pass_n  Capacity of @p pass.
+ * @return length of the SSID (0 if none available).
+ */
+size_t ui_take_wifi_creds(char *ssid, size_t ssid_n, char *pass, size_t pass_n);
 
 #ifdef __cplusplus
 }

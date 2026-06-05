@@ -447,6 +447,7 @@ extern "C" void app_main(void)
     /* ── UI: splash visible while the rest boots ───────── */
     s_ui_queue = xQueueCreate(8, sizeof(ui_msg_t));
     ui_init(ui_event_dispatch);
+    ui_set_addresses("0x" ADDR_USDC, "0x" ADDR_TO);
     ui_show_splash();
 
     /* ── PN532 NFC reader ──────────────────────────────────────── */
@@ -578,6 +579,34 @@ extern "C" void app_main(void)
             case UI_EVENT_TX_RETRY:
                 ui_show_amount_entry();
                 break;
+
+            case UI_EVENT_WIFI_SCAN: {
+                /* Scan runs in this task so the UI stays responsive. */
+                eth_wifi_ap_t aps[16];
+                uint16_t n = eth_rpc_wifi_scan(aps, 16);
+                ui_show_wifi_list(aps, n);
+                break;
+            }
+
+            case UI_EVENT_WIFI_TRY: {
+                char w_ssid[33] = { 0 };
+                char w_pass[65] = { 0 };
+                if (ui_take_wifi_creds(w_ssid, sizeof(w_ssid),
+                                       w_pass, sizeof(w_pass)) > 0U) {
+                    ui_show_wifi_connecting(w_ssid);
+                    if (eth_rpc_wifi_connect(w_ssid, w_pass)) {
+                        settings_set_wifi(w_ssid, w_pass);   /* persist for next boot */
+                        ui_show_amount_entry();
+                    } else {
+                        /* Failed — rescan and show the list again to retry. */
+                        eth_wifi_ap_t aps[16];
+                        uint16_t n = eth_rpc_wifi_scan(aps, 16);
+                        ui_show_wifi_list(aps, n);
+                    }
+                }
+                CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(w_pass), sizeof(w_pass));
+                break;
+            }
 
             default:
                 break;
