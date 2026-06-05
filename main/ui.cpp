@@ -71,6 +71,19 @@ static XPT2046_Touchscreen touch(T_CS, T_IRQ);
 #define COL_BORDER   lv_color_hex(0x243349)
 
 /******************************************************************
+ * 3b. Layout metrics — shared so every screen's header lines up
+ ******************************************************************/
+#define HDR_TITLE_Y     12     /* eyebrow title offset from the top   */
+#define HDR_DIVIDER_Y   42     /* rule under the title                */
+#define CONTENT_Y       58     /* first content row, below the rule   */
+#define ACT_BTN_H       46     /* bottom action-button height         */
+#define ACT_BTN_Y       (-8)   /* bottom action-button offset         */
+#define MENU_BTN_W      42
+#define MENU_BTN_H      30
+#define MENU_BTN_X      4
+#define MENU_BTN_Y      6
+
+/******************************************************************
  * 4. LVGL display + input plumbing
  ******************************************************************/
 #define LV_TICK_PERIOD_MS  2
@@ -444,8 +457,17 @@ static void open_settings(void) {
  ******************************************************************/
 /* Small burger button (top-left) that opens the settings modal. */
 static void add_menu_button(void) {
-    make_button(lv_scr_act(), LV_SYMBOL_LIST, COL_SURFACE, COL_TEXT, 42, 30,
-                LV_ALIGN_TOP_LEFT, 4, 4, ACT_SETTINGS, &lv_font_montserrat_20);
+    make_button(lv_scr_act(), LV_SYMBOL_LIST, COL_SURFACE, COL_TEXT,
+                MENU_BTN_W, MENU_BTN_H, LV_ALIGN_TOP_LEFT, MENU_BTN_X, MENU_BTN_Y,
+                ACT_SETTINGS, &lv_font_montserrat_20);
+}
+
+/* Identical header on every screen: eyebrow title + rule + burger menu. */
+static void build_header(const char *title) {
+    make_label(lv_scr_act(), title, COL_DIM, &lv_font_montserrat_14,
+               LV_ALIGN_TOP_MID, 0, HDR_TITLE_Y);
+    make_divider(lv_scr_act(), HDR_DIVIDER_Y);
+    add_menu_button();
 }
 
 static void build_splash(void) {
@@ -463,17 +485,14 @@ static void build_splash(void) {
 
 static void build_amount(void) {
     clear_screen();
-    make_label(lv_scr_act(), "Amount", COL_DIM, &lv_font_montserrat_14,
-               LV_ALIGN_TOP_MID, 0, 14);
-    make_divider(lv_scr_act(), 42);
-    add_menu_button();
+    build_header("Amount");
 
     char buf[32];
     format_amount(s_amount_units, buf, sizeof(buf));
     s_amount_label = make_label(lv_scr_act(), buf, COL_TEXT,
-                                &lv_font_montserrat_48, LV_ALIGN_TOP_MID, 0, 52);
+                                &lv_font_montserrat_48, LV_ALIGN_TOP_MID, 0, CONTENT_Y);
     make_label(lv_scr_act(), "USDC", COL_DIM, &lv_font_montserrat_20,
-               LV_ALIGN_TOP_MID, 0, 104);
+               LV_ALIGN_TOP_MID, 0, CONTENT_Y + 52);
 
     /* Stepper row: -1 / +1 on the left, -.01 / +.01 on the right. */
     make_button(lv_scr_act(), "-1", COL_SURFACE, COL_TEXT, 70, 44,
@@ -485,45 +504,39 @@ static void build_amount(void) {
     make_button(lv_scr_act(), "+.01", COL_SURFACE, COL_TEXT, 70, 44,
                 LV_ALIGN_RIGHT_MID, -8, -28, ACT_PLUS_C, &lv_font_montserrat_20);
 
-    make_button(lv_scr_act(), "Continue", COL_ACCENT, COL_BG, 180, 46,
-                LV_ALIGN_BOTTOM_MID, 0, -8, ACT_CONFIRM, &lv_font_montserrat_20);
+    make_button(lv_scr_act(), "Continue", COL_ACCENT, COL_BG, 180, ACT_BTN_H,
+                LV_ALIGN_BOTTOM_MID, 0, ACT_BTN_Y, ACT_CONFIRM, &lv_font_montserrat_20);
 }
 
 static void build_confirm(void) {
     clear_screen();
-    make_label(lv_scr_act(), "Confirm", COL_DIM, &lv_font_montserrat_14,
-               LV_ALIGN_TOP_MID, 0, 12);
-    make_divider(lv_scr_act(), 42);
-    add_menu_button();
+    build_header("Confirm");
 
     char buf[40];
     format_amount(s_confirm_amount, buf, sizeof(buf));
     strncat(buf, " USDC", sizeof(buf) - strlen(buf) - 1);
     make_label(lv_scr_act(), buf, COL_TEXT, &lv_font_montserrat_28,
-               LV_ALIGN_TOP_MID, 0, 52);
+               LV_ALIGN_TOP_MID, 0, CONTENT_Y);
 
     make_label(lv_scr_act(), "To", COL_DIM, &lv_font_montserrat_14,
-               LV_ALIGN_TOP_MID, 0, 84);
+               LV_ALIGN_TOP_MID, 0, CONTENT_Y + 34);
     lv_obj_t *addr = make_label(lv_scr_act(),
                                 s_confirm_addr[0] ? s_confirm_addr : "-",
                                 COL_TEXT, &lv_font_montserrat_14,
-                                LV_ALIGN_TOP_MID, 0, 104);
+                                LV_ALIGN_TOP_MID, 0, CONTENT_Y + 54);
     lv_label_set_long_mode(addr, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(addr, 280);
     lv_obj_set_style_text_align(addr, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
 
-    make_button(lv_scr_act(), "Cancel", COL_SURFACE, COL_TEXT, 130, 46,
-                LV_ALIGN_BOTTOM_LEFT, 12, -8, ACT_CANCEL, &lv_font_montserrat_20);
-    make_button(lv_scr_act(), "Send", COL_ACCENT, COL_BG, 130, 46,
-                LV_ALIGN_BOTTOM_RIGHT, -12, -8, ACT_SEND, &lv_font_montserrat_20);
+    make_button(lv_scr_act(), "Cancel", COL_SURFACE, COL_TEXT, 130, ACT_BTN_H,
+                LV_ALIGN_BOTTOM_LEFT, 12, ACT_BTN_Y, ACT_CANCEL, &lv_font_montserrat_20);
+    make_button(lv_scr_act(), "Send", COL_ACCENT, COL_BG, 130, ACT_BTN_H,
+                LV_ALIGN_BOTTOM_RIGHT, -12, ACT_BTN_Y, ACT_SEND, &lv_font_montserrat_20);
 }
 
 static void build_tx_status(void) {
     clear_screen();
-    make_label(lv_scr_act(), "Transaction", COL_DIM, &lv_font_montserrat_14,
-               LV_ALIGN_TOP_MID, 0, 12);
-    make_divider(lv_scr_act(), 42);
-    add_menu_button();
+    build_header("Transaction");
 
     const char *state_str = "";
     lv_color_t  color      = COL_TEXT;
@@ -538,7 +551,7 @@ static void build_tx_status(void) {
     }
 
     make_label(lv_scr_act(), state_str, color, &lv_font_montserrat_28,
-               LV_ALIGN_TOP_MID, 0, 56);
+               LV_ALIGN_TOP_MID, 0, CONTENT_Y);
 
     lv_obj_t *info = make_label(lv_scr_act(), s_tx_info, COL_DIM,
                                 &lv_font_montserrat_14, LV_ALIGN_CENTER, 0, 10);
@@ -547,11 +560,11 @@ static void build_tx_status(void) {
     lv_obj_set_style_text_align(info, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
 
     if (show_new) {
-        make_button(lv_scr_act(), "New payment", COL_ACCENT, COL_BG, 180, 46,
-                    LV_ALIGN_BOTTOM_MID, 0, -8, ACT_NEW, &lv_font_montserrat_20);
+        make_button(lv_scr_act(), "New payment", COL_ACCENT, COL_BG, 180, ACT_BTN_H,
+                    LV_ALIGN_BOTTOM_MID, 0, ACT_BTN_Y, ACT_NEW, &lv_font_montserrat_20);
     } else if (show_cancel) {
-        make_button(lv_scr_act(), "Cancel", COL_SURFACE, COL_TEXT, 160, 46,
-                    LV_ALIGN_BOTTOM_MID, 0, -8, ACT_CANCEL, &lv_font_montserrat_20);
+        make_button(lv_scr_act(), "Cancel", COL_SURFACE, COL_TEXT, 160, ACT_BTN_H,
+                    LV_ALIGN_BOTTOM_MID, 0, ACT_BTN_Y, ACT_CANCEL, &lv_font_montserrat_20);
     }
 }
 
