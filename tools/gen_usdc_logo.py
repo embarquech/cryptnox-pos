@@ -10,6 +10,7 @@ Run from repo root:  python tools/gen_usdc_logo.py
 """
 
 from PIL import Image
+from rgb565 import rgb565_le_dithered
 
 SRC    = "assets/Circle_USDC_Logo.svg.png"
 OUT_C  = "main/usdc_logo.c"
@@ -21,15 +22,8 @@ bg  = Image.new("RGBA", img.size, (255, 255, 255, 255))   # flatten on white
 img = Image.alpha_composite(bg, img).convert("RGB")
 img.thumbnail((TARGET, TARGET), Image.LANCZOS)
 w, h = img.size
-px = img.load()
 
-data = bytearray()
-for y in range(h):
-    for x in range(w):
-        r, g, b = px[x, y]
-        v = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3)
-        data.append(v & 0xFF)          # little-endian (matches lv_color_t, swap=0)
-        data.append((v >> 8) & 0xFF)
+data = rgb565_le_dithered(img)         # rounded + Floyd-Steinberg, no banding
 
 with open(OUT_C, "w", newline="\n") as f:
     f.write("/*\n * SPDX-License-Identifier: LGPL-3.0-or-later\n"

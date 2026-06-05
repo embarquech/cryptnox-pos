@@ -15,6 +15,7 @@ Run from repo root:  python tools/gen_logo.py
 from PIL import Image, ImageOps
 from svglib.svglib import svg2rlg
 from reportlab.graphics import renderPM
+from rgb565 import rgb565_le_dithered
 
 SRC    = "assets/logo.svg"
 OUT_C  = "main/logo_small.c"
@@ -44,21 +45,8 @@ img.thumbnail((TARGET, TARGET), Image.LANCZOS)
 img = ImageOps.invert(img)
 
 w, h = img.size
-px = img.load()
 
-
-def rgb565_le(v):
-    # greyscale: r=g=b=v
-    val = ((v >> 3) << 11) | ((v >> 2) << 5) | (v >> 3)
-    return val & 0xFF, (val >> 8) & 0xFF   # little-endian (matches lv_color_t, swap=0)
-
-
-data = bytearray()
-for y in range(h):
-    for x in range(w):
-        lo, hi = rgb565_le(px[x, y])
-        data.append(lo)
-        data.append(hi)
+data = rgb565_le_dithered(img)         # rounded + Floyd-Steinberg, no banding
 
 with open(OUT_C, "w", newline="\n") as f:
     f.write("/*\n * SPDX-License-Identifier: LGPL-3.0-or-later\n"

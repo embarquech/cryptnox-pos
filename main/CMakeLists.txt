@@ -11,4 +11,6 @@ idf_component_register(
 
 # LVGL 8 combines LV_PART_*/LV_STATE_* enums with '|', which C++20 flags as
 # -Wdeprecated-enum-enum-conversion. Harmless and unavoidable — silence the noise.
-target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-deprecated-enum-enum-conversion)
+# Scope to C++ only: the flag is invalid for the C image sources (cc1 warns).
+target_compile_options(${COMPONENT_LIB} PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-enum-enum-conversion>)

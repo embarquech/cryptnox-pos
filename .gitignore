@@ -11,3 +11,7 @@ managed_components/
 
 # Local debug screenshots
 IMG_*.jpg
+
+# Python bytecode cache (image generators)
+__pycache__/
+*.pyc

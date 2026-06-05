@@ -1128,6 +1128,19 @@ static void ui_task(void *arg) {
     tft.init();
     tft.setRotation(0);          /* portrait, 240x320 */
     tft.invertDisplay(true);     /* CYD ILI9341 panel renders inverted otherwise */
+
+    /* CYD "milky gamma" fix: the 1-USB ILI9341_2 panels ship with a gamma
+     * curve that crushes smooth gradients into visible bands — solid colours
+     * and text look fine, but anti-aliased greys (e.g. the logo edges) come
+     * out blocky. Re-select a built-in gamma curve via GAMMASET (0x26) to get
+     * a clean ramp. See TFT_eSPI discussion #3018.
+     */
+    tft.writecommand(0x26);      /* GAMMASET */
+    tft.writedata(0x02);
+    delay(120);
+    tft.writecommand(0x26);
+    tft.writedata(0x01);
+
     tft.fillScreen(TFT_BLACK);
 
     touchSPI.begin(T_CLK, T_MISO, T_MOSI, T_CS);
