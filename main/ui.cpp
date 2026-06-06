@@ -79,7 +79,8 @@ static XPT2046_Touchscreen touch(T_CS, T_IRQ);
 /******************************************************************
  * 3b. Layout metrics — shared so every screen's header lines up
  ******************************************************************/
-#define HDR_TITLE_Y     12     /* eyebrow title offset from the top   */
+#define HDR_TITLE_Y     11     /* title offset — optically centred in the
+                                  42px band above the divider (montserrat_20) */
 #define HDR_DIVIDER_Y   42     /* rule under the title                */
 #define CONTENT_Y       58     /* first content row, below the rule   */
 #define ACT_BTN_H       46     /* bottom action-button height         */
@@ -729,24 +730,30 @@ static void build_settings(void) {
     lv_label_set_long_mode(cur, LV_LABEL_LONG_DOT);
     lv_obj_set_width(cur, 220);
 
-    /* Link quality of the live association (snapshot at settings open). */
+    /* Link quality of the live association (snapshot at settings open),
+     * as a caption/value pair like every other field. */
     int8_t rssi = 0;
     if (net_wifi_rssi(&rssi)) {
         const char *qual = (rssi >= -50) ? "Excellent" :
                            (rssi >= -60) ? "Good"      :
                            (rssi >= -70) ? "Fair"      : "Weak";
-        char sig[40];
-        snprintf(sig, sizeof(sig), "Signal: %s (%d dBm)", qual,
+        char sig[32];
+        snprintf(sig, sizeof(sig), "%s (%d dBm)", qual,
                  static_cast<int>(rssi));
-        make_label(t_wifi, sig, COL_DIM, &lv_font_montserrat_14,
-                   LV_ALIGN_TOP_LEFT, 0, 44);
+        make_label(t_wifi, "Signal", COL_DIM, &lv_font_montserrat_14,
+                   LV_ALIGN_TOP_LEFT, 0, 48);
+        make_label(t_wifi, sig, COL_TEXT, &lv_font_montserrat_14,
+                   LV_ALIGN_TOP_LEFT, 0, 68);
     }
 
+    /* Right below the signal row (y68 + ~18px line + gap) — not pinned to the
+     * tab bottom, which left a void under the info block. */
     make_button(t_wifi, LV_SYMBOL_WIFI " Scan networks", COL_ACCENT, COL_BG,
-                220, 44, LV_ALIGN_CENTER, 0, 6, ACT_WIFI, &lv_font_montserrat_20);
+                lv_pct(100), ACT_BTN_H, LV_ALIGN_TOP_MID, 0, 104, ACT_WIFI,
+                &lv_font_montserrat_20);
 
     /* ── Transaction tab: where the funds go (read-only) ── */
-    make_label(t_tx, "USDC contract:", COL_DIM, &lv_font_montserrat_14,
+    make_label(t_tx, "USDC contract", COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_LEFT, 0, 0);
     lv_obj_t *a_usdc = make_label(t_tx, (s_addr_usdc != NULL) ? s_addr_usdc : "-",
                                   COL_TEXT, &lv_font_montserrat_14,
@@ -754,7 +761,7 @@ static void build_settings(void) {
     lv_label_set_long_mode(a_usdc, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(a_usdc, 200);
 
-    make_label(t_tx, "Send to:", COL_DIM, &lv_font_montserrat_14,
+    make_label(t_tx, "Send to", COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_LEFT, 0, 64);
     lv_obj_t *a_dest = make_label(t_tx, (s_addr_dest != NULL) ? s_addr_dest : "-",
                                   COL_TEXT, &lv_font_montserrat_14,
@@ -766,8 +773,8 @@ static void build_settings(void) {
     s_maxfee_gwei = settings_get_max_fee_gwei();
     s_prio_gwei   = settings_get_priority_fee_gwei();
     if (s_prio_gwei > s_maxfee_gwei) { s_prio_gwei = s_maxfee_gwei; }
-    s_maxfee_lbl  = build_fee_row(t_tx, "Max fee (Gwei):",      128, 0, 1);
-    s_prio_lbl    = build_fee_row(t_tx, "Priority fee (Gwei):", 196, 2, 3);
+    s_maxfee_lbl  = build_fee_row(t_tx, "Max fee (Gwei)",      128, 0, 1);
+    s_prio_lbl    = build_fee_row(t_tx, "Priority fee (Gwei)", 196, 2, 3);
     fee_update_labels();
 
     /* ── About tab: small C logo, name, version, info ── */
@@ -875,11 +882,12 @@ static void add_menu_button(void) {
 }
 
 /* Identical header on every screen: eyebrow title + rule + burger menu. */
+/* Title + divider only — the burger (settings) lives solely on the amount
+ * screen so settings can't be opened mid-transaction. */
 static void build_header(const char *title) {
-    make_label(lv_scr_act(), title, COL_DIM, &lv_font_montserrat_14,
+    make_label(lv_scr_act(), title, COL_DIM, &lv_font_montserrat_20,
                LV_ALIGN_TOP_MID, 0, HDR_TITLE_Y);
     make_divider(lv_scr_act(), HDR_DIVIDER_Y);
-    add_menu_button();
 }
 
 static void build_splash(void) {
@@ -955,24 +963,37 @@ static void build_confirm(void) {
     clear_screen();
     build_header("Send");
 
+    /* Ledger-style transaction review: dim caption / value rows, everything
+     * the operator should verify — amount, beneficiary AND the USDC contract
+     * the terminal is about to call. */
     char buf[24];
     format_amount(s_confirm_amount, buf, sizeof(buf));
+
+    make_label(lv_scr_act(), "Amount", COL_DIM, &lv_font_montserrat_14,
+               LV_ALIGN_TOP_LEFT, 12, 54);
     lv_obj_t *amt = make_label(lv_scr_act(), buf, COL_TEXT, &lv_font_montserrat_28,
-                               LV_ALIGN_TOP_MID, -16, 58);
+                               LV_ALIGN_TOP_LEFT, 12, 72);
     lv_obj_t *cusdc = lv_img_create(lv_scr_act());
     lv_img_set_src(cusdc, &usdc_logo);
     lv_obj_align_to(cusdc, amt, LV_ALIGN_OUT_RIGHT_MID, 8, 0);
 
-    make_label(lv_scr_act(), "To:", COL_DIM, &lv_font_montserrat_14,
-               LV_ALIGN_TOP_MID, 0, 112);
+    make_label(lv_scr_act(), "To", COL_DIM, &lv_font_montserrat_14,
+               LV_ALIGN_TOP_LEFT, 12, 118);
     lv_obj_t *addr = make_label(lv_scr_act(),
                                 s_confirm_addr[0] ? s_confirm_addr : "-",
-                                COL_TEXT, &lv_font_montserrat_20,
-                                LV_ALIGN_TOP_MID, 0, 138);
+                                COL_TEXT, &lv_font_montserrat_14,
+                                LV_ALIGN_TOP_LEFT, 12, 136);
     lv_label_set_long_mode(addr, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(addr, 220);
-    lv_obj_set_style_text_align(addr, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_set_style_text_line_space(addr, 6, LV_PART_MAIN);
+    lv_obj_set_width(addr, 216);
+
+    make_label(lv_scr_act(), "USDC contract", COL_DIM, &lv_font_montserrat_14,
+               LV_ALIGN_TOP_LEFT, 12, 182);
+    lv_obj_t *ctr = make_label(lv_scr_act(),
+                               (s_addr_usdc != NULL) ? s_addr_usdc : "-",
+                               COL_TEXT, &lv_font_montserrat_14,
+                               LV_ALIGN_TOP_LEFT, 12, 200);
+    lv_label_set_long_mode(ctr, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(ctr, 216);
 
     make_button(lv_scr_act(), "Cancel", COL_SURFACE, COL_TEXT, 104, ACT_BTN_H,
                 LV_ALIGN_BOTTOM_LEFT, 10, ACT_BTN_Y, ACT_CANCEL, &lv_font_montserrat_20);
@@ -1019,7 +1040,7 @@ static void build_pin(void) {
     CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_pin), sizeof(s_pin));
     s_pin_len = 0;
 
-    make_label(lv_scr_act(), "Enter PIN", COL_DIM, &lv_font_montserrat_14,
+    make_label(lv_scr_act(), "Enter PIN", COL_DIM, &lv_font_montserrat_20,
                LV_ALIGN_TOP_MID, 0, HDR_TITLE_Y);
     /* Back (cancel) icon, top-left like the burger on other screens. */
     (void)make_icon_button(LV_SYMBOL_LEFT, ACT_PIN_CANCEL);
@@ -1065,7 +1086,7 @@ static void build_pin(void) {
 
 /* Header with a back arrow (to amount entry) instead of the burger. */
 static void build_header_back(const char *title) {
-    make_label(lv_scr_act(), title, COL_DIM, &lv_font_montserrat_14,
+    make_label(lv_scr_act(), title, COL_DIM, &lv_font_montserrat_20,
                LV_ALIGN_TOP_MID, 0, HDR_TITLE_Y);
     make_divider(lv_scr_act(), HDR_DIVIDER_Y);
     (void)make_icon_button(LV_SYMBOL_LEFT, ACT_WIFI_CANCEL);
@@ -1196,7 +1217,7 @@ static void build_tx_status(void) {
                    LV_ALIGN_TOP_MID, 0, 172);
 
         char total[40];
-        snprintf(total, sizeof(total), "Total: %s", amt);
+        snprintf(total, sizeof(total), "Total %s", amt);
         tx_amount_row(total, &lv_font_montserrat_14, 206);
 
         make_button(lv_scr_act(), "Cancel", COL_SURFACE, COL_TEXT, 232, ACT_BTN_H,
