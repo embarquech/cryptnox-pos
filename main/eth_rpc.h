@@ -5,8 +5,9 @@
 
 /**
  * @file eth_rpc.h
- * @brief WiFi bring-up, SNTP time sync and Ethereum JSON-RPC client
- *        (nonce / ecrecover parity / raw-tx broadcast) over HTTPS.
+ * @brief Ethereum JSON-RPC client over HTTPS (nonce / ecrecover parity /
+ *        raw-tx broadcast / receipt polling).  Network bring-up (Wi-Fi,
+ *        SNTP) lives in net.h.
  */
 
 #ifndef ETH_RPC_H
@@ -44,13 +45,6 @@ typedef enum {
     ETH_RPC_RECEIPT_RPC_ERROR, /**< transport or parse error (transient)      */
 } eth_rpc_receipt_result_t;
 
-/** @brief A scanned access point (subset of fields the UI needs). */
-typedef struct {
-    char   ssid[33];   /**< NUL-terminated SSID (max 32 chars + NUL). */
-    int8_t rssi;       /**< Signal strength, dBm (closer to 0 = stronger). */
-    bool   open;       /**< true if the network is open (no password). */
-} eth_wifi_ap_t;
-
 /******************************************************************
  * 3. Public API
  ******************************************************************/
@@ -79,54 +73,6 @@ void eth_rpc_init(const char *rpc_url, const char *from_addr);
  * @param[in] api_secret Password (Infura API secret); NULL/empty disables auth.
  */
 void eth_rpc_set_auth(const char *project_id, const char *api_secret);
-
-/**
- * @brief Bring up the WiFi driver in station mode (idempotent).
- *
- * Initialises netif, the event loop and the WiFi driver and starts the STA.
- * Call once before scanning or connecting. Safe to call repeatedly.
- */
-void eth_rpc_wifi_init(void);
-
-/**
- * @brief Scan for nearby access points (blocking).
- *
- * @param[out] out  Array to fill with de-duplicated APs.
- * @param[in]  max  Capacity of @p out.
- * @return number of APs written (0 on error or none found).
- */
-uint16_t eth_rpc_wifi_scan(eth_wifi_ap_t *out, uint16_t max);
-
-/**
- * @brief Connect to a WiFi network and block until an IP is obtained
- *        (up to 30 s). May be called repeatedly to switch networks.
- *
- * @param[in] ssid     Network SSID.
- * @param[in] password Passphrase (empty string for an open network).
- * @return true on success, false on timeout or repeated association failure.
- */
-bool eth_rpc_wifi_connect(const char *ssid, const char *password);
-
-/**
- * @brief Read the RSSI of the currently associated access point.
- *
- * @param[out] rssi_out Signal strength in dBm (closer to 0 = stronger);
- *                      untouched when not associated.
- * @return true if associated and @p rssi_out was written, false otherwise.
- */
-bool eth_rpc_wifi_rssi(int8_t *rssi_out);
-
-/**
- * @brief Block until the system clock has been set via SNTP.
- *
- * Must be called after eth_rpc_wifi_connect() and before any HTTPS request:
- * without real time, TLS certificate validity-period checks are meaningless
- * (F-06).  SNTP keeps running in the background for periodic resyncs.
- *
- * @param[in] timeout_ms Maximum time to wait for the first sync.
- * @return true once the first sync completes, false on init error or timeout.
- */
-bool eth_rpc_time_sync(uint32_t timeout_ms);
 
 /**
  * @brief Fetch the pending transaction count (nonce) for from_addr.

@@ -1,0 +1,94 @@
+/*
+ * SPDX-License-Identifier: LGPL-3.0-or-later
+ * Copyright (c) 2026 Cryptnox SA
+ */
+
+/**
+ * @file net.h
+ * @brief Network bring-up: Wi-Fi station (init/scan/connect/RSSI) and SNTP
+ *        time sync.  No application-protocol logic lives here — the Ethereum
+ *        JSON-RPC client is in eth_rpc.h.
+ */
+
+#ifndef NET_H
+#define NET_H
+
+/******************************************************************
+ * 1. Included files
+ ******************************************************************/
+
+#include <stdint.h>
+#include <stdbool.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/******************************************************************
+ * 2. Types
+ ******************************************************************/
+
+/** @brief A scanned access point (subset of fields the UI needs). */
+typedef struct {
+    char   ssid[33];   /**< NUL-terminated SSID (max 32 chars + NUL). */
+    int8_t rssi;       /**< Signal strength, dBm (closer to 0 = stronger). */
+    bool   open;       /**< true if the network is open (no password). */
+} net_wifi_ap_t;
+
+/******************************************************************
+ * 3. Public API
+ ******************************************************************/
+
+/**
+ * @brief Bring up the WiFi driver in station mode (idempotent).
+ *
+ * Initialises netif, the event loop and the WiFi driver and starts the STA.
+ * Call once before scanning or connecting. Safe to call repeatedly.
+ */
+void net_wifi_init(void);
+
+/**
+ * @brief Scan for nearby access points (blocking).
+ *
+ * @param[out] out  Array to fill with de-duplicated APs.
+ * @param[in]  max  Capacity of @p out.
+ * @return number of APs written (0 on error or none found).
+ */
+uint16_t net_wifi_scan(net_wifi_ap_t *out, uint16_t max);
+
+/**
+ * @brief Connect to a WiFi network and block until an IP is obtained
+ *        (up to 30 s). May be called repeatedly to switch networks.
+ *
+ * @param[in] ssid     Network SSID.
+ * @param[in] password Passphrase (empty string for an open network).
+ * @return true on success, false on timeout or repeated association failure.
+ */
+bool net_wifi_connect(const char *ssid, const char *password);
+
+/**
+ * @brief Read the RSSI of the currently associated access point.
+ *
+ * @param[out] rssi_out Signal strength in dBm (closer to 0 = stronger);
+ *                      untouched when not associated.
+ * @return true if associated and @p rssi_out was written, false otherwise.
+ */
+bool net_wifi_rssi(int8_t *rssi_out);
+
+/**
+ * @brief Block until the system clock has been set via SNTP.
+ *
+ * Must be called after net_wifi_connect() and before any HTTPS request:
+ * without real time, TLS certificate validity-period checks are meaningless
+ * (F-06).  SNTP keeps running in the background for periodic resyncs.
+ *
+ * @param[in] timeout_ms Maximum time to wait for the first sync.
+ * @return true once the first sync completes, false on init error or timeout.
+ */
+bool net_time_sync(uint32_t timeout_ms);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif // NET_H

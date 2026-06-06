@@ -20,7 +20,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#include "eth_rpc.h"   /* eth_wifi_ap_t for the network picker */
+#include "net.h"   /* net_wifi_ap_t for the network picker */
 
 #ifdef __cplusplus
 extern "C" {
@@ -129,7 +129,7 @@ size_t ui_take_pin(char *out, size_t n);
  * @param[in] aps Array of scanned APs (copied internally).
  * @param[in] n   Number of entries in @p aps.
  */
-void ui_show_wifi_list(const eth_wifi_ap_t *aps, uint16_t n);
+void ui_show_wifi_list(const net_wifi_ap_t *aps, uint16_t n);
 
 /**
  * @brief Provide the USDC contract and destination addresses for the

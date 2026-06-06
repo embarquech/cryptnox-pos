@@ -1,6 +1,6 @@
 idf_component_register(
-    SRCS "main.cpp" "keccak256.cpp" "eth_rlp.cpp" "eth_rpc.cpp" "ui.cpp" "logo_img.c"
-         "settings.cpp" "usdc_logo.c" "card_img.c" "logo_small.c"
+    SRCS "main.cpp" "keccak256.cpp" "eth_rlp.cpp" "eth_rpc.cpp" "net.cpp" "ui.cpp"
+         "logo_img.c" "settings.cpp" "usdc_logo.c" "card_img.c" "logo_small.c"
     INCLUDE_DIRS "."
     REQUIRES pn532 driver esp_adc cryptnox_utils crypto_provider esp32_logger esp32_platform
              secure_channel pn532_nfc_transport

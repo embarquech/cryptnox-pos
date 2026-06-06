@@ -65,6 +65,7 @@ extern "C" {
 #include "keccak256.h"
 #include "eth_rlp.h"
 #include "eth_rpc.h"
+#include "net.h"
 #include "ui.h"
 }
 
@@ -451,14 +452,14 @@ static void ensure_wifi(void)
     char ssid[33] = { 0 };
     char pass[65] = { 0 };
     if (settings_get_wifi(ssid, sizeof(ssid), pass, sizeof(pass))) {
-        bool ok = eth_rpc_wifi_connect(ssid, pass);
+        bool ok = net_wifi_connect(ssid, pass);
         CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(pass), sizeof(pass));
         if (ok) { return; }
     }
 
     /* No usable saved network — forced interactive setup. */
-    eth_wifi_ap_t aps[16];
-    uint16_t n = eth_rpc_wifi_scan(aps, 16);
+    net_wifi_ap_t aps[16];
+    uint16_t n = net_wifi_scan(aps, 16);
     ui_show_wifi_list(aps, n);
 
     ui_msg_t msg;
@@ -472,7 +473,7 @@ static void ensure_wifi(void)
             if (ui_take_wifi_creds(w_ssid, sizeof(w_ssid),
                                    w_pass, sizeof(w_pass)) > 0U) {
                 ui_show_wifi_connecting(w_ssid);
-                ok = eth_rpc_wifi_connect(w_ssid, w_pass);
+                ok = net_wifi_connect(w_ssid, w_pass);
                 if (ok) { settings_set_wifi(w_ssid, w_pass); }
             }
             CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(w_pass), sizeof(w_pass));
@@ -481,7 +482,7 @@ static void ensure_wifi(void)
 
         /* WIFI_SCAN, a failed connect, or any stray event: re-scan and show
          * the list again so the user stays in setup until connected. */
-        n = eth_rpc_wifi_scan(aps, 16);
+        n = net_wifi_scan(aps, 16);
         ui_show_wifi_list(aps, n);
     }
 }
@@ -564,7 +565,7 @@ extern "C" void app_main(void)
 #if defined(RPC_PROJECT_ID) && defined(RPC_API_SECRET)
     eth_rpc_set_auth(RPC_PROJECT_ID, RPC_API_SECRET);
 #endif
-    eth_rpc_wifi_init();
+    net_wifi_init();
     /* Connect with saved creds, or run the first-run picker until connected
      * (config.h Wi-Fi is no longer used). */
     ensure_wifi();
@@ -574,7 +575,7 @@ extern "C" void app_main(void)
      * of rounds — flaky uplinks (phone hotspots) often need a second try. */
     bool time_ok = false;
     for (int attempt = 0; (attempt < 3) && !time_ok; attempt++) {
-        time_ok = eth_rpc_time_sync(15000U);
+        time_ok = net_time_sync(15000U);
     }
     if (!time_ok) {
         ESP_LOGE(TAG, "SNTP time sync failed");
@@ -669,8 +670,8 @@ extern "C" void app_main(void)
 
             case UI_EVENT_WIFI_SCAN: {
                 /* Scan runs in this task so the UI stays responsive. */
-                eth_wifi_ap_t aps[16];
-                uint16_t n = eth_rpc_wifi_scan(aps, 16);
+                net_wifi_ap_t aps[16];
+                uint16_t n = net_wifi_scan(aps, 16);
                 ui_show_wifi_list(aps, n);
                 break;
             }
@@ -681,13 +682,13 @@ extern "C" void app_main(void)
                 if (ui_take_wifi_creds(w_ssid, sizeof(w_ssid),
                                        w_pass, sizeof(w_pass)) > 0U) {
                     ui_show_wifi_connecting(w_ssid);
-                    if (eth_rpc_wifi_connect(w_ssid, w_pass)) {
+                    if (net_wifi_connect(w_ssid, w_pass)) {
                         settings_set_wifi(w_ssid, w_pass);   /* persist for next boot */
                         ui_show_amount_entry();
                     } else {
                         /* Failed — rescan and show the list again to retry. */
-                        eth_wifi_ap_t aps[16];
-                        uint16_t n = eth_rpc_wifi_scan(aps, 16);
+                        net_wifi_ap_t aps[16];
+                        uint16_t n = net_wifi_scan(aps, 16);
                         ui_show_wifi_list(aps, n);
                     }
                 }

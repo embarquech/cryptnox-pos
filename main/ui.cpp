@@ -273,7 +273,7 @@ static uint8_t   s_pin_len     = 0;
 
 /* Wi-Fi picker */
 #define WIFI_MAX_APS 16
-static eth_wifi_ap_t s_aps[WIFI_MAX_APS];
+static net_wifi_ap_t s_aps[WIFI_MAX_APS];
 static uint16_t      s_ap_count = 0;
 static char          s_wifi_ssid[33] = {0};   /* selected network          */
 static char          s_wifi_pass[65] = {0};   /* entered passphrase (handoff) */
@@ -731,7 +731,7 @@ static void build_settings(void) {
 
     /* Link quality of the live association (snapshot at settings open). */
     int8_t rssi = 0;
-    if (eth_rpc_wifi_rssi(&rssi)) {
+    if (net_wifi_rssi(&rssi)) {
         const char *qual = (rssi >= -50) ? "Excellent" :
                            (rssi >= -60) ? "Good"      :
                            (rssi >= -70) ? "Fair"      : "Weak";
@@ -1415,7 +1415,7 @@ extern "C" size_t ui_take_pin(char *out, size_t n) {
     return len;
 }
 
-extern "C" void ui_show_wifi_list(const eth_wifi_ap_t *aps, uint16_t n) {
+extern "C" void ui_show_wifi_list(const net_wifi_ap_t *aps, uint16_t n) {
     s_ap_count = (n > WIFI_MAX_APS) ? WIFI_MAX_APS : n;
     for (uint16_t i = 0U; i < s_ap_count; i++) {
         s_aps[i] = aps[i];
