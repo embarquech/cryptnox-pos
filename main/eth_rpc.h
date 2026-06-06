@@ -108,6 +108,15 @@ uint16_t eth_rpc_wifi_scan(eth_wifi_ap_t *out, uint16_t max);
 bool eth_rpc_wifi_connect(const char *ssid, const char *password);
 
 /**
+ * @brief Read the RSSI of the currently associated access point.
+ *
+ * @param[out] rssi_out Signal strength in dBm (closer to 0 = stronger);
+ *                      untouched when not associated.
+ * @return true if associated and @p rssi_out was written, false otherwise.
+ */
+bool eth_rpc_wifi_rssi(int8_t *rssi_out);
+
+/**
  * @brief Block until the system clock has been set via SNTP.
  *
  * Must be called after eth_rpc_wifi_connect() and before any HTTPS request:

@@ -729,6 +729,19 @@ static void build_settings(void) {
     lv_label_set_long_mode(cur, LV_LABEL_LONG_DOT);
     lv_obj_set_width(cur, 220);
 
+    /* Link quality of the live association (snapshot at settings open). */
+    int8_t rssi = 0;
+    if (eth_rpc_wifi_rssi(&rssi)) {
+        const char *qual = (rssi >= -50) ? "Excellent" :
+                           (rssi >= -60) ? "Good"      :
+                           (rssi >= -70) ? "Fair"      : "Weak";
+        char sig[40];
+        snprintf(sig, sizeof(sig), "Signal: %s (%d dBm)", qual,
+                 static_cast<int>(rssi));
+        make_label(t_wifi, sig, COL_DIM, &lv_font_montserrat_14,
+                   LV_ALIGN_TOP_LEFT, 0, 44);
+    }
+
     make_button(t_wifi, LV_SYMBOL_WIFI " Scan networks", COL_ACCENT, COL_BG,
                 220, 44, LV_ALIGN_CENTER, 0, 6, ACT_WIFI, &lv_font_montserrat_20);
 

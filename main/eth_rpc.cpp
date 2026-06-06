@@ -433,6 +433,17 @@ bool eth_rpc_wifi_connect(const char *ssid, const char *password)
     return connected;
 }
 
+bool eth_rpc_wifi_rssi(int8_t *rssi_out)
+{
+    if (rssi_out == NULL) { return false; }
+    wifi_ap_record_t ap;
+    if (esp_wifi_sta_get_ap_info(&ap) != ESP_OK) {
+        return false;   /* not associated */
+    }
+    *rssi_out = ap.rssi;
+    return true;
+}
+
 bool eth_rpc_get_nonce(uint64_t *nonce_out)
 {
     char body[256];
