@@ -610,3 +610,41 @@ bool eth_rpc_send_raw_tx(const uint8_t *tx, size_t tx_len,
     ESP_LOGI(TAG, "Tx hash: %s", tx_hash_out);
     return true;
 }
+
+eth_rpc_receipt_result_t eth_rpc_get_tx_receipt(const char *tx_hash)
+{
+    char body[160];
+    (void)snprintf(body, sizeof(body),
+                   "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionReceipt\","
+                   "\"params\":[\"%s\"],\"id\":3}",
+                   tx_hash);
+
+    /* Receipts are large (the logsBloom field alone is 512 hex chars, plus
+     * the ERC-20 Transfer log) — use a dedicated heap buffer, a truncated
+     * body would fail the JSON parse. */
+    const size_t resp_size = 4096U;
+    char *resp = static_cast<char *>(malloc(resp_size));
+    if (resp == NULL) { return ETH_RPC_RECEIPT_RPC_ERROR; }
+
+    eth_rpc_receipt_result_t verdict = ETH_RPC_RECEIPT_RPC_ERROR;
+    if (do_post(body, resp, resp_size)) {
+        cJSON *root = cJSON_Parse(resp);
+        if (root != NULL) {
+            const cJSON *result = cJSON_GetObjectItemCaseSensitive(root, "result");
+            if (cJSON_IsNull(result)) {
+                verdict = ETH_RPC_RECEIPT_PENDING;   /* not mined yet */
+            } else if (cJSON_IsObject(result)) {
+                const cJSON *status =
+                    cJSON_GetObjectItemCaseSensitive(result, "status");
+                if (cJSON_IsString(status) && (status->valuestring != NULL)) {
+                    verdict = (strcmp(status->valuestring, "0x1") == 0)
+                                  ? ETH_RPC_RECEIPT_SUCCESS
+                                  : ETH_RPC_RECEIPT_REVERTED;
+                }
+            }
+            cJSON_Delete(root);
+        }
+    }
+    free(resp);
+    return verdict;
+}

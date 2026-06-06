@@ -36,6 +36,14 @@ typedef enum {
     ETH_RPC_PARITY_RPC_ERROR,   /**< no usable RPC response for either parity    */
 } eth_rpc_parity_result_t;
 
+/** @brief Outcome of one eth_getTransactionReceipt poll. */
+typedef enum {
+    ETH_RPC_RECEIPT_PENDING,   /**< result is null — not mined yet            */
+    ETH_RPC_RECEIPT_SUCCESS,   /**< mined with status 0x1 — payment final     */
+    ETH_RPC_RECEIPT_REVERTED,  /**< mined with status 0x0 — execution failed  */
+    ETH_RPC_RECEIPT_RPC_ERROR, /**< transport or parse error (transient)      */
+} eth_rpc_receipt_result_t;
+
 /** @brief A scanned access point (subset of fields the UI needs). */
 typedef struct {
     char   ssid[33];   /**< NUL-terminated SSID (max 32 chars + NUL). */
@@ -156,6 +164,22 @@ eth_rpc_parity_result_t eth_rpc_ecrecover_parity(const uint8_t hash[32],
  */
 bool eth_rpc_send_raw_tx(const uint8_t *tx, size_t tx_len,
                           char *tx_hash_out, size_t tx_hash_max);
+
+/**
+ * @brief Poll the receipt of a broadcast transaction (one shot).
+ *
+ * Calls eth_getTransactionReceipt.  A broadcast acceptance only means the tx
+ * entered the mempool — a POS must wait for the mined receipt (status 0x1)
+ * before declaring the payment approved.
+ *
+ * @param[in] tx_hash "0x..."-prefixed transaction hash from
+ *                    @ref eth_rpc_send_raw_tx.
+ * @retval ETH_RPC_RECEIPT_PENDING   Not mined yet — poll again later.
+ * @retval ETH_RPC_RECEIPT_SUCCESS   Mined, execution succeeded.
+ * @retval ETH_RPC_RECEIPT_REVERTED  Mined but reverted — funds NOT moved.
+ * @retval ETH_RPC_RECEIPT_RPC_ERROR Transport/parse error (may be transient).
+ */
+eth_rpc_receipt_result_t eth_rpc_get_tx_receipt(const char *tx_hash);
 
 #ifdef __cplusplus
 }

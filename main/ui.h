@@ -60,7 +60,8 @@ typedef enum {
     UI_TX_STATE_PROCESSING,  /**< Card tapped — opening the secure channel. */
     UI_TX_STATE_SIGNING,     /**< Card found, signing in progress.    */
     UI_TX_STATE_SENDING,     /**< Broadcasting the signed tx.         */
-    UI_TX_STATE_DONE,        /**< Broadcast succeeded.                */
+    UI_TX_STATE_CONFIRMING,  /**< Broadcast — waiting for the mined receipt. */
+    UI_TX_STATE_DONE,        /**< Receipt mined with status 0x1.      */
     UI_TX_STATE_FAILED,      /**< Any failure; info line says why.    */
 } ui_tx_state_t;
 

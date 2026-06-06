@@ -630,7 +630,33 @@ extern "C" void app_main(void)
                 if (s_user_cancelled) {
                     /* Cancel during PLACE_CARD — UI already on amount entry. */
                 } else if (ok) {
-                    ui_show_tx_status(UI_TX_STATE_DONE, tx_hash);
+                    /* Broadcast accepted only means "entered the mempool" — a
+                     * POS must not claim Approved until the tx is mined with
+                     * status 0x1. Poll the receipt (Sepolia block ~12 s). */
+                    ui_show_tx_status(UI_TX_STATE_CONFIRMING, NULL);
+                    eth_rpc_receipt_result_t rc = ETH_RPC_RECEIPT_PENDING;
+                    const int64_t deadline =
+                        esp_timer_get_time() + 120LL * 1000000LL;  /* 120 s */
+                    while (esp_timer_get_time() < deadline) {
+                        rc = eth_rpc_get_tx_receipt(tx_hash);
+                        if ((rc == ETH_RPC_RECEIPT_SUCCESS) ||
+                            (rc == ETH_RPC_RECEIPT_REVERTED)) {
+                            break;
+                        }
+                        /* PENDING or transient RPC error — try again. */
+                        vTaskDelay(pdMS_TO_TICKS(4000));
+                    }
+                    if (rc == ETH_RPC_RECEIPT_SUCCESS) {
+                        ESP_LOGI(TAG, "Tx confirmed on-chain");
+                        ui_show_tx_status(UI_TX_STATE_DONE, tx_hash);
+                    } else if (rc == ETH_RPC_RECEIPT_REVERTED) {
+                        ESP_LOGE(TAG, "Tx reverted on-chain: %s", tx_hash);
+                        ui_show_tx_status(UI_TX_STATE_FAILED, "Payment reverted");
+                    } else {
+                        ESP_LOGE(TAG, "Tx not confirmed after 120 s: %s", tx_hash);
+                        ui_show_tx_status(UI_TX_STATE_FAILED,
+                                          "Confirmation timeout - check explorer");
+                    }
                 } else {
                     ui_show_tx_status(UI_TX_STATE_FAILED, err_msg);
                 }

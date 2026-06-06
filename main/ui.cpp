@@ -1226,7 +1226,8 @@ static void build_tx_status(void) {
      * the main task is busy connecting/signing/broadcasting. */
     const char *state_str =
         (s_tx_state == UI_TX_STATE_PROCESSING) ? "Processing" :
-        (s_tx_state == UI_TX_STATE_SIGNING)    ? "Signing"    : "Authorizing";
+        (s_tx_state == UI_TX_STATE_SIGNING)    ? "Signing"    :
+        (s_tx_state == UI_TX_STATE_CONFIRMING) ? "Confirming" : "Authorizing";
 
     lv_obj_t *sp = lv_spinner_create(lv_scr_act(), 1000, 60);
     lv_obj_set_size(sp, 60, 60);
