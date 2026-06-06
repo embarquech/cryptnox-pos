@@ -262,8 +262,14 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
     (void)memset(&tx, 0, sizeof(tx));
     tx.chain_id          = CHAIN_ID_SEPOLIA;
     tx.nonce             = nonce;
-    tx.max_priority_fee  = MAX_PRIORITY_FEE;
-    tx.max_fee           = MAX_FEE;
+    /* Fees come from the settings menu (defaulting to the config.h values on
+     * first boot); config.h still owns the gas limit. The user edits Gwei, so
+     * scale to wei. Keep the tip <= the cap or the tx is malformed. */
+    uint64_t max_fee_wei  = (uint64_t)settings_get_max_fee_gwei()      * 1000000000ULL;
+    uint64_t prio_fee_wei = (uint64_t)settings_get_priority_fee_gwei() * 1000000000ULL;
+    if (prio_fee_wei > max_fee_wei) { prio_fee_wei = max_fee_wei; }
+    tx.max_priority_fee  = prio_fee_wei;
+    tx.max_fee           = max_fee_wei;
     tx.gas_limit         = GAS_LIMIT_ERC20;
     tx.eth_value         = 0U;
     tx.calldata          = calldata;
@@ -287,6 +293,11 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
         ui_show_tx_status(UI_TX_STATE_PLACE_CARD, "Hold card to reader");
     }
 
+    /* Start from a clean reader state: a previous attempt that ended with the
+     * card ripped away mid-exchange can leave a stale target selected, which
+     * would make every InListPassiveTarget below time out. */
+    transport.resetReader();
+
     /* Manual connect loop with cancel checks between PN532 polls — replaces
      * wallet.connect() so a Cancel from the user aborts within one PN532
      * timeout. Give the user up to 60 s to present the card. */
@@ -302,10 +313,21 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
             break;   /* timed out waiting for the card */
         }
         if (transport.inListPassiveTarget()) {
+            /* Card tapped — show immediate feedback while the secure channel
+             * comes up. */
+            ui_show_tx_status(UI_TX_STATE_PROCESSING, NULL);
             vTaskDelay(pdMS_TO_TICKS(200));
             if (wallet.establishSecureChannel(session)) {
                 connected = true;
                 break;
+            }
+            /* Card pulled away (or channel failed) — the PN532 still holds the
+             * now-dead target selected, which makes every following
+             * InListPassiveTarget time out. Release it so the reader can see
+             * the card again, then back to the tap prompt. */
+            transport.resetReader();
+            if (!s_user_cancelled) {
+                ui_show_tx_status(UI_TX_STATE_PLACE_CARD, "Hold card to reader");
             }
         }
         vTaskDelay(pdMS_TO_TICKS(200));

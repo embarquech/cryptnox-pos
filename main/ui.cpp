@@ -288,6 +288,13 @@ static const char *s_addr_dest = NULL;
 static lv_obj_t *s_reset_btn = NULL;
 static lv_obj_t *s_close_btn = NULL;
 
+/* Tx-tab gas fees (Gwei). Loaded from settings on build, edited via +/- steppers,
+ * persisted on close. */
+static lv_obj_t *s_maxfee_lbl  = NULL;
+static lv_obj_t *s_prio_lbl    = NULL;
+static uint32_t  s_maxfee_gwei = 0U;
+static uint32_t  s_prio_gwei   = 0U;
+
 /******************************************************************
  * 6. Button actions
  ******************************************************************/
@@ -491,6 +498,8 @@ static void clear_screen(void) {
     s_wifi_pass_ta = NULL;
     s_reset_btn    = NULL;
     s_close_btn    = NULL;
+    s_maxfee_lbl   = NULL;
+    s_prio_lbl     = NULL;
 }
 
 /******************************************************************
@@ -499,6 +508,8 @@ static void clear_screen(void) {
 static void settings_persist(void) {
     settings_set_brightness(s_brightness);
     settings_set_auto_brightness(s_auto_brightness);
+    settings_set_max_fee_gwei(s_maxfee_gwei);
+    settings_set_priority_fee_gwei(s_prio_gwei);
 }
 
 static void brightness_event_cb(lv_event_t *e) {
@@ -547,6 +558,87 @@ static void tab_change_cb(lv_event_t *e) {
     }
 }
 
+/* Gas-fee stepper bounds (Gwei). */
+#define FEE_MIN_GWEI   1U
+#define FEE_MAX_GWEI   500U
+#define FEE_STEP_GWEI  5U
+
+static void fee_update_labels(void) {
+    char b[12];
+    if (s_maxfee_lbl != NULL) {
+        snprintf(b, sizeof(b), "%u", static_cast<unsigned>(s_maxfee_gwei));
+        lv_label_set_text(s_maxfee_lbl, b);
+    }
+    if (s_prio_lbl != NULL) {
+        snprintf(b, sizeof(b), "%u", static_cast<unsigned>(s_prio_gwei));
+        lv_label_set_text(s_prio_lbl, b);
+    }
+}
+
+/* user_data encodes which fee and direction: 0 max-, 1 max+, 2 prio-, 3 prio+. */
+static void fee_step_cb(lv_event_t *e) {
+    intptr_t code = reinterpret_cast<intptr_t>(lv_event_get_user_data(e));
+    uint32_t *v   = (code < 2) ? &s_maxfee_gwei : &s_prio_gwei;
+    bool inc      = (code & 1) != 0;
+
+    if (inc) {
+        *v = (*v + FEE_STEP_GWEI > FEE_MAX_GWEI) ? FEE_MAX_GWEI : *v + FEE_STEP_GWEI;
+    } else {
+        *v = (*v < FEE_MIN_GWEI + FEE_STEP_GWEI) ? FEE_MIN_GWEI : *v - FEE_STEP_GWEI;
+    }
+    /* The tip can never exceed the cap. */
+    if (s_prio_gwei > s_maxfee_gwei) { s_prio_gwei = s_maxfee_gwei; }
+    fee_update_labels();
+}
+
+/* One "caption  [-] value [+]" row in the Tx tab; returns the value label. */
+static lv_obj_t *build_fee_row(lv_obj_t *parent, const char *cap, lv_coord_t y,
+                               intptr_t dec_code, intptr_t inc_code) {
+    make_label(parent, cap, COL_DIM, &lv_font_montserrat_14,
+               LV_ALIGN_TOP_LEFT, 0, y);
+
+    lv_obj_t *minus = lv_btn_create(parent);
+    lv_obj_set_size(minus, 40, 34);
+    lv_obj_align(minus, LV_ALIGN_TOP_LEFT, 0, y + 20);
+    lv_obj_set_style_bg_color(minus, COL_SURFACE, LV_PART_MAIN);
+    lv_obj_set_style_bg_grad_dir(minus, LV_GRAD_DIR_NONE, LV_PART_MAIN);
+    lv_obj_set_style_radius(minus, 8, LV_PART_MAIN);
+    lv_obj_set_style_border_width(minus, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(minus, COL_BORDER, LV_PART_MAIN);
+    lv_obj_set_style_shadow_width(minus, 0, LV_PART_MAIN);
+    lv_obj_add_event_cb(minus, fee_step_cb, LV_EVENT_CLICKED,
+                        reinterpret_cast<void *>(dec_code));
+    lv_obj_t *ml = lv_label_create(minus);
+    lv_label_set_text(ml, "-");
+    lv_obj_set_style_text_color(ml, COL_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(ml, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_center(ml);
+
+    lv_obj_t *val = make_label(parent, "0", COL_TEXT, &lv_font_montserrat_20,
+                               LV_ALIGN_TOP_LEFT, 52, y + 24);
+    lv_obj_set_width(val, 78);
+    lv_obj_set_style_text_align(val, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+
+    lv_obj_t *plus = lv_btn_create(parent);
+    lv_obj_set_size(plus, 40, 34);
+    lv_obj_align(plus, LV_ALIGN_TOP_LEFT, 140, y + 20);
+    lv_obj_set_style_bg_color(plus, COL_SURFACE, LV_PART_MAIN);
+    lv_obj_set_style_bg_grad_dir(plus, LV_GRAD_DIR_NONE, LV_PART_MAIN);
+    lv_obj_set_style_radius(plus, 8, LV_PART_MAIN);
+    lv_obj_set_style_border_width(plus, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(plus, COL_BORDER, LV_PART_MAIN);
+    lv_obj_set_style_shadow_width(plus, 0, LV_PART_MAIN);
+    lv_obj_add_event_cb(plus, fee_step_cb, LV_EVENT_CLICKED,
+                        reinterpret_cast<void *>(inc_code));
+    lv_obj_t *pl = lv_label_create(plus);
+    lv_label_set_text(pl, "+");
+    lv_obj_set_style_text_color(pl, COL_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(pl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_center(pl);
+
+    return val;
+}
+
 static void build_settings(void) {
     clear_screen();   /* white, full screen */
 
@@ -579,10 +671,13 @@ static void build_settings(void) {
         lv_obj_set_style_pad_all(pages[i], 12, LV_PART_MAIN);
         lv_obj_clear_flag(pages[i], LV_OBJ_FLAG_SCROLLABLE);
     }
-    /* About can overflow — let it scroll vertically with a scrollbar. */
-    lv_obj_add_flag(t_about, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_scroll_dir(t_about, LV_DIR_VER);
-    lv_obj_set_scrollbar_mode(t_about, LV_SCROLLBAR_MODE_AUTO);
+    /* About and Tx can overflow — let them scroll vertically with a scrollbar. */
+    lv_obj_t *scrollable[2] = { t_about, t_tx };
+    for (int i = 0; i < 2; i++) {
+        lv_obj_add_flag(scrollable[i], LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_scroll_dir(scrollable[i], LV_DIR_VER);
+        lv_obj_set_scrollbar_mode(scrollable[i], LV_SCROLLBAR_MODE_AUTO);
+    }
 
     /* ── Screen tab: brightness ── */
     make_label(t_screen, "Brightness", COL_TEXT, &lv_font_montserrat_14,
@@ -650,6 +745,14 @@ static void build_settings(void) {
     lv_label_set_long_mode(a_dest, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(a_dest, 200);
 
+    /* Editable EIP-1559 gas fees (Gwei), defaulting to the config.h values. */
+    s_maxfee_gwei = settings_get_max_fee_gwei();
+    s_prio_gwei   = settings_get_priority_fee_gwei();
+    if (s_prio_gwei > s_maxfee_gwei) { s_prio_gwei = s_maxfee_gwei; }
+    s_maxfee_lbl  = build_fee_row(t_tx, "Max fee (Gwei):",      128, 0, 1);
+    s_prio_lbl    = build_fee_row(t_tx, "Priority fee (Gwei):", 196, 2, 3);
+    fee_update_labels();
+
     /* ── About tab: small C logo, name, version, info ── */
     lv_obj_t *blogo = lv_img_create(t_about);
     lv_img_set_src(blogo, &logo_small);   /* 40px dedicated image */
@@ -713,7 +816,7 @@ static void open_reset_confirm(void) {
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(card, LV_OBJ_FLAG_CLICKABLE);
 
-    lv_obj_t *msg = make_label(card, "Erase all settings\n(Wi-Fi, brightness)\nand reboot?",
+    lv_obj_t *msg = make_label(card, "Erase all settings\n(Wi-Fi, brightness, fees)\nand reboot?",
                                COL_TEXT, &lv_font_montserrat_14,
                                LV_ALIGN_TOP_MID, 0, 12);
     lv_obj_set_style_text_align(msg, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
@@ -1095,11 +1198,12 @@ static void build_tx_status(void) {
         return;
     }
 
-    /* SIGNING / SENDING — animated spinner + status text. The spinner keeps
-     * turning because lv_timer_handler runs on the UI task while the main task
-     * is busy signing/broadcasting. */
+    /* PROCESSING / SIGNING / SENDING — animated spinner + status text. The
+     * spinner keeps turning because lv_timer_handler runs on the UI task while
+     * the main task is busy connecting/signing/broadcasting. */
     const char *state_str =
-        (s_tx_state == UI_TX_STATE_SIGNING) ? "Signing" : "Authorizing";
+        (s_tx_state == UI_TX_STATE_PROCESSING) ? "Processing" :
+        (s_tx_state == UI_TX_STATE_SIGNING)    ? "Signing"    : "Authorizing";
 
     lv_obj_t *sp = lv_spinner_create(lv_scr_act(), 1000, 60);
     lv_obj_set_size(sp, 60, 60);

@@ -14,6 +14,8 @@
 #include "nvs.h"
 #include "esp_log.h"
 
+#include "config.h"   /* MAX_FEE / MAX_PRIORITY_FEE — compile-time fee defaults */
+
 static const char *const TAG = "settings";
 
 #define NS_SETTINGS   "settings"
@@ -21,8 +23,15 @@ static const char *const TAG = "settings";
 #define K_AUTO_BL     "auto_bl"
 #define K_WIFI_SSID   "wifi_ssid"
 #define K_WIFI_PASS   "wifi_pass"
+#define K_MAX_FEE     "max_fee_gw"
+#define K_PRIO_FEE    "prio_fee_gw"
 
 #define DEFAULT_BRIGHTNESS  80U
+
+/* config.h carries the fees in wei; the UI works in Gwei. */
+#define WEI_PER_GWEI               1000000000ULL
+#define DEFAULT_MAX_FEE_GWEI       (uint32_t)(MAX_FEE / WEI_PER_GWEI)
+#define DEFAULT_PRIORITY_FEE_GWEI  (uint32_t)(MAX_PRIORITY_FEE / WEI_PER_GWEI)
 
 uint8_t settings_get_brightness(void)
 {
@@ -124,6 +133,49 @@ void settings_set_wifi(const char *ssid, const char *pass)
     } else {
         ESP_LOGW(TAG, "wifi: nvs_open failed");
     }
+}
+
+static uint32_t fee_get(const char *key, uint32_t def)
+{
+    uint32_t val = def;
+    nvs_handle_t h;
+    if (nvs_open(NS_SETTINGS, NVS_READONLY, &h) == ESP_OK) {
+        (void)nvs_get_u32(h, key, &val);
+        nvs_close(h);
+    }
+    return val;
+}
+
+static void fee_set(const char *key, uint32_t gwei)
+{
+    nvs_handle_t h;
+    if (nvs_open(NS_SETTINGS, NVS_READWRITE, &h) == ESP_OK) {
+        (void)nvs_set_u32(h, key, gwei);
+        (void)nvs_commit(h);
+        nvs_close(h);
+    } else {
+        ESP_LOGW(TAG, "fee %s: nvs_open failed", key);
+    }
+}
+
+uint32_t settings_get_max_fee_gwei(void)
+{
+    return fee_get(K_MAX_FEE, DEFAULT_MAX_FEE_GWEI);
+}
+
+void settings_set_max_fee_gwei(uint32_t gwei)
+{
+    fee_set(K_MAX_FEE, gwei);
+}
+
+uint32_t settings_get_priority_fee_gwei(void)
+{
+    return fee_get(K_PRIO_FEE, DEFAULT_PRIORITY_FEE_GWEI);
+}
+
+void settings_set_priority_fee_gwei(uint32_t gwei)
+{
+    fee_set(K_PRIO_FEE, gwei);
 }
 
 void settings_factory_reset(void)

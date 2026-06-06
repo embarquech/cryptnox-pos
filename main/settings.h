@@ -52,7 +52,26 @@ bool settings_get_wifi(char *ssid, size_t ssid_n, char *pass, size_t pass_n);
 /** @brief Persist Wi-Fi credentials (plaintext — see README threat model). */
 void settings_set_wifi(const char *ssid, const char *pass);
 
-/** @brief Erase all stored settings (brightness, auto, Wi-Fi creds). */
+/**
+ * @brief EIP-1559 max fee per gas, in Gwei.
+ * @return the stored override, or the config.h compile-time default (MAX_FEE)
+ *         if the user has never changed it.
+ */
+uint32_t settings_get_max_fee_gwei(void);
+
+/** @brief Persist the max fee per gas (Gwei). */
+void settings_set_max_fee_gwei(uint32_t gwei);
+
+/**
+ * @brief EIP-1559 max priority fee (tip) per gas, in Gwei.
+ * @return the stored override, or the config.h default (MAX_PRIORITY_FEE).
+ */
+uint32_t settings_get_priority_fee_gwei(void);
+
+/** @brief Persist the max priority fee per gas (Gwei). */
+void settings_set_priority_fee_gwei(uint32_t gwei);
+
+/** @brief Erase all stored settings (brightness, auto, Wi-Fi creds, fees). */
 void settings_factory_reset(void);
 
 #ifdef __cplusplus

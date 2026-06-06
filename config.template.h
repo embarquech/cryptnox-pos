@@ -83,9 +83,11 @@
  * ========================= */
 #define CHAIN_ID_SEPOLIA  11155111
 
-/* Gas parameters (in wei) */
-#define MAX_PRIORITY_FEE  2000000000ULL  /* 2 Gwei */
-#define MAX_FEE           4000000000ULL  /* 4 Gwei */
-#define GAS_LIMIT_ERC20   60000ULL
+/* Gas parameters (in wei). MAX_FEE / MAX_PRIORITY_FEE are only the first-boot
+ * defaults — they're editable at runtime from the settings "Tx" tab (in Gwei)
+ * and persisted to NVS. GAS_LIMIT_ERC20 stays compile-time. */
+#define MAX_PRIORITY_FEE  20000000000ULL   /* 20 Gwei — tip to the validator   */
+#define MAX_FEE           80000000000ULL   /* 80 Gwei — absolute cap           */
+#define GAS_LIMIT_ERC20   100000ULL
 
 #endif // CONFIG_H

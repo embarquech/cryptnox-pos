@@ -57,6 +57,7 @@ typedef enum {
 /** @brief States shown on the transaction-status screen. */
 typedef enum {
     UI_TX_STATE_PLACE_CARD,  /**< Waiting for the card on the reader. */
+    UI_TX_STATE_PROCESSING,  /**< Card tapped — opening the secure channel. */
     UI_TX_STATE_SIGNING,     /**< Card found, signing in progress.    */
     UI_TX_STATE_SENDING,     /**< Broadcasting the signed tx.         */
     UI_TX_STATE_DONE,        /**< Broadcast succeeded.                */
