@@ -304,10 +304,14 @@ enum BtnAction {
     ACT_WIFI, ACT_WIFI_CANCEL, ACT_RESET, ACT_RESET_CONFIRM, ACT_RESET_CANCEL,
 };
 
+/* Firmware version shown on the splash and the About tab. */
+#define APP_VERSION "v1.0"
+
 /* Settings — defined in section 7 (uses the widget helpers). */
 static void settings_persist(void);
 static void open_reset_confirm(void);
 static void close_reset_confirm(void);
+static void pop_in(lv_obj_t *obj);   /* defined in section 8 (animations) */
 static ui_screen_t s_settings_return = UI_SCREEN_AMOUNT;   /* screen to go back to */
 
 static void request_screen(ui_screen_t s) {
@@ -760,12 +764,16 @@ static void build_settings(void) {
 
     make_label(t_about, "cryptnox-pos", COL_TEXT, &lv_font_montserrat_20,
                LV_ALIGN_TOP_MID, 0, 42);
-    make_label(t_about, "v1.0", COL_DIM, &lv_font_montserrat_14,
+    make_label(t_about, APP_VERSION, COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_MID, 0, 70);
     lv_obj_t *about = make_label(t_about,
                                  "USDC payment terminal for Cryptnox cards\n\n"
                                  "Based on cryptnox-sdk-esp32 1.0.0\n"
-                                 "(c) Cryptnox 2026 - Educational use only",
+                                 "(c) Cryptnox 2026 - Educational use only\n\n"
+                                 "Licensed under LGPL-3.0-or-later\n\n"
+                                 "Third-party: ESP-IDF (Apache-2.0),\n"
+                                 "LVGL (MIT), TFT_eSPI (FreeBSD/MIT),\n"
+                                 "XPT2046_Touchscreen (MIT)",
                                  COL_DIM, &lv_font_montserrat_14,
                                  LV_ALIGN_TOP_MID, 0, 94);
     lv_label_set_long_mode(about, LV_LABEL_LONG_WRAP);
@@ -868,10 +876,25 @@ static void build_splash(void) {
 
     lv_obj_t *logo = lv_img_create(lv_scr_act());
     lv_img_set_src(logo, &logo_img);
-    lv_obj_align(logo, LV_ALIGN_CENTER, 0, -22);
+    lv_obj_align(logo, LV_ALIGN_CENTER, 0, -36);
+    pop_in(logo);   /* same overshoot entrance as the tx check/cross */
 
-    make_label(lv_scr_act(), "Payment terminal", lv_color_black(),
-               &lv_font_montserrat_14, LV_ALIGN_CENTER, 0, 80);
+    /* Tight under the logo (the image carries its own breathing margin). */
+    make_label(lv_scr_act(), "cryptnox-pos", lv_color_black(),
+               &lv_font_montserrat_20, LV_ALIGN_CENTER, 0, 40);
+
+    /* Boot feedback — the splash stays up while Wi-Fi/SNTP/RPC come up, so
+     * show a discreet spinner instead of looking frozen. */
+    lv_obj_t *sp = lv_spinner_create(lv_scr_act(), 1000, 60);
+    lv_obj_set_size(sp, 28, 28);
+    lv_obj_align(sp, LV_ALIGN_BOTTOM_MID, 0, -48);
+    lv_obj_set_style_arc_width(sp, 3, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(sp, 3, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_color(sp, COL_SURFACE, LV_PART_MAIN);
+    lv_obj_set_style_arc_color(sp, COL_ACCENT, LV_PART_INDICATOR);
+
+    make_label(lv_scr_act(), APP_VERSION, COL_DIM, &lv_font_montserrat_14,
+               LV_ALIGN_BOTTOM_MID, 0, -14);
 }
 
 static void build_amount(void) {
