@@ -2,7 +2,7 @@ var searchData=
 [
   ['parse_5faddress_0',['parse_address',['../main_8cpp.html#a25d11a814e96ff8ebf971cedbb59761c',1,'main.cpp']]],
   ['payload_1',['payload',['../structui__msg__t.html#a97c1e602e8dc9a6fbb9325ba15150f14',1,'ui_msg_t']]],
-  ['payment_20flow_2',['Payment flow',['../index.html#autotoc_md13',1,'']]],
+  ['payment_20flow_2',['Payment flow',['../index.html#autotoc_md15',1,'']]],
   ['pin_5fkbd_5fcb_3',['pin_kbd_cb',['../ui_8cpp.html#ae50f6f5be80985315f3775186403fbfd',1,'ui.cpp']]],
   ['pin_5fsubmit_4',['pin_submit',['../ui_8cpp.html#a714db8296c391b9fa33639d213f16627',1,'ui.cpp']]],
   ['pn532_20nfc_20—_20i²c_20interface_5',['CYD CN1 ↔ PN532 NFC — I²C interface',['../index.html#autotoc_md9',1,'']]],

@@ -37,9 +37,10 @@ var NAVTREE =
         [ "CYD CN1 ↔ PN532 NFC — I²C interface", "index.html#autotoc_md9", null ]
       ] ],
       [ "Configuration", "index.html#autotoc_md11", null ],
-      [ "Payment flow", "index.html#autotoc_md13", null ],
-      [ "Troubleshooting", "index.html#autotoc_md15", null ],
-      [ "License", "index.html#autotoc_md17", null ],
+      [ "Secure build (Flash Encryption + encrypted NVS + Secure Boot v2)", "index.html#autotoc_md13", null ],
+      [ "Payment flow", "index.html#autotoc_md15", null ],
+      [ "Troubleshooting", "index.html#autotoc_md17", null ],
+      [ "License", "index.html#autotoc_md19", null ],
       [ "Class List", "annotated.html", "annotated_dup" ],
       [ "Class Index", "classes.html", null ],
       [ "Class Hierarchy", "hierarchy.html", "hierarchy" ],
@@ -67,7 +68,7 @@ var NAVTREE =
 var NAVTREEINDEX =
 [
 "annotated.html",
-"structeth__tx__t.html#a5d7283c07033aac7f521e8b8150d5166"
+"structeth__tx__t.html#a31605f87dc21139d1717133fd4020a6e"
 ];
 
 var SYNCONMSG = 'click to disable panel synchronization';

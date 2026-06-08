@@ -13,5 +13,6 @@ var searchData=
   ['nonce_10',['nonce',['../structeth__tx__t.html#aaf2fd7bf4fa4970abab1b23db88d18be',1,'eth_tx_t']]],
   ['nonce_5fmax_11',['NONCE_MAX',['../eth__rpc_8cpp.html#af62df3bcbbfae3443195a8a5b55eab80',1,'eth_rpc.cpp']]],
   ['ns_5fsettings_12',['NS_SETTINGS',['../settings_8cpp.html#a9071ce359f8d002eb0abaa446fb63c0e',1,'settings.cpp']]],
-  ['nulllogger_13',['NullLogger',['../classNullLogger.html',1,'']]]
+  ['nulllogger_13',['NullLogger',['../classNullLogger.html',1,'']]],
+  ['nvs_20secure_20boot_20v2_14',['Secure build (Flash Encryption + encrypted NVS + Secure Boot v2)',['../index.html#autotoc_md13',1,'']]]
 ];
