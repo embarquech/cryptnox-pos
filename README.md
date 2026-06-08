@@ -2,11 +2,10 @@
 
 <img src="https://github.com/user-attachments/assets/6ce54a27-8fb6-48e6-9d1f-da144f43425a"/>
 
-### cryptnox-pos
-
-Standalone USDC payment terminal powered by a Cryptnox smart card and the Cheap Yellow Display
-
 </div>
+
+<h3 align="center">cryptnox-pos</h3>
+<p align="center">Standalone USDC payment terminal powered by a Cryptnox smart card and the Cheap Yellow Display</p>
 
 <br/>
 <br/>
