@@ -26,23 +26,22 @@ var NAVTREE =
 [
   [ "cryptnox-pos", "index.html", [
     [ "Classes", "annotated.html", [
-      [ "Supported hardware", "index.html#autotoc_md3", [
-        [ "cryptnox-pos", "index.html#autotoc_md0", null ],
-        [ "Built on", "index.html#autotoc_md1", null ],
-        [ "Cryptnox Hardware Wallet smart cards", "index.html#autotoc_md4", null ],
-        [ "NFC readers", "index.html#autotoc_md5", null ],
-        [ "Host board", "index.html#autotoc_md6", null ]
+      [ "Supported hardware", "index.html#autotoc_md2", [
+        [ "Built on", "index.html#autotoc_md0", null ],
+        [ "Cryptnox Hardware Wallet smart cards", "index.html#autotoc_md3", null ],
+        [ "NFC readers", "index.html#autotoc_md4", null ],
+        [ "Host board", "index.html#autotoc_md5", null ]
       ] ],
-      [ "Installation", "index.html#autotoc_md8", null ],
-      [ "Hardware setup", "index.html#autotoc_md9", [
-        [ "CYD CN1 ↔ PN532 NFC — I²C interface", "index.html#autotoc_md10", null ]
+      [ "Installation", "index.html#autotoc_md7", null ],
+      [ "Hardware setup", "index.html#autotoc_md8", [
+        [ "CYD CN1 ↔ PN532 NFC — I²C interface", "index.html#autotoc_md9", null ]
       ] ],
-      [ "Configuration", "index.html#autotoc_md12", null ],
-      [ "Secure build", "index.html#autotoc_md14", null ],
-      [ "Payment flow", "index.html#autotoc_md16", null ],
-      [ "Troubleshooting", "index.html#autotoc_md18", null ],
-      [ "Documentation", "index.html#autotoc_md20", null ],
-      [ "License", "index.html#autotoc_md22", null ],
+      [ "Configuration", "index.html#autotoc_md11", null ],
+      [ "Secure build", "index.html#autotoc_md13", null ],
+      [ "Payment flow", "index.html#autotoc_md15", null ],
+      [ "Troubleshooting", "index.html#autotoc_md17", null ],
+      [ "Documentation", "index.html#autotoc_md19", null ],
+      [ "License", "index.html#autotoc_md21", null ],
       [ "Class List", "annotated.html", "annotated_dup" ],
       [ "Class Index", "classes.html", null ],
       [ "Class Hierarchy", "hierarchy.html", "hierarchy" ],
@@ -70,7 +69,7 @@ var NAVTREE =
 var NAVTREEINDEX =
 [
 "annotated.html",
-"structeth__tx__t.html#a067c4eea13d63445ebfd1f5576727b76"
+"structeth__tx__t.html#a171a8d94529023470b902414ccc6e4cb"
 ];
 
 var SYNCONMSG = 'click to disable panel synchronization';

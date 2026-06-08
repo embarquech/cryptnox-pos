@@ -1,6 +1,6 @@
 var searchData=
 [
-  ['wallet_20smart_20cards_0',['Cryptnox Hardware Wallet smart cards',['../index.html#autotoc_md4',1,'']]],
+  ['wallet_20smart_20cards_0',['Cryptnox Hardware Wallet smart cards',['../index.html#autotoc_md3',1,'']]],
   ['wei_5fper_5fgwei_1',['WEI_PER_GWEI',['../settings_8cpp.html#a772305602f10b600d9197f6b5c7cd1dd',1,'settings.cpp']]],
   ['wifi_5fconnected_5fbit_2',['WIFI_CONNECTED_BIT',['../net_8cpp.html#ad552e7688532cbbecd3967538ced06ac',1,'net.cpp']]],
   ['wifi_5fevent_5fhandler_3',['wifi_event_handler',['../net_8cpp.html#ac31e38637f7a5e5c8ce4d033b0955fec',1,'net.cpp']]],

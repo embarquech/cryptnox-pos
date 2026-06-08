@@ -10,11 +10,11 @@ var searchData=
   ['bl_5fledc_5fres_7',['BL_LEDC_RES',['../ui_8cpp.html#af5cc9780205929f3e497fee98866555f',1,'ui.cpp']]],
   ['bl_5fledc_5ftimer_8',['BL_LEDC_TIMER',['../ui_8cpp.html#a10ec775425b612df1896655ed83f4e49',1,'ui.cpp']]],
   ['bl_5fpwm_5fhz_9',['BL_PWM_HZ',['../ui_8cpp.html#affdc3fd2dfead32ffc8c1e924acc5b74',1,'ui.cpp']]],
-  ['board_10',['Host board',['../index.html#autotoc_md6',1,'']]],
+  ['board_10',['Host board',['../index.html#autotoc_md5',1,'']]],
   ['brightness_5fevent_5fcb_11',['brightness_event_cb',['../ui_8cpp.html#aab190e1680d0f853a3502decf72c5836',1,'ui.cpp']]],
   ['btn_5fevent_5fcb_12',['btn_event_cb',['../ui_8cpp.html#a81c8e8828eb6ab49916c12061a884f23',1,'ui.cpp']]],
   ['btnaction_13',['BtnAction',['../ui_8cpp.html#ac4247686c19d0ac3843a6957f97211db',1,'ui.cpp']]],
-  ['build_14',['Secure build',['../index.html#autotoc_md14',1,'']]],
+  ['build_14',['Secure build',['../index.html#autotoc_md13',1,'']]],
   ['build_5famount_15',['build_amount',['../ui_8cpp.html#a81fbba6bf36d1af209a79defff2e316a',1,'ui.cpp']]],
   ['build_5fconfirm_16',['build_confirm',['../ui_8cpp.html#a8ca63143edfa0323eb7efd091792df44',1,'ui.cpp']]],
   ['build_5ffee_5frow_17',['build_fee_row',['../ui_8cpp.html#a2881726afb31a39e1c8bdf74a3887f69',1,'ui.cpp']]],
@@ -28,6 +28,6 @@ var searchData=
   ['build_5fwifi_5fconnecting_25',['build_wifi_connecting',['../ui_8cpp.html#a3705b01f958d386641cef7c708d8e42b',1,'ui.cpp']]],
   ['build_5fwifi_5flist_26',['build_wifi_list',['../ui_8cpp.html#aa9bc87dc1d057763eac6b108c9d1755a',1,'ui.cpp']]],
   ['build_5fwifi_5fpass_27',['build_wifi_pass',['../ui_8cpp.html#a9a99cf7fa9e50c6fe490bb14ea1b8fc9',1,'ui.cpp']]],
-  ['built_20on_28',['Built on',['../index.html#autotoc_md1',1,'']]],
+  ['built_20on_28',['Built on',['../index.html#autotoc_md0',1,'']]],
   ['bytes_5fto_5fhex_29',['bytes_to_hex',['../eth__rpc_8cpp.html#a9c088c626e687a17a455ae61b3e98f92',1,'eth_rpc.cpp']]]
 ];

@@ -1,6 +1,5 @@
 var NAVTREEINDEX1 =
 {
-"structeth__tx__t.html#a067c4eea13d63445ebfd1f5576727b76":[0,9,0,1],
 "structeth__tx__t.html#a171a8d94529023470b902414ccc6e4cb":[0,9,0,4],
 "structeth__tx__t.html#a2729c720ecee7933d04fa42fb43a9adb":[0,9,0,3],
 "structeth__tx__t.html#a27ff1aea011fdd7d0816ef5a88059ca4":[0,9,0,0],

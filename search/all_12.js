@@ -14,7 +14,7 @@ var searchData=
   ['touch_5fto_5fscreen_11',['touch_to_screen',['../ui_8cpp.html#aab01775fc9ffa44e76cc540f9254c8a2',1,'ui.cpp']]],
   ['touchspi_12',['touchSPI',['../ui_8cpp.html#a1c666ad400b7ccf0e17d8dff91ed8202',1,'ui.cpp']]],
   ['transfer_5fselector_13',['TRANSFER_SELECTOR',['../main_8cpp.html#a0a0c78f86940abc6a3f2d706a275b98a',1,'main.cpp']]],
-  ['troubleshooting_14',['Troubleshooting',['../index.html#autotoc_md18',1,'']]],
+  ['troubleshooting_14',['Troubleshooting',['../index.html#autotoc_md17',1,'']]],
   ['tx_5famount_5frow_15',['tx_amount_row',['../ui_8cpp.html#a7459ce23656bf2f0e1a42bd6f6cc7994',1,'ui.cpp']]],
   ['tx_5fbuf_5fsize_16',['TX_BUF_SIZE',['../main_8cpp.html#a5d3fb1970e1e98050006978a14b3d95e',1,'main.cpp']]]
 ];

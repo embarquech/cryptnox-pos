@@ -92,16 +92,17 @@ $(function(){initNavTree('index.html','',''); });
   <div class="headertitle"><div class="title">cryptnox-pos </div></div>
 </div><!--header-->
 <div class="contents">
-<div class="textblock"><p><a class="anchor" id="md_README"></a> </p><div align="center"></div><div align="center"><img src="https://github.com/user-attachments/assets/6ce54a27-8fb6-48e6-9d1f-da144f43425a" alt="" class="inline"/></div><div align="center"></div><h3 class="doxsection"><a class="anchor" id="autotoc_md0"></a>
-<div align="center">cryptnox-pos</div></h3>
-<div align="center"></div><div align="center">Standalone USDC payment terminal powered by a Cryptnox smart card and the Cheap Yellow Display</div><div align="center"></div><p><br  />
+<div class="textblock"><p><a class="anchor" id="md_README"></a> </p><div align="center"></div><div align="center"><img src="https://github.com/user-attachments/assets/6ce54a27-8fb6-48e6-9d1f-da144f43425a" alt="" class="inline"/></div><div align="center"></div><h3 align="center">cryptnox-pos</h3>
+<p align="center"></p>
+<p>Standalone USDC payment terminal powered by a Cryptnox smart card and the Cheap Yellow Display</p>
+<p><br  />
  <br  />
 </p>
 <p><a href="https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display"><img src="https://img.shields.io/badge/Platform-ESP32--2432S028%20(CYD)-blue.svg" alt="Platform: ESP32-2432S028 (CYD)" style="pointer-events: none;" class="inline"/></a> <a href="https://docs.espressif.com/projects/esp-idf/en/v5.5/"><img src="https://img.shields.io/badge/Framework-ESP--IDF%20v5.5-blue.svg" alt="Framework: ESP-IDF v5.5" style="pointer-events: none;" class="inline"/></a> <a href="https://github.com/embarquech/cryptnox-sdk-esp32"><img src="https://img.shields.io/badge/SDK-cryptnox--sdk--esp32-blue.svg" alt="SDK: cryptnox-sdk-esp32" style="pointer-events: none;" class="inline"/></a> <a href="https://www.gnu.org/licenses/lgpl-3.0"><img src="https://img.shields.io/badge/License-LGPLv3-blue.svg" alt="License: LGPLv3" style="pointer-events: none;" class="inline"/></a></p>
 <p><span class="tt">cryptnox-pos</span> is a self-contained payment terminal firmware that runs on the ESP32-2432S028 "Cheap Yellow Display" (CYD). It also serves as a reference <b>dev kit</b> showing how to integrate the <a href="https://github.com/embarquech/cryptnox-sdk-esp32"><span class="tt">cryptnox-sdk-esp32</span></a> into a real-world end-user product.</p>
 <p>The user selects a USDC amount on the touchscreen, taps a <b>Cryptnox smart card</b> on the attached PN532 reader, and the terminal signs and broadcasts an EIP-1559 transfer on Ethereum Sepolia via a JSON-RPC endpoint (PublicNode by default), then waits for the on-chain receipt before showing <b>Approved</b>.</p>
 <dl class="section warning"><dt>Warning</dt><dd><b>Reference / educational dev kit — not a tamper-resistant terminal.</b> The ESP32 is not a secure microcontroller and has no protected RAM. The optional secure build (Flash Encryption + encrypted NVS + Secure Boot v2) protects secrets at rest and locks the boot chain, but at run time the card PIN (entered on-screen, not stored in the firmware) and the Wi-Fi password live in plaintext RAM — readable by anyone who can reach live memory (JTAG, a run-time exploit). <b>The Cryptnox Hardware Wallet remains the trust anchor</b> — private keys never leave the card, so a compromised ESP32 still cannot sign without it.</dd></dl>
-<h3 class="doxsection"><a class="anchor" id="autotoc_md1"></a>
+<h3 class="doxsection"><a class="anchor" id="autotoc_md0"></a>
 Built on</h3>
 <ul>
 <li><b><a href="https://github.com/embarquech/cryptnox-sdk-esp32"><span class="tt">cryptnox-sdk-esp32</span></a></b> (git submodule) — secure channel, ECDH/ECDSA, PN532 transport, ESP32 crypto provider</li>
@@ -110,9 +111,9 @@ Built on</h3>
 <li><b><a href="https://github.com/espressif/arduino-esp32">arduino-esp32</a></b> as an ESP-IDF managed component (Arduino runtime for the display libraries; the rest stays on native IDF)</li>
 </ul>
 <hr  />
-<h2 class="doxsection"><a class="anchor" id="autotoc_md3"></a>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md2"></a>
 Supported hardware</h2>
-<h3 class="doxsection"><a class="anchor" id="autotoc_md4"></a>
+<h3 class="doxsection"><a class="anchor" id="autotoc_md3"></a>
 Cryptnox Hardware Wallet smart cards</h3>
 <p>Works with Cryptnox Hardware Wallet smart cards running firmware v1.6.0 or later.</p>
 <table class="markdownTable">
@@ -121,7 +122,7 @@ Cryptnox Hardware Wallet smart cards</h3>
 <tr class="markdownTableRowOdd">
 <td class="markdownTableBodyNone"><a href="https://shop.cryptnox.com/product/hardware-wallet-smartcard-dual/">Crypto Hardware Wallet – Dual Card Set</a>  </td><td class="markdownTableBodyNone">v1.6.1  </td></tr>
 </table>
-<h3 class="doxsection"><a class="anchor" id="autotoc_md5"></a>
+<h3 class="doxsection"><a class="anchor" id="autotoc_md4"></a>
 NFC readers</h3>
 <table class="markdownTable">
 <tr class="markdownTableHead">
@@ -129,7 +130,7 @@ NFC readers</h3>
 <tr class="markdownTableRowOdd">
 <td class="markdownTableBodyNone"><a href="https://www.nxp.com/products/PN532">PN532 NFC Module</a>  </td><td class="markdownTableBodyNone">Contactless (NFC/ISO 14443)  </td><td class="markdownTableBodyNone">I²C  </td></tr>
 </table>
-<h3 class="doxsection"><a class="anchor" id="autotoc_md6"></a>
+<h3 class="doxsection"><a class="anchor" id="autotoc_md5"></a>
 Host board</h3>
 <table class="markdownTable">
 <tr class="markdownTableHead">
@@ -138,7 +139,7 @@ Host board</h3>
 <td class="markdownTableBodyNone"><a href="https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display">ESP32-2432S028 "Cheap Yellow Display"</a>  </td><td class="markdownTableBodyNone">ESP32-WROOM-32  </td><td class="markdownTableBodyNone">ILI9341 240×320 (portrait)  </td><td class="markdownTableBodyNone">XPT2046 (resistive)  </td></tr>
 </table>
 <hr  />
-<h2 class="doxsection"><a class="anchor" id="autotoc_md8"></a>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md7"></a>
 Installation</h2>
 <ol type="1">
 <li>Install <b><a href="https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32/get-started/index.html">ESP-IDF v5.5</a></b> (the project pulls <span class="tt">espressif/arduino-esp32</span> and <span class="tt">lvgl/lvgl</span> as IDF managed components; TFT_eSPI / XPT2046 are in-tree submodules).</li>
@@ -152,11 +153,11 @@ Installation</h2>
 </div><!-- fragment --> The first build also fetches <span class="tt">espressif/arduino-esp32</span> and <span class="tt">lvgl/lvgl</span> from the IDF component registry, so expect a longer initial compile.</li>
 </ol>
 <dl class="section remark"><dt>Remarks</dt><dd>Open the IDF env first: on Windows run the "ESP-IDF PowerShell"/<span class="tt">export.bat</span>, on macOS/Linux <span class="tt">. $IDF_PATH/export.sh</span>. For the <b>secure (encrypted/signed) build</b>, see Secure build below — don't use plain <span class="tt">idf.py flash</span> on an already-provisioned board.</dd></dl>
-<h2 class="doxsection"><a class="anchor" id="autotoc_md9"></a>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md8"></a>
 Hardware setup</h2>
 <dl class="section attention"><dt>Attention</dt><dd>Always double-check the wiring before powering the board to prevent damage.</dd></dl>
 <p>The CYD exposes its free GPIOs on the <b>CN1</b> header. The firmware uses the <b>I²C</b> interface to the PN532.</p>
-<h3 class="doxsection"><a class="anchor" id="autotoc_md10"></a>
+<h3 class="doxsection"><a class="anchor" id="autotoc_md9"></a>
 CYD CN1 ↔ PN532 NFC — I²C interface</h3>
 <table class="markdownTable">
 <tr class="markdownTableHead">
@@ -180,7 +181,7 @@ CYD CN1 ↔ PN532 NFC — I²C interface</h3>
 <p><img src="hardware/schematics/cyd_esp32_pn532_i2c_bb.png" alt="cyd_pn532_i2c" width="800" class="inline"/></p>
 <p>The display, touchscreen and backlight pins are already wired internally on the CYD; the firmware drives them through TFT_eSPI's <span class="tt">ILI9341_2_DRIVER</span> in <b>portrait rotation (240×320)</b>, with <span class="tt">invertDisplay(true)</span> + a GAMMASET fix for the panel and a calibrated XPT2046 touch mapping. The backlight is PWM-dimmable (LEDC).</p>
 <hr  />
-<h2 class="doxsection"><a class="anchor" id="autotoc_md12"></a>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md11"></a>
 Configuration</h2>
 <p><span class="tt">main/config.h</span> is gitignored. Copy <span class="tt">config.template.h</span> to <span class="tt">main/config.h</span> and fill in:</p>
 <table class="markdownTable">
@@ -207,7 +208,7 @@ Configuration</h2>
 <li><b>Transfer amount</b> — chosen on the keypad per transaction.</li>
 </ul>
 <hr  />
-<h2 class="doxsection"><a class="anchor" id="autotoc_md14"></a>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md13"></a>
 Secure build</h2>
 <p>By default the firmware and NVS are <b>unencrypted and unsigned</b> — fine for the dev kit. An optional <b>secure build</b> closes three audit findings at once:</p>
 <table class="markdownTable">
@@ -241,7 +242,7 @@ Secure build</h2>
 </div><!-- fragment --><dl class="section warning"><dt>Warning</dt><dd>Steps 2–3 use the <span class="tt">flash_encryption</span> overlay = <b>Development</b> mode: the board stays reflashable with verbose logs while you validate. For the locked <b>production</b> image, layer the release overlay on top and reflash: <div class="fragment"><div class="line">idf.py -D &quot;SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.defaults.flash_encryption;sdkconfig.defaults.release&quot; build</div>
 </div><!-- fragment --> Release mode permanently disables plaintext UART flashing + flash dumps and silences the boot log — IRREVERSIBLE, manufacturing only. Note: on the classic ESP32 encrypted NVS <b>requires</b> Flash Encryption (no HMAC eFuse scheme), so the two cannot be separated.</dd></dl>
 <hr  />
-<h2 class="doxsection"><a class="anchor" id="autotoc_md16"></a>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md15"></a>
 Payment flow</h2>
 <ol type="1">
 <li><b>Splash</b> — Cryptnox logo + spinner while Wi-Fi / SNTP / RPC / wallet come up (version shown at the bottom).</li>
@@ -255,7 +256,7 @@ Payment flow</h2>
 <div class="line">cryptnox seed generate</div>
 </div><!-- fragment --></dd></dl>
 <hr  />
-<h2 class="doxsection"><a class="anchor" id="autotoc_md18"></a>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md17"></a>
 Troubleshooting</h2>
 <ul>
 <li><b>Inverted colours / banding on gradients</b> → the CYD panel needs <span class="tt">invertDisplay(true)</span> (inverted colours) and a GAMMASET tweak (banding/"milky gamma"); both are already applied in <span class="tt"><a class="el" href="ui_8cpp.html#ad67b3efff8f09e4e347513a85d0ac7af">ui_task</a></span>. If the screen is blank/scrambled your board may use the other ILI9341 variant — set <span class="tt">CONFIG_TFT_ILI9341_DRIVER=y</span> (instead of <span class="tt">_2</span>) in <span class="tt">sdkconfig.defaults</span> and rebuild.</li>
@@ -266,11 +267,11 @@ Troubleshooting</h2>
 <li><b>App partition full</b> → the project uses a custom 3 MB app partition (<span class="tt">partitions.csv</span>) on a 4 MB flash. Drop unused LVGL fonts (<span class="tt">CONFIG_LV_FONT_MONTSERRAT_*</span>) in <span class="tt">sdkconfig.defaults</span> if you need more headroom.</li>
 </ul>
 <hr  />
-<h2 class="doxsection"><a class="anchor" id="autotoc_md20"></a>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md19"></a>
 Documentation</h2>
 <p>The generated documentation for this project is available <a href="https://embarquech.github.io/cryptnox-pos/">here</a>.</p>
 <hr  />
-<h2 class="doxsection"><a class="anchor" id="autotoc_md22"></a>
+<h2 class="doxsection"><a class="anchor" id="autotoc_md21"></a>
 License</h2>
 <p><span class="tt">cryptnox-pos</span> is dual-licensed:</p>
 <ul>
