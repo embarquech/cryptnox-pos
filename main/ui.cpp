@@ -65,7 +65,7 @@ static SPIClass            touchSPI(VSPI);
 static XPT2046_Touchscreen touch(T_CS, T_IRQ);
 
 /******************************************************************
- * 3. Theme — light, minimal (SumUp-style): white bg, black ink
+ * 3. Theme — light, minimal: white bg, black ink
  ******************************************************************/
 #define COL_BG       lv_color_hex(0xFFFFFF)   /* white — page background       */
 #define COL_SURFACE  lv_color_hex(0xF2F2F2)   /* light grey — cards/secondary  */
@@ -343,7 +343,7 @@ static void amount_update_display(void) {
     s_amount_units = s_amount_cents * 10000ULL;   /* cents -> 6-decimal base units */
 }
 
-/* Keypad on the amount screen — SumUp-style cents entry: each digit shifts in
+/* Keypad on the amount screen — cents entry: each digit shifts in
  * from the right (1 -> 0.01, 12 -> 0.12, 1250 -> 12.50). No decimal point. */
 static void amount_kbd_cb(lv_event_t *e) {
     lv_obj_t *bm = lv_event_get_target(e);
@@ -444,7 +444,7 @@ static lv_obj_t *make_button(lv_obj_t *parent, const char *label, lv_color_t bg,
     lv_obj_set_style_radius(btn, 10, LV_PART_MAIN);
     lv_obj_set_style_border_width(btn, 0, LV_PART_MAIN);
 
-    /* Flat — no drop shadow (light, minimal SumUp look). */
+    /* Flat — no drop shadow (light, minimal look). */
     lv_obj_set_style_shadow_width(btn, 0, LV_PART_MAIN);
 
     /* Secondary (surface) buttons get a hairline border to lift them off the bg.
@@ -929,7 +929,7 @@ static void build_amount(void) {
     s_amount_usdc = lv_img_create(lv_scr_act());
     lv_img_set_src(s_amount_usdc, &usdc_logo);   /* placed beside the amount below */
 
-    /* SumUp-style keypad: digits, double-zero, backspace (cents entry). */
+    /* Numeric keypad: digits, double-zero, backspace (cents entry). */
     static const char *amap[] = {
         "1", "2", "3", "\n",
         "4", "5", "6", "\n",

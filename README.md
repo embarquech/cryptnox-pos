@@ -37,7 +37,7 @@ default), then waits for the on-chain receipt before showing **Approved**.
 ### Built on
 
 - **[`cryptnox-sdk-esp32`](https://github.com/embarquech/cryptnox-sdk-esp32)** (git submodule) — secure channel, ECDH/ECDSA, PN532 transport, ESP32 crypto provider
-- **[LVGL 8](https://lvgl.io/)** (managed component) — the SumUp-style portrait UI
+- **[LVGL 8](https://lvgl.io/)** (managed component) — the touchscreen UI
 - **[TFT_eSPI](https://github.com/Bodmer/TFT_eSPI)** + **[XPT2046_Touchscreen](https://github.com/PaulStoffregen/XPT2046_Touchscreen)** (git submodules) — CYD panel driver + touch, behind LVGL
 - **[arduino-esp32](https://github.com/espressif/arduino-esp32)** as an ESP-IDF managed component (Arduino runtime for the display libraries; the rest stays on native IDF)
 
@@ -238,7 +238,7 @@ python tools/secure_flash.py --package    # -> dist/cryptnox_pos-encrypted-full.
 
 1. **Splash** — Cryptnox logo + spinner while Wi-Fi / SNTP / RPC / wallet come
    up (version shown at the bottom).
-2. **Amount** — SumUp-style numeric keypad (cents entry); tap **Charge**.
+2. **Amount** — numeric keypad (cents entry); tap **Charge**.
 3. **Send** — Ledger-style review showing the amount, the destination address
    and the USDC contract **in full**; tap **Confirm** or **Cancel**.
 4. **PIN** — enter the card PIN on the on-screen keypad (validated, then wiped
