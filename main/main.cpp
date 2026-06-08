@@ -565,6 +565,10 @@ extern "C" void app_main(void)
 #if defined(RPC_PROJECT_ID) && defined(RPC_API_SECRET)
     eth_rpc_set_auth(RPC_PROJECT_ID, RPC_API_SECRET);
 #endif
+#ifdef RPC_CA_CERT_PEM
+    /* F-05: pin the RPC endpoint's certificate instead of the CA bundle. */
+    eth_rpc_set_ca_cert(RPC_CA_CERT_PEM);
+#endif
     net_wifi_init();
     /* Connect with saved creds, or run the first-run picker until connected
      * (config.h Wi-Fi is no longer used). */

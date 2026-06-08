@@ -58,6 +58,7 @@ static const char *s_rpc_url     = NULL;
 static const char *s_from_addr   = NULL;
 static const char *s_project_id  = NULL;
 static const char *s_api_secret  = NULL;
+static const char *s_ca_cert     = NULL;   /* pinned cert (F-05); NULL = CA bundle */
 
 /******************************************************************
  * 4. HTTP helper
@@ -88,7 +89,13 @@ static bool do_post(const char *body, char *resp_buf, size_t resp_buf_size)
     cfg.url               = s_rpc_url;
     cfg.method            = HTTP_METHOD_POST;
     cfg.timeout_ms        = 15000;
-    cfg.crt_bundle_attach = esp_crt_bundle_attach;
+    /* F-05: if a cert was pinned via eth_rpc_set_ca_cert(), trust ONLY it —
+     * otherwise any of the ~150 CAs in the Mozilla bundle could MITM the RPC. */
+    if (s_ca_cert != NULL) {
+        cfg.cert_pem = s_ca_cert;
+    } else {
+        cfg.crt_bundle_attach = esp_crt_bundle_attach;
+    }
     if (use_auth) {
         cfg.username  = s_project_id;
         cfg.password  = s_api_secret;
@@ -229,6 +236,11 @@ void eth_rpc_set_auth(const char *project_id, const char *api_secret)
 {
     s_project_id = project_id;
     s_api_secret = api_secret;
+}
+
+void eth_rpc_set_ca_cert(const char *ca_pem)
+{
+    s_ca_cert = ca_pem;
 }
 
 bool eth_rpc_get_nonce(uint64_t *nonce_out)

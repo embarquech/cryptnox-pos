@@ -75,6 +75,18 @@ void eth_rpc_init(const char *rpc_url, const char *from_addr);
 void eth_rpc_set_auth(const char *project_id, const char *api_secret);
 
 /**
+ * @brief Optional: pin the RPC endpoint's TLS certificate (F-05).
+ *
+ * When set, the HTTPS connection is validated **only** against this PEM
+ * (leaf or its issuing CA) instead of the full Mozilla CA bundle, so no
+ * unrelated CA can MITM the RPC traffic. Pointer stored as-is (must outlive
+ * every call — pass a static/embedded literal). NULL keeps the CA bundle.
+ *
+ * @param[in] ca_pem NUL-terminated PEM certificate, or NULL for the bundle.
+ */
+void eth_rpc_set_ca_cert(const char *ca_pem);
+
+/**
  * @brief Fetch the pending transaction count (nonce) for from_addr.
  *
  * Responses with an HTTP status other than 200, malformed JSON, or a nonce

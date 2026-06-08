@@ -52,6 +52,18 @@
 /* #define RPC_URL         "https://sepolia.infura.io/v3/" RPC_PROJECT_ID */
 /* #define RPC_API_SECRET  "<YOUR_INFURA_API_SECRET>"                 */
 
+/* --- Optional: pin the RPC TLS certificate (audit F-05) ----------- */
+/* By default the HTTPS chain is validated against the full Mozilla CA bundle
+ * (~150 CAs, any of which could MITM). Define RPC_CA_CERT_PEM with the
+ * endpoint's certificate (leaf, or — more stable across renewals — its issuing
+ * CA) to trust ONLY that. Fetch it with:
+ *   openssl s_client -connect ethereum-sepolia-rpc.publicnode.com:443 -showcerts </dev/null
+ * then paste the relevant PEM block as a C string literal, e.g.:
+ *   #define RPC_CA_CERT_PEM "-----BEGIN CERTIFICATE-----\n" \
+ *                           "MIIB...\n" \
+ *                           "-----END CERTIFICATE-----\n"
+ * Note: pinning ties the build to that endpoint — update it if you change RPC. */
+
 /* The card PIN is NOT set here — the operator types it on the touchscreen
  * keypad at sign time, and it is scrubbed from RAM right after signing.
  * Nothing PIN-related is baked into the firmware. */

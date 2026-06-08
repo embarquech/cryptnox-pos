@@ -137,6 +137,7 @@ and fill in:
 |-------|-------------|
 | `RPC_URL` | Ethereum JSON-RPC endpoint (PublicNode Sepolia by default; an Infura variant is provided commented-out) |
 | `RPC_PROJECT_ID` / `RPC_API_SECRET` | Optional — only when using Infura (HTTP Basic Auth); leave undefined for PublicNode |
+| `RPC_CA_CERT_PEM` | Optional — pin the RPC endpoint's TLS certificate (audit F-05); trusts only that cert instead of the full CA bundle. Undefined = Mozilla bundle |
 | `ADDR_FROM` | Ethereum address of the **card** (`m/44'/60'/0'/0/0`) — used to fetch the nonce and validate the ecrecover parity |
 | `ADDR_TO` | Destination address for every transfer |
 | `ADDR_USDC` | USDC ERC-20 contract address on the target chain (Sepolia testnet by default) |
