@@ -37,3 +37,22 @@ jobs:
             -I main \
             --force \
             main/
+
+      # clang-tidy enforces the project's "MISRA-like" C++ rules (the .clang-tidy
+      # at the repo root: bugprone / CERT / clang-analyzer / portability, plus the
+      # CODING_RULES 1.4 ban on raw memcpy in favour of CW_Utils::safe_memcpy).
+      # Unlike cppcheck, clang-tidy compiles each TU, so it only runs on the pure
+      # security-critical parsers that parse without the full ESP-IDF toolchain.
+      # CW_Utils.h resolves via the SDK submodule (host branch of platform_compat),
+      # cJSON.h via libcjson-dev. WarningsAsErrors in .clang-tidy fails the job.
+      - name: Install clang-tidy and cJSON headers
+        run: sudo apt-get install -y clang-tidy libcjson-dev
+
+      - name: clang-tidy (security-critical parsers, C++)
+        run: |
+          clang-tidy \
+            main/eth_addr.cpp main/eth_rlp.cpp main/eth_json.cpp \
+            -- -std=c++17 \
+               -I main \
+               -I cryptnox-sdk-esp32/cryptnox-sdk-cpp \
+               -I /usr/include/cjson
