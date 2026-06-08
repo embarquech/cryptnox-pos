@@ -1,5 +1,25 @@
+/*
+ * SPDX-License-Identifier: LGPL-3.0-or-later
+ * Copyright (c) 2026 Cryptnox SA
+ */
+
+/**
+ * @file keccak256.cpp
+ * @brief Original (pre-NIST) Keccak-256 implementation, 0x01 padding.
+ */
+
+/******************************************************************
+ * 1. Included files
+ ******************************************************************/
+
 #include "keccak256.h"
 #include <string.h>
+
+#include "CW_Utils.h"   /* hardened memory primitives (CODING_RULES §1.4) */
+
+/******************************************************************
+ * 2. Constants
+ ******************************************************************/
 
 #define KECCAK_ROUNDS     24U
 #define KECCAK_RATE       136U   /* 1088 / 8 bytes — rate for 256-bit output */
@@ -29,11 +49,27 @@ static const uint8_t kRHO[KECCAK_STATE_LANE] = {
     18,  2, 61, 56, 14    /* y=4 */
 };
 
+/******************************************************************
+ * 3. Internal helpers
+ ******************************************************************/
+
+/**
+ * @brief Rotate a 64-bit lane left by @p n bits.
+ *
+ * @param[in] x Lane value.
+ * @param[in] n Rotation amount, 0-63.
+ * @return Rotated value.
+ */
 static uint64_t rot64(uint64_t x, uint8_t n)
 {
     return (n == 0U) ? x : ((x << n) | (x >> (64U - n)));
 }
 
+/**
+ * @brief Apply the full 24-round Keccak-f[1600] permutation in place.
+ *
+ * @param[in,out] st 5x5 lane state, modified in place.
+ */
 static void keccak_f1600(uint64_t st[KECCAK_STATE_LANE])
 {
     uint64_t C[5], D[5], B[KECCAK_STATE_LANE];
@@ -77,6 +113,10 @@ static void keccak_f1600(uint64_t st[KECCAK_STATE_LANE])
     }
 }
 
+/******************************************************************
+ * 4. Public API
+ ******************************************************************/
+
 void keccak256(const uint8_t *input, size_t length, uint8_t digest[32])
 {
     uint64_t state[KECCAK_STATE_LANE];
@@ -108,5 +148,5 @@ void keccak256(const uint8_t *input, size_t length, uint8_t digest[32])
     keccak_f1600(state);
 
     /* Squeeze first 32 bytes */
-    (void)memcpy(digest, sb, 32U);
+    (void)CW_Utils::safe_memcpy(digest, 32U, sb, 32U);
 }
