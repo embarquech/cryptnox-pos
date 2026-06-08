@@ -15,3 +15,10 @@ IMG_*.jpg
 # Python bytecode cache (image generators)
 __pycache__/
 *.pyc
+
+# Secure-build secrets — NEVER commit. The flash-encryption key (host-generated
+# for pre-encryption) and any Secure Boot signing key must be stored offline.
+*flash_encryption_key*.bin
+*secure_boot_signing_key*.pem
+*.key
+secure_keys/

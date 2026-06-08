@@ -1,4 +1,13 @@
-# Name,   Type, SubType, Offset,   Size, Flags
-nvs,      data, nvs,     0x9000,   0x6000,
-phy_init, data, phy,     0xf000,   0x1000,
-factory,  app,  factory, 0x10000,  3M,
+# Name,   Type, SubType, Offset, Size,   Flags
+# Offsets are left blank: with Flash Encryption the bootloader grows and the
+# partition table is pushed to 0xC000 (CONFIG_PARTITION_TABLE_OFFSET), so IDF
+# auto-places each partition after it (and 64 KB-aligns the app).
+nvs,      data, nvs,     ,       0x6000,
+phy_init, data, phy,     ,       0x1000,
+factory,  app,  factory, ,       3M,
+# Holds the XTS-AES keys that encrypt the `nvs` partition. The `encrypted`
+# flag makes it flash-encrypted, so the keys are protected by the per-chip
+# flash-encryption key burned (read-protected) in eFuse. Inert in a normal
+# build (an unused 4 KB data partition); used only when CONFIG_NVS_ENCRYPTION
+# is on — see sdkconfig.defaults.flash_encryption.
+nvs_keys, data, nvs_keys,,       0x1000, encrypted

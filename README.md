@@ -20,23 +20,26 @@ into a real-world end-user product.
 
 The user selects a USDC amount on the touchscreen, taps a **Cryptnox smart
 card** on the attached PN532 reader, and the terminal signs and broadcasts an
-EIP-1559 transfer on Ethereum Sepolia via Infura.
+EIP-1559 transfer on Ethereum Sepolia via a JSON-RPC endpoint (PublicNode by
+default), then waits for the on-chain receipt before showing **Approved**.
 
 > [!WARNING]
-> **Reference / educational project — not a production-hardened terminal.**
-> The ESP32 is a general-purpose microcontroller, not a tamper-resistant secure
-> element: an attacker with physical access can compromise its runtime and
-> recover its Wi-Fi credentials, which may then be used to reach the card. The
-> card PIN and the destination address are also hard-coded into the build
-> config. **The Cryptnox Hardware Wallet remains the trust anchor**, though —
-> private keys never leave the card, so a compromised ESP32 still cannot sign
-> without the card.
+> **Reference / educational dev kit — not a tamper-resistant terminal.**
+> The ESP32 is not a secure microcontroller and has no protected RAM. The
+> optional [secure build](#secure-build-flash-encryption--encrypted-nvs--secure-boot-v2)
+> (Flash Encryption + encrypted NVS + Secure Boot v2) protects secrets at rest
+> and locks the boot chain, but at run time the card PIN (entered on-screen, not
+> stored in the firmware) and the Wi-Fi password live in plaintext RAM —
+> readable by anyone who can reach live memory (JTAG, a run-time exploit).
+> **The Cryptnox Hardware Wallet remains the trust anchor** — private keys never
+> leave the card, so a compromised ESP32 still cannot sign without it.
 
 ### Built on
 
-- **[`cryptnox-sdk-esp32`](https://github.com/embarquech/cryptnox-sdk-esp32)** (vendored as a git submodule) — secure channel, ECDH/ECDSA, PN532 transport, ESP32 crypto provider
-- **[TFT_eSPI](https://github.com/Bodmer/TFT_eSPI)** + **[XPT2046_Touchscreen](https://github.com/PaulStoffregen/XPT2046_Touchscreen)** — native CYD display + touch
-- **[arduino-esp32](https://github.com/espressif/arduino-esp32)** as an ESP-IDF managed component (Arduino runtime for the UI libraries; the rest of the firmware stays on native IDF)
+- **[`cryptnox-sdk-esp32`](https://github.com/embarquech/cryptnox-sdk-esp32)** (git submodule) — secure channel, ECDH/ECDSA, PN532 transport, ESP32 crypto provider
+- **[LVGL 8](https://lvgl.io/)** (managed component) — the SumUp-style portrait UI
+- **[TFT_eSPI](https://github.com/Bodmer/TFT_eSPI)** + **[XPT2046_Touchscreen](https://github.com/PaulStoffregen/XPT2046_Touchscreen)** (git submodules) — CYD panel driver + touch, behind LVGL
+- **[arduino-esp32](https://github.com/espressif/arduino-esp32)** as an ESP-IDF managed component (Arduino runtime for the display libraries; the rest stays on native IDF)
 
 ---
 
@@ -60,15 +63,15 @@ Works with Cryptnox Hardware Wallet smart cards running firmware v1.6.0 or later
 
 | Board | MCU | Display | Touch |
 |-------|-----|---------|-------|
-| [ESP32-2432S028 "Cheap Yellow Display"](https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display) | ESP32-WROOM-32 | ILI9341 320×240 | XPT2046 (resistive) |
+| [ESP32-2432S028 "Cheap Yellow Display"](https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display) | ESP32-WROOM-32 | ILI9341 240×320 (portrait) | XPT2046 (resistive) |
 
 ---
 
 ## Installation
 
 1. Install **[ESP-IDF v5.5](https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32/get-started/index.html)**
-   (the project uses Arduino-as-component plus the `lvgl/lvgl`-free Espressif
-   managed components stack).
+   (the project pulls `espressif/arduino-esp32` and `lvgl/lvgl` as IDF managed
+   components; TFT_eSPI / XPT2046 are in-tree submodules).
 2. Clone this repository **with submodules**:
    ```
    git clone --recursive https://github.com/embarquech/cryptnox-pos.git
@@ -117,8 +120,9 @@ the **I²C** interface to the PN532.
 <img width="800" alt="cyd_pn532_i2c" src="hardware/schematics/cyd_esp32_pn532_i2c_bb.png" />
 
 The display, touchscreen and backlight pins are already wired internally on the
-CYD; the firmware drives them through TFT_eSPI's `ILI9341_2_DRIVER` with
-landscape rotation (320×240) and a calibrated XPT2046 touch mapping.
+CYD; the firmware drives them through TFT_eSPI's `ILI9341_2_DRIVER` in **portrait
+rotation (240×320)**, with `invertDisplay(true)` + a GAMMASET fix for the panel
+and a calibrated XPT2046 touch mapping. The backlight is PWM-dimmable (LEDC).
 
 ---
 
@@ -129,36 +133,114 @@ and fill in:
 
 | Field | Description |
 |-------|-------------|
-| `WIFI_SSID` / `WIFI_PASSWORD` | WPA2 credentials for the terminal's STA connection |
 | `RPC_URL` | Ethereum JSON-RPC endpoint (PublicNode Sepolia by default; an Infura variant is provided commented-out) |
 | `RPC_PROJECT_ID` / `RPC_API_SECRET` | Optional — only when using Infura (HTTP Basic Auth); leave undefined for PublicNode |
 | `ADDR_FROM` | Ethereum address of the **card** (`m/44'/60'/0'/0/0`) — used to fetch the nonce and validate the ecrecover parity |
 | `ADDR_TO` | Destination address for every transfer |
 | `ADDR_USDC` | USDC ERC-20 contract address on the target chain (Sepolia testnet by default) |
-| `CARD_PIN` / `CARD_PIN_LEN` | PIN configured on the Cryptnox card (4–9 ASCII digits) and its length |
-| `CHAIN_ID_SEPOLIA`, `MAX_PRIORITY_FEE`, `MAX_FEE`, `GAS_LIMIT_ERC20` | Chain ID and EIP-1559 gas parameters |
+| `CHAIN_ID_SEPOLIA`, `MAX_PRIORITY_FEE`, `MAX_FEE`, `GAS_LIMIT_ERC20` | Chain ID and EIP-1559 gas parameters (the fees are first-boot defaults, editable at run time in the settings) |
 
-The transfer amount is selected on the touchscreen at run time; it is not a
-config.h field.
+**Not in `config.h`** — set on the device, never baked into the firmware:
+- **Wi-Fi** — provisioned at first boot via the touchscreen network picker (stored in NVS).
+- **Card PIN** — entered on the touchscreen keypad at sign time, scrubbed from RAM right after.
+- **Transfer amount** — chosen on the keypad per transaction.
+
+---
+
+## Secure build (Flash Encryption + encrypted NVS + Secure Boot v2)
+
+By default the firmware and NVS are **unencrypted and unsigned** — fine for the
+dev kit. An optional **secure build** closes three audit findings at once:
+
+| Feature | Closes | Effect |
+|---------|--------|--------|
+| Flash Encryption | F-01-at-rest | a flash dump is ciphertext, useless without the key |
+| Encrypted NVS (`nvs_keys` partition) | F-16 | the Wi-Fi password / fees in NVS are encrypted |
+| Secure Boot v2 (RSA-3072) | F-02 | only firmware signed with your key boots |
+
+> [!CAUTION]
+> These burn **eFuses — IRREVERSIBLE**. Validate on a **sacrificial board
+> first**; a misconfigured burn bricks the unit. On the classic **ESP32**
+> Secure Boot v2 supports **a single key with no revocation/rotation** (that
+> is an S2/S3/C-series feature): if your signing key leaks you cannot revoke
+> it, and if you lose it the board can never be updated again. Keep both keys
+> **offline, in multiple copies**.
+
+In the repo:
+- `sdkconfig.defaults.flash_encryption` — the overlay: Flash Encryption
+  (Development mode), `CONFIG_NVS_ENCRYPTION`, Secure Boot v2 + signing key,
+  `ESP32_REV_MIN_3` (required for SBv2) and `PARTITION_TABLE_OFFSET=0x10000`
+  (the signed+encrypted bootloader outgrows the default window).
+- `partitions.csv` — the `nvs_keys` partition (inert in a normal build).
+- `tools/secure_provision.py` — one-shot factory provisioning of a fresh board.
+- `tools/secure_flash.py` — pre-encrypt + flash for routine reflashing.
+
+**Step 1 — generate both keys, ONCE per product (store OFFLINE, gitignored):**
+```
+espsecure.py generate_flash_encryption_key --keylen 256 secure_keys/flash_encryption_key.bin
+espsecure.py generate_signing_key --version 2 secure_keys/secure_boot_signing_key.pem
+```
+
+**Step 2 — build with the secure overlay** (the bootloader + app are signed
+automatically at build time):
+```
+idf.py -D "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.defaults.flash_encryption" build
+```
+(PowerShell: quote the whole `-D` argument as shown, because of the `;`.)
+
+**Step 3 — provision a fresh board (one command, IRREVERSIBLE):**
+```
+python tools/secure_provision.py --port COMx --baud 921600 --yes
+```
+It checks the board is fresh, burns the flash-encryption key, enables Flash
+Encryption, then flashes the signed + pre-encrypted bootloader/table/app. After
+it finishes, **reset the board**: the bootloader finalizes Secure Boot on first
+boot (burns the public-key digest + `ABS_DONE_1`). Verify:
+```
+espefuse.py --port COMx summary | findstr "FLASH_CRYPT_CNT ABS_DONE_1"
+```
+→ `FLASH_CRYPT_CNT` odd and `ABS_DONE_1 = True` = fully hardened.
+
+**Routine reflash afterwards** (board already provisioned, Flash Encryption
+active — never use plain `idf.py flash`, it would write plaintext the chip
+mis-decrypts):
+```
+python tools/secure_flash.py --port COMx --baud 921600              # full
+python tools/secure_flash.py --port COMx --baud 921600 --app-only   # app only
+```
+Because images are pre-encrypted on the host, `FLASH_CRYPT_CNT` is never
+consumed. To **distribute** an encrypted image instead of flashing locally:
+```
+python tools/secure_flash.py --package    # -> dist/cryptnox_pos-encrypted-full.bin
+```
 
 > [!WARNING]
-> Set a strong, unique `CARD_PIN` when initialising the card and never commit
-> `main/config.h`. The build fails with a `static_assert` if `CARD_PIN` is the
-> demo placeholder `"000000000"`; define `CRYPTNOX_POS_ALLOW_DEMO_PIN` only for
-> throwaway bench builds, never on a deployed terminal.
+> The overlay uses Flash Encryption **Development** mode so the board stays
+> reflashable while you validate. Only in **manufacturing**, after full
+> validation, switch `..._MODE_DEVELOPMENT` → `..._MODE_RELEASE` and reflash:
+> that permanently disables plaintext UART flashing and flash dumps. Note: on
+> the classic ESP32 encrypted NVS **requires** Flash Encryption (no HMAC eFuse
+> scheme), so the two cannot be separated.
 
 ---
 
 ## Payment flow
 
-1. **Splash** — Cryptnox logo + "Loading…" while WiFi / RPC / wallet come up.
-2. **Amount** — touchscreen +1 / −1 / +0.01 / −0.01 buttons; tap **CONFIRM**.
-3. **Confirm** — review amount + destination, tap **Send** or **Cancel**.
-4. **Transaction** — place the Cryptnox card on the PN532. The terminal
-   establishes the secure channel, signs `keccak256(unsigned_tx)`, recovers
-   the `v` parity via the `ecrecover` precompile, RLP-encodes the EIP-1559
-   transaction and broadcasts it via `eth_sendRawTransaction`.
-5. **Sent / Failed** — tap **New payment** to start the next transfer.
+1. **Splash** — Cryptnox logo + spinner while Wi-Fi / SNTP / RPC / wallet come
+   up (version shown at the bottom).
+2. **Amount** — SumUp-style numeric keypad (cents entry); tap **Charge**.
+3. **Send** — Ledger-style review showing the amount, the destination address
+   and the USDC contract **in full**; tap **Confirm** or **Cancel**.
+4. **PIN** — enter the card PIN on the on-screen keypad (validated, then wiped
+   from RAM after signing — never stored).
+5. **Transaction** — tap the Cryptnox card on the PN532:
+   **Processing** (opening the secure channel) → **Signing** (the card signs
+   `keccak256(unsigned_tx)`) → **Authorizing** (recover the `v` parity via the
+   `ecrecover` precompile, RLP-encode the EIP-1559 tx, broadcast via
+   `eth_sendRawTransaction`) → **Confirming** (poll `eth_getTransactionReceipt`
+   until the tx is mined).
+6. **Approved / Declined** — Approved **only** on a mined receipt with
+   `status 0x1`; tap **New sale** to start the next transfer.
 
 > [!NOTE]
 > The card must have a seed loaded and the BIP-32 derivation path
@@ -173,12 +255,12 @@ config.h field.
 
 ## Troubleshooting
 
-- **Blank or scrambled screen** → the CYD ships with two ILI9341 variants. The firmware uses TFT_eSPI's `ILI9341_2_DRIVER`; if your board uses the standard variant, set `CONFIG_TFT_ILI9341_DRIVER=y` (instead of `_2`) in `sdkconfig.defaults` and rebuild.
-- **Touch hitboxes are offset** → the raw range used by the XPT2046 driver is calibrated for the panel shipped with the 2432S028. If yours differs, adjust the `map(p.x, 200, 3800, …)` ranges in `main/ui.cpp` (function `poll_touch`).
+- **Inverted colours / banding on gradients** → the CYD panel needs `invertDisplay(true)` (inverted colours) and a GAMMASET tweak (banding/"milky gamma"); both are already applied in `ui_task`. If the screen is blank/scrambled your board may use the other ILI9341 variant — set `CONFIG_TFT_ILI9341_DRIVER=y` (instead of `_2`) in `sdkconfig.defaults` and rebuild.
+- **Touch hitboxes are offset** → the raw range used by the XPT2046 driver is calibrated for the panel shipped with the 2432S028. If yours differs, adjust the `map(p.x, 200, 3800, …)` ranges in `main/ui.cpp` (function `touch_to_screen`).
 - **`Card not found`** → confirm the PN532 switches are set for I²C, the SDA/SCL wires match GPIO 27/22, and the card is well centred on the antenna.
 - **`ecrecover did not match either parity`** → `ADDR_FROM` in `config.h` does not correspond to the card's `m/44'/60'/0'/0/0` derived key. Verify the seed and the path.
 - **WiFi connect fails** → only WPA2 is supported; check SSID/password.
-- **App partition full** → the project uses a custom 3 MB partition table (`partitions.csv`) on a 4 MB flash. Reduce TFT_eSPI font configs in `sdkconfig.defaults` if you need more headroom.
+- **App partition full** → the project uses a custom 3 MB app partition (`partitions.csv`) on a 4 MB flash. Drop unused LVGL fonts (`CONFIG_LV_FONT_MONTSERRAT_*`) in `sdkconfig.defaults` if you need more headroom.
 
 ---
 
