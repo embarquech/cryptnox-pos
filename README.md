@@ -274,6 +274,12 @@ python tools/secure_flash.py --package    # -> dist/cryptnox_pos-encrypted-full.
 
 ---
 
+## Documentation
+
+The generated documentation for this project is available [here](https://embarquech.github.io/cryptnox-pos/).
+
+---
+
 ## License
 
 `cryptnox-pos` is dual-licensed:
