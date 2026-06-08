@@ -92,32 +92,40 @@ $(function(){initNavTree('main_8cpp.html','',''); });
   <div class="headertitle"><div class="title">main.cpp File Reference</div></div>
 </div><!--header-->
 <div class="contents">
+
+<p>cryptnox-pos entry point: touchscreen USDC payment terminal.  
+<a href="#details">More...</a></p>
 <div class="textblock"><code>#include &lt;stdio.h&gt;</code><br />
 <code>#include &lt;string.h&gt;</code><br />
 <code>#include &lt;stdlib.h&gt;</code><br />
 <code>#include &lt;inttypes.h&gt;</code><br />
+<code>#include &lt;atomic&gt;</code><br />
 <code>#include &quot;freertos/FreeRTOS.h&quot;</code><br />
 <code>#include &quot;freertos/task.h&quot;</code><br />
 <code>#include &quot;freertos/queue.h&quot;</code><br />
 <code>#include &quot;driver/spi_master.h&quot;</code><br />
 <code>#include &quot;driver/gpio.h&quot;</code><br />
 <code>#include &quot;esp_log.h&quot;</code><br />
+<code>#include &quot;esp_timer.h&quot;</code><br />
 <code>#include &quot;nvs_flash.h&quot;</code><br />
 <code>#include &quot;CryptnoxWallet.h&quot;</code><br />
+<code>#include &quot;CW_Utils.h&quot;</code><br />
 <code>#include &quot;Pn532NfcTransport.h&quot;</code><br />
 <code>#include &quot;ESP32Logger.h&quot;</code><br />
 <code>#include &quot;ESP32Platform.h&quot;</code><br />
 <code>#include &quot;esp32_crypto_provider.h&quot;</code><br />
+<code>#include &quot;<a class="el" href="settings_8h_source.html">settings.h</a>&quot;</code><br />
 <code>#include &quot;pn532.h&quot;</code><br />
 <code>#include &quot;<a class="el" href="keccak256_8h_source.html">keccak256.h</a>&quot;</code><br />
 <code>#include &quot;<a class="el" href="eth__rlp_8h_source.html">eth_rlp.h</a>&quot;</code><br />
 <code>#include &quot;<a class="el" href="eth__rpc_8h_source.html">eth_rpc.h</a>&quot;</code><br />
+<code>#include &quot;<a class="el" href="net_8h_source.html">net.h</a>&quot;</code><br />
 <code>#include &quot;<a class="el" href="ui_8h_source.html">ui.h</a>&quot;</code><br />
 <code>#include &quot;config.h&quot;</code><br />
 </div><div class="textblock"><div class="dynheader">
 Include dependency graph for main.cpp:</div>
 <div class="dyncontent">
-<div class="center"><iframe scrolling="no" loading="lazy" frameborder="0" src="main_8cpp__incl.svg" width="2820" height="183"><p><b>This browser is not able to show SVG: try Firefox, Chrome, Safari, or Opera instead.</b></p></iframe></div>
+<div class="center"><iframe scrolling="no" loading="lazy" frameborder="0" src="main_8cpp__incl.svg" width="3072" height="256"><p><b>This browser is not able to show SVG: try Firefox, Chrome, Safari, or Opera instead.</b></p></iframe></div>
 </div>
 </div>
 <p><a href="main_8cpp_source.html">Go to the source code of this file.</a></p>
@@ -141,9 +149,17 @@ Macros</h2></td></tr>
 <tr class="heading"><td colspan="2"><h2 id="header-func-members" class="groupheader"><a id="func-members" name="func-members"></a>
 Functions</h2></td></tr>
 <tr class="memitem:afb52e5aa841a5387faa868ec0cfc15f4" id="r_afb52e5aa841a5387faa868ec0cfc15f4"><td class="memItemLeft" align="right" valign="top">static void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#afb52e5aa841a5387faa868ec0cfc15f4">ui_event_dispatch</a> (<a class="el" href="ui_8h.html#a9a99e204659fdc9573b3dc140ffeedd3">ui_event_t</a> event, uint64_t payload)</td></tr>
-<tr class="memitem:a5d8d83ca353cce2ad69ac1ff955d06b8" id="r_a5d8d83ca353cce2ad69ac1ff955d06b8"><td class="memItemLeft" align="right" valign="top">static void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a5d8d83ca353cce2ad69ac1ff955d06b8">parse_address</a> (const char *hex, uint8_t out[20])</td></tr>
-<tr class="memitem:a4b60e6b1c761ac5b545161210b271998" id="r_a4b60e6b1c761ac5b545161210b271998"><td class="memItemLeft" align="right" valign="top">static void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a4b60e6b1c761ac5b545161210b271998">build_usdc_calldata</a> (uint8_t out[68], const char *to_hex, uint64_t amount)</td></tr>
-<tr class="memitem:a311893dfef4fe27f3e9c0a205fab87d0" id="r_a311893dfef4fe27f3e9c0a205fab87d0"><td class="memItemLeft" align="right" valign="top">static bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a311893dfef4fe27f3e9c0a205fab87d0">sign_and_broadcast</a> (CryptnoxWallet &amp;wallet, Pn532NfcTransport &amp;transport, uint64_t amount_units, char *tx_hash_out, size_t tx_hash_max, char *err_out, size_t err_max)</td></tr>
+<tr class="memdesc:afb52e5aa841a5387faa868ec0cfc15f4"><td class="mdescLeft">&#160;</td><td class="mdescRight">UI-task callback: forward a touch event to the main task queue.  <br /></td></tr>
+<tr class="memitem:a5fa491b178dd50fcffc38c6c46636593" id="r_a5fa491b178dd50fcffc38c6c46636593"><td class="memItemLeft" align="right" valign="top">static int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a5fa491b178dd50fcffc38c6c46636593">hex_nibble_val</a> (char c)</td></tr>
+<tr class="memdesc:a5fa491b178dd50fcffc38c6c46636593"><td class="mdescLeft">&#160;</td><td class="mdescRight">Decode a single ASCII hex digit.  <br /></td></tr>
+<tr class="memitem:a25d11a814e96ff8ebf971cedbb59761c" id="r_a25d11a814e96ff8ebf971cedbb59761c"><td class="memItemLeft" align="right" valign="top">static bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a25d11a814e96ff8ebf971cedbb59761c">parse_address</a> (const char *hex, uint8_t out[20])</td></tr>
+<tr class="memdesc:a25d11a814e96ff8ebf971cedbb59761c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Parse a 20-byte Ethereum address from a hex string.  <br /></td></tr>
+<tr class="memitem:aee37928ea69bedfc468a9beb3b518798" id="r_aee37928ea69bedfc468a9beb3b518798"><td class="memItemLeft" align="right" valign="top">static bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#aee37928ea69bedfc468a9beb3b518798">build_usdc_calldata</a> (uint8_t out[68], const char *to_hex, uint64_t amount)</td></tr>
+<tr class="memdesc:aee37928ea69bedfc468a9beb3b518798"><td class="mdescLeft">&#160;</td><td class="mdescRight">Build the 68-byte ABI-encoded calldata for a USDC <code>transfer</code> call.  <br /></td></tr>
+<tr class="memitem:a3bf76a2039211bf46d73c58f44e6af0f" id="r_a3bf76a2039211bf46d73c58f44e6af0f"><td class="memItemLeft" align="right" valign="top">static bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a3bf76a2039211bf46d73c58f44e6af0f">sign_and_broadcast</a> (CryptnoxWallet &amp;wallet, Pn532NfcTransport &amp;transport, uint64_t amount_units, const char *pin, size_t pin_chars, char *tx_hash_out, size_t tx_hash_max, char *err_out, size_t err_max)</td></tr>
+<tr class="memdesc:a3bf76a2039211bf46d73c58f44e6af0f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Sign a USDC transfer on the card and broadcast it via JSON-RPC.  <br /></td></tr>
+<tr class="memitem:a9c72fd31d90d7fa1c114e4d8c1063bf1" id="r_a9c72fd31d90d7fa1c114e4d8c1063bf1"><td class="memItemLeft" align="right" valign="top">static void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a9c72fd31d90d7fa1c114e4d8c1063bf1">ensure_wifi</a> (void)</td></tr>
+<tr class="memdesc:a9c72fd31d90d7fa1c114e4d8c1063bf1"><td class="mdescLeft">&#160;</td><td class="mdescRight">ESP-IDF application entry point.  <br /></td></tr>
 <tr class="memitem:a630544a7f0a2cc40d8a7fefab7e2fe70" id="r_a630544a7f0a2cc40d8a7fefab7e2fe70"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a630544a7f0a2cc40d8a7fefab7e2fe70">app_main</a> (void)</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 id="header-var-members" class="groupheader"><a id="var-members" name="var-members"></a>
@@ -151,9 +167,14 @@ Variables</h2></td></tr>
 <tr class="memitem:a4ef5b5f197804a60836ab1e8907d8301" id="r_a4ef5b5f197804a60836ab1e8907d8301"><td class="memItemLeft" align="right" valign="top">static const char *const&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a4ef5b5f197804a60836ab1e8907d8301">TAG</a> = &quot;cryptnox_pos&quot;</td></tr>
 <tr class="memitem:a0a0c78f86940abc6a3f2d706a275b98a" id="r_a0a0c78f86940abc6a3f2d706a275b98a"><td class="memItemLeft" align="right" valign="top">static const uint8_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a0a0c78f86940abc6a3f2d706a275b98a">TRANSFER_SELECTOR</a> [4] = { 0xa9U, 0x05U, 0x9cU, 0xbbU }</td></tr>
 <tr class="memitem:a2e89239103f265147a2e10259827353f" id="r_a2e89239103f265147a2e10259827353f"><td class="memItemLeft" align="right" valign="top">static QueueHandle_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a2e89239103f265147a2e10259827353f">s_ui_queue</a> = NULL</td></tr>
-<tr class="memitem:acd108a6f8488cedcf021d2f483c0aaf2" id="r_acd108a6f8488cedcf021d2f483c0aaf2"><td class="memItemLeft" align="right" valign="top">static volatile bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#acd108a6f8488cedcf021d2f483c0aaf2">s_user_cancelled</a> = false</td></tr>
+<tr class="memitem:a3fba9a1bad9bb6ef357f8efe7f15a365" id="r_a3fba9a1bad9bb6ef357f8efe7f15a365"><td class="memItemLeft" align="right" valign="top">static std::atomic&lt; bool &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a3fba9a1bad9bb6ef357f8efe7f15a365">s_user_cancelled</a> {false}</td></tr>
 </table>
-<a name="doc-define-members" id="doc-define-members"></a><h2 id="header-doc-define-members" class="groupheader">Macro Definition Documentation</h2>
+<a name="details" id="details"></a><h2 id="header-details" class="groupheader">Detailed Description</h2>
+<div class="textblock"><p>cryptnox-pos entry point: touchscreen USDC payment terminal. </p>
+<p>Drives the amount → confirm → sign → broadcast flow on the Cheap Yellow Display, signing EIP-1559 USDC transfers on a Cryptnox card via PN532. </p>
+
+<p class="definition">Definition in file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+</div><a name="doc-define-members" id="doc-define-members"></a><h2 id="header-doc-define-members" class="groupheader">Macro Definition Documentation</h2>
 <a id="a80ab8fb5621ffc952ecbb715322b2352" name="a80ab8fb5621ffc952ecbb715322b2352"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a80ab8fb5621ffc952ecbb715322b2352">&#9670;&#160;</a></span>APP_VERSION_TAG</h2>
 
@@ -166,9 +187,9 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00270">270</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00434">434</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00272">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00490">app_main()</a>.</p>
 
 </div>
 </div>
@@ -184,9 +205,9 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00061">61</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00091">91</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00272">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00490">app_main()</a>.</p>
 
 </div>
 </div>
@@ -202,9 +223,9 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00056">56</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00086">86</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00272">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00490">app_main()</a>.</p>
 
 </div>
 </div>
@@ -220,9 +241,9 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00059">59</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00089">89</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00272">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00490">app_main()</a>.</p>
 
 </div>
 </div>
@@ -238,9 +259,9 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00060">60</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00090">90</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00272">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00490">app_main()</a>.</p>
 
 </div>
 </div>
@@ -256,9 +277,9 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00058">58</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00088">88</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00272">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00490">app_main()</a>.</p>
 
 </div>
 </div>
@@ -274,9 +295,9 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00057">57</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00087">87</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00272">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00490">app_main()</a>.</p>
 
 </div>
 </div>
@@ -292,9 +313,9 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00067">67</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00097">97</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00137">sign_and_broadcast()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00243">sign_and_broadcast()</a>.</p>
 
 </div>
 </div>
@@ -314,14 +335,14 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00272">272</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00490">490</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="main_8cpp_source.html#l00270">APP_VERSION_TAG</a>, <a class="el" href="main_8cpp_source.html#l00024">NullLogger::begin()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00154">eth_rpc_init()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00160">eth_rpc_wifi_connect()</a>, <a class="el" href="main_8cpp_source.html#l00074">ui_msg_t::event</a>, <a class="el" href="main_8cpp_source.html#l00075">ui_msg_t::payload</a>, <a class="el" href="main_8cpp_source.html#l00061">PN532_I2C_HZ</a>, <a class="el" href="main_8cpp_source.html#l00056">PN532_I2C_PORT</a>, <a class="el" href="main_8cpp_source.html#l00059">PN532_IRQ</a>, <a class="el" href="main_8cpp_source.html#l00060">PN532_RST</a>, <a class="el" href="main_8cpp_source.html#l00058">PN532_SCL</a>, <a class="el" href="main_8cpp_source.html#l00057">PN532_SDA</a>, <a class="el" href="main_8cpp_source.html#l00078">s_ui_queue</a>, <a class="el" href="main_8cpp_source.html#l00083">s_user_cancelled</a>, <a class="el" href="main_8cpp_source.html#l00137">sign_and_broadcast()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00018">TAG</a>, <a class="el" href="ui_8h_source.html#l00018">UI_EVENT_AMOUNT_CONFIRMED</a>, <a class="el" href="ui_8h_source.html#l00020">UI_EVENT_CONFIRM_CANCEL</a>, <a class="el" href="ui_8h_source.html#l00019">UI_EVENT_CONFIRM_OK</a>, <a class="el" href="main_8cpp_source.html#l00085">ui_event_dispatch()</a>, <a class="el" href="ui_8h_source.html#l00021">UI_EVENT_TX_RETRY</a>, <a class="el" href="ui_8cpp_source.html#l00373">ui_init()</a>, <a class="el" href="ui_8cpp_source.html#l00397">ui_show_amount_entry()</a>, <a class="el" href="ui_8cpp_source.html#l00403">ui_show_confirm()</a>, <a class="el" href="ui_8cpp_source.html#l00392">ui_show_splash()</a>, <a class="el" href="ui_8cpp_source.html#l00415">ui_show_tx_status()</a>, <a class="el" href="ui_8h_source.html#l00028">UI_TX_STATE_DONE</a>, and <a class="el" href="ui_8h_source.html#l00029">UI_TX_STATE_FAILED</a>.</p>
+<p class="reference">References <a class="el" href="main_8cpp_source.html#l00434">APP_VERSION_TAG</a>, <a class="el" href="main_8cpp_source.html#l00045">NullLogger::begin()</a>, <a class="el" href="main_8cpp_source.html#l00450">ensure_wifi()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00412">eth_rpc_get_tx_receipt()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00222">eth_rpc_init()</a>, <a class="el" href="eth__rpc_8h_source.html#l00042">ETH_RPC_RECEIPT_PENDING</a>, <a class="el" href="eth__rpc_8h_source.html#l00044">ETH_RPC_RECEIPT_REVERTED</a>, <a class="el" href="eth__rpc_8h_source.html#l00043">ETH_RPC_RECEIPT_SUCCESS</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00228">eth_rpc_set_auth()</a>, <a class="el" href="main_8cpp_source.html#l00104">ui_msg_t::event</a>, <a class="el" href="net_8cpp_source.html#l00215">net_time_sync()</a>, <a class="el" href="net_8cpp_source.html#l00164">net_wifi_connect()</a>, <a class="el" href="net_8cpp_source.html#l00096">net_wifi_init()</a>, <a class="el" href="net_8cpp_source.html#l00122">net_wifi_scan()</a>, <a class="el" href="main_8cpp_source.html#l00105">ui_msg_t::payload</a>, <a class="el" href="main_8cpp_source.html#l00091">PN532_I2C_HZ</a>, <a class="el" href="main_8cpp_source.html#l00086">PN532_I2C_PORT</a>, <a class="el" href="main_8cpp_source.html#l00089">PN532_IRQ</a>, <a class="el" href="main_8cpp_source.html#l00090">PN532_RST</a>, <a class="el" href="main_8cpp_source.html#l00088">PN532_SCL</a>, <a class="el" href="main_8cpp_source.html#l00087">PN532_SDA</a>, <a class="el" href="main_8cpp_source.html#l00108">s_ui_queue</a>, <a class="el" href="main_8cpp_source.html#l00115">s_user_cancelled</a>, <a class="el" href="settings_8cpp_source.html#l00124">settings_set_wifi()</a>, <a class="el" href="main_8cpp_source.html#l00243">sign_and_broadcast()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00034">TAG</a>, <a class="el" href="ui_8h_source.html#l00048">UI_EVENT_AMOUNT_CONFIRMED</a>, <a class="el" href="ui_8h_source.html#l00050">UI_EVENT_CONFIRM_CANCEL</a>, <a class="el" href="main_8cpp_source.html#l00127">ui_event_dispatch()</a>, <a class="el" href="ui_8h_source.html#l00051">UI_EVENT_PIN_ENTERED</a>, <a class="el" href="ui_8h_source.html#l00054">UI_EVENT_TX_RETRY</a>, <a class="el" href="ui_8h_source.html#l00052">UI_EVENT_WIFI_SCAN</a>, <a class="el" href="ui_8h_source.html#l00053">UI_EVENT_WIFI_TRY</a>, <a class="el" href="ui_8cpp_source.html#l01395">ui_init()</a>, <a class="el" href="ui_8cpp_source.html#l01446">ui_set_addresses()</a>, <a class="el" href="ui_8cpp_source.html#l01408">ui_show_amount_entry()</a>, <a class="el" href="ui_8cpp_source.html#l01414">ui_show_confirm()</a>, <a class="el" href="ui_8cpp_source.html#l01404">ui_show_splash()</a>, <a class="el" href="ui_8cpp_source.html#l01471">ui_show_tx_status()</a>, <a class="el" href="ui_8cpp_source.html#l01451">ui_show_wifi_connecting()</a>, <a class="el" href="ui_8cpp_source.html#l01438">ui_show_wifi_list()</a>, <a class="el" href="ui_8cpp_source.html#l01425">ui_take_pin()</a>, <a class="el" href="ui_8cpp_source.html#l01457">ui_take_wifi_creds()</a>, <a class="el" href="ui_8h_source.html#l00063">UI_TX_STATE_CONFIRMING</a>, <a class="el" href="ui_8h_source.html#l00064">UI_TX_STATE_DONE</a>, and <a class="el" href="ui_8h_source.html#l00065">UI_TX_STATE_FAILED</a>.</p>
 
 </div>
 </div>
-<a id="a4b60e6b1c761ac5b545161210b271998" name="a4b60e6b1c761ac5b545161210b271998"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a4b60e6b1c761ac5b545161210b271998">&#9670;&#160;</a></span>build_usdc_calldata()</h2>
+<a id="aee37928ea69bedfc468a9beb3b518798" name="aee37928ea69bedfc468a9beb3b518798"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aee37928ea69bedfc468a9beb3b518798">&#9670;&#160;</a></span>build_usdc_calldata()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -330,7 +351,7 @@ Variables</h2></td></tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">void build_usdc_calldata </td>
+          <td class="memname">bool build_usdc_calldata </td>
           <td>(</td>
           <td class="paramtype">uint8_t</td>          <td class="paramname"><span class="paramname"><em>out</em></span>[68], </td>
         </tr>
@@ -352,16 +373,28 @@ Variables</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00116">116</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p>Build the 68-byte ABI-encoded calldata for a USDC <code>transfer</code> call. </p>
+<p>Encodes the ERC-20 <code>transfer(address,uint256)</code> selector followed by the ABI-encoded arguments: </p><div class="fragment"><div class="line">selector(4) | zeroes(12) | to(20) | zeroes(24) | amount_be(8)</div>
+</div><!-- fragment --><dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[out]</td><td class="paramname">out</td><td>68-byte output buffer; contents are undefined on failure. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">to_hex</td><td>Recipient address as hex (with or without <code>0x</code> prefix). </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">amount</td><td>Transfer amount in USDC base units (6 decimals). </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>true on success, false if <code class="param">to_hex</code> fails address validation (F-07). </dd></dl>
 
-<p class="reference">References <a class="el" href="main_8cpp_source.html#l00097">parse_address()</a>, and <a class="el" href="main_8cpp_source.html#l00064">TRANSFER_SELECTOR</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00203">203</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00137">sign_and_broadcast()</a>.</p>
+<p class="reference">References <a class="el" href="main_8cpp_source.html#l00166">parse_address()</a>, and <a class="el" href="main_8cpp_source.html#l00094">TRANSFER_SELECTOR</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00243">sign_and_broadcast()</a>.</p>
 
 </div>
 </div>
-<a id="a5d8d83ca353cce2ad69ac1ff955d06b8" name="a5d8d83ca353cce2ad69ac1ff955d06b8"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a5d8d83ca353cce2ad69ac1ff955d06b8">&#9670;&#160;</a></span>parse_address()</h2>
+<a id="a9c72fd31d90d7fa1c114e4d8c1063bf1" name="a9c72fd31d90d7fa1c114e4d8c1063bf1"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a9c72fd31d90d7fa1c114e4d8c1063bf1">&#9670;&#160;</a></span>ensure_wifi()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -370,7 +403,81 @@ Variables</h2></td></tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">void parse_address </td>
+          <td class="memname">void ensure_wifi </td>
+          <td>(</td>
+          <td class="paramtype">void</td>          <td class="paramname"><span class="paramname"><em></em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel static">static</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>ESP-IDF application entry point. </p>
+<p>Brings up the UI (splash), NVS, PN532 reader, wallet, WiFi, and a blocking SNTP time sync (F-06), then services UI events in the main interaction loop (amount → confirm → sign+broadcast).</p>
+<p>Bring up Wi-Fi: connect with saved credentials, or run the first-run network picker (scan → list → keyboard → connect) until connected.</p>
+<p>Blocks until a connection succeeds; the operator cannot leave setup without one. config.h Wi-Fi credentials are intentionally not used (NVS only). </p>
+
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00450">450</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="main_8cpp_source.html#l00104">ui_msg_t::event</a>, <a class="el" href="net_8cpp_source.html#l00164">net_wifi_connect()</a>, <a class="el" href="net_8cpp_source.html#l00122">net_wifi_scan()</a>, <a class="el" href="main_8cpp_source.html#l00108">s_ui_queue</a>, <a class="el" href="settings_8cpp_source.html#l00098">settings_get_wifi()</a>, <a class="el" href="settings_8cpp_source.html#l00124">settings_set_wifi()</a>, <a class="el" href="ui_8h_source.html#l00053">UI_EVENT_WIFI_TRY</a>, <a class="el" href="ui_8cpp_source.html#l01451">ui_show_wifi_connecting()</a>, <a class="el" href="ui_8cpp_source.html#l01438">ui_show_wifi_list()</a>, and <a class="el" href="ui_8cpp_source.html#l01457">ui_take_wifi_creds()</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00490">app_main()</a>.</p>
+
+</div>
+</div>
+<a id="a5fa491b178dd50fcffc38c6c46636593" name="a5fa491b178dd50fcffc38c6c46636593"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a5fa491b178dd50fcffc38c6c46636593">&#9670;&#160;</a></span>hex_nibble_val()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">int hex_nibble_val </td>
+          <td>(</td>
+          <td class="paramtype">char</td>          <td class="paramname"><span class="paramname"><em>c</em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel static">static</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Decode a single ASCII hex digit. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">c</td><td>Character to decode. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>Nibble value 0–15, or -1 if <code class="param">c</code> is not in [0-9a-fA-F]. </dd></dl>
+
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00145">145</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00166">parse_address()</a>.</p>
+
+</div>
+</div>
+<a id="a25d11a814e96ff8ebf971cedbb59761c" name="a25d11a814e96ff8ebf971cedbb59761c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a25d11a814e96ff8ebf971cedbb59761c">&#9670;&#160;</a></span>parse_address()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">bool parse_address </td>
           <td>(</td>
           <td class="paramtype">const char *</td>          <td class="paramname"><span class="paramname"><em>hex</em></span>, </td>
         </tr>
@@ -387,14 +494,27 @@ Variables</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00097">97</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p>Parse a 20-byte Ethereum address from a hex string. </p>
+<p>Accepts an optional <code>0x</code> / <code>0X</code> prefix, then requires exactly 40 hex characters and rejects any non-hex input instead of silently decoding garbage (F-07).</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">hex</td><td>Address string (with or without <code>0x</code> prefix). </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">out</td><td>20-byte decoded address; zeroed then left partially written on failure — must not be used unless true is returned. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>true on success, false on wrong length or non-hex character. </dd></dl>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00116">build_usdc_calldata()</a>, and <a class="el" href="main_8cpp_source.html#l00137">sign_and_broadcast()</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00166">166</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="main_8cpp_source.html#l00145">hex_nibble_val()</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00203">build_usdc_calldata()</a>, and <a class="el" href="main_8cpp_source.html#l00243">sign_and_broadcast()</a>.</p>
 
 </div>
 </div>
-<a id="a311893dfef4fe27f3e9c0a205fab87d0" name="a311893dfef4fe27f3e9c0a205fab87d0"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a311893dfef4fe27f3e9c0a205fab87d0">&#9670;&#160;</a></span>sign_and_broadcast()</h2>
+<a id="a3bf76a2039211bf46d73c58f44e6af0f" name="a3bf76a2039211bf46d73c58f44e6af0f"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a3bf76a2039211bf46d73c58f44e6af0f">&#9670;&#160;</a></span>sign_and_broadcast()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -416,6 +536,16 @@ Variables</h2></td></tr>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">uint64_t</td>          <td class="paramname"><span class="paramname"><em>amount_units</em></span>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const char *</td>          <td class="paramname"><span class="paramname"><em>pin</em></span>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t</td>          <td class="paramname"><span class="paramname"><em>pin_chars</em></span>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -445,11 +575,27 @@ Variables</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00137">137</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p>Sign a USDC transfer on the card and broadcast it via JSON-RPC. </p>
+<p>Full pipeline: build calldata → fetch nonce → RLP-encode + keccak256 → card connect/sign (cancellable) → ecrecover parity → broadcast. The card PIN is copied into the sign request at the last moment and scrubbed with <code>CW_Utils::secure_wipe</code> immediately after signing (F-04).</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">wallet</td><td>Initialised wallet instance. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">transport</td><td>PN532 transport, used for the cancellable connect loop. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">amount_units</td><td>Transfer amount in USDC base units (6 decimals). </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">tx_hash_out</td><td>"0x..."-prefixed tx hash on success. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">tx_hash_max</td><td>Capacity of <code class="param">tx_hash_out</code> (&gt;= 68 bytes). </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">err_out</td><td>Short UI-facing error message on failure. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">err_max</td><td>Capacity of <code class="param">err_out</code>. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>true on successful broadcast; false on failure or user cancel (err_out is only meaningful when <a class="el" href="#a3fba9a1bad9bb6ef357f8efe7f15a365">s_user_cancelled</a> is clear). </dd></dl>
 
-<p class="reference">References <a class="el" href="main_8cpp_source.html#l00116">build_usdc_calldata()</a>, <a class="el" href="eth__rlp_8h_source.html#l00019">eth_tx_t::calldata</a>, <a class="el" href="eth__rlp_8h_source.html#l00020">eth_tx_t::calldata_len</a>, <a class="el" href="eth__rlp_8h_source.html#l00012">eth_tx_t::chain_id</a>, <a class="el" href="eth__rlp_8cpp_source.html#l00164">eth_rlp_encode_signed()</a>, <a class="el" href="eth__rlp_8cpp_source.html#l00147">eth_rlp_encode_unsigned()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00236">eth_rpc_ecrecover_parity()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00210">eth_rpc_get_nonce()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00311">eth_rpc_send_raw_tx()</a>, <a class="el" href="eth__rlp_8h_source.html#l00018">eth_tx_t::eth_value</a>, <a class="el" href="eth__rlp_8h_source.html#l00016">eth_tx_t::gas_limit</a>, <a class="el" href="keccak256_8cpp_source.html#l00080">keccak256()</a>, <a class="el" href="eth__rlp_8h_source.html#l00015">eth_tx_t::max_fee</a>, <a class="el" href="eth__rlp_8h_source.html#l00014">eth_tx_t::max_priority_fee</a>, <a class="el" href="eth__rlp_8h_source.html#l00013">eth_tx_t::nonce</a>, <a class="el" href="main_8cpp_source.html#l00097">parse_address()</a>, <a class="el" href="main_8cpp_source.html#l00083">s_user_cancelled</a>, <a class="el" href="eth__rlp_8h_source.html#l00017">eth_tx_t::to</a>, <a class="el" href="main_8cpp_source.html#l00067">TX_BUF_SIZE</a>, <a class="el" href="ui_8cpp_source.html#l00415">ui_show_tx_status()</a>, <a class="el" href="ui_8h_source.html#l00025">UI_TX_STATE_PLACE_CARD</a>, <a class="el" href="ui_8h_source.html#l00027">UI_TX_STATE_SENDING</a>, and <a class="el" href="ui_8h_source.html#l00026">UI_TX_STATE_SIGNING</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00243">243</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00272">app_main()</a>.</p>
+<p class="reference">References <a class="el" href="main_8cpp_source.html#l00203">build_usdc_calldata()</a>, <a class="el" href="eth__rlp_8h_source.html#l00039">eth_tx_t::calldata</a>, <a class="el" href="eth__rlp_8h_source.html#l00040">eth_tx_t::calldata_len</a>, <a class="el" href="eth__rlp_8h_source.html#l00031">eth_tx_t::chain_id</a>, <a class="el" href="eth__rlp_8cpp_source.html#l00232">eth_rlp_encode_signed()</a>, <a class="el" href="eth__rlp_8cpp_source.html#l00214">eth_rlp_encode_unsigned()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00274">eth_rpc_ecrecover_parity()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00234">eth_rpc_get_nonce()</a>, <a class="el" href="eth__rpc_8h_source.html#l00035">ETH_RPC_PARITY_MISMATCH</a>, <a class="el" href="eth__rpc_8h_source.html#l00034">ETH_RPC_PARITY_OK</a>, <a class="el" href="eth__rpc_8h_source.html#l00037">ETH_RPC_PARITY_RPC_ERROR</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00357">eth_rpc_send_raw_tx()</a>, <a class="el" href="eth__rlp_8h_source.html#l00037">eth_tx_t::eth_value</a>, <a class="el" href="eth__rlp_8h_source.html#l00035">eth_tx_t::gas_limit</a>, <a class="el" href="keccak256_8cpp_source.html#l00120">keccak256()</a>, <a class="el" href="eth__rlp_8h_source.html#l00034">eth_tx_t::max_fee</a>, <a class="el" href="eth__rlp_8h_source.html#l00033">eth_tx_t::max_priority_fee</a>, <a class="el" href="eth__rlp_8h_source.html#l00032">eth_tx_t::nonce</a>, <a class="el" href="main_8cpp_source.html#l00166">parse_address()</a>, <a class="el" href="main_8cpp_source.html#l00115">s_user_cancelled</a>, <a class="el" href="settings_8cpp_source.html#l00161">settings_get_max_fee_gwei()</a>, <a class="el" href="settings_8cpp_source.html#l00171">settings_get_priority_fee_gwei()</a>, <a class="el" href="eth__rlp_8h_source.html#l00036">eth_tx_t::to</a>, <a class="el" href="main_8cpp_source.html#l00097">TX_BUF_SIZE</a>, <a class="el" href="ui_8cpp_source.html#l01471">ui_show_tx_status()</a>, <a class="el" href="ui_8h_source.html#l00059">UI_TX_STATE_PLACE_CARD</a>, <a class="el" href="ui_8h_source.html#l00060">UI_TX_STATE_PROCESSING</a>, <a class="el" href="ui_8h_source.html#l00062">UI_TX_STATE_SENDING</a>, and <a class="el" href="ui_8h_source.html#l00061">UI_TX_STATE_SIGNING</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00490">app_main()</a>.</p>
 
 </div>
 </div>
@@ -480,11 +626,21 @@ Variables</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00085">85</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p>UI-task callback: forward a touch event to the main task queue. </p>
+<p>Runs in the UI task context. A Cancel tap also raises the atomic <a class="el" href="#a3fba9a1bad9bb6ef357f8efe7f15a365">s_user_cancelled</a> flag so the in-flight signing flow can abort without waiting for the queue to drain (F-11).</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">event</td><td>UI event identifier. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">payload</td><td>Event payload (amount in USDC base units, or 0). </td></tr>
+  </table>
+  </dd>
+</dl>
 
-<p class="reference">References <a class="el" href="main_8cpp_source.html#l00078">s_ui_queue</a>, <a class="el" href="main_8cpp_source.html#l00083">s_user_cancelled</a>, and <a class="el" href="ui_8h_source.html#l00020">UI_EVENT_CONFIRM_CANCEL</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00127">127</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00272">app_main()</a>.</p>
+<p class="reference">References <a class="el" href="main_8cpp_source.html#l00108">s_ui_queue</a>, <a class="el" href="main_8cpp_source.html#l00115">s_user_cancelled</a>, and <a class="el" href="ui_8h_source.html#l00050">UI_EVENT_CONFIRM_CANCEL</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00490">app_main()</a>.</p>
 
 </div>
 </div>
@@ -509,14 +665,14 @@ Variables</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00078">78</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00108">108</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00272">app_main()</a>, and <a class="el" href="main_8cpp_source.html#l00085">ui_event_dispatch()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00490">app_main()</a>, <a class="el" href="main_8cpp_source.html#l00450">ensure_wifi()</a>, and <a class="el" href="main_8cpp_source.html#l00127">ui_event_dispatch()</a>.</p>
 
 </div>
 </div>
-<a id="acd108a6f8488cedcf021d2f483c0aaf2" name="acd108a6f8488cedcf021d2f483c0aaf2"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#acd108a6f8488cedcf021d2f483c0aaf2">&#9670;&#160;</a></span>s_user_cancelled</h2>
+<a id="a3fba9a1bad9bb6ef357f8efe7f15a365" name="a3fba9a1bad9bb6ef357f8efe7f15a365"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a3fba9a1bad9bb6ef357f8efe7f15a365">&#9670;&#160;</a></span>s_user_cancelled</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -525,7 +681,7 @@ Variables</h2></td></tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">volatile bool s_user_cancelled = false</td>
+          <td class="memname">std::atomic&lt;bool&gt; s_user_cancelled {false}</td>
         </tr>
       </table>
   </td>
@@ -535,9 +691,9 @@ Variables</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00083">83</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00115">115</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00272">app_main()</a>, <a class="el" href="main_8cpp_source.html#l00137">sign_and_broadcast()</a>, and <a class="el" href="main_8cpp_source.html#l00085">ui_event_dispatch()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00490">app_main()</a>, <a class="el" href="main_8cpp_source.html#l00243">sign_and_broadcast()</a>, and <a class="el" href="main_8cpp_source.html#l00127">ui_event_dispatch()</a>.</p>
 
 </div>
 </div>
@@ -561,7 +717,7 @@ Variables</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00052">52</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00082">82</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
 </div>
 </div>
@@ -585,9 +741,9 @@ Variables</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00064">64</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00094">94</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00116">build_usdc_calldata()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00203">build_usdc_calldata()</a>.</p>
 
 </div>
 </div>

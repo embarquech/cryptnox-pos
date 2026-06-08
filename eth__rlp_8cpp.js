@@ -1,6 +1,8 @@
 var eth__rlp_8cpp =
 [
+    [ "CALLDATA_MAX", "eth__rlp_8cpp.html#adb3cc194adb9f745b9de7d56f93394a2", null ],
     [ "ITEMS_BUF_MAX", "eth__rlp_8cpp.html#a72d92e7bcb253dbfb58f6553929f2466", null ],
+    [ "ITEMS_FIXED_MAX", "eth__rlp_8cpp.html#aa7edf10c7aabb85033c3e71f0653a7aa", null ],
     [ "be_minimal", "eth__rlp_8cpp.html#a193bf26cbbe9167910fe7bc02ee0c7de", null ],
     [ "encode_common_fields", "eth__rlp_8cpp.html#acef29cba0b03c251389f61b84aff2874", null ],
     [ "eth_rlp_encode_signed", "eth__rlp_8cpp.html#a14183082a53a8ca20c45b9257342a40f", null ],

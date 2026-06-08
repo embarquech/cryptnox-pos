@@ -1,6 +1,5 @@
 var searchData=
 [
-  ['tap_0',['tap',['../ui_8cpp.html#a8e2a4899da107dd1408d2ab953e65929',1,'ui.cpp']]],
-  ['touch_1',['touch',['../ui_8cpp.html#a0c6c4feef76bd778b03a8b61d5f0c683',1,'ui.cpp']]],
-  ['touchspi_2',['touchSPI',['../ui_8cpp.html#a1c666ad400b7ccf0e17d8dff91ed8202',1,'ui.cpp']]]
+  ['ldr_5fbrightness_5fpct_0',['ldr_brightness_pct',['../ui_8cpp.html#a3261bd3e209de4db5f3d8aa032915318',1,'ui.cpp']]],
+  ['ldr_5finit_1',['ldr_init',['../ui_8cpp.html#a738ed529592a324c177291a6ef72d9c8',1,'ui.cpp']]]
 ];

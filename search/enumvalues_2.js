@@ -1,0 +1,26 @@
+var searchData=
+[
+  ['ui_5fevent_5famount_5fconfirmed_0',['UI_EVENT_AMOUNT_CONFIRMED',['../ui_8h.html#a9a99e204659fdc9573b3dc140ffeedd3a6cfef1d8d809d78d898190e13ee3e00a',1,'ui.h']]],
+  ['ui_5fevent_5fconfirm_5fcancel_1',['UI_EVENT_CONFIRM_CANCEL',['../ui_8h.html#a9a99e204659fdc9573b3dc140ffeedd3a07a32dd4ddc27478fb80eb73b946c9eb',1,'ui.h']]],
+  ['ui_5fevent_5fconfirm_5fok_2',['UI_EVENT_CONFIRM_OK',['../ui_8h.html#a9a99e204659fdc9573b3dc140ffeedd3aa9734e321f7efd167da45579c3c29b1c',1,'ui.h']]],
+  ['ui_5fevent_5fpin_5fentered_3',['UI_EVENT_PIN_ENTERED',['../ui_8h.html#a9a99e204659fdc9573b3dc140ffeedd3a0b7cdca33686f21cb21f4cc473c58e83',1,'ui.h']]],
+  ['ui_5fevent_5ftx_5fretry_4',['UI_EVENT_TX_RETRY',['../ui_8h.html#a9a99e204659fdc9573b3dc140ffeedd3ad02010de6358696d9390fc93984d2323',1,'ui.h']]],
+  ['ui_5fevent_5fwifi_5fscan_5',['UI_EVENT_WIFI_SCAN',['../ui_8h.html#a9a99e204659fdc9573b3dc140ffeedd3a7207c33f562206d364a50ae60a8a55cc',1,'ui.h']]],
+  ['ui_5fevent_5fwifi_5ftry_6',['UI_EVENT_WIFI_TRY',['../ui_8h.html#a9a99e204659fdc9573b3dc140ffeedd3a39d85ddff76d37945076baec0d72f0cb',1,'ui.h']]],
+  ['ui_5fscreen_5famount_7',['UI_SCREEN_AMOUNT',['../ui_8h.html#a4a96c66658390ff80fefe7027730cc25a219bc3766b2cacf7a10886e5fcee9624',1,'ui.h']]],
+  ['ui_5fscreen_5fconfirm_8',['UI_SCREEN_CONFIRM',['../ui_8h.html#a4a96c66658390ff80fefe7027730cc25a8ec522dd5e0aa8d5764e42086556c065',1,'ui.h']]],
+  ['ui_5fscreen_5fpin_9',['UI_SCREEN_PIN',['../ui_8h.html#a4a96c66658390ff80fefe7027730cc25ad29fd983f1cbb4f1b2394be265a8aa55',1,'ui.h']]],
+  ['ui_5fscreen_5fsettings_10',['UI_SCREEN_SETTINGS',['../ui_8h.html#a4a96c66658390ff80fefe7027730cc25a49ac1eb8fe5d58250e8d8be06ab7ec31',1,'ui.h']]],
+  ['ui_5fscreen_5fsplash_11',['UI_SCREEN_SPLASH',['../ui_8h.html#a4a96c66658390ff80fefe7027730cc25a7de8649e53a6688e12b14814c0071fb7',1,'ui.h']]],
+  ['ui_5fscreen_5ftx_5fstatus_12',['UI_SCREEN_TX_STATUS',['../ui_8h.html#a4a96c66658390ff80fefe7027730cc25aae44df521ee8bd24f5657aeac76fcffb',1,'ui.h']]],
+  ['ui_5fscreen_5fwifi_5fconnecting_13',['UI_SCREEN_WIFI_CONNECTING',['../ui_8h.html#a4a96c66658390ff80fefe7027730cc25affe1d77004fa9730f5707839221ec779',1,'ui.h']]],
+  ['ui_5fscreen_5fwifi_5flist_14',['UI_SCREEN_WIFI_LIST',['../ui_8h.html#a4a96c66658390ff80fefe7027730cc25a667adaa3fa9ff63f3613092e09d131a2',1,'ui.h']]],
+  ['ui_5fscreen_5fwifi_5fpass_15',['UI_SCREEN_WIFI_PASS',['../ui_8h.html#a4a96c66658390ff80fefe7027730cc25a3405b35adfbc0795a9fdfd09f14f5eca',1,'ui.h']]],
+  ['ui_5ftx_5fstate_5fconfirming_16',['UI_TX_STATE_CONFIRMING',['../ui_8h.html#a64b6bbe2fbeb96a8d689ba887b204fa1a30de1a39c3f17020a90aa8cf20d8f0cb',1,'ui.h']]],
+  ['ui_5ftx_5fstate_5fdone_17',['UI_TX_STATE_DONE',['../ui_8h.html#a64b6bbe2fbeb96a8d689ba887b204fa1a656b8d2e41e8420051e2ffb25c861e07',1,'ui.h']]],
+  ['ui_5ftx_5fstate_5ffailed_18',['UI_TX_STATE_FAILED',['../ui_8h.html#a64b6bbe2fbeb96a8d689ba887b204fa1ac69f70c4193dea6c5850f4416433455c',1,'ui.h']]],
+  ['ui_5ftx_5fstate_5fplace_5fcard_19',['UI_TX_STATE_PLACE_CARD',['../ui_8h.html#a64b6bbe2fbeb96a8d689ba887b204fa1a509d7a6e6e5900035882b4d0bb9b5bcb',1,'ui.h']]],
+  ['ui_5ftx_5fstate_5fprocessing_20',['UI_TX_STATE_PROCESSING',['../ui_8h.html#a64b6bbe2fbeb96a8d689ba887b204fa1ade244ab0bd4a888f7a995e18c0d692f4',1,'ui.h']]],
+  ['ui_5ftx_5fstate_5fsending_21',['UI_TX_STATE_SENDING',['../ui_8h.html#a64b6bbe2fbeb96a8d689ba887b204fa1a0673cfe1c12cfcc9173b0311205b20c9',1,'ui.h']]],
+  ['ui_5ftx_5fstate_5fsigning_22',['UI_TX_STATE_SIGNING',['../ui_8h.html#a64b6bbe2fbeb96a8d689ba887b204fa1a0359cc2ea1fe9c3318c132e58d5c6073',1,'ui.h']]]
+];

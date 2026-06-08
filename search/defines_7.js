@@ -1,5 +1,12 @@
 var searchData=
 [
-  ['scr_5fh_0',['SCR_H',['../ui_8cpp.html#a61b2e5ac0d21f66c13855ee70a1a507d',1,'ui.cpp']]],
-  ['scr_5fw_1',['SCR_W',['../ui_8cpp.html#a800e692b98ec3f4cc0679e934485ca84',1,'ui.cpp']]]
+  ['k_5fauto_5fbl_0',['K_AUTO_BL',['../settings_8cpp.html#ad815165eaea5f4d1d115ae4dec279e39',1,'settings.cpp']]],
+  ['k_5fbrightness_1',['K_BRIGHTNESS',['../settings_8cpp.html#a4deef054af7f62b85e56b5ba9bac12e0',1,'settings.cpp']]],
+  ['k_5fmax_5ffee_2',['K_MAX_FEE',['../settings_8cpp.html#acb77454d79222fe833cfc84b1ae19fbd',1,'settings.cpp']]],
+  ['k_5fprio_5ffee_3',['K_PRIO_FEE',['../settings_8cpp.html#ae012344fa74c6f102c5b791aaa2ef32b',1,'settings.cpp']]],
+  ['k_5fwifi_5fpass_4',['K_WIFI_PASS',['../settings_8cpp.html#a35eba612a0a34fa2f6ff8d4627bcc612',1,'settings.cpp']]],
+  ['k_5fwifi_5fssid_5',['K_WIFI_SSID',['../settings_8cpp.html#a2968a92147ce284308f0ba7c5b329f4c',1,'settings.cpp']]],
+  ['keccak_5frate_6',['KECCAK_RATE',['../keccak256_8cpp.html#aecbdcebd899f1fafbe45f990c1e1882e',1,'keccak256.cpp']]],
+  ['keccak_5frounds_7',['KECCAK_ROUNDS',['../keccak256_8cpp.html#aaf66c2daa0f1fe906b80b79969f67424',1,'keccak256.cpp']]],
+  ['keccak_5fstate_5flane_8',['KECCAK_STATE_LANE',['../keccak256_8cpp.html#a0e4bae187bf2e9a4e989fd84dcce6d1e',1,'keccak256.cpp']]]
 ];

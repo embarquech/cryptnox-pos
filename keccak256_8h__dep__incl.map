@@ -1,7 +1,7 @@
 <map id="main/keccak256.h" name="main/keccak256.h">
-<area shape="rect" id="Node000001" title=" " alt="" coords="93,5,233,31"/>
-<area shape="rect" id="Node000002" href="$keccak256_8cpp.html" title=" " alt="" coords="5,79,160,104"/>
+<area shape="rect" id="Node000001" title="Original Keccak&#45;256 digest as used by Ethereum." alt="" coords="93,5,233,31"/>
+<area shape="rect" id="Node000002" href="$keccak256_8cpp.html" title="Original (pre&#45;NIST) Keccak&#45;256 implementation, 0x01 padding." alt="" coords="5,79,160,104"/>
 <area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="142,42,98,80,94,76,138,38"/>
-<area shape="rect" id="Node000003" href="$main_8cpp.html" title=" " alt="" coords="185,79,303,104"/>
+<area shape="rect" id="Node000003" href="$main_8cpp.html" title="cryptnox&#45;pos entry point: touchscreen USDC payment terminal." alt="" coords="185,79,303,104"/>
 <area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="188,38,232,76,229,80,184,42"/>
 </map>

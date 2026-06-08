@@ -103,6 +103,7 @@ $(function(){initNavTree('index.html','',''); });
 <p><a href="https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display"><img src="https://img.shields.io/badge/Platform-ESP32--2432S028%20(CYD)-blue.svg" alt="Platform: ESP32-2432S028 (CYD)" style="pointer-events: none;" class="inline"/></a> <a href="https://docs.espressif.com/projects/esp-idf/en/v5.5/"><img src="https://img.shields.io/badge/Framework-ESP--IDF%20v5.5-blue.svg" alt="Framework: ESP-IDF v5.5" style="pointer-events: none;" class="inline"/></a> <a href="https://github.com/embarquech/cryptnox-sdk-esp32"><img src="https://img.shields.io/badge/SDK-cryptnox--sdk--esp32-blue.svg" alt="SDK: cryptnox-sdk-esp32" style="pointer-events: none;" class="inline"/></a> <a href="https://www.gnu.org/licenses/lgpl-3.0"><img src="https://img.shields.io/badge/License-LGPLv3-blue.svg" alt="License: LGPLv3" style="pointer-events: none;" class="inline"/></a></p>
 <p><span class="tt">cryptnox-pos</span> is a self-contained payment terminal firmware that runs on the ESP32-2432S028 "Cheap Yellow Display" (CYD). It also serves as a reference <b>dev kit</b> showing how to integrate the <a href="https://github.com/embarquech/cryptnox-sdk-esp32"><span class="tt">cryptnox-sdk-esp32</span></a> into a real-world end-user product.</p>
 <p>The user selects a USDC amount on the touchscreen, taps a <b>Cryptnox smart card</b> on the attached PN532 reader, and the terminal signs and broadcasts an EIP-1559 transfer on Ethereum Sepolia via Infura.</p>
+<dl class="section warning"><dt>Warning</dt><dd><b>Reference / educational project — not a production-hardened terminal.</b> The ESP32 is a general-purpose microcontroller, not a tamper-resistant secure element: an attacker with physical access can compromise its runtime and recover its Wi-Fi credentials, which may then be used to reach the card. The card PIN and the destination address are also hard-coded into the build config. <b>The Cryptnox Hardware Wallet remains the trust anchor</b>, though — private keys never leave the card, so a compromised ESP32 still cannot sign without the card.</dd></dl>
 <h3 class="doxsection"><a class="anchor" id="autotoc_md0"></a>
 Built on</h3>
 <ul>
@@ -189,9 +190,9 @@ Configuration</h2>
 <tr class="markdownTableRowOdd">
 <td class="markdownTableBodyNone"><span class="tt">WIFI_SSID</span> / <span class="tt">WIFI_PASSWORD</span>  </td><td class="markdownTableBodyNone">WPA2 credentials for the terminal's STA connection  </td></tr>
 <tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone"><span class="tt">RPC_URL</span>  </td><td class="markdownTableBodyNone">Ethereum JSON-RPC endpoint (Sepolia by default)  </td></tr>
+<td class="markdownTableBodyNone"><span class="tt">RPC_URL</span>  </td><td class="markdownTableBodyNone">Ethereum JSON-RPC endpoint (PublicNode Sepolia by default; an Infura variant is provided commented-out)  </td></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone"><span class="tt">RPC_PROJECT_ID</span> / <span class="tt">RPC_API_SECRET</span>  </td><td class="markdownTableBodyNone">Infura project credentials (Basic Auth)  </td></tr>
+<td class="markdownTableBodyNone"><span class="tt">RPC_PROJECT_ID</span> / <span class="tt">RPC_API_SECRET</span>  </td><td class="markdownTableBodyNone">Optional — only when using Infura (HTTP Basic Auth); leave undefined for PublicNode  </td></tr>
 <tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone"><span class="tt">ADDR_FROM</span>  </td><td class="markdownTableBodyNone">Ethereum address of the <b>card</b> (<span class="tt">m/44'/60'/0'/0/0</span>) — used to fetch the nonce and validate the ecrecover parity  </td></tr>
 <tr class="markdownTableRowOdd">
@@ -199,11 +200,12 @@ Configuration</h2>
 <tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone"><span class="tt">ADDR_USDC</span>  </td><td class="markdownTableBodyNone">USDC ERC-20 contract address on the target chain (Sepolia testnet by default)  </td></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone"><span class="tt">CARD_PIN</span>  </td><td class="markdownTableBodyNone">PIN configured on the Cryptnox card (default <span class="tt">"000000000"</span> for demo)  </td></tr>
+<td class="markdownTableBodyNone"><span class="tt">CARD_PIN</span> / <span class="tt">CARD_PIN_LEN</span>  </td><td class="markdownTableBodyNone">PIN configured on the Cryptnox card (4–9 ASCII digits) and its length  </td></tr>
 <tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone"><span class="tt">AMOUNT_USDC</span>  </td><td class="markdownTableBodyNone">Unused; the on-screen UI is the source of truth for the amount  </td></tr>
+<td class="markdownTableBodyNone"><span class="tt">CHAIN_ID_SEPOLIA</span>, <span class="tt">MAX_PRIORITY_FEE</span>, <span class="tt">MAX_FEE</span>, <span class="tt">GAS_LIMIT_ERC20</span>  </td><td class="markdownTableBodyNone">Chain ID and EIP-1559 gas parameters  </td></tr>
 </table>
-<dl class="section warning"><dt>Warning</dt><dd>The PIN <span class="tt">"000000000"</span> is a demo placeholder. Set a strong PIN when initialising the card, change any factory default before storing real funds, and never commit <span class="tt">main/config.h</span>.</dd></dl>
+<p>The transfer amount is selected on the touchscreen at run time; it is not a config.h field.</p>
+<dl class="section warning"><dt>Warning</dt><dd>Set a strong, unique <span class="tt">CARD_PIN</span> when initialising the card and never commit <span class="tt">main/config.h</span>. The build fails with a <span class="tt">static_assert</span> if <span class="tt">CARD_PIN</span> is the demo placeholder <span class="tt">"000000000"</span>; define <span class="tt">CRYPTNOX_POS_ALLOW_DEMO_PIN</span> only for throwaway bench builds, never on a deployed terminal.</dd></dl>
 <hr  />
 <h2 class="doxsection"><a class="anchor" id="autotoc_md13"></a>
 Payment flow</h2>
@@ -222,7 +224,7 @@ Payment flow</h2>
 Troubleshooting</h2>
 <ul>
 <li><b>Blank or scrambled screen</b> → the CYD ships with two ILI9341 variants. The firmware uses TFT_eSPI's <span class="tt">ILI9341_2_DRIVER</span>; if your board uses the standard variant, set <span class="tt">CONFIG_TFT_ILI9341_DRIVER=y</span> (instead of <span class="tt">_2</span>) in <span class="tt">sdkconfig.defaults</span> and rebuild.</li>
-<li><b>Touch hitboxes are offset</b> → the raw range used by the XPT2046 driver is calibrated for the panel shipped with the 2432S028. If yours differs, adjust the <span class="tt">map(p.x, 200, 3800, …)</span> ranges in <span class="tt"><a class="el" href="ui_8cpp.html">main/ui.cpp</a></span> (function <span class="tt"><a class="el" href="ui_8cpp.html#a0b80d95599fb6a5af233d25004881540">poll_touch</a></span>).</li>
+<li><b>Touch hitboxes are offset</b> → the raw range used by the XPT2046 driver is calibrated for the panel shipped with the 2432S028. If yours differs, adjust the <span class="tt">map(p.x, 200, 3800, …)</span> ranges in <span class="tt"><a class="el" href="ui_8cpp.html" title="Touchscreen UI implementation built on LVGL 8.x.">main/ui.cpp</a></span> (function <span class="tt">poll_touch</span>).</li>
 <li><b><span class="tt">Card not found</span></b> → confirm the PN532 switches are set for I²C, the SDA/SCL wires match GPIO 27/22, and the card is well centred on the antenna.</li>
 <li><b><span class="tt">ecrecover did not match either parity</span></b> → <span class="tt">ADDR_FROM</span> in <span class="tt">config.h</span> does not correspond to the card's <span class="tt">m/44'/60'/0'/0/0</span> derived key. Verify the seed and the path.</li>
 <li><b>WiFi connect fails</b> → only WPA2 is supported; check SSID/password.</li>

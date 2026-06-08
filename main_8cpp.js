@@ -11,12 +11,14 @@ var main_8cpp =
     [ "PN532_SDA", "main_8cpp.html#a4fe62d5410572e51c86de7e15ea04939", null ],
     [ "TX_BUF_SIZE", "main_8cpp.html#a5d3fb1970e1e98050006978a14b3d95e", null ],
     [ "app_main", "main_8cpp.html#a630544a7f0a2cc40d8a7fefab7e2fe70", null ],
-    [ "build_usdc_calldata", "main_8cpp.html#a4b60e6b1c761ac5b545161210b271998", null ],
-    [ "parse_address", "main_8cpp.html#a5d8d83ca353cce2ad69ac1ff955d06b8", null ],
-    [ "sign_and_broadcast", "main_8cpp.html#a311893dfef4fe27f3e9c0a205fab87d0", null ],
+    [ "build_usdc_calldata", "main_8cpp.html#aee37928ea69bedfc468a9beb3b518798", null ],
+    [ "ensure_wifi", "main_8cpp.html#a9c72fd31d90d7fa1c114e4d8c1063bf1", null ],
+    [ "hex_nibble_val", "main_8cpp.html#a5fa491b178dd50fcffc38c6c46636593", null ],
+    [ "parse_address", "main_8cpp.html#a25d11a814e96ff8ebf971cedbb59761c", null ],
+    [ "sign_and_broadcast", "main_8cpp.html#a3bf76a2039211bf46d73c58f44e6af0f", null ],
     [ "ui_event_dispatch", "main_8cpp.html#afb52e5aa841a5387faa868ec0cfc15f4", null ],
     [ "s_ui_queue", "main_8cpp.html#a2e89239103f265147a2e10259827353f", null ],
-    [ "s_user_cancelled", "main_8cpp.html#acd108a6f8488cedcf021d2f483c0aaf2", null ],
+    [ "s_user_cancelled", "main_8cpp.html#a3fba9a1bad9bb6ef357f8efe7f15a365", null ],
     [ "TAG", "main_8cpp.html#a4ef5b5f197804a60836ab1e8907d8301", null ],
     [ "TRANSFER_SELECTOR", "main_8cpp.html#a0a0c78f86940abc6a3f2d706a275b98a", null ]
 ];

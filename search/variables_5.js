@@ -1,5 +1,5 @@
 var searchData=
 [
-  ['krc_0',['kRC',['../keccak256_8cpp.html#a474c65c78d6cb095220285c1a3a4f961',1,'keccak256.cpp']]],
-  ['krho_1',['kRHO',['../keccak256_8cpp.html#aa92750644fc1de0036b0df5a3eb61dca',1,'keccak256.cpp']]]
+  ['max_5ffee_0',['max_fee',['../structeth__tx__t.html#a2b4a9af5dfb0d78ff57afbc51c4eaa99',1,'eth_tx_t']]],
+  ['max_5fpriority_5ffee_1',['max_priority_fee',['../structeth__tx__t.html#a31605f87dc21139d1717133fd4020a6e',1,'eth_tx_t']]]
 ];

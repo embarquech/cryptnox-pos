@@ -1,5 +1,25 @@
 var searchData=
 [
-  ['app_5fmain_0',['app_main',['../main_8cpp.html#a630544a7f0a2cc40d8a7fefab7e2fe70',1,'main.cpp']]],
-  ['app_5fversion_5ftag_1',['APP_VERSION_TAG',['../main_8cpp.html#a80ab8fb5621ffc952ecbb715322b2352',1,'main.cpp']]]
+  ['act_5fbtn_5fh_0',['ACT_BTN_H',['../ui_8cpp.html#aa06eeafd4d1ef1e916a8ae863c95d7fd',1,'ui.cpp']]],
+  ['act_5fbtn_5fy_1',['ACT_BTN_Y',['../ui_8cpp.html#a153b316aec99f88fd1bab8212764850a',1,'ui.cpp']]],
+  ['act_5fcancel_2',['ACT_CANCEL',['../ui_8cpp.html#ac4247686c19d0ac3843a6957f97211dbac6f5b6b34477369d41ae4067cc0f3ec5',1,'ui.cpp']]],
+  ['act_5fclose_3',['ACT_CLOSE',['../ui_8cpp.html#ac4247686c19d0ac3843a6957f97211dbaecf0f6a55203659392c2bf04c41c3f0f',1,'ui.cpp']]],
+  ['act_5fconfirm_4',['ACT_CONFIRM',['../ui_8cpp.html#ac4247686c19d0ac3843a6957f97211dbac7859242316b7b0cc0c67d8ba4ac5a82',1,'ui.cpp']]],
+  ['act_5fnew_5',['ACT_NEW',['../ui_8cpp.html#ac4247686c19d0ac3843a6957f97211dba63da7e5eebc4ede5a9196bc7deb9fd64',1,'ui.cpp']]],
+  ['act_5fpin_5fcancel_6',['ACT_PIN_CANCEL',['../ui_8cpp.html#ac4247686c19d0ac3843a6957f97211dba1e0aaa362f4909df21213f32ce23a1f2',1,'ui.cpp']]],
+  ['act_5freset_7',['ACT_RESET',['../ui_8cpp.html#ac4247686c19d0ac3843a6957f97211dba4404ee069f2e99a7227eb257c123a1ed',1,'ui.cpp']]],
+  ['act_5freset_5fcancel_8',['ACT_RESET_CANCEL',['../ui_8cpp.html#ac4247686c19d0ac3843a6957f97211dba483013b8e76784d70287e5c903272dc1',1,'ui.cpp']]],
+  ['act_5freset_5fconfirm_9',['ACT_RESET_CONFIRM',['../ui_8cpp.html#ac4247686c19d0ac3843a6957f97211dba8e1c8d310d4a79c964bd7b3e87d920ba',1,'ui.cpp']]],
+  ['act_5fsend_10',['ACT_SEND',['../ui_8cpp.html#ac4247686c19d0ac3843a6957f97211dba4c01f5e3fb9240fd1bfeacc45bd222ac',1,'ui.cpp']]],
+  ['act_5fsettings_11',['ACT_SETTINGS',['../ui_8cpp.html#ac4247686c19d0ac3843a6957f97211dbaa834c02cc079e368942026fdc0cd2a2d',1,'ui.cpp']]],
+  ['act_5fwifi_12',['ACT_WIFI',['../ui_8cpp.html#ac4247686c19d0ac3843a6957f97211dbad231be114cfeaeb1d1b43d649e6b8e42',1,'ui.cpp']]],
+  ['act_5fwifi_5fcancel_13',['ACT_WIFI_CANCEL',['../ui_8cpp.html#ac4247686c19d0ac3843a6957f97211dba59ea3e30e4e6366e6b9b3b1f1ee079ec',1,'ui.cpp']]],
+  ['add_5fmenu_5fbutton_14',['add_menu_button',['../ui_8cpp.html#a8db03da63e451535826900d034ed9050',1,'ui.cpp']]],
+  ['amount_5fcents_5fmax_15',['AMOUNT_CENTS_MAX',['../ui_8cpp.html#a73fa357382eae81ea844fa3dba3ef054',1,'ui.cpp']]],
+  ['amount_5fkbd_5fcb_16',['amount_kbd_cb',['../ui_8cpp.html#a954e643f0dcbc97a130f6eef7940627a',1,'ui.cpp']]],
+  ['amount_5fupdate_5fdisplay_17',['amount_update_display',['../ui_8cpp.html#a09c1d9c2fc3c84834972c2fc8d55139a',1,'ui.cpp']]],
+  ['app_5fmain_18',['app_main',['../main_8cpp.html#a630544a7f0a2cc40d8a7fefab7e2fe70',1,'main.cpp']]],
+  ['app_5fversion_19',['APP_VERSION',['../ui_8cpp.html#a92673e33f27532767749b79edb8ef806',1,'ui.cpp']]],
+  ['app_5fversion_5ftag_20',['APP_VERSION_TAG',['../main_8cpp.html#a80ab8fb5621ffc952ecbb715322b2352',1,'main.cpp']]],
+  ['auto_5fbrightness_5fcb_21',['auto_brightness_cb',['../ui_8cpp.html#a63065379f0daee2d654d94c56d45078a',1,'ui.cpp']]]
 ];

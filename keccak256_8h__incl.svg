@@ -11,7 +11,7 @@
 <!-- Node1 -->
 <g id="Node000001" class="node">
 <title>Node1</title>
-<g id="a_Node000001"><a xlink:title=" ">
+<g id="a_Node000001"><a xlink:title="Original Keccak&#45;256 digest as used by Ethereum.">
 <polygon fill="#999999" stroke="#666666" points="115,-74 10,-74 10,-55 115,-55 115,-74"/>
 <text text-anchor="middle" x="62.5" y="-62" font-family="Helvetica,sans-Serif" font-size="10.00">main/keccak256.h</text>
 </a>

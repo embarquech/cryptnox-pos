@@ -92,6 +92,9 @@ $(function(){initNavTree('keccak256_8h.html','',''); });
   <div class="headertitle"><div class="title">keccak256.h File Reference</div></div>
 </div><!--header-->
 <div class="contents">
+
+<p>Original Keccak-256 digest as used by Ethereum.  
+<a href="#details">More...</a></p>
 <div class="textblock"><code>#include &lt;stdint.h&gt;</code><br />
 <code>#include &lt;stddef.h&gt;</code><br />
 </div><div class="textblock"><div class="dynheader">
@@ -110,8 +113,13 @@ This graph shows which files directly or indirectly include this file:</div>
 <tr class="heading"><td colspan="2"><h2 id="header-func-members" class="groupheader"><a id="func-members" name="func-members"></a>
 Functions</h2></td></tr>
 <tr class="memitem:ac46ff4528d9f4c773725ff87e624b7e7" id="r_ac46ff4528d9f4c773725ff87e624b7e7"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#ac46ff4528d9f4c773725ff87e624b7e7">keccak256</a> (const uint8_t *input, size_t length, uint8_t digest[32])</td></tr>
+<tr class="memdesc:ac46ff4528d9f4c773725ff87e624b7e7"><td class="mdescLeft">&#160;</td><td class="mdescRight">Compute the Keccak-256 digest of a buffer.  <br /></td></tr>
 </table>
-<a name="doc-func-members" id="doc-func-members"></a><h2 id="header-doc-func-members" class="groupheader">Function Documentation</h2>
+<a name="details" id="details"></a><h2 id="header-details" class="groupheader">Detailed Description</h2>
+<div class="textblock"><p>Original Keccak-256 digest as used by Ethereum. </p>
+
+<p class="definition">Definition in file <a class="el" href="keccak256_8h_source.html">keccak256.h</a>.</p>
+</div><a name="doc-func-members" id="doc-func-members"></a><h2 id="header-doc-func-members" class="groupheader">Function Documentation</h2>
 <a id="ac46ff4528d9f4c773725ff87e624b7e7" name="ac46ff4528d9f4c773725ff87e624b7e7"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#ac46ff4528d9f4c773725ff87e624b7e7">&#9670;&#160;</a></span>keccak256()</h2>
 
@@ -136,11 +144,22 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="keccak256_8cpp_source.html#l00080">80</a> of file <a class="el" href="keccak256_8cpp_source.html">keccak256.cpp</a>.</p>
+<p>Compute the Keccak-256 digest of a buffer. </p>
+<p>Ethereum uses the original Keccak-256 (0x01 padding), NOT the NIST-finalised SHA3-256 (0x06 padding).</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">input</td><td>Input bytes (may be NULL only if <code class="param">length</code> is 0). </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">length</td><td>Number of input bytes. </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">digest</td><td>32-byte output digest. </td></tr>
+  </table>
+  </dd>
+</dl>
 
-<p class="reference">References <a class="el" href="keccak256_8cpp_source.html#l00037">keccak_f1600()</a>, <a class="el" href="keccak256_8cpp_source.html#l00005">KECCAK_RATE</a>, and <a class="el" href="keccak256_8cpp_source.html#l00006">KECCAK_STATE_LANE</a>.</p>
+<p class="definition">Definition at line <a class="el" href="keccak256_8cpp_source.html#l00120">120</a> of file <a class="el" href="keccak256_8cpp_source.html">keccak256.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00137">sign_and_broadcast()</a>.</p>
+<p class="reference">References <a class="el" href="keccak256_8cpp_source.html#l00073">keccak_f1600()</a>, <a class="el" href="keccak256_8cpp_source.html#l00025">KECCAK_RATE</a>, and <a class="el" href="keccak256_8cpp_source.html#l00026">KECCAK_STATE_LANE</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00243">sign_and_broadcast()</a>.</p>
 
 </div>
 </div>

@@ -1,0 +1,12 @@
+<map id="main/net.h" name="main/net.h">
+<area shape="rect" id="Node000001" title="Network bring&#45;up: Wi&#45;Fi station (init/scan/connect/RSSI) and SNTP time sync. No application&#45;protocol ..." alt="" coords="71,5,163,31"/>
+<area shape="rect" id="Node000002" href="$main_8cpp.html" title="cryptnox&#45;pos entry point: touchscreen USDC payment terminal." alt="" coords="5,152,124,177"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="87,41,68,58,54,80,50,98,51,118,62,151,56,153,46,119,44,98,49,78,64,55,84,37"/>
+<area shape="rect" id="Node000003" href="$net_8cpp.html" title="Wi&#45;Fi station bring&#45;up (init/scan/connect/RSSI) and SNTP time sync." alt="" coords="63,79,170,104"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="119,44,119,79,114,79,114,44"/>
+<area shape="rect" id="Node000004" href="$ui_8h.html" title="Touchscreen UI API: screens, events and transaction states for the CYD (ILI9341 + XPT2046) payment fl..." alt="" coords="194,79,277,104"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="149,35,217,76,215,81,146,40"/>
+<area shape="poly" id="edge4_Node000004_Node000002" title=" " alt="" coords="196,112,94,154,92,149,194,107"/>
+<area shape="rect" id="Node000005" href="$ui_8cpp.html" title="Touchscreen UI implementation built on LVGL 8.x." alt="" coords="186,152,285,177"/>
+<area shape="poly" id="edge5_Node000004_Node000005" title=" " alt="" coords="238,118,238,152,233,152,233,118"/>
+</map>

@@ -1,16 +1,15 @@
 var searchData=
 [
-  ['ui_5fevent_5famount_5fconfirmed_0',['UI_EVENT_AMOUNT_CONFIRMED',['../ui_8h.html#a9a99e204659fdc9573b3dc140ffeedd3a6cfef1d8d809d78d898190e13ee3e00a',1,'ui.h']]],
-  ['ui_5fevent_5fconfirm_5fcancel_1',['UI_EVENT_CONFIRM_CANCEL',['../ui_8h.html#a9a99e204659fdc9573b3dc140ffeedd3a07a32dd4ddc27478fb80eb73b946c9eb',1,'ui.h']]],
-  ['ui_5fevent_5fconfirm_5fok_2',['UI_EVENT_CONFIRM_OK',['../ui_8h.html#a9a99e204659fdc9573b3dc140ffeedd3aa9734e321f7efd167da45579c3c29b1c',1,'ui.h']]],
-  ['ui_5fevent_5ftx_5fretry_3',['UI_EVENT_TX_RETRY',['../ui_8h.html#a9a99e204659fdc9573b3dc140ffeedd3ad02010de6358696d9390fc93984d2323',1,'ui.h']]],
-  ['ui_5fscreen_5famount_4',['UI_SCREEN_AMOUNT',['../ui_8h.html#a4a96c66658390ff80fefe7027730cc25a219bc3766b2cacf7a10886e5fcee9624',1,'ui.h']]],
-  ['ui_5fscreen_5fconfirm_5',['UI_SCREEN_CONFIRM',['../ui_8h.html#a4a96c66658390ff80fefe7027730cc25a8ec522dd5e0aa8d5764e42086556c065',1,'ui.h']]],
-  ['ui_5fscreen_5fsplash_6',['UI_SCREEN_SPLASH',['../ui_8h.html#a4a96c66658390ff80fefe7027730cc25a7de8649e53a6688e12b14814c0071fb7',1,'ui.h']]],
-  ['ui_5fscreen_5ftx_5fstatus_7',['UI_SCREEN_TX_STATUS',['../ui_8h.html#a4a96c66658390ff80fefe7027730cc25aae44df521ee8bd24f5657aeac76fcffb',1,'ui.h']]],
-  ['ui_5ftx_5fstate_5fdone_8',['UI_TX_STATE_DONE',['../ui_8h.html#a64b6bbe2fbeb96a8d689ba887b204fa1a656b8d2e41e8420051e2ffb25c861e07',1,'ui.h']]],
-  ['ui_5ftx_5fstate_5ffailed_9',['UI_TX_STATE_FAILED',['../ui_8h.html#a64b6bbe2fbeb96a8d689ba887b204fa1ac69f70c4193dea6c5850f4416433455c',1,'ui.h']]],
-  ['ui_5ftx_5fstate_5fplace_5fcard_10',['UI_TX_STATE_PLACE_CARD',['../ui_8h.html#a64b6bbe2fbeb96a8d689ba887b204fa1a509d7a6e6e5900035882b4d0bb9b5bcb',1,'ui.h']]],
-  ['ui_5ftx_5fstate_5fsending_11',['UI_TX_STATE_SENDING',['../ui_8h.html#a64b6bbe2fbeb96a8d689ba887b204fa1a0673cfe1c12cfcc9173b0311205b20c9',1,'ui.h']]],
-  ['ui_5ftx_5fstate_5fsigning_12',['UI_TX_STATE_SIGNING',['../ui_8h.html#a64b6bbe2fbeb96a8d689ba887b204fa1a0359cc2ea1fe9c3318c132e58d5c6073',1,'ui.h']]]
+  ['act_5fcancel_0',['ACT_CANCEL',['../ui_8cpp.html#ac4247686c19d0ac3843a6957f97211dbac6f5b6b34477369d41ae4067cc0f3ec5',1,'ui.cpp']]],
+  ['act_5fclose_1',['ACT_CLOSE',['../ui_8cpp.html#ac4247686c19d0ac3843a6957f97211dbaecf0f6a55203659392c2bf04c41c3f0f',1,'ui.cpp']]],
+  ['act_5fconfirm_2',['ACT_CONFIRM',['../ui_8cpp.html#ac4247686c19d0ac3843a6957f97211dbac7859242316b7b0cc0c67d8ba4ac5a82',1,'ui.cpp']]],
+  ['act_5fnew_3',['ACT_NEW',['../ui_8cpp.html#ac4247686c19d0ac3843a6957f97211dba63da7e5eebc4ede5a9196bc7deb9fd64',1,'ui.cpp']]],
+  ['act_5fpin_5fcancel_4',['ACT_PIN_CANCEL',['../ui_8cpp.html#ac4247686c19d0ac3843a6957f97211dba1e0aaa362f4909df21213f32ce23a1f2',1,'ui.cpp']]],
+  ['act_5freset_5',['ACT_RESET',['../ui_8cpp.html#ac4247686c19d0ac3843a6957f97211dba4404ee069f2e99a7227eb257c123a1ed',1,'ui.cpp']]],
+  ['act_5freset_5fcancel_6',['ACT_RESET_CANCEL',['../ui_8cpp.html#ac4247686c19d0ac3843a6957f97211dba483013b8e76784d70287e5c903272dc1',1,'ui.cpp']]],
+  ['act_5freset_5fconfirm_7',['ACT_RESET_CONFIRM',['../ui_8cpp.html#ac4247686c19d0ac3843a6957f97211dba8e1c8d310d4a79c964bd7b3e87d920ba',1,'ui.cpp']]],
+  ['act_5fsend_8',['ACT_SEND',['../ui_8cpp.html#ac4247686c19d0ac3843a6957f97211dba4c01f5e3fb9240fd1bfeacc45bd222ac',1,'ui.cpp']]],
+  ['act_5fsettings_9',['ACT_SETTINGS',['../ui_8cpp.html#ac4247686c19d0ac3843a6957f97211dbaa834c02cc079e368942026fdc0cd2a2d',1,'ui.cpp']]],
+  ['act_5fwifi_10',['ACT_WIFI',['../ui_8cpp.html#ac4247686c19d0ac3843a6957f97211dbad231be114cfeaeb1d1b43d649e6b8e42',1,'ui.cpp']]],
+  ['act_5fwifi_5fcancel_11',['ACT_WIFI_CANCEL',['../ui_8cpp.html#ac4247686c19d0ac3843a6957f97211dba59ea3e30e4e6366e6b9b3b1f1ee079ec',1,'ui.cpp']]]
 ];

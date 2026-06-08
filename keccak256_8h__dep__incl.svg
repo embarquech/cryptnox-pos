@@ -11,7 +11,7 @@
 <!-- Node1 -->
 <g id="Node000001" class="node">
 <title>Node1</title>
-<g id="a_Node000001"><a xlink:title=" ">
+<g id="a_Node000001"><a xlink:title="Original Keccak&#45;256 digest as used by Ethereum.">
 <polygon fill="#999999" stroke="#666666" points="170.5,-74 65.5,-74 65.5,-55 170.5,-55 170.5,-74"/>
 <text text-anchor="middle" x="118" y="-62" font-family="Helvetica,sans-Serif" font-size="10.00">main/keccak256.h</text>
 </a>
@@ -20,7 +20,7 @@
 <!-- Node2 -->
 <g id="Node000002" class="node">
 <title>Node2</title>
-<g id="a_Node000002"><a xlink:href="keccak256_8cpp.html" target="_top" xlink:title=" ">
+<g id="a_Node000002"><a xlink:href="keccak256_8cpp.html" target="_top" xlink:title="Original (pre&#45;NIST) Keccak&#45;256 implementation, 0x01 padding.">
 <polygon fill="white" stroke="#666666" points="116,-19 0,-19 0,0 116,0 116,-19"/>
 <text text-anchor="middle" x="58" y="-7" font-family="Helvetica,sans-Serif" font-size="10.00">main/keccak256.cpp</text>
 </a>
@@ -38,7 +38,7 @@
 <!-- Node3 -->
 <g id="Node000003" class="node">
 <title>Node3</title>
-<g id="a_Node000003"><a xlink:href="main_8cpp.html" target="_top" xlink:title=" ">
+<g id="a_Node000003"><a xlink:href="main_8cpp.html" target="_top" xlink:title="cryptnox&#45;pos entry point: touchscreen USDC payment terminal.">
 <polygon fill="white" stroke="#666666" points="223.5,-19 134.5,-19 134.5,0 223.5,0 223.5,-19"/>
 <text text-anchor="middle" x="179" y="-7" font-family="Helvetica,sans-Serif" font-size="10.00">main/main.cpp</text>
 </a>

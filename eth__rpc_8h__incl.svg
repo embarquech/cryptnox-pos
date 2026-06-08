@@ -11,7 +11,7 @@
 <!-- Node1 -->
 <g id="Node000001" class="node">
 <title>Node1</title>
-<g id="a_Node000001"><a xlink:title=" ">
+<g id="a_Node000001"><a xlink:title="Ethereum JSON&#45;RPC client over HTTPS (nonce / ecrecover parity / raw&#45;tx broadcast / receipt polling)....">
 <polygon fill="#999999" stroke="#666666" points="144,-74 55,-74 55,-55 144,-55 144,-74"/>
 <text text-anchor="middle" x="99.5" y="-62" font-family="Helvetica,sans-Serif" font-size="10.00">main/eth_rpc.h</text>
 </a>

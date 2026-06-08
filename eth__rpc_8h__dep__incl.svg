@@ -11,7 +11,7 @@
 <!-- Node1 -->
 <g id="Node000001" class="node">
 <title>Node1</title>
-<g id="a_Node000001"><a xlink:title=" ">
+<g id="a_Node000001"><a xlink:title="Ethereum JSON&#45;RPC client over HTTPS (nonce / ecrecover parity / raw&#45;tx broadcast / receipt polling)....">
 <polygon fill="#999999" stroke="#666666" points="151,-74 62,-74 62,-55 151,-55 151,-74"/>
 <text text-anchor="middle" x="106.5" y="-62" font-family="Helvetica,sans-Serif" font-size="10.00">main/eth_rpc.h</text>
 </a>
@@ -20,7 +20,7 @@
 <!-- Node2 -->
 <g id="Node000002" class="node">
 <title>Node2</title>
-<g id="a_Node000002"><a xlink:href="eth__rpc_8cpp.html" target="_top" xlink:title=" ">
+<g id="a_Node000002"><a xlink:href="eth__rpc_8cpp.html" target="_top" xlink:title="Ethereum JSON&#45;RPC client implementation (HTTPS). Network bring&#45;up (Wi&#45;Fi, SNTP) lives in net....">
 <polygon fill="white" stroke="#666666" points="101,-19 0,-19 0,0 101,0 101,-19"/>
 <text text-anchor="middle" x="50.5" y="-7" font-family="Helvetica,sans-Serif" font-size="10.00">main/eth_rpc.cpp</text>
 </a>
@@ -38,7 +38,7 @@
 <!-- Node3 -->
 <g id="Node000003" class="node">
 <title>Node3</title>
-<g id="a_Node000003"><a xlink:href="main_8cpp.html" target="_top" xlink:title=" ">
+<g id="a_Node000003"><a xlink:href="main_8cpp.html" target="_top" xlink:title="cryptnox&#45;pos entry point: touchscreen USDC payment terminal.">
 <polygon fill="white" stroke="#666666" points="208,-19 119,-19 119,0 208,0 208,-19"/>
 <text text-anchor="middle" x="163.5" y="-7" font-family="Helvetica,sans-Serif" font-size="10.00">main/main.cpp</text>
 </a>
