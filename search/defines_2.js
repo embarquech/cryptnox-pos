@@ -8,6 +8,5 @@ var searchData=
   ['col_5fdim_5',['COL_DIM',['../ui_8cpp.html#a78f37c103e941d759e2a0ce16d3e4dc3',1,'ui.cpp']]],
   ['col_5fsuccess_6',['COL_SUCCESS',['../ui_8cpp.html#abed5f9d955a9b744d5684d7607a4aae2',1,'ui.cpp']]],
   ['col_5fsurface_7',['COL_SURFACE',['../ui_8cpp.html#a6c10ea4c20f9b6c4ed5cd040356fe41a',1,'ui.cpp']]],
-  ['col_5ftext_8',['COL_TEXT',['../ui_8cpp.html#a94d8e598975a3e013cfbe24aba7d6593',1,'ui.cpp']]],
-  ['content_5fy_9',['CONTENT_Y',['../ui_8cpp.html#a325531cce8e1c143b8574bff4c377b4f',1,'ui.cpp']]]
+  ['col_5ftext_8',['COL_TEXT',['../ui_8cpp.html#a94d8e598975a3e013cfbe24aba7d6593',1,'ui.cpp']]]
 ];

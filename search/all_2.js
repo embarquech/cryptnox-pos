@@ -21,8 +21,7 @@ var searchData=
   ['col_5fsurface_18',['COL_SURFACE',['../ui_8cpp.html#a6c10ea4c20f9b6c4ed5cd040356fe41a',1,'ui.cpp']]],
   ['col_5ftext_19',['COL_TEXT',['../ui_8cpp.html#a94d8e598975a3e013cfbe24aba7d6593',1,'ui.cpp']]],
   ['configuration_20',['Configuration',['../index.html#autotoc_md11',1,'']]],
-  ['content_5fy_21',['CONTENT_Y',['../ui_8cpp.html#a325531cce8e1c143b8574bff4c377b4f',1,'ui.cpp']]],
-  ['cryptnox_20hardware_20wallet_20smart_20cards_22',['Cryptnox Hardware Wallet smart cards',['../index.html#autotoc_md3',1,'']]],
-  ['cryptnox_20pos_23',['cryptnox-pos',['../index.html',1,'']]],
-  ['cyd_20cn1_20↔_20pn532_20nfc_20—_20i²c_20interface_24',['CYD CN1 ↔ PN532 NFC — I²C interface',['../index.html#autotoc_md9',1,'']]]
+  ['cryptnox_20hardware_20wallet_20smart_20cards_21',['Cryptnox Hardware Wallet smart cards',['../index.html#autotoc_md3',1,'']]],
+  ['cryptnox_20pos_22',['cryptnox-pos',['../index.html',1,'']]],
+  ['cyd_20cn1_20↔_20pn532_20nfc_20—_20i²c_20interface_23',['CYD CN1 ↔ PN532 NFC — I²C interface',['../index.html#autotoc_md9',1,'']]]
 ];
