@@ -164,13 +164,13 @@ CYD CN1 ↔ PN532 NFC — I²C interface</h3>
 <tr class="markdownTableHead">
 <th class="markdownTableHeadNone">PN532 Pin  </th><th class="markdownTableHeadNone">CYD Pin / Label  </th><th class="markdownTableHeadNone">Wire Color  </th></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">VCC  </td><td class="markdownTableBodyNone">3.3V  </td><td class="markdownTableBodyNone">Red  </td></tr>
-<tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone">GND  </td><td class="markdownTableBodyNone">GND  </td><td class="markdownTableBodyNone">Black  </td></tr>
-<tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">SDA  </td><td class="markdownTableBodyNone">GPIO 27 (CN1 SDA)  </td><td class="markdownTableBodyNone">Yellow  </td></tr>
 <tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone">SCL  </td><td class="markdownTableBodyNone">GPIO 22 (CN1 SCL)  </td><td class="markdownTableBodyNone">Blue  </td></tr>
+<td class="markdownTableBodyNone">VCC  </td><td class="markdownTableBodyNone">3.3V  </td><td class="markdownTableBodyNone">Red  </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone">SDA  </td><td class="markdownTableBodyNone">GPIO 27 (CN1 SDA)  </td><td class="markdownTableBodyNone">Blue  </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone">SCL  </td><td class="markdownTableBodyNone">GPIO 22 (CN1 SCL)  </td><td class="markdownTableBodyNone">Yellow  </td></tr>
 </table>
 <dl class="section important"><dt>Important</dt><dd>Make sure the switches on the PN532 module are configured for <b>I²C</b> mode: <br  />
 <br  />
@@ -179,6 +179,7 @@ CYD CN1 ↔ PN532 NFC — I²C interface</h3>
 <li><b>Switch 1</b> → HIGH</li>
 </ul>
 </dd></dl>
+<p><img src="hardware/schematics/cyd_esp32_pn532_i2c_bb.png" alt="cyd_pn532_i2c" width="800" class="inline"/></p>
 <p>The display, touchscreen and backlight pins are already wired internally on the CYD; the firmware drives them through TFT_eSPI's <span class="tt">ILI9341_2_DRIVER</span> with landscape rotation (320×240) and a calibrated XPT2046 touch mapping.</p>
 <hr  />
 <h2 class="doxsection"><a class="anchor" id="autotoc_md11"></a>
