@@ -82,23 +82,19 @@ Works with Cryptnox Hardware Wallet smart cards running firmware v1.6.0 or later
    cp config.template.h main/config.h
    ```
    `main/config.h` is gitignored — see [Configuration](#configuration) below.
-4. Build and flash (Windows PowerShell wrapper provided):
+4. Set the target, then build and flash from an ESP-IDF environment:
    ```
-   .\auto_flash.ps1 set-target esp32
-   .\auto_flash.ps1 monitor
+   idf.py set-target esp32
+   idf.py -p PORT build flash monitor
    ```
-   The first build also fetches `espressif/arduino-esp32` from the IDF
-   component registry, so expect a longer initial compile.
-
-> [!NOTE]
-> `auto_flash.ps1` is unsigned; if PowerShell blocks it, allow it for the
-> current session with `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`
-> (or `Unblock-File .\auto_flash.ps1`). It hardcodes a Windows IDF path under
-> `C:\Espressif` — edit it for your install.
+   The first build also fetches `espressif/arduino-esp32` and `lvgl/lvgl` from
+   the IDF component registry, so expect a longer initial compile.
 
 > [!TIP]
-> On macOS/Linux, source the IDF env (`. $IDF_PATH/export.sh`) and use the
-> standard `idf.py set-target esp32`, `idf.py build flash monitor` commands.
+> Open the IDF env first: on Windows run the "ESP-IDF PowerShell"/`export.bat`,
+> on macOS/Linux `. $IDF_PATH/export.sh`. For the **secure (encrypted/signed)
+> build**, see [Secure build](#secure-build-flash-encryption--encrypted-nvs--secure-boot-v2)
+> below — don't use plain `idf.py flash` on an already-provisioned board.
 
 ## Hardware setup
 
