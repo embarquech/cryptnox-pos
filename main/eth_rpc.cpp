@@ -14,6 +14,7 @@
  ******************************************************************/
 
 #include "eth_rpc.h"
+#include "eth_json.h"
 
 #include <string.h>
 #include <strings.h>    /* strncasecmp */
@@ -29,7 +30,6 @@
 #include "esp_log.h"
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
-#include "cJSON.h"
 
 static const char *const TAG = "eth_rpc";
 
@@ -184,43 +184,8 @@ static void bytes_to_hex(const uint8_t *data, size_t len, char *out)
     }
 }
 
-/******************************************************************
- * 6. JSON helper
- ******************************************************************/
-
-/**
- * @brief Extract the top-level @c "result" string from a JSON-RPC response.
- *
- * Uses a real JSON parser (cJSON) instead of strstr so that JSON-RPC error
- * objects, HTTP error bodies, or look-alike substrings are rejected (F-09).
- *
- * @param[in]  resp     NUL-terminated response body.
- * @param[out] out      NUL-terminated "result" value on success; untouched
- *                      on failure.
- * @param[in]  out_size Capacity of @p out.
- * @return true on success; false if the body is not valid JSON, "result"
- *         is absent or not a string, or the value does not fit in @p out.
- */
-static bool json_get_result_string(const char *resp, char *out, size_t out_size)
-{
-    bool ok = false;
-    cJSON *root = cJSON_Parse(resp);
-    if (root == NULL) {
-        return false;
-    }
-    const cJSON *result = cJSON_GetObjectItemCaseSensitive(root, "result");
-    if (cJSON_IsString(result) && (result->valuestring != NULL)) {
-        size_t len = strlen(result->valuestring);
-        if ((len + 1U) <= out_size) {
-            ok = CW_Utils::safe_memcpy(
-                reinterpret_cast<uint8_t *>(out), out_size,
-                reinterpret_cast<const uint8_t *>(result->valuestring),
-                len + 1U);
-        }
-    }
-    cJSON_Delete(root);
-    return ok;
-}
+/* The JSON-RPC "result" string extractor lives in eth_json.cpp (a pure,
+ * host-fuzzable unit — see fuzz/fuzz_eth_rpc_json.cpp). */
 
 /******************************************************************
  * 7. Public API
@@ -257,7 +222,7 @@ bool eth_rpc_get_nonce(uint64_t *nonce_out)
     }
 
     char result[RESULT_STR_MAX];
-    if (!json_get_result_string(resp, result, sizeof(result))) {
+    if (!eth_json_result_string(resp, result, sizeof(result))) {
         ESP_LOGE(TAG, "nonce: no result in: %.*s", RESP_LOG_MAX, resp);
         return false;
     }
@@ -334,7 +299,7 @@ eth_rpc_parity_result_t eth_rpc_ecrecover_parity(const uint8_t hash[32],
         /* Expected result: "0x" + 64 hex chars (32-byte ABI-encoded address).
          * The address occupies the last 40 hex chars (bytes 12-31). */
         char result[RESULT_STR_MAX];
-        if (!json_get_result_string(resp, result, sizeof(result))) {
+        if (!eth_json_result_string(resp, result, sizeof(result))) {
             ESP_LOGW(TAG, "ecrecover v=%u: no result in: %.*s",
                      v_raw, RESP_LOG_MAX, resp);
             continue;
@@ -399,7 +364,7 @@ bool eth_rpc_send_raw_tx(const uint8_t *tx, size_t tx_len,
     /* Extract the "result" string (the tx hash) with a real JSON parse, so
      * a JSON-RPC error object is reported as a failure (F-09). */
     char result[RESULT_STR_MAX];
-    if (!json_get_result_string(resp, result, sizeof(result))) {
+    if (!eth_json_result_string(resp, result, sizeof(result))) {
         ESP_LOGE(TAG, "send_raw_tx: no result in: %.*s", RESP_LOG_MAX, resp);
         return false;
     }
@@ -438,21 +403,12 @@ eth_rpc_receipt_result_t eth_rpc_get_tx_receipt(const char *tx_hash)
 
     eth_rpc_receipt_result_t verdict = ETH_RPC_RECEIPT_RPC_ERROR;
     if (do_post(body, resp, resp_size)) {
-        cJSON *root = cJSON_Parse(resp);
-        if (root != NULL) {
-            const cJSON *result = cJSON_GetObjectItemCaseSensitive(root, "result");
-            if (cJSON_IsNull(result)) {
-                verdict = ETH_RPC_RECEIPT_PENDING;   /* not mined yet */
-            } else if (cJSON_IsObject(result)) {
-                const cJSON *status =
-                    cJSON_GetObjectItemCaseSensitive(result, "status");
-                if (cJSON_IsString(status) && (status->valuestring != NULL)) {
-                    verdict = (strcmp(status->valuestring, "0x1") == 0)
-                                  ? ETH_RPC_RECEIPT_SUCCESS
-                                  : ETH_RPC_RECEIPT_REVERTED;
-                }
-            }
-            cJSON_Delete(root);
+        switch (eth_json_receipt_status(resp)) {
+            case ETH_JSON_RECEIPT_PENDING:  verdict = ETH_RPC_RECEIPT_PENDING;  break;
+            case ETH_JSON_RECEIPT_SUCCESS:  verdict = ETH_RPC_RECEIPT_SUCCESS;  break;
+            case ETH_JSON_RECEIPT_REVERTED: verdict = ETH_RPC_RECEIPT_REVERTED; break;
+            case ETH_JSON_RECEIPT_ERROR:    /* fall through */
+            default:                        verdict = ETH_RPC_RECEIPT_RPC_ERROR; break;
         }
     }
     free(resp);

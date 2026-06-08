@@ -63,6 +63,7 @@ public:
 extern "C" {
 #include "pn532.h"
 #include "keccak256.h"
+#include "eth_addr.h"
 #include "eth_rlp.h"
 #include "eth_rpc.h"
 #include "net.h"
@@ -137,56 +138,6 @@ static void ui_event_dispatch(ui_event_t event, uint64_t payload) {
  ******************************************************************/
 
 /**
- * @brief Decode a single ASCII hex digit.
- *
- * @param[in] c Character to decode.
- * @return Nibble value 0–15, or -1 if @p c is not in [0-9a-fA-F].
- */
-static int hex_nibble_val(char c)
-{
-    if ((c >= '0') && (c <= '9')) { return c - '0'; }
-    if ((c >= 'a') && (c <= 'f')) { return (c - 'a') + 10; }
-    if ((c >= 'A') && (c <= 'F')) { return (c - 'A') + 10; }
-    return -1;
-}
-
-/**
- * @brief Parse a 20-byte Ethereum address from a hex string.
- *
- * Accepts an optional @c 0x / @c 0X prefix, then requires exactly 40 hex
- * characters and rejects any non-hex input instead of silently decoding
- * garbage (F-07).
- *
- * @param[in]  hex Address string (with or without @c 0x prefix).
- * @param[out] out 20-byte decoded address; zeroed then left partially
- *                 written on failure — must not be used unless true is
- *                 returned.
- * @return true on success, false on wrong length or non-hex character.
- */
-static bool parse_address(const char *hex, uint8_t out[20])
-{
-    const char *p = hex;
-    if ((p[0] == '0') && ((p[1] == 'x') || (p[1] == 'X'))) {
-        p += 2;
-    }
-    if (strlen(p) != 40U) {
-        return false;
-    }
-    (void)memset(out, 0, 20U);
-    size_t i;
-    for (i = 0U; i < 20U; i++) {
-        int hi = hex_nibble_val(p[i * 2U]);
-        int lo = hex_nibble_val(p[(i * 2U) + 1U]);
-        if ((hi < 0) || (lo < 0)) {
-            return false;
-        }
-        out[i] = static_cast<uint8_t>((static_cast<uint8_t>(hi) << 4U) |
-                                       static_cast<uint8_t>(lo));
-    }
-    return true;
-}
-
-/**
  * @brief Build the 68-byte ABI-encoded calldata for a USDC @c transfer call.
  *
  * Encodes the ERC-20 @c transfer(address,uint256) selector followed by the
@@ -205,7 +156,7 @@ static bool build_usdc_calldata(uint8_t out[68], const char *to_hex, uint64_t am
     (void)memset(out, 0, 68U);
     (void)CW_Utils::safe_memcpy(out, 68U, TRANSFER_SELECTOR, 4U);
     uint8_t addr[20];
-    if (!parse_address(to_hex, addr)) {
+    if (!eth_addr_parse(to_hex, addr)) {
         return false;
     }
     (void)CW_Utils::safe_memcpy(out + 4U + 12U, 68U - (4U + 12U), addr, 20U);
@@ -275,7 +226,7 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
     tx.eth_value         = 0U;
     tx.calldata          = calldata;
     tx.calldata_len      = sizeof(calldata);
-    if (!parse_address("0x" ADDR_USDC, tx.to)) {
+    if (!eth_addr_parse("0x" ADDR_USDC, tx.to)) {
         (void)snprintf(err_out, err_max, "Bad ADDR_USDC in config");
         return false;
     }
