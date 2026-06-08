@@ -179,7 +179,7 @@ In the repo:
 **Step 1 — generate both keys, ONCE per product (store OFFLINE, gitignored):**
 ```
 espsecure.py generate_flash_encryption_key --keylen 256 secure_keys/flash_encryption_key.bin
-espsecure.py generate_signing_key --version 2              secure_keys/secure_boot_signing_key.pem
+espsecure.py generate_signing_key --version 2 secure_keys/secure_boot_signing_key.pem
 ```
 
 **Step 2 — build with the secure overlay** (the bootloader + app are signed
