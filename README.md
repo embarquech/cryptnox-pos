@@ -101,18 +101,20 @@ the **I²C** interface to the PN532.
 
 ### CYD CN1 ↔ PN532 NFC — I²C interface
 
-| PN532 Pin | CYD Pin / Label | Wire Color |
+| PN532 Pin | CYD Pin / Label  | Wire Color |
 |-----------|------------------|------------|
-| VCC       | 3.3V             | Red        |
 | GND       | GND              | Black      |
-| SDA       | GPIO 27 (CN1 SDA)| Yellow     |
-| SCL       | GPIO 22 (CN1 SCL)| Blue       |
+| VCC       | 3.3V             | Red        |
+| SDA       | GPIO 27 (CN1 SDA)| Blue       |
+| SCL       | GPIO 22 (CN1 SCL)| Yellow     |
 
 > [!IMPORTANT]
 > Make sure the switches on the PN532 module are configured for **I²C** mode:
 >
 > - **Switch 0** → LOW
 > - **Switch 1** → HIGH
+
+<img width="800" alt="cyd_pn532_i2c" src="hardware/schematics/cyd_esp32_pn532_i2c_bb.png" />
 
 The display, touchscreen and backlight pins are already wired internally on the
 CYD; the firmware drives them through TFT_eSPI's `ILI9341_2_DRIVER` with
