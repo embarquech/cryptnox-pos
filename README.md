@@ -26,7 +26,7 @@ default), then waits for the on-chain receipt before showing **Approved**.
 > [!WARNING]
 > **Reference / educational dev kit — not a tamper-resistant terminal.**
 > The ESP32 is not a secure microcontroller and has no protected RAM. The
-> optional [secure build](#secure-build-flash-encryption--encrypted-nvs--secure-boot-v2)
+> optional [secure build](#secure-build)
 > (Flash Encryption + encrypted NVS + Secure Boot v2) protects secrets at rest
 > and locks the boot chain, but at run time the card PIN (entered on-screen, not
 > stored in the firmware) and the Wi-Fi password live in plaintext RAM —
@@ -93,7 +93,7 @@ Works with Cryptnox Hardware Wallet smart cards running firmware v1.6.0 or later
 > [!TIP]
 > Open the IDF env first: on Windows run the "ESP-IDF PowerShell"/`export.bat`,
 > on macOS/Linux `. $IDF_PATH/export.sh`. For the **secure (encrypted/signed)
-> build**, see [Secure build](#secure-build-flash-encryption--encrypted-nvs--secure-boot-v2)
+> build**, see [Secure build](#secure-build)
 > below — don't use plain `idf.py flash` on an already-provisioned board.
 
 ## Hardware setup
@@ -150,7 +150,7 @@ and fill in:
 
 ---
 
-## Secure build (Flash Encryption + encrypted NVS + Secure Boot v2)
+## Secure build
 
 By default the firmware and NVS are **unencrypted and unsigned** — fine for the
 dev kit. An optional **secure build** closes three audit findings at once:
