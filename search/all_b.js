@@ -1,21 +1,14 @@
 var searchData=
 [
-  ['ldr_5fadc_5fchannel_0',['LDR_ADC_CHANNEL',['../ui_8cpp.html#aba2238a4f931e5e0b23b777b7c39911b',1,'ui.cpp']]],
-  ['ldr_5fadc_5funit_1',['LDR_ADC_UNIT',['../ui_8cpp.html#a0f8851f7868a97095cacd0c9ab128450',1,'ui.cpp']]],
-  ['ldr_5fbrightness_5fpct_2',['ldr_brightness_pct',['../ui_8cpp.html#a3261bd3e209de4db5f3d8aa032915318',1,'ui.cpp']]],
-  ['ldr_5finit_3',['ldr_init',['../ui_8cpp.html#a738ed529592a324c177291a6ef72d9c8',1,'ui.cpp']]],
-  ['ldr_5fpct_5fmax_4',['LDR_PCT_MAX',['../ui_8cpp.html#a8e3629439ab2020420b606c2ae632828',1,'ui.cpp']]],
-  ['ldr_5fpct_5fmin_5',['LDR_PCT_MIN',['../ui_8cpp.html#a86646a101861d4cd9f5941f6c65559da',1,'ui.cpp']]],
-  ['ldr_5fraw_5fmax_6',['LDR_RAW_MAX',['../ui_8cpp.html#a72e540ca4b8d75731008ce40d1dd4944',1,'ui.cpp']]],
-  ['ldr_5fraw_5fmin_7',['LDR_RAW_MIN',['../ui_8cpp.html#a80edea75eca62a8c2f00f3f91a9a2925',1,'ui.cpp']]],
-  ['license_8',['License',['../index.html#autotoc_md21',1,'']]],
-  ['logo_5fimg_9',['logo_img',['../logo__img_8c.html#a34be52bb734cb4e6028d4fffd4ef9c60',1,'logo_img:&#160;logo_img.c'],['../logo__img_8h.html#a34be52bb734cb4e6028d4fffd4ef9c60',1,'logo_img:&#160;logo_img.c']]],
-  ['logo_5fimg_2ec_10',['logo_img.c',['../logo__img_8c.html',1,'']]],
-  ['logo_5fimg_2eh_11',['logo_img.h',['../logo__img_8h.html',1,'']]],
-  ['logo_5fmap_12',['logo_map',['../logo__img_8c.html#a5fabe66dac1532f6a236270b54e558e7',1,'logo_img.c']]],
-  ['logo_5fsmall_13',['logo_small',['../logo__small_8c.html#a804601a7e9961f09ae0c09225d4d3aeb',1,'logo_small:&#160;logo_small.c'],['../logo__small_8h.html#a804601a7e9961f09ae0c09225d4d3aeb',1,'logo_small:&#160;logo_small.c']]],
-  ['logo_5fsmall_2ec_14',['logo_small.c',['../logo__small_8c.html',1,'']]],
-  ['logo_5fsmall_2eh_15',['logo_small.h',['../logo__small_8h.html',1,'']]],
-  ['logo_5fsmall_5fmap_16',['logo_small_map',['../logo__small_8c.html#aac4c33fb9b90fc775ffa0a99ba0a7de4',1,'logo_small.c']]],
-  ['lv_5ftick_5fperiod_5fms_17',['LV_TICK_PERIOD_MS',['../ui_8cpp.html#a31c507ab1a1074ac1ab0a4ce6bbba2f6',1,'ui.cpp']]]
+  ['main_2ecpp_0',['main.cpp',['../main_8cpp.html',1,'']]],
+  ['make_5fbutton_1',['make_button',['../ui_8cpp.html#ac7ba359bf17281740d22b2c425151bec',1,'ui.cpp']]],
+  ['make_5fdivider_2',['make_divider',['../ui_8cpp.html#a54b05e5e1537413d5bcb27cc16c38769',1,'ui.cpp']]],
+  ['make_5ficon_5fbutton_3',['make_icon_button',['../ui_8cpp.html#a77d2a22c35d1f820a378f8f61dc3f4ac',1,'ui.cpp']]],
+  ['make_5flabel_4',['make_label',['../ui_8cpp.html#aa7e504784ddcaf95352bada60cf551ff',1,'ui.cpp']]],
+  ['max_5ffee_5',['max_fee',['../structeth__tx__t.html#a2b4a9af5dfb0d78ff57afbc51c4eaa99',1,'eth_tx_t']]],
+  ['max_5fpriority_5ffee_6',['max_priority_fee',['../structeth__tx__t.html#a31605f87dc21139d1717133fd4020a6e',1,'eth_tx_t']]],
+  ['menu_5fbtn_5fh_7',['MENU_BTN_H',['../ui_8cpp.html#a2a766b73596e85feccb3d68847225b84',1,'ui.cpp']]],
+  ['menu_5fbtn_5fw_8',['MENU_BTN_W',['../ui_8cpp.html#a7a142e105a3e6ebb8e572dd05fd8844a',1,'ui.cpp']]],
+  ['menu_5fbtn_5fx_9',['MENU_BTN_X',['../ui_8cpp.html#a73cc8a950dc3c1e6547fae300790a1d2',1,'ui.cpp']]],
+  ['menu_5fbtn_5fy_10',['MENU_BTN_Y',['../ui_8cpp.html#af31e59759973077040f03ba0d525edeb',1,'ui.cpp']]]
 ];

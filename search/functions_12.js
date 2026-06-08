@@ -1,15 +1,6 @@
 var searchData=
 [
-  ['ui_5fevent_5fdispatch_0',['ui_event_dispatch',['../main_8cpp.html#afb52e5aa841a5387faa868ec0cfc15f4',1,'main.cpp']]],
-  ['ui_5finit_1',['ui_init',['../ui_8cpp.html#a6ecfc755e46d8b6bffee458cf0439a69',1,'ui_init(ui_event_cb_t cb):&#160;ui.cpp'],['../ui_8h.html#a6ecfc755e46d8b6bffee458cf0439a69',1,'ui_init(ui_event_cb_t cb):&#160;ui.cpp']]],
-  ['ui_5fset_5faddresses_2',['ui_set_addresses',['../ui_8cpp.html#aeeaa931df47c4d584b1a643097c27b9b',1,'ui_set_addresses(const char *usdc_contract, const char *dest_addr):&#160;ui.cpp'],['../ui_8h.html#aeeaa931df47c4d584b1a643097c27b9b',1,'ui_set_addresses(const char *usdc_contract, const char *dest_addr):&#160;ui.cpp']]],
-  ['ui_5fshow_5famount_5fentry_3',['ui_show_amount_entry',['../ui_8cpp.html#a8dff76fae85940e90f746f28ad01ff3d',1,'ui_show_amount_entry(void):&#160;ui.cpp'],['../ui_8h.html#a8dff76fae85940e90f746f28ad01ff3d',1,'ui_show_amount_entry(void):&#160;ui.cpp']]],
-  ['ui_5fshow_5fconfirm_4',['ui_show_confirm',['../ui_8cpp.html#a545033814885a63565f3991d2c70d8e6',1,'ui_show_confirm(uint64_t amount_units, const char *dest_addr):&#160;ui.cpp'],['../ui_8h.html#a545033814885a63565f3991d2c70d8e6',1,'ui_show_confirm(uint64_t amount_units, const char *dest_addr):&#160;ui.cpp']]],
-  ['ui_5fshow_5fsplash_5',['ui_show_splash',['../ui_8cpp.html#abef86a98c393280d5f6d51235b32e695',1,'ui_show_splash(void):&#160;ui.cpp'],['../ui_8h.html#abef86a98c393280d5f6d51235b32e695',1,'ui_show_splash(void):&#160;ui.cpp']]],
-  ['ui_5fshow_5ftx_5fstatus_6',['ui_show_tx_status',['../ui_8cpp.html#a876ff330ea0bf38a47969c689f6a0b83',1,'ui_show_tx_status(ui_tx_state_t state, const char *info):&#160;ui.cpp'],['../ui_8h.html#a876ff330ea0bf38a47969c689f6a0b83',1,'ui_show_tx_status(ui_tx_state_t state, const char *info):&#160;ui.cpp']]],
-  ['ui_5fshow_5fwifi_5fconnecting_7',['ui_show_wifi_connecting',['../ui_8cpp.html#ae2278caf49fcb7affadd7c40ae3286e4',1,'ui_show_wifi_connecting(const char *ssid):&#160;ui.cpp'],['../ui_8h.html#ae2278caf49fcb7affadd7c40ae3286e4',1,'ui_show_wifi_connecting(const char *ssid):&#160;ui.cpp']]],
-  ['ui_5fshow_5fwifi_5flist_8',['ui_show_wifi_list',['../ui_8cpp.html#a1dacfbcf7e991d86a87f92282d3dfafd',1,'ui_show_wifi_list(const net_wifi_ap_t *aps, uint16_t n):&#160;ui.cpp'],['../ui_8h.html#a1dacfbcf7e991d86a87f92282d3dfafd',1,'ui_show_wifi_list(const net_wifi_ap_t *aps, uint16_t n):&#160;ui.cpp']]],
-  ['ui_5ftake_5fpin_9',['ui_take_pin',['../ui_8cpp.html#af3c14a388f70d71dc0b6ab53693d1a8a',1,'ui_take_pin(char *out, size_t n):&#160;ui.cpp'],['../ui_8h.html#af3c14a388f70d71dc0b6ab53693d1a8a',1,'ui_take_pin(char *out, size_t n):&#160;ui.cpp']]],
-  ['ui_5ftake_5fwifi_5fcreds_10',['ui_take_wifi_creds',['../ui_8cpp.html#a739a9cae9614464d8306f4e6f84021fe',1,'ui_take_wifi_creds(char *ssid, size_t ssid_n, char *pass, size_t pass_n):&#160;ui.cpp'],['../ui_8h.html#a739a9cae9614464d8306f4e6f84021fe',1,'ui_take_wifi_creds(char *ssid, size_t ssid_n, char *pass, size_t pass_n):&#160;ui.cpp']]],
-  ['ui_5ftask_11',['ui_task',['../ui_8cpp.html#ad67b3efff8f09e4e347513a85d0ac7af',1,'ui.cpp']]]
+  ['wifi_5fevent_5fhandler_0',['wifi_event_handler',['../net_8cpp.html#ac31e38637f7a5e5c8ce4d033b0955fec',1,'net.cpp']]],
+  ['wifi_5fitem_5fcb_1',['wifi_item_cb',['../ui_8cpp.html#ae164a5927abd122c0c901ff289413505',1,'ui.cpp']]],
+  ['wifi_5fpass_5fkb_5fcb_2',['wifi_pass_kb_cb',['../ui_8cpp.html#a6928cd98a17c3acfeeb0a3dc9c0cf517',1,'ui.cpp']]]
 ];

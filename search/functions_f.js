@@ -1,10 +1,17 @@
 var searchData=
 [
-  ['render_5frequested_5fscreen_0',['render_requested_screen',['../ui_8cpp.html#a7ceddeee1a4d9f31aac18b0630575c0b',1,'ui.cpp']]],
-  ['request_5fscreen_1',['request_screen',['../ui_8cpp.html#a56807b022eee6e8a311730e21225cc94',1,'ui.cpp']]],
-  ['rlp_5fbytes_2',['rlp_bytes',['../eth__rlp_8cpp.html#a2012d2dc4ef066957cfcb3e85edeca02',1,'eth_rlp.cpp']]],
-  ['rlp_5fint256_3',['rlp_int256',['../eth__rlp_8cpp.html#a94a2133e6d553b90cb4462a08a4b177c',1,'eth_rlp.cpp']]],
-  ['rlp_5flist_5fheader_4',['rlp_list_header',['../eth__rlp_8cpp.html#a29e7b0194c7047e4942dc2b39809bc67',1,'eth_rlp.cpp']]],
-  ['rlp_5fuint64_5',['rlp_uint64',['../eth__rlp_8cpp.html#ae4a732e230caccbfff1bb6fc8d85b5a5',1,'eth_rlp.cpp']]],
-  ['rot64_6',['rot64',['../keccak256_8cpp.html#a9085e44058b50bc6a267c71ec4c1e59c',1,'keccak256.cpp']]]
+  ['settings_5ffactory_5freset_0',['settings_factory_reset',['../settings_8cpp.html#ab6e8c2165049181e1c37d84624b3ba2a',1,'settings_factory_reset(void):&#160;settings.cpp'],['../settings_8h.html#ab6e8c2165049181e1c37d84624b3ba2a',1,'settings_factory_reset(void):&#160;settings.cpp']]],
+  ['settings_5fget_5fauto_5fbrightness_1',['settings_get_auto_brightness',['../settings_8cpp.html#a58ba0c4477f0545cc05c83fc49400d8e',1,'settings_get_auto_brightness(void):&#160;settings.cpp'],['../settings_8h.html#a58ba0c4477f0545cc05c83fc49400d8e',1,'settings_get_auto_brightness(void):&#160;settings.cpp']]],
+  ['settings_5fget_5fbrightness_2',['settings_get_brightness',['../settings_8cpp.html#a818ad1b9e12386084a6f3ac81b457206',1,'settings_get_brightness(void):&#160;settings.cpp'],['../settings_8h.html#a818ad1b9e12386084a6f3ac81b457206',1,'settings_get_brightness(void):&#160;settings.cpp']]],
+  ['settings_5fget_5fmax_5ffee_5fgwei_3',['settings_get_max_fee_gwei',['../settings_8cpp.html#ae5fa2fb8d5ff26e2ab997c4384ac6ad8',1,'settings_get_max_fee_gwei(void):&#160;settings.cpp'],['../settings_8h.html#ae5fa2fb8d5ff26e2ab997c4384ac6ad8',1,'settings_get_max_fee_gwei(void):&#160;settings.cpp']]],
+  ['settings_5fget_5fpriority_5ffee_5fgwei_4',['settings_get_priority_fee_gwei',['../settings_8cpp.html#a772911b2f26faae157630d855318f16c',1,'settings_get_priority_fee_gwei(void):&#160;settings.cpp'],['../settings_8h.html#a772911b2f26faae157630d855318f16c',1,'settings_get_priority_fee_gwei(void):&#160;settings.cpp']]],
+  ['settings_5fget_5fwifi_5',['settings_get_wifi',['../settings_8cpp.html#a172f2aea1550fda41bb292fca261891b',1,'settings_get_wifi(char *ssid, size_t ssid_n, char *pass, size_t pass_n):&#160;settings.cpp'],['../settings_8h.html#a172f2aea1550fda41bb292fca261891b',1,'settings_get_wifi(char *ssid, size_t ssid_n, char *pass, size_t pass_n):&#160;settings.cpp']]],
+  ['settings_5fhas_5fwifi_6',['settings_has_wifi',['../settings_8cpp.html#a0ce88caf5e1f89361552c90b47ebc9be',1,'settings_has_wifi(void):&#160;settings.cpp'],['../settings_8h.html#a0ce88caf5e1f89361552c90b47ebc9be',1,'settings_has_wifi(void):&#160;settings.cpp']]],
+  ['settings_5fpersist_7',['settings_persist',['../ui_8cpp.html#a4bdc45346640d9174b0bc85e78c5c4f7',1,'ui.cpp']]],
+  ['settings_5fset_5fauto_5fbrightness_8',['settings_set_auto_brightness',['../settings_8cpp.html#a147486c72fa01061f30fcd7847baee57',1,'settings_set_auto_brightness(bool on):&#160;settings.cpp'],['../settings_8h.html#a147486c72fa01061f30fcd7847baee57',1,'settings_set_auto_brightness(bool on):&#160;settings.cpp']]],
+  ['settings_5fset_5fbrightness_9',['settings_set_brightness',['../settings_8cpp.html#ad15919561c01cc19a22b19b34d30db5c',1,'settings_set_brightness(uint8_t pct):&#160;settings.cpp'],['../settings_8h.html#ad15919561c01cc19a22b19b34d30db5c',1,'settings_set_brightness(uint8_t pct):&#160;settings.cpp']]],
+  ['settings_5fset_5fmax_5ffee_5fgwei_10',['settings_set_max_fee_gwei',['../settings_8cpp.html#aaecda1d5547ba45e35949fe7d97f09f3',1,'settings_set_max_fee_gwei(uint32_t gwei):&#160;settings.cpp'],['../settings_8h.html#aaecda1d5547ba45e35949fe7d97f09f3',1,'settings_set_max_fee_gwei(uint32_t gwei):&#160;settings.cpp']]],
+  ['settings_5fset_5fpriority_5ffee_5fgwei_11',['settings_set_priority_fee_gwei',['../settings_8cpp.html#ad2d146407abd6d6e53d26fef4a056bf1',1,'settings_set_priority_fee_gwei(uint32_t gwei):&#160;settings.cpp'],['../settings_8h.html#ad2d146407abd6d6e53d26fef4a056bf1',1,'settings_set_priority_fee_gwei(uint32_t gwei):&#160;settings.cpp']]],
+  ['settings_5fset_5fwifi_12',['settings_set_wifi',['../settings_8cpp.html#a7e76308e770c39d46e1e1e4f9f123fd3',1,'settings_set_wifi(const char *ssid, const char *pass):&#160;settings.cpp'],['../settings_8h.html#a7e76308e770c39d46e1e1e4f9f123fd3',1,'settings_set_wifi(const char *ssid, const char *pass):&#160;settings.cpp']]],
+  ['sign_5fand_5fbroadcast_13',['sign_and_broadcast',['../main_8cpp.html#a3bf76a2039211bf46d73c58f44e6af0f',1,'main.cpp']]]
 ];

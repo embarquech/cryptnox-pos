@@ -15,7 +15,6 @@ var eth__rpc_8cpp =
     [ "eth_rpc_set_auth", "eth__rpc_8cpp.html#a693b336658d1f72dc3a3f233f8353dac", null ],
     [ "eth_rpc_set_ca_cert", "eth__rpc_8cpp.html#acabcedc1e08b643fb161f872b5ce2b98", null ],
     [ "hex_nibble", "eth__rpc_8cpp.html#a6bf679e2f6724eb2899eb08f3a82dda8", null ],
-    [ "json_get_result_string", "eth__rpc_8cpp.html#a22b9172484200f2aef471073c02f269b", null ],
     [ "s_api_secret", "eth__rpc_8cpp.html#a230d620c0f594c10f5744a7f9df83b35", null ],
     [ "s_ca_cert", "eth__rpc_8cpp.html#ad48019b98a18e3b6cf19d6a57c5210cd", null ],
     [ "s_from_addr", "eth__rpc_8cpp.html#a240d51d467ff67657712dfa898e32181", null ],

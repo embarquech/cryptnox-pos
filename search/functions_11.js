@@ -1,9 +1,15 @@
 var searchData=
 [
-  ['tab_5fchange_5fcb_0',['tab_change_cb',['../ui_8cpp.html#ab8244a81c9d1a867e271b5779b1ac42f',1,'ui.cpp']]],
-  ['tick_5fcb_1',['tick_cb',['../ui_8cpp.html#a751f8ad4aa554d77c3c377549c77a124',1,'ui.cpp']]],
-  ['touch_2',['touch',['../ui_8cpp.html#a0c6c4feef76bd778b03a8b61d5f0c683',1,'ui.cpp']]],
-  ['touch_5fto_5fscreen_3',['touch_to_screen',['../ui_8cpp.html#aab01775fc9ffa44e76cc540f9254c8a2',1,'ui.cpp']]],
-  ['touchspi_4',['touchSPI',['../ui_8cpp.html#a1c666ad400b7ccf0e17d8dff91ed8202',1,'ui.cpp']]],
-  ['tx_5famount_5frow_5',['tx_amount_row',['../ui_8cpp.html#a7459ce23656bf2f0e1a42bd6f6cc7994',1,'ui.cpp']]]
+  ['ui_5fevent_5fdispatch_0',['ui_event_dispatch',['../main_8cpp.html#afb52e5aa841a5387faa868ec0cfc15f4',1,'main.cpp']]],
+  ['ui_5finit_1',['ui_init',['../ui_8cpp.html#a6ecfc755e46d8b6bffee458cf0439a69',1,'ui_init(ui_event_cb_t cb):&#160;ui.cpp'],['../ui_8h.html#a6ecfc755e46d8b6bffee458cf0439a69',1,'ui_init(ui_event_cb_t cb):&#160;ui.cpp']]],
+  ['ui_5fset_5faddresses_2',['ui_set_addresses',['../ui_8cpp.html#aeeaa931df47c4d584b1a643097c27b9b',1,'ui_set_addresses(const char *usdc_contract, const char *dest_addr):&#160;ui.cpp'],['../ui_8h.html#aeeaa931df47c4d584b1a643097c27b9b',1,'ui_set_addresses(const char *usdc_contract, const char *dest_addr):&#160;ui.cpp']]],
+  ['ui_5fshow_5famount_5fentry_3',['ui_show_amount_entry',['../ui_8cpp.html#a8dff76fae85940e90f746f28ad01ff3d',1,'ui_show_amount_entry(void):&#160;ui.cpp'],['../ui_8h.html#a8dff76fae85940e90f746f28ad01ff3d',1,'ui_show_amount_entry(void):&#160;ui.cpp']]],
+  ['ui_5fshow_5fconfirm_4',['ui_show_confirm',['../ui_8cpp.html#a545033814885a63565f3991d2c70d8e6',1,'ui_show_confirm(uint64_t amount_units, const char *dest_addr):&#160;ui.cpp'],['../ui_8h.html#a545033814885a63565f3991d2c70d8e6',1,'ui_show_confirm(uint64_t amount_units, const char *dest_addr):&#160;ui.cpp']]],
+  ['ui_5fshow_5fsplash_5',['ui_show_splash',['../ui_8cpp.html#abef86a98c393280d5f6d51235b32e695',1,'ui_show_splash(void):&#160;ui.cpp'],['../ui_8h.html#abef86a98c393280d5f6d51235b32e695',1,'ui_show_splash(void):&#160;ui.cpp']]],
+  ['ui_5fshow_5ftx_5fstatus_6',['ui_show_tx_status',['../ui_8cpp.html#a876ff330ea0bf38a47969c689f6a0b83',1,'ui_show_tx_status(ui_tx_state_t state, const char *info):&#160;ui.cpp'],['../ui_8h.html#a876ff330ea0bf38a47969c689f6a0b83',1,'ui_show_tx_status(ui_tx_state_t state, const char *info):&#160;ui.cpp']]],
+  ['ui_5fshow_5fwifi_5fconnecting_7',['ui_show_wifi_connecting',['../ui_8cpp.html#ae2278caf49fcb7affadd7c40ae3286e4',1,'ui_show_wifi_connecting(const char *ssid):&#160;ui.cpp'],['../ui_8h.html#ae2278caf49fcb7affadd7c40ae3286e4',1,'ui_show_wifi_connecting(const char *ssid):&#160;ui.cpp']]],
+  ['ui_5fshow_5fwifi_5flist_8',['ui_show_wifi_list',['../ui_8cpp.html#a1dacfbcf7e991d86a87f92282d3dfafd',1,'ui_show_wifi_list(const net_wifi_ap_t *aps, uint16_t n):&#160;ui.cpp'],['../ui_8h.html#a1dacfbcf7e991d86a87f92282d3dfafd',1,'ui_show_wifi_list(const net_wifi_ap_t *aps, uint16_t n):&#160;ui.cpp']]],
+  ['ui_5ftake_5fpin_9',['ui_take_pin',['../ui_8cpp.html#af3c14a388f70d71dc0b6ab53693d1a8a',1,'ui_take_pin(char *out, size_t n):&#160;ui.cpp'],['../ui_8h.html#af3c14a388f70d71dc0b6ab53693d1a8a',1,'ui_take_pin(char *out, size_t n):&#160;ui.cpp']]],
+  ['ui_5ftake_5fwifi_5fcreds_10',['ui_take_wifi_creds',['../ui_8cpp.html#a739a9cae9614464d8306f4e6f84021fe',1,'ui_take_wifi_creds(char *ssid, size_t ssid_n, char *pass, size_t pass_n):&#160;ui.cpp'],['../ui_8h.html#a739a9cae9614464d8306f4e6f84021fe',1,'ui_take_wifi_creds(char *ssid, size_t ssid_n, char *pass, size_t pass_n):&#160;ui.cpp']]],
+  ['ui_5ftask_11',['ui_task',['../ui_8cpp.html#ad67b3efff8f09e4e347513a85d0ac7af',1,'ui.cpp']]]
 ];
