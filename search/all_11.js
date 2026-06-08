@@ -51,7 +51,7 @@ var searchData=
   ['s_5fwifi_5fssid_48',['s_wifi_ssid',['../ui_8cpp.html#a8eadb02e6c8eed7996775d733b9474fd',1,'ui.cpp']]],
   ['scr_5fh_49',['SCR_H',['../ui_8cpp.html#a61b2e5ac0d21f66c13855ee70a1a507d',1,'ui.cpp']]],
   ['scr_5fw_50',['SCR_W',['../ui_8cpp.html#a800e692b98ec3f4cc0679e934485ca84',1,'ui.cpp']]],
-  ['secure_20build_51',['Secure build',['../index.html#autotoc_md13',1,'']]],
+  ['secure_20build_51',['Secure build',['../index.html#autotoc_md14',1,'']]],
   ['settings_2ecpp_52',['settings.cpp',['../settings_8cpp.html',1,'']]],
   ['settings_2eh_53',['settings.h',['../settings_8h.html',1,'']]],
   ['settings_5ffactory_5freset_54',['settings_factory_reset',['../settings_8cpp.html#ab6e8c2165049181e1c37d84624b3ba2a',1,'settings_factory_reset(void):&#160;settings.cpp'],['../settings_8h.html#ab6e8c2165049181e1c37d84624b3ba2a',1,'settings_factory_reset(void):&#160;settings.cpp']]],
@@ -67,9 +67,9 @@ var searchData=
   ['settings_5fset_5fmax_5ffee_5fgwei_64',['settings_set_max_fee_gwei',['../settings_8cpp.html#aaecda1d5547ba45e35949fe7d97f09f3',1,'settings_set_max_fee_gwei(uint32_t gwei):&#160;settings.cpp'],['../settings_8h.html#aaecda1d5547ba45e35949fe7d97f09f3',1,'settings_set_max_fee_gwei(uint32_t gwei):&#160;settings.cpp']]],
   ['settings_5fset_5fpriority_5ffee_5fgwei_65',['settings_set_priority_fee_gwei',['../settings_8cpp.html#ad2d146407abd6d6e53d26fef4a056bf1',1,'settings_set_priority_fee_gwei(uint32_t gwei):&#160;settings.cpp'],['../settings_8h.html#ad2d146407abd6d6e53d26fef4a056bf1',1,'settings_set_priority_fee_gwei(uint32_t gwei):&#160;settings.cpp']]],
   ['settings_5fset_5fwifi_66',['settings_set_wifi',['../settings_8cpp.html#a7e76308e770c39d46e1e1e4f9f123fd3',1,'settings_set_wifi(const char *ssid, const char *pass):&#160;settings.cpp'],['../settings_8h.html#a7e76308e770c39d46e1e1e4f9f123fd3',1,'settings_set_wifi(const char *ssid, const char *pass):&#160;settings.cpp']]],
-  ['setup_67',['Hardware setup',['../index.html#autotoc_md8',1,'']]],
+  ['setup_67',['Hardware setup',['../index.html#autotoc_md9',1,'']]],
   ['sign_5fand_5fbroadcast_68',['sign_and_broadcast',['../main_8cpp.html#a3bf76a2039211bf46d73c58f44e6af0f',1,'main.cpp']]],
-  ['smart_20cards_69',['Cryptnox Hardware Wallet smart cards',['../index.html#autotoc_md3',1,'']]],
+  ['smart_20cards_69',['Cryptnox Hardware Wallet smart cards',['../index.html#autotoc_md4',1,'']]],
   ['ssid_70',['ssid',['../structnet__wifi__ap__t.html#abfccd5924571fcb9dc14436cab07cb9e',1,'net_wifi_ap_t']]],
-  ['supported_20hardware_71',['Supported hardware',['../index.html#autotoc_md2',1,'']]]
+  ['supported_20hardware_71',['Supported hardware',['../index.html#autotoc_md3',1,'']]]
 ];
