@@ -10,12 +10,13 @@
  *   eth_rlp_encode_unsigned()   0x02 || RLP([chainId, nonce, ...])
  *   eth_rlp_encode_signed()     0x02 || RLP([..., v, r, s])
  *
- * Why fuzz it: the encoder is pure (only <string.h>) and self-contained, so
- * it compiles straight into the harness with no ESP-IDF stubs. In production
- * the calldata is a fixed 68-byte USDC transfer, but the length-prefixing and
- * the internal scratch bound (audit F-08) are exactly the kind of arithmetic
- * that breaks under an attacker-chosen calldata length — so we drive the full
- * eth_tx_t from fuzz input and let ASan watch the buffer math.
+ * Why fuzz it: in production the calldata is a fixed 68-byte USDC transfer,
+ * but the length-prefixing and the internal scratch bound (audit F-08) are
+ * exactly the kind of arithmetic that breaks under an attacker-chosen calldata
+ * length — so we drive the full eth_tx_t from fuzz input and let ASan watch
+ * the buffer math. eth_rlp.cpp routes every copy through CW_Utils::safe_memcpy
+ * (CODING_RULES 1.4), so the harness links the real CW_Utils (needs the SDK
+ * include path) the same way fuzz_eth_rpc_json does.
  *
  * Build (Linux / macOS, or WSL on Windows — clang required):
  *   cd fuzz && mkdir build && cd build
@@ -38,7 +39,20 @@
 #include <stddef.h>
 #include <string.h>
 
-/* Pull in the production encoder directly — it has no ESP-IDF dependencies. */
+#include "CW_Utils.h"
+
+/* CW_Utils::fill_secure_random is ESP32-specific and never reached from
+ * safe_memcpy; stub it for the linker, like the SDK's own fuzz harness. */
+bool CW_Utils::fill_secure_random(uint8_t *dest, size_t len)
+{
+    if ((dest != NULL) && (len > 0U)) {
+        memset(dest, 0xA5U, len);
+    }
+    return true;
+}
+
+/* Real safe_memcpy + the production encoder, compiled into the harness. */
+#include "CW_Utils.cpp"
 #include "../main/eth_rlp.cpp"
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)

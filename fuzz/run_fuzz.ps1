@@ -53,7 +53,7 @@ $cjson = if ($env:IDF_PATH) { Join-Path $env:IDF_PATH "components\json\cJSON" }
 
 # Map a target name to its harness sources / extra build args.
 $specs = @{
-    eth_rlp        = @{ srcs = @('fuzz_eth_rlp.cpp');        inc = @() }
+    eth_rlp        = @{ srcs = @('fuzz_eth_rlp.cpp');        inc = @("-I$sdk") }
     parse_address  = @{ srcs = @('fuzz_parse_address.cpp');  inc = @() }
     eth_rpc_json   = @{ srcs = @('fuzz_eth_rpc_json.cpp', (Join-Path $cjson 'cJSON.c'));
                         inc = @("-I$sdk", "-I$cjson") }

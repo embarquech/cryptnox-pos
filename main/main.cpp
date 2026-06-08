@@ -173,12 +173,33 @@ static bool build_usdc_calldata(uint8_t out[68], const char *to_hex, uint64_t am
  ******************************************************************/
 
 /**
+ * @brief Scrubs a buffer with CW_Utils::secure_wipe when it leaves scope.
+ *
+ * sign_and_broadcast has many early-return paths; a guard declared next to
+ * each sensitive artifact scrubs it on every exit (present or future) the way
+ * the SDK examples wipe the hash and signature after use, without needing a
+ * secure_wipe before each individual return.
+ */
+namespace {
+struct WipeGuard {
+    uint8_t *buf;
+    size_t   len;
+    explicit WipeGuard(uint8_t *b, size_t n) : buf(b), len(n) {}
+    ~WipeGuard() { CW_Utils::secure_wipe(buf, len); }
+    WipeGuard(const WipeGuard &) = delete;
+    WipeGuard &operator=(const WipeGuard &) = delete;
+};
+}  // namespace
+
+/**
  * @brief Sign a USDC transfer on the card and broadcast it via JSON-RPC.
  *
  * Full pipeline: build calldata → fetch nonce → RLP-encode + keccak256 →
  * card connect/sign (cancellable) → ecrecover parity → broadcast.  The card
  * PIN is copied into the sign request at the last moment and scrubbed with
- * @c CW_Utils::secure_wipe immediately after signing (F-04).
+ * @c CW_Utils::secure_wipe immediately after signing (F-04); the message hash,
+ * signature and encoded transactions are scrubbed on every exit path via
+ * @ref WipeGuard.
  *
  * @param[in]  wallet       Initialised wallet instance.
  * @param[in]  transport    PN532 transport, used for the cancellable
@@ -240,6 +261,11 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
 
     uint8_t hash[CW_HASH_SIZE];
     keccak256(unsigned_tx, unsigned_len, hash);
+
+    /* From here the message hash and (soon) the signature live on the stack.
+     * Scrub them and the encoded transactions on every exit path below. */
+    WipeGuard g_unsigned(unsigned_tx, sizeof(unsigned_tx));
+    WipeGuard g_hash(hash, sizeof(hash));
 
     if (!s_user_cancelled) {
         ui_show_tx_status(UI_TX_STATE_PLACE_CARD, "Hold card to reader");
@@ -323,6 +349,7 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
                                 copy_len);
 
     CW_SignResult result = wallet.sign(req);
+    WipeGuard g_sig(result.signature, sizeof(result.signature));
     wallet.disconnect(session);
 
     /* F-04: scrub the PIN immediately after use (secure_wipe is not
@@ -358,6 +385,7 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
     }
 
     uint8_t signed_tx[TX_BUF_SIZE];
+    WipeGuard g_signed(signed_tx, sizeof(signed_tx));
     size_t  signed_len = eth_rlp_encode_signed(&tx, v, sig_r, sig_s,
                                                signed_tx, sizeof(signed_tx));
     if (signed_len == 0U) {
