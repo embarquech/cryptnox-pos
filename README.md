@@ -90,6 +90,12 @@ Works with Cryptnox Hardware Wallet smart cards running firmware v1.6.0 or later
    The first build also fetches `espressif/arduino-esp32` from the IDF
    component registry, so expect a longer initial compile.
 
+> [!NOTE]
+> `auto_flash.ps1` is unsigned; if PowerShell blocks it, allow it for the
+> current session with `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`
+> (or `Unblock-File .\auto_flash.ps1`). It hardcodes a Windows IDF path under
+> `C:\Espressif` — edit it for your install.
+
 > [!TIP]
 > On macOS/Linux, source the IDF env (`. $IDF_PATH/export.sh`) and use the
 > standard `idf.py set-target esp32`, `idf.py build flash monitor` commands.
