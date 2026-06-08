@@ -76,6 +76,16 @@ def main():
     flash_files = fa["flash_files"]               # { "0xADDR": "relative/path.bin" }
     app_rel = fa.get("app", {}).get("file")
 
+    # With Secure Boot enabled, IDF drops the bootloader from flash_files (to
+    # avoid an accidental bootloader reflash on a locked device). Add it back
+    # explicitly — otherwise the signed bootloader never gets written and
+    # Secure Boot is never activated (ABS_DONE_1 stays 0).
+    boot_rel = "bootloader/bootloader.bin"
+    if "0x1000" not in flash_files and \
+            os.path.isfile(os.path.join(args.build_dir, boot_rel)):
+        flash_files = dict(flash_files)
+        flash_files["0x1000"] = boot_rel
+
     items = sorted(flash_files.items(), key=lambda kv: int(kv[0], 16))
     if args.app_only:
         items = [(o, r) for (o, r) in items if r == app_rel] or items[-1:]

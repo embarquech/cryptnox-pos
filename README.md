@@ -23,14 +23,15 @@ card** on the attached PN532 reader, and the terminal signs and broadcasts an
 EIP-1559 transfer on Ethereum Sepolia via Infura.
 
 > [!WARNING]
-> **Reference / educational project — not a production-hardened terminal.**
-> The ESP32 is a general-purpose microcontroller, not a tamper-resistant secure
-> element: an attacker with physical access can compromise its runtime and
-> recover its Wi-Fi credentials, which may then be used to reach the card. The
-> card PIN and the destination address are also hard-coded into the build
-> config. **The Cryptnox Hardware Wallet remains the trust anchor**, though —
-> private keys never leave the card, so a compromised ESP32 still cannot sign
-> without the card.
+> **Reference / educational dev kit — not a tamper-resistant terminal.**
+> The ESP32 is not a secure microcontroller and has no protected RAM. The
+> optional [secure build](#secure-build-flash-encryption--encrypted-nvs--secure-boot-v2)
+> (Flash Encryption + encrypted NVS + Secure Boot v2) protects secrets at rest
+> and locks the boot chain, but at run time the card PIN (entered on-screen, not
+> stored in the firmware) and the Wi-Fi password live in plaintext RAM —
+> readable by anyone who can reach live memory (JTAG, a run-time exploit).
+> **The Cryptnox Hardware Wallet remains the trust anchor** — private keys never
+> leave the card, so a compromised ESP32 still cannot sign without it.
 
 ### Built on
 
@@ -147,84 +148,80 @@ config.h field.
 
 ---
 
-## Secure build (Flash Encryption + encrypted NVS)
+## Secure build (Flash Encryption + encrypted NVS + Secure Boot v2)
 
-By default the firmware image and NVS are **unencrypted** — fine for the dev
-kit, but a flash dump then yields the Wi-Fi password and any NVS secret. An
-optional **secure build** closes that (audit findings F-16 / F-01-at-rest) by
-enabling Flash Encryption and storing the NVS keys in a flash-encrypted
-`nvs_keys` partition.
+By default the firmware and NVS are **unencrypted and unsigned** — fine for the
+dev kit. An optional **secure build** closes three audit findings at once:
+
+| Feature | Closes | Effect |
+|---------|--------|--------|
+| Flash Encryption | F-01-at-rest | a flash dump is ciphertext, useless without the key |
+| Encrypted NVS (`nvs_keys` partition) | F-16 | the Wi-Fi password / fees in NVS are encrypted |
+| Secure Boot v2 (RSA-3072) | F-02 | only firmware signed with your key boots |
 
 > [!CAUTION]
-> Secure features burn **eFuses, which is irreversible**. Validate on a
-> **sacrificial board first**; a misconfigured burn can brick the unit.
+> These burn **eFuses — IRREVERSIBLE**. Validate on a **sacrificial board
+> first**; a misconfigured burn bricks the unit. On the classic **ESP32**
+> Secure Boot v2 supports **a single key with no revocation/rotation** (that
+> is an S2/S3/C-series feature): if your signing key leaks you cannot revoke
+> it, and if you lose it the board can never be updated again. Keep both keys
+> **offline, in multiple copies**.
 
-The pieces are already in the repo:
+In the repo:
+- `sdkconfig.defaults.flash_encryption` — the overlay: Flash Encryption
+  (Development mode), `CONFIG_NVS_ENCRYPTION`, Secure Boot v2 + signing key,
+  `ESP32_REV_MIN_3` (required for SBv2) and `PARTITION_TABLE_OFFSET=0x10000`
+  (the signed+encrypted bootloader outgrows the default window).
+- `partitions.csv` — the `nvs_keys` partition (inert in a normal build).
+- `tools/secure_provision.py` — one-shot factory provisioning of a fresh board.
+- `tools/secure_flash.py` — pre-encrypt + flash for routine reflashing.
 
-- `partitions.csv` — adds the `nvs_keys` partition (inert in a normal build).
-- `sdkconfig.defaults.flash_encryption` — Flash Encryption (**Development** mode) +
-  `CONFIG_NVS_ENCRYPTION`.
-
-This project uses a **host-generated flash-encryption key** (the production
-approach): you own the key, so you can **pre-encrypt** images and reflash
-without ever incrementing `FLASH_CRYPT_CNT`, and flash many units with the same
-key. The on-chip-generated alternative needs nothing stored but consumes a
-re-flash cycle every time and cannot pre-encrypt.
-
-**One-time setup (per key / production batch):**
-
+**Step 1 — generate both keys, ONCE per product (store OFFLINE, gitignored):**
 ```
-# 1. Generate the AES-256 flash-encryption key (store it OFFLINE — gitignored)
 espsecure.py generate_flash_encryption_key --keylen 256 secure_keys/flash_encryption_key.bin
-
-# 2. Burn it into eFuse BLOCK1 (IRREVERSIBLE — sacrificial board first).
-#    Follow the exact espefuse sequence for the ESP32 in the IDF docs:
-#    https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32/security/flash-encryption.html
-espefuse.py --port COMx burn_key flash_encryption secure_keys/flash_encryption_key.bin
+espsecure.py generate_signing_key --version 2              secure_keys/secure_boot_signing_key.pem
 ```
 
-**Build + flash (repeatable, no counter burn):**
-
+**Step 2 — build with the secure overlay** (the bootloader + app are signed
+automatically at build time):
 ```
-# Build with the flash-encryption overlay layered on top of the defaults
-idf.py -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.flash_encryption" build
-
-# Pre-encrypt with YOUR key and flash the ciphertext — tools/secure_flash.py
-# reads the offsets/params from build/flasher_args.json and does all three
-# images (or just the app), using the classic-ESP32 scheme.
-python tools/secure_flash.py --port COMx              # full image
-python tools/secure_flash.py --port COMx --app-only   # daily app-only update
+idf.py -D "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.defaults.flash_encryption" build
 ```
+(PowerShell: quote the whole `-D` argument as shown, because of the `;`.)
 
-The first encrypted boot enables Flash Encryption (`FLASH_CRYPT_CNT` → 1, the
-one unavoidable cycle) and `nvs_flash_init()` generates the NVS keys into
-`nvs_keys` (no code change). From then on, because the images are pre-encrypted
-on the host, the bootloader does not re-encrypt and `FLASH_CRYPT_CNT` stays put.
-
-The equivalent manual command for one image — note: classic ESP32 uses
-`--flash_crypt_conf 0xf`, **not** `--aes_xts` (which is for the S2/S3/C-series):
-
+**Step 3 — provision a fresh board (one command, IRREVERSIBLE):**
 ```
-espsecure.py encrypt_flash_data --flash_crypt_conf 0xf \
-    --keyfile secure_keys/flash_encryption_key.bin \
-    --address 0x10000 --output build/cryptnox_pos-enc.bin build/cryptnox_pos.bin
-esptool.py --port COMx write_flash --force 0x10000 build/cryptnox_pos-enc.bin
+python tools/secure_provision.py --port COMx --baud 921600 --yes
 ```
+It checks the board is fresh, burns the flash-encryption key, enables Flash
+Encryption, then flashes the signed + pre-encrypted bootloader/table/app. After
+it finishes, **reset the board**: the bootloader finalizes Secure Boot on first
+boot (burns the public-key digest + `ABS_DONE_1`). Verify:
+```
+espefuse.py --port COMx summary | findstr "FLASH_CRYPT_CNT ABS_DONE_1"
+```
+→ `FLASH_CRYPT_CNT` odd and `ABS_DONE_1 = True` = fully hardened.
 
-To **distribute** an encrypted image instead of flashing locally:
-
+**Routine reflash afterwards** (board already provisioned, Flash Encryption
+active — never use plain `idf.py flash`, it would write plaintext the chip
+mis-decrypts):
+```
+python tools/secure_flash.py --port COMx --baud 921600              # full
+python tools/secure_flash.py --port COMx --baud 921600 --app-only   # app only
+```
+Because images are pre-encrypted on the host, `FLASH_CRYPT_CNT` is never
+consumed. To **distribute** an encrypted image instead of flashing locally:
 ```
 python tools/secure_flash.py --package    # -> dist/cryptnox_pos-encrypted-full.bin
 ```
 
 > [!WARNING]
-> Only in **manufacturing**, after full validation, switch
-> `sdkconfig.defaults.flash_encryption` from `..._MODE_DEVELOPMENT` to `..._MODE_RELEASE`
-> and reflash. That permanently disables plaintext UART flashing, flash dumps
-> and JTAG. Note: on the classic **ESP32-WROOM-32** there is no HMAC eFuse
-> scheme, so encrypted NVS **requires** Flash Encryption — the two cannot be
-> separated. Secure Boot v2 (signed firmware, finding F-02) is a further,
-> independent step not covered by this overlay.
+> The overlay uses Flash Encryption **Development** mode so the board stays
+> reflashable while you validate. Only in **manufacturing**, after full
+> validation, switch `..._MODE_DEVELOPMENT` → `..._MODE_RELEASE` and reflash:
+> that permanently disables plaintext UART flashing and flash dumps. Note: on
+> the classic ESP32 encrypted NVS **requires** Flash Encryption (no HMAC eFuse
+> scheme), so the two cannot be separated.
 
 ---
 
