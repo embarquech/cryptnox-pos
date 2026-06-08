@@ -20,7 +20,8 @@ into a real-world end-user product.
 
 The user selects a USDC amount on the touchscreen, taps a **Cryptnox smart
 card** on the attached PN532 reader, and the terminal signs and broadcasts an
-EIP-1559 transfer on Ethereum Sepolia via Infura.
+EIP-1559 transfer on Ethereum Sepolia via a JSON-RPC endpoint (PublicNode by
+default), then waits for the on-chain receipt before showing **Approved**.
 
 > [!WARNING]
 > **Reference / educational dev kit — not a tamper-resistant terminal.**
@@ -35,9 +36,10 @@ EIP-1559 transfer on Ethereum Sepolia via Infura.
 
 ### Built on
 
-- **[`cryptnox-sdk-esp32`](https://github.com/embarquech/cryptnox-sdk-esp32)** (vendored as a git submodule) — secure channel, ECDH/ECDSA, PN532 transport, ESP32 crypto provider
-- **[TFT_eSPI](https://github.com/Bodmer/TFT_eSPI)** + **[XPT2046_Touchscreen](https://github.com/PaulStoffregen/XPT2046_Touchscreen)** — native CYD display + touch
-- **[arduino-esp32](https://github.com/espressif/arduino-esp32)** as an ESP-IDF managed component (Arduino runtime for the UI libraries; the rest of the firmware stays on native IDF)
+- **[`cryptnox-sdk-esp32`](https://github.com/embarquech/cryptnox-sdk-esp32)** (git submodule) — secure channel, ECDH/ECDSA, PN532 transport, ESP32 crypto provider
+- **[LVGL 8](https://lvgl.io/)** (managed component) — the SumUp-style portrait UI
+- **[TFT_eSPI](https://github.com/Bodmer/TFT_eSPI)** + **[XPT2046_Touchscreen](https://github.com/PaulStoffregen/XPT2046_Touchscreen)** (git submodules) — CYD panel driver + touch, behind LVGL
+- **[arduino-esp32](https://github.com/espressif/arduino-esp32)** as an ESP-IDF managed component (Arduino runtime for the display libraries; the rest stays on native IDF)
 
 ---
 
@@ -61,15 +63,15 @@ Works with Cryptnox Hardware Wallet smart cards running firmware v1.6.0 or later
 
 | Board | MCU | Display | Touch |
 |-------|-----|---------|-------|
-| [ESP32-2432S028 "Cheap Yellow Display"](https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display) | ESP32-WROOM-32 | ILI9341 320×240 | XPT2046 (resistive) |
+| [ESP32-2432S028 "Cheap Yellow Display"](https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display) | ESP32-WROOM-32 | ILI9341 240×320 (portrait) | XPT2046 (resistive) |
 
 ---
 
 ## Installation
 
 1. Install **[ESP-IDF v5.5](https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32/get-started/index.html)**
-   (the project uses Arduino-as-component plus the `lvgl/lvgl`-free Espressif
-   managed components stack).
+   (the project pulls `espressif/arduino-esp32` and `lvgl/lvgl` as IDF managed
+   components; TFT_eSPI / XPT2046 are in-tree submodules).
 2. Clone this repository **with submodules**:
    ```
    git clone --recursive https://github.com/embarquech/cryptnox-pos.git
@@ -116,8 +118,9 @@ the **I²C** interface to the PN532.
 > - **Switch 1** → HIGH
 
 The display, touchscreen and backlight pins are already wired internally on the
-CYD; the firmware drives them through TFT_eSPI's `ILI9341_2_DRIVER` with
-landscape rotation (320×240) and a calibrated XPT2046 touch mapping.
+CYD; the firmware drives them through TFT_eSPI's `ILI9341_2_DRIVER` in **portrait
+rotation (240×320)**, with `invertDisplay(true)` + a GAMMASET fix for the panel
+and a calibrated XPT2046 touch mapping. The backlight is PWM-dimmable (LEDC).
 
 ---
 
@@ -221,14 +224,21 @@ python tools/secure_flash.py --package    # -> dist/cryptnox_pos-encrypted-full.
 
 ## Payment flow
 
-1. **Splash** — Cryptnox logo + "Loading…" while WiFi / RPC / wallet come up.
-2. **Amount** — touchscreen +1 / −1 / +0.01 / −0.01 buttons; tap **CONFIRM**.
-3. **Confirm** — review amount + destination, tap **Send** or **Cancel**.
-4. **Transaction** — place the Cryptnox card on the PN532. The terminal
-   establishes the secure channel, signs `keccak256(unsigned_tx)`, recovers
-   the `v` parity via the `ecrecover` precompile, RLP-encodes the EIP-1559
-   transaction and broadcasts it via `eth_sendRawTransaction`.
-5. **Sent / Failed** — tap **New payment** to start the next transfer.
+1. **Splash** — Cryptnox logo + spinner while Wi-Fi / SNTP / RPC / wallet come
+   up (version shown at the bottom).
+2. **Amount** — SumUp-style numeric keypad (cents entry); tap **Charge**.
+3. **Send** — Ledger-style review showing the amount, the destination address
+   and the USDC contract **in full**; tap **Confirm** or **Cancel**.
+4. **PIN** — enter the card PIN on the on-screen keypad (validated, then wiped
+   from RAM after signing — never stored).
+5. **Transaction** — tap the Cryptnox card on the PN532:
+   **Processing** (opening the secure channel) → **Signing** (the card signs
+   `keccak256(unsigned_tx)`) → **Authorizing** (recover the `v` parity via the
+   `ecrecover` precompile, RLP-encode the EIP-1559 tx, broadcast via
+   `eth_sendRawTransaction`) → **Confirming** (poll `eth_getTransactionReceipt`
+   until the tx is mined).
+6. **Approved / Declined** — Approved **only** on a mined receipt with
+   `status 0x1`; tap **New sale** to start the next transfer.
 
 > [!NOTE]
 > The card must have a seed loaded and the BIP-32 derivation path
@@ -243,12 +253,12 @@ python tools/secure_flash.py --package    # -> dist/cryptnox_pos-encrypted-full.
 
 ## Troubleshooting
 
-- **Blank or scrambled screen** → the CYD ships with two ILI9341 variants. The firmware uses TFT_eSPI's `ILI9341_2_DRIVER`; if your board uses the standard variant, set `CONFIG_TFT_ILI9341_DRIVER=y` (instead of `_2`) in `sdkconfig.defaults` and rebuild.
-- **Touch hitboxes are offset** → the raw range used by the XPT2046 driver is calibrated for the panel shipped with the 2432S028. If yours differs, adjust the `map(p.x, 200, 3800, …)` ranges in `main/ui.cpp` (function `poll_touch`).
+- **Inverted colours / banding on gradients** → the CYD panel needs `invertDisplay(true)` (inverted colours) and a GAMMASET tweak (banding/"milky gamma"); both are already applied in `ui_task`. If the screen is blank/scrambled your board may use the other ILI9341 variant — set `CONFIG_TFT_ILI9341_DRIVER=y` (instead of `_2`) in `sdkconfig.defaults` and rebuild.
+- **Touch hitboxes are offset** → the raw range used by the XPT2046 driver is calibrated for the panel shipped with the 2432S028. If yours differs, adjust the `map(p.x, 200, 3800, …)` ranges in `main/ui.cpp` (function `touch_to_screen`).
 - **`Card not found`** → confirm the PN532 switches are set for I²C, the SDA/SCL wires match GPIO 27/22, and the card is well centred on the antenna.
 - **`ecrecover did not match either parity`** → `ADDR_FROM` in `config.h` does not correspond to the card's `m/44'/60'/0'/0/0` derived key. Verify the seed and the path.
 - **WiFi connect fails** → only WPA2 is supported; check SSID/password.
-- **App partition full** → the project uses a custom 3 MB partition table (`partitions.csv`) on a 4 MB flash. Reduce TFT_eSPI font configs in `sdkconfig.defaults` if you need more headroom.
+- **App partition full** → the project uses a custom 3 MB app partition (`partitions.csv`) on a 4 MB flash. Drop unused LVGL fonts (`CONFIG_LV_FONT_MONTSERRAT_*`) in `sdkconfig.defaults` if you need more headroom.
 
 ---
 
