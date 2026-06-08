@@ -1,0 +1,39 @@
+# ============================================================================
+# Flash-encryption overlay — layer it ON TOP of sdkconfig.defaults:
+#
+#   idf.py -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.flash_encryption" \
+#          build flash monitor
+#
+# Scope: Flash Encryption + encrypted NVS. Closes audit findings F-16 (NVS in
+# plaintext) and the at-rest half of F-01/F-02 (a flash dump no longer yields
+# the Wi-Fi password or any NVS secret). Secure Boot v2 is intentionally NOT
+# enabled here — that is a separate, later step.
+# ============================================================================
+
+# --- Flash Encryption -------------------------------------------------------
+# DEVELOPMENT mode on purpose: the board stays re-flashable for several cycles
+# and JTAG/UART download keep working, so the whole pipeline can be validated
+# without bricking. The eFuse burn still happens on first encrypted boot, but
+# the device is NOT permanently locked.
+#
+# Switch to RELEASE mode (comment the DEVELOPMENT line, set the RELEASE one)
+# ONLY in manufacturing — that lock is IRREVERSIBLE: no more plaintext UART
+# flashing, no more flash dump, JTAG disabled.
+CONFIG_SECURE_FLASH_ENC_ENABLED=y
+CONFIG_SECURE_FLASH_ENCRYPTION_MODE_DEVELOPMENT=y
+# CONFIG_SECURE_FLASH_ENCRYPTION_MODE_RELEASE=y   # <-- manufacturing only
+
+# --- Encrypted NVS ----------------------------------------------------------
+# The `nvs` partition is encrypted with XTS-AES keys stored in the `nvs_keys`
+# partition (flash-encrypted, see partitions.csv). nvs_flash_init() picks the
+# keys up automatically and generates them on first boot — no application code
+# change. On the classic ESP32-WROOM-32 the flash-encryption-based scheme is
+# the only one available (no HMAC eFuse peripheral) and is the default here.
+CONFIG_NVS_ENCRYPTION=y
+
+# --- Partition table offset -------------------------------------------------
+# Flash Encryption grows the bootloader past the default 0x7000 window before
+# the partition table at 0x8000 (build error "bootloader binary size too
+# large"). Push the table to 0xC000; partitions.csv uses blank offsets so each
+# partition auto-places after it.
+CONFIG_PARTITION_TABLE_OFFSET=0xC000
