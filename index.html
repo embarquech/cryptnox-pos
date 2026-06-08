@@ -108,7 +108,7 @@ $(function(){initNavTree('index.html','',''); });
 Built on</h3>
 <ul>
 <li><b><a href="https://github.com/embarquech/cryptnox-sdk-esp32"><span class="tt">cryptnox-sdk-esp32</span></a></b> (git submodule) — secure channel, ECDH/ECDSA, PN532 transport, ESP32 crypto provider</li>
-<li><b><a href="https://lvgl.io/">LVGL 8</a></b> (managed component) — the SumUp-style portrait UI</li>
+<li><b><a href="https://lvgl.io/">LVGL 8</a></b> (managed component) — the touchscreen UI</li>
 <li><b><a href="https://github.com/Bodmer/TFT_eSPI">TFT_eSPI</a></b> + <b><a href="https://github.com/PaulStoffregen/XPT2046_Touchscreen">XPT2046_Touchscreen</a></b> (git submodules) — CYD panel driver + touch, behind LVGL</li>
 <li><b><a href="https://github.com/espressif/arduino-esp32">arduino-esp32</a></b> as an ESP-IDF managed component (Arduino runtime for the display libraries; the rest stays on native IDF)</li>
 </ul>
@@ -248,7 +248,7 @@ Secure build (Flash Encryption + encrypted NVS + Secure Boot v2)</h2>
 Payment flow</h2>
 <ol type="1">
 <li><b>Splash</b> — Cryptnox logo + spinner while Wi-Fi / SNTP / RPC / wallet come up (version shown at the bottom).</li>
-<li><b>Amount</b> — SumUp-style numeric keypad (cents entry); tap <b>Charge</b>.</li>
+<li><b>Amount</b> — numeric keypad (cents entry); tap <b>Charge</b>.</li>
 <li><b>Send</b> — Ledger-style review showing the amount, the destination address and the USDC contract <b>in full</b>; tap <b>Confirm</b> or <b>Cancel</b>.</li>
 <li><b>PIN</b> — enter the card PIN on the on-screen keypad (validated, then wiped from RAM after signing — never stored).</li>
 <li><b>Transaction</b> — tap the Cryptnox card on the PN532: <b>Processing</b> (opening the secure channel) → <b>Signing</b> (the card signs <span class="tt">keccak256(unsigned_tx)</span>) → <b>Authorizing</b> (recover the <span class="tt">v</span> parity via the <span class="tt">ecrecover</span> precompile, RLP-encode the EIP-1559 tx, broadcast via <span class="tt">eth_sendRawTransaction</span>) → <b>Confirming</b> (poll <span class="tt">eth_getTransactionReceipt</span> until the tx is mined).</li>

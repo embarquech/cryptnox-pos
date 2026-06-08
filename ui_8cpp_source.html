@@ -149,7 +149,7 @@ $(function(){initNavTree('ui_8cpp_source.html','',''); });
 <div class="line"><a id="l00065" name="l00065"></a><span class="lineno"><a class="line" href="ui_8cpp.html#a0c6c4feef76bd778b03a8b61d5f0c683">   65</a></span><span class="keyword">static</span> XPT2046_Touchscreen <a class="code hl_function" href="ui_8cpp.html#a0c6c4feef76bd778b03a8b61d5f0c683">touch</a>(<a class="code hl_define" href="ui_8cpp.html#a234ef1d69dd84e7134072c05c5b87eaf">T_CS</a>, <a class="code hl_define" href="ui_8cpp.html#a5dcc245b4bbd7093476627d6167868b2">T_IRQ</a>);</div>
 <div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span> </div>
 <div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span><span class="comment">/******************************************************************</span></div>
-<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span><span class="comment"> * 3. Theme — light, minimal (SumUp-style): white bg, black ink</span></div>
+<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span><span class="comment"> * 3. Theme — light, minimal: white bg, black ink</span></div>
 <div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span><span class="comment"> ******************************************************************/</span></div>
 <div class="line"><a id="l00070" name="l00070"></a><span class="lineno"><a class="line" href="ui_8cpp.html#adcd7808ffa993e756271674e722ad20e">   70</a></span><span class="preprocessor">#define COL_BG       lv_color_hex(0xFFFFFF)   </span><span class="comment">/* white — page background       */</span><span class="preprocessor"></span></div>
 <div class="line"><a id="l00071" name="l00071"></a><span class="lineno"><a class="line" href="ui_8cpp.html#a6c10ea4c20f9b6c4ed5cd040356fe41a">   71</a></span><span class="preprocessor">#define COL_SURFACE  lv_color_hex(0xF2F2F2)   </span><span class="comment">/* light grey — cards/secondary  */</span><span class="preprocessor"></span></div>
@@ -451,7 +451,7 @@ $(function(){initNavTree('ui_8cpp_source.html','',''); });
 </div>
 <div class="line"><a id="l00344" name="l00344"></a><span class="lineno">  344</span>}</div>
 <div class="line"><a id="l00345" name="l00345"></a><span class="lineno">  345</span> </div>
-<div class="line"><a id="l00346" name="l00346"></a><span class="lineno">  346</span><span class="comment">/* Keypad on the amount screen — SumUp-style cents entry: each digit shifts in</span></div>
+<div class="line"><a id="l00346" name="l00346"></a><span class="lineno">  346</span><span class="comment">/* Keypad on the amount screen — cents entry: each digit shifts in</span></div>
 <div class="foldopen" id="foldopen00347" data-start="{" data-end="}">
 <div class="line"><a id="l00347" name="l00347"></a><span class="lineno"><a class="line" href="ui_8cpp.html#a954e643f0dcbc97a130f6eef7940627a">  347</a></span><span class="comment"> * from the right (1 -&gt; 0.01, 12 -&gt; 0.12, 1250 -&gt; 12.50). No decimal point. */</span></div>
 <div class="line"><a id="l00348" name="l00348"></a><span class="lineno">  348</span><span class="keyword">static</span> <span class="keywordtype">void</span> <a class="code hl_function" href="ui_8cpp.html#a954e643f0dcbc97a130f6eef7940627a">amount_kbd_cb</a>(lv_event_t *e) {</div>
@@ -557,7 +557,7 @@ $(function(){initNavTree('ui_8cpp_source.html','',''); });
 <div class="line"><a id="l00444" name="l00444"></a><span class="lineno">  444</span>    lv_obj_set_style_radius(btn, 10, LV_PART_MAIN);</div>
 <div class="line"><a id="l00445" name="l00445"></a><span class="lineno">  445</span>    lv_obj_set_style_border_width(btn, 0, LV_PART_MAIN);</div>
 <div class="line"><a id="l00446" name="l00446"></a><span class="lineno">  446</span> </div>
-<div class="line"><a id="l00447" name="l00447"></a><span class="lineno">  447</span>    <span class="comment">/* Flat — no drop shadow (light, minimal SumUp look). */</span></div>
+<div class="line"><a id="l00447" name="l00447"></a><span class="lineno">  447</span>    <span class="comment">/* Flat — no drop shadow (light, minimal look). */</span></div>
 <div class="line"><a id="l00448" name="l00448"></a><span class="lineno">  448</span>    lv_obj_set_style_shadow_width(btn, 0, LV_PART_MAIN);</div>
 <div class="line"><a id="l00449" name="l00449"></a><span class="lineno">  449</span> </div>
 <div class="line"><a id="l00450" name="l00450"></a><span class="lineno">  450</span>    <span class="comment">/* Secondary (surface) buttons get a hairline border to lift them off the bg.</span></div>
@@ -1078,7 +1078,7 @@ $(function(){initNavTree('ui_8cpp_source.html','',''); });
 <div class="line"><a id="l00929" name="l00929"></a><span class="lineno">  929</span>    <a class="code hl_variable" href="ui_8cpp.html#aa456d4d8c176fa7e56288ab48217ecdf">s_amount_usdc</a> = lv_img_create(lv_scr_act());</div>
 <div class="line"><a id="l00930" name="l00930"></a><span class="lineno">  930</span>    lv_img_set_src(<a class="code hl_variable" href="ui_8cpp.html#aa456d4d8c176fa7e56288ab48217ecdf">s_amount_usdc</a>, &amp;<a class="code hl_variable" href="usdc__logo_8c.html#a52e8536dcb369447e7bb94fe28bd956b">usdc_logo</a>);   <span class="comment">/* placed beside the amount below */</span></div>
 <div class="line"><a id="l00931" name="l00931"></a><span class="lineno">  931</span> </div>
-<div class="line"><a id="l00932" name="l00932"></a><span class="lineno">  932</span>    <span class="comment">/* SumUp-style keypad: digits, double-zero, backspace (cents entry). */</span></div>
+<div class="line"><a id="l00932" name="l00932"></a><span class="lineno">  932</span>    <span class="comment">/* Numeric keypad: digits, double-zero, backspace (cents entry). */</span></div>
 <div class="line"><a id="l00933" name="l00933"></a><span class="lineno">  933</span>    <span class="keyword">static</span> <span class="keyword">const</span> <span class="keywordtype">char</span> *amap[] = {</div>
 <div class="line"><a id="l00934" name="l00934"></a><span class="lineno">  934</span>        <span class="stringliteral">&quot;1&quot;</span>, <span class="stringliteral">&quot;2&quot;</span>, <span class="stringliteral">&quot;3&quot;</span>, <span class="stringliteral">&quot;\n&quot;</span>,</div>
 <div class="line"><a id="l00935" name="l00935"></a><span class="lineno">  935</span>        <span class="stringliteral">&quot;4&quot;</span>, <span class="stringliteral">&quot;5&quot;</span>, <span class="stringliteral">&quot;6&quot;</span>, <span class="stringliteral">&quot;\n&quot;</span>,</div>
