@@ -40,7 +40,6 @@
 
 /* --- Option A: PublicNode ----------------------------------------- */
 #define RPC_HOST       "ethereum-sepolia-rpc.publicnode.com"
-#define RPC_PORT       443
 #define RPC_URL        "https://" RPC_HOST
 /* No authentication needed — leave RPC_PROJECT_ID / RPC_API_SECRET
  * undefined (or commented out) when using PublicNode.               */

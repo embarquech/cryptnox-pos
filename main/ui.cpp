@@ -82,7 +82,6 @@ static XPT2046_Touchscreen touch(T_CS, T_IRQ);
 #define HDR_TITLE_Y     11     /* title offset — optically centred in the
                                   42px band above the divider (montserrat_20) */
 #define HDR_DIVIDER_Y   42     /* rule under the title                */
-#define CONTENT_Y       58     /* first content row, below the rule   */
 #define ACT_BTN_H       46     /* bottom action-button height         */
 #define ACT_BTN_Y       (-8)   /* bottom action-button offset         */
 #define MENU_BTN_W      42
