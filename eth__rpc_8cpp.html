@@ -136,6 +136,8 @@ Functions</h2></td></tr>
 <tr class="memdesc:a6480c18de6bd8d4f47fb8b61d53cdd1c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Set the RPC URL and the from-address used for nonce queries and ecrecover comparison.  <br /></td></tr>
 <tr class="memitem:a693b336658d1f72dc3a3f233f8353dac" id="r_a693b336658d1f72dc3a3f233f8353dac"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a693b336658d1f72dc3a3f233f8353dac">eth_rpc_set_auth</a> (const char *project_id, const char *api_secret)</td></tr>
 <tr class="memdesc:a693b336658d1f72dc3a3f233f8353dac"><td class="mdescLeft">&#160;</td><td class="mdescRight">Optional: set Infura-style HTTP Basic Auth credentials.  <br /></td></tr>
+<tr class="memitem:acabcedc1e08b643fb161f872b5ce2b98" id="r_acabcedc1e08b643fb161f872b5ce2b98"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#acabcedc1e08b643fb161f872b5ce2b98">eth_rpc_set_ca_cert</a> (const char *ca_pem)</td></tr>
+<tr class="memdesc:acabcedc1e08b643fb161f872b5ce2b98"><td class="mdescLeft">&#160;</td><td class="mdescRight">Optional: pin the RPC endpoint's TLS certificate (F-05).  <br /></td></tr>
 <tr class="memitem:a42216d313b51019c1163ff0b5c02efb7" id="r_a42216d313b51019c1163ff0b5c02efb7"><td class="memItemLeft" align="right" valign="top">bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a42216d313b51019c1163ff0b5c02efb7">eth_rpc_get_nonce</a> (uint64_t *nonce_out)</td></tr>
 <tr class="memdesc:a42216d313b51019c1163ff0b5c02efb7"><td class="mdescLeft">&#160;</td><td class="mdescRight">Fetch the pending transaction count (nonce) for from_addr.  <br /></td></tr>
 <tr class="memitem:a97f43d754ff8e6028b303447c808c518" id="r_a97f43d754ff8e6028b303447c808c518"><td class="memItemLeft" align="right" valign="top"><a class="el" href="eth__rpc_8h.html#a2b203fce75e401f4f1976a448f53acd1">eth_rpc_parity_result_t</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a97f43d754ff8e6028b303447c808c518">eth_rpc_ecrecover_parity</a> (const uint8_t hash[32], const uint8_t r[32], const uint8_t s[32], uint8_t *v_out)</td></tr>
@@ -152,6 +154,7 @@ Variables</h2></td></tr>
 <tr class="memitem:a240d51d467ff67657712dfa898e32181" id="r_a240d51d467ff67657712dfa898e32181"><td class="memItemLeft" align="right" valign="top">static const char *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a240d51d467ff67657712dfa898e32181">s_from_addr</a> = NULL</td></tr>
 <tr class="memitem:a6e07c2c2b99eb897fda8a9409185aa6f" id="r_a6e07c2c2b99eb897fda8a9409185aa6f"><td class="memItemLeft" align="right" valign="top">static const char *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a6e07c2c2b99eb897fda8a9409185aa6f">s_project_id</a> = NULL</td></tr>
 <tr class="memitem:a230d620c0f594c10f5744a7f9df83b35" id="r_a230d620c0f594c10f5744a7f9df83b35"><td class="memItemLeft" align="right" valign="top">static const char *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a230d620c0f594c10f5744a7f9df83b35">s_api_secret</a> = NULL</td></tr>
+<tr class="memitem:ad48019b98a18e3b6cf19d6a57c5210cd" id="r_ad48019b98a18e3b6cf19d6a57c5210cd"><td class="memItemLeft" align="right" valign="top">static const char *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#ad48019b98a18e3b6cf19d6a57c5210cd">s_ca_cert</a> = NULL</td></tr>
 </table>
 <a name="details" id="details"></a><h2 id="header-details" class="groupheader">Detailed Description</h2>
 <div class="textblock"><p>Ethereum JSON-RPC client implementation (HTTPS). Network bring-up (Wi-Fi, SNTP) lives in <a class="el" href="net_8cpp.html" title="Wi-Fi station bring-up (init/scan/connect/RSSI) and SNTP time sync.">net.cpp</a>. </p>
@@ -172,7 +175,7 @@ Variables</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00040">40</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="eth__rpc_8cpp_source.html#l00171">bytes_to_hex()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00274">eth_rpc_ecrecover_parity()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00357">eth_rpc_send_raw_tx()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="eth__rpc_8cpp_source.html#l00178">bytes_to_hex()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00286">eth_rpc_ecrecover_parity()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00369">eth_rpc_send_raw_tx()</a>.</p>
 
 </div>
 </div>
@@ -190,7 +193,7 @@ Variables</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00048">48</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="eth__rpc_8cpp_source.html#l00234">eth_rpc_get_nonce()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="eth__rpc_8cpp_source.html#l00246">eth_rpc_get_nonce()</a>.</p>
 
 </div>
 </div>
@@ -208,7 +211,7 @@ Variables</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00037">37</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="eth__rpc_8cpp_source.html#l00274">eth_rpc_ecrecover_parity()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00234">eth_rpc_get_nonce()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00357">eth_rpc_send_raw_tx()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="eth__rpc_8cpp_source.html#l00286">eth_rpc_ecrecover_parity()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00246">eth_rpc_get_nonce()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00369">eth_rpc_send_raw_tx()</a>.</p>
 
 </div>
 </div>
@@ -226,7 +229,7 @@ Variables</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00044">44</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="eth__rpc_8cpp_source.html#l00079">do_post()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00274">eth_rpc_ecrecover_parity()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00234">eth_rpc_get_nonce()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00357">eth_rpc_send_raw_tx()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="eth__rpc_8cpp_source.html#l00080">do_post()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00286">eth_rpc_ecrecover_parity()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00246">eth_rpc_get_nonce()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00369">eth_rpc_send_raw_tx()</a>.</p>
 
 </div>
 </div>
@@ -244,7 +247,7 @@ Variables</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00051">51</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="eth__rpc_8cpp_source.html#l00274">eth_rpc_ecrecover_parity()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00234">eth_rpc_get_nonce()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00357">eth_rpc_send_raw_tx()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="eth__rpc_8cpp_source.html#l00286">eth_rpc_ecrecover_parity()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00246">eth_rpc_get_nonce()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00369">eth_rpc_send_raw_tx()</a>.</p>
 
 </div>
 </div>
@@ -291,11 +294,11 @@ Variables</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00171">171</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00178">178</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00158">hex_nibble()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00040">HEX_PER_BYTE</a>.</p>
+<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00165">hex_nibble()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00040">HEX_PER_BYTE</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="eth__rpc_8cpp_source.html#l00274">eth_rpc_ecrecover_parity()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00357">eth_rpc_send_raw_tx()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="eth__rpc_8cpp_source.html#l00286">eth_rpc_ecrecover_parity()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00369">eth_rpc_send_raw_tx()</a>.</p>
 
 </div>
 </div>
@@ -343,11 +346,11 @@ Variables</h2></td></tr>
 </dl>
 <dl class="section return"><dt>Returns</dt><dd>true only if at least one byte was read AND the server answered HTTP 200 (F-09); false on transport error or non-200 status. </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00079">79</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00080">80</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00044">RESP_LOG_MAX</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00060">s_api_secret</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00059">s_project_id</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00057">s_rpc_url</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00034">TAG</a>.</p>
+<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00044">RESP_LOG_MAX</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00060">s_api_secret</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00061">s_ca_cert</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00059">s_project_id</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00057">s_rpc_url</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00034">TAG</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="eth__rpc_8cpp_source.html#l00274">eth_rpc_ecrecover_parity()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00234">eth_rpc_get_nonce()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00412">eth_rpc_get_tx_receipt()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00357">eth_rpc_send_raw_tx()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="eth__rpc_8cpp_source.html#l00286">eth_rpc_ecrecover_parity()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00246">eth_rpc_get_nonce()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00424">eth_rpc_get_tx_receipt()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00369">eth_rpc_send_raw_tx()</a>.</p>
 
 </div>
 </div>
@@ -400,9 +403,9 @@ Variables</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00274">274</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00286">286</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00171">bytes_to_hex()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00079">do_post()</a>, <a class="el" href="eth__rpc_8h_source.html#l00035">ETH_RPC_PARITY_MISMATCH</a>, <a class="el" href="eth__rpc_8h_source.html#l00034">ETH_RPC_PARITY_OK</a>, <a class="el" href="eth__rpc_8h_source.html#l00037">ETH_RPC_PARITY_RPC_ERROR</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00158">hex_nibble()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00040">HEX_PER_BYTE</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00197">json_get_result_string()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00037">RESP_BUF_SIZE</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00044">RESP_LOG_MAX</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00051">RESULT_STR_MAX</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00058">s_from_addr</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00034">TAG</a>.</p>
+<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00178">bytes_to_hex()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00080">do_post()</a>, <a class="el" href="eth__rpc_8h_source.html#l00035">ETH_RPC_PARITY_MISMATCH</a>, <a class="el" href="eth__rpc_8h_source.html#l00034">ETH_RPC_PARITY_OK</a>, <a class="el" href="eth__rpc_8h_source.html#l00037">ETH_RPC_PARITY_RPC_ERROR</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00165">hex_nibble()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00040">HEX_PER_BYTE</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00204">json_get_result_string()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00037">RESP_BUF_SIZE</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00044">RESP_LOG_MAX</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00051">RESULT_STR_MAX</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00058">s_from_addr</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00034">TAG</a>.</p>
 
 <p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00243">sign_and_broadcast()</a>.</p>
 
@@ -433,9 +436,9 @@ Variables</h2></td></tr>
 </dl>
 <dl class="section return"><dt>Returns</dt><dd>true on success, false on transport, parse or range error. </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00234">234</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00246">246</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00079">do_post()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00197">json_get_result_string()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00048">NONCE_MAX</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00037">RESP_BUF_SIZE</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00044">RESP_LOG_MAX</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00051">RESULT_STR_MAX</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00058">s_from_addr</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00034">TAG</a>.</p>
+<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00080">do_post()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00204">json_get_result_string()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00048">NONCE_MAX</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00037">RESP_BUF_SIZE</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00044">RESP_LOG_MAX</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00051">RESULT_STR_MAX</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00058">s_from_addr</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00034">TAG</a>.</p>
 
 <p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00243">sign_and_broadcast()</a>.</p>
 
@@ -474,9 +477,9 @@ Variables</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00412">412</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00424">424</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00079">do_post()</a>, <a class="el" href="eth__rpc_8h_source.html#l00042">ETH_RPC_RECEIPT_PENDING</a>, <a class="el" href="eth__rpc_8h_source.html#l00044">ETH_RPC_RECEIPT_REVERTED</a>, <a class="el" href="eth__rpc_8h_source.html#l00045">ETH_RPC_RECEIPT_RPC_ERROR</a>, and <a class="el" href="eth__rpc_8h_source.html#l00043">ETH_RPC_RECEIPT_SUCCESS</a>.</p>
+<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00080">do_post()</a>, <a class="el" href="eth__rpc_8h_source.html#l00042">ETH_RPC_RECEIPT_PENDING</a>, <a class="el" href="eth__rpc_8h_source.html#l00044">ETH_RPC_RECEIPT_REVERTED</a>, <a class="el" href="eth__rpc_8h_source.html#l00045">ETH_RPC_RECEIPT_RPC_ERROR</a>, and <a class="el" href="eth__rpc_8h_source.html#l00043">ETH_RPC_RECEIPT_SUCCESS</a>.</p>
 
 <p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00490">app_main()</a>.</p>
 
@@ -512,7 +515,7 @@ Variables</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00222">222</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00229">229</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00058">s_from_addr</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00057">s_rpc_url</a>.</p>
 
@@ -561,9 +564,9 @@ Variables</h2></td></tr>
 </dl>
 <dl class="section return"><dt>Returns</dt><dd>true on success, false on transport error, JSON-RPC error response, or undersized <code class="param">tx_hash_out</code>. </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00357">357</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00369">369</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00171">bytes_to_hex()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00079">do_post()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00040">HEX_PER_BYTE</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00197">json_get_result_string()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00037">RESP_BUF_SIZE</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00044">RESP_LOG_MAX</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00051">RESULT_STR_MAX</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00034">TAG</a>.</p>
+<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00178">bytes_to_hex()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00080">do_post()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00040">HEX_PER_BYTE</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00204">json_get_result_string()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00037">RESP_BUF_SIZE</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00044">RESP_LOG_MAX</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00051">RESULT_STR_MAX</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00034">TAG</a>.</p>
 
 <p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00243">sign_and_broadcast()</a>.</p>
 
@@ -598,9 +601,41 @@ Variables</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00228">228</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00235">235</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00060">s_api_secret</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00059">s_project_id</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00490">app_main()</a>.</p>
+
+</div>
+</div>
+<a id="acabcedc1e08b643fb161f872b5ce2b98" name="acabcedc1e08b643fb161f872b5ce2b98"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#acabcedc1e08b643fb161f872b5ce2b98">&#9670;&#160;</a></span>eth_rpc_set_ca_cert()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void eth_rpc_set_ca_cert </td>
+          <td>(</td>
+          <td class="paramtype">const char *</td>          <td class="paramname"><span class="paramname"><em>ca_pem</em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Optional: pin the RPC endpoint's TLS certificate (F-05). </p>
+<p>When set, the HTTPS connection is validated <b>only</b> against this PEM (leaf or its issuing CA) instead of the full Mozilla CA bundle, so no unrelated CA can MITM the RPC traffic. Pointer stored as-is (must outlive every call — pass a static/embedded literal). NULL keeps the CA bundle.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">ca_pem</td><td>NUL-terminated PEM certificate, or NULL for the bundle. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00241">241</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00061">s_ca_cert</a>.</p>
 
 <p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00490">app_main()</a>.</p>
 
@@ -638,9 +673,9 @@ Variables</h2></td></tr>
 </dl>
 <dl class="section return"><dt>Returns</dt><dd>'0'–'9' or 'a'–'f'. </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00158">158</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00165">165</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="eth__rpc_8cpp_source.html#l00171">bytes_to_hex()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00274">eth_rpc_ecrecover_parity()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="eth__rpc_8cpp_source.html#l00178">bytes_to_hex()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00286">eth_rpc_ecrecover_parity()</a>.</p>
 
 </div>
 </div>
@@ -688,9 +723,9 @@ Variables</h2></td></tr>
 </dl>
 <dl class="section return"><dt>Returns</dt><dd>true on success; false if the body is not valid JSON, "result" is absent or not a string, or the value does not fit in <code class="param">out</code>. </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00197">197</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00204">204</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="eth__rpc_8cpp_source.html#l00274">eth_rpc_ecrecover_parity()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00234">eth_rpc_get_nonce()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00357">eth_rpc_send_raw_tx()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="eth__rpc_8cpp_source.html#l00286">eth_rpc_ecrecover_parity()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00246">eth_rpc_get_nonce()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00369">eth_rpc_send_raw_tx()</a>.</p>
 
 </div>
 </div>
@@ -717,7 +752,33 @@ Variables</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00060">60</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="eth__rpc_8cpp_source.html#l00079">do_post()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00228">eth_rpc_set_auth()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="eth__rpc_8cpp_source.html#l00080">do_post()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00235">eth_rpc_set_auth()</a>.</p>
+
+</div>
+</div>
+<a id="ad48019b98a18e3b6cf19d6a57c5210cd" name="ad48019b98a18e3b6cf19d6a57c5210cd"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ad48019b98a18e3b6cf19d6a57c5210cd">&#9670;&#160;</a></span>s_ca_cert</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">const char* s_ca_cert = NULL</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel static">static</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00061">61</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="eth__rpc_8cpp_source.html#l00080">do_post()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00241">eth_rpc_set_ca_cert()</a>.</p>
 
 </div>
 </div>
@@ -743,7 +804,7 @@ Variables</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00058">58</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="eth__rpc_8cpp_source.html#l00274">eth_rpc_ecrecover_parity()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00234">eth_rpc_get_nonce()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00222">eth_rpc_init()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="eth__rpc_8cpp_source.html#l00286">eth_rpc_ecrecover_parity()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00246">eth_rpc_get_nonce()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00229">eth_rpc_init()</a>.</p>
 
 </div>
 </div>
@@ -769,7 +830,7 @@ Variables</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00059">59</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="eth__rpc_8cpp_source.html#l00079">do_post()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00228">eth_rpc_set_auth()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="eth__rpc_8cpp_source.html#l00080">do_post()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00235">eth_rpc_set_auth()</a>.</p>
 
 </div>
 </div>
@@ -795,7 +856,7 @@ Variables</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00057">57</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="eth__rpc_8cpp_source.html#l00079">do_post()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00222">eth_rpc_init()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="eth__rpc_8cpp_source.html#l00080">do_post()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00229">eth_rpc_init()</a>.</p>
 
 </div>
 </div>
@@ -821,7 +882,7 @@ Variables</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00034">34</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00490">app_main()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00079">do_post()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00274">eth_rpc_ecrecover_parity()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00234">eth_rpc_get_nonce()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00357">eth_rpc_send_raw_tx()</a>, <a class="el" href="settings_8cpp_source.html#l00149">fee_set()</a>, <a class="el" href="net_8cpp_source.html#l00215">net_time_sync()</a>, <a class="el" href="net_8cpp_source.html#l00164">net_wifi_connect()</a>, <a class="el" href="settings_8cpp_source.html#l00181">settings_factory_reset()</a>, <a class="el" href="settings_8cpp_source.html#l00050">settings_set_brightness()</a>, <a class="el" href="settings_8cpp_source.html#l00124">settings_set_wifi()</a>, <a class="el" href="ui_8cpp_source.html#l01311">ui_task()</a>, and <a class="el" href="net_8cpp_source.html#l00063">wifi_event_handler()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00490">app_main()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00080">do_post()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00286">eth_rpc_ecrecover_parity()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00246">eth_rpc_get_nonce()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00369">eth_rpc_send_raw_tx()</a>, <a class="el" href="settings_8cpp_source.html#l00149">fee_set()</a>, <a class="el" href="net_8cpp_source.html#l00215">net_time_sync()</a>, <a class="el" href="net_8cpp_source.html#l00164">net_wifi_connect()</a>, <a class="el" href="settings_8cpp_source.html#l00181">settings_factory_reset()</a>, <a class="el" href="settings_8cpp_source.html#l00050">settings_set_brightness()</a>, <a class="el" href="settings_8cpp_source.html#l00124">settings_set_wifi()</a>, <a class="el" href="ui_8cpp_source.html#l01311">ui_task()</a>, and <a class="el" href="net_8cpp_source.html#l00063">wifi_event_handler()</a>.</p>
 
 </div>
 </div>

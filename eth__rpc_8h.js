@@ -16,5 +16,6 @@ var eth__rpc_8h =
     [ "eth_rpc_get_tx_receipt", "eth__rpc_8h.html#ac45020a8c61153e810ccea2698ba44f9", null ],
     [ "eth_rpc_init", "eth__rpc_8h.html#a6480c18de6bd8d4f47fb8b61d53cdd1c", null ],
     [ "eth_rpc_send_raw_tx", "eth__rpc_8h.html#a0261890549fe937d44611cbbcc6f0743", null ],
-    [ "eth_rpc_set_auth", "eth__rpc_8h.html#a693b336658d1f72dc3a3f233f8353dac", null ]
+    [ "eth_rpc_set_auth", "eth__rpc_8h.html#a693b336658d1f72dc3a3f233f8353dac", null ],
+    [ "eth_rpc_set_ca_cert", "eth__rpc_8h.html#acabcedc1e08b643fb161f872b5ce2b98", null ]
 ];

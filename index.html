@@ -150,11 +150,11 @@ Installation</h2>
 </div><!-- fragment --></li>
 <li>Copy the credentials template and fill it in: <div class="fragment"><div class="line">cp config.template.h main/config.h</div>
 </div><!-- fragment --> <span class="tt">main/config.h</span> is gitignored — see Configuration below.</li>
-<li>Build and flash (Windows PowerShell wrapper provided): <div class="fragment"><div class="line">.\auto_flash.ps1 set-target esp32</div>
-<div class="line">.\auto_flash.ps1 monitor</div>
-</div><!-- fragment --> The first build also fetches <span class="tt">espressif/arduino-esp32</span> from the IDF component registry, so expect a longer initial compile.</li>
+<li>Set the target, then build and flash from an ESP-IDF environment: <div class="fragment"><div class="line">idf.py set-target esp32</div>
+<div class="line">idf.py -p PORT build flash monitor</div>
+</div><!-- fragment --> The first build also fetches <span class="tt">espressif/arduino-esp32</span> and <span class="tt">lvgl/lvgl</span> from the IDF component registry, so expect a longer initial compile.</li>
 </ol>
-<dl class="section remark"><dt>Remarks</dt><dd>On macOS/Linux, source the IDF env (<span class="tt">. $IDF_PATH/export.sh</span>) and use the standard <span class="tt">idf.py set-target esp32</span>, <span class="tt">idf.py build flash monitor</span> commands.</dd></dl>
+<dl class="section remark"><dt>Remarks</dt><dd>Open the IDF env first: on Windows run the "ESP-IDF PowerShell"/<span class="tt">export.bat</span>, on macOS/Linux <span class="tt">. $IDF_PATH/export.sh</span>. For the <b>secure (encrypted/signed) build</b>, see Secure build below — don't use plain <span class="tt">idf.py flash</span> on an already-provisioned board.</dd></dl>
 <h2 class="doxsection"><a class="anchor" id="autotoc_md8"></a>
 Hardware setup</h2>
 <dl class="section attention"><dt>Attention</dt><dd>Always double-check the wiring before powering the board to prevent damage.</dd></dl>
@@ -194,12 +194,14 @@ Configuration</h2>
 <tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone"><span class="tt">RPC_PROJECT_ID</span> / <span class="tt">RPC_API_SECRET</span>  </td><td class="markdownTableBodyNone">Optional — only when using Infura (HTTP Basic Auth); leave undefined for PublicNode  </td></tr>
 <tr class="markdownTableRowOdd">
+<td class="markdownTableBodyNone"><span class="tt">RPC_CA_CERT_PEM</span>  </td><td class="markdownTableBodyNone">Optional — pin the RPC endpoint's TLS certificate (audit F-05); trusts only that cert instead of the full CA bundle. Undefined = Mozilla bundle  </td></tr>
+<tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone"><span class="tt">ADDR_FROM</span>  </td><td class="markdownTableBodyNone">Ethereum address of the <b>card</b> (<span class="tt">m/44'/60'/0'/0/0</span>) — used to fetch the nonce and validate the ecrecover parity  </td></tr>
-<tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone"><span class="tt">ADDR_TO</span>  </td><td class="markdownTableBodyNone">Destination address for every transfer  </td></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone"><span class="tt">ADDR_USDC</span>  </td><td class="markdownTableBodyNone">USDC ERC-20 contract address on the target chain (Sepolia testnet by default)  </td></tr>
+<td class="markdownTableBodyNone"><span class="tt">ADDR_TO</span>  </td><td class="markdownTableBodyNone">Destination address for every transfer  </td></tr>
 <tr class="markdownTableRowEven">
+<td class="markdownTableBodyNone"><span class="tt">ADDR_USDC</span>  </td><td class="markdownTableBodyNone">USDC ERC-20 contract address on the target chain (Sepolia testnet by default)  </td></tr>
+<tr class="markdownTableRowOdd">
 <td class="markdownTableBodyNone"><span class="tt">CHAIN_ID_SEPOLIA</span>, <span class="tt">MAX_PRIORITY_FEE</span>, <span class="tt">MAX_FEE</span>, <span class="tt">GAS_LIMIT_ERC20</span>  </td><td class="markdownTableBodyNone">Chain ID and EIP-1559 gas parameters (the fees are first-boot defaults, editable at run time in the settings)  </td></tr>
 </table>
 <p><b>Not in <span class="tt">config.h</span></b> — set on the device, never baked into the firmware:</p><ul>

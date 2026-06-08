@@ -25,7 +25,8 @@ var searchData=
   ['eth_5frpc_5freceipt_5fsuccess_22',['ETH_RPC_RECEIPT_SUCCESS',['../eth__rpc_8h.html#ab0a994aa8d532bdb14eceeebeb4d8750afe85c42a3dc19fd282af630958c82a28',1,'eth_rpc.h']]],
   ['eth_5frpc_5fsend_5fraw_5ftx_23',['eth_rpc_send_raw_tx',['../eth__rpc_8cpp.html#a0261890549fe937d44611cbbcc6f0743',1,'eth_rpc_send_raw_tx(const uint8_t *tx, size_t tx_len, char *tx_hash_out, size_t tx_hash_max):&#160;eth_rpc.cpp'],['../eth__rpc_8h.html#a0261890549fe937d44611cbbcc6f0743',1,'eth_rpc_send_raw_tx(const uint8_t *tx, size_t tx_len, char *tx_hash_out, size_t tx_hash_max):&#160;eth_rpc.cpp']]],
   ['eth_5frpc_5fset_5fauth_24',['eth_rpc_set_auth',['../eth__rpc_8cpp.html#a693b336658d1f72dc3a3f233f8353dac',1,'eth_rpc_set_auth(const char *project_id, const char *api_secret):&#160;eth_rpc.cpp'],['../eth__rpc_8h.html#a693b336658d1f72dc3a3f233f8353dac',1,'eth_rpc_set_auth(const char *project_id, const char *api_secret):&#160;eth_rpc.cpp']]],
-  ['eth_5ftx_5ft_25',['eth_tx_t',['../structeth__tx__t.html',1,'']]],
-  ['eth_5fvalue_26',['eth_value',['../structeth__tx__t.html#a2729c720ecee7933d04fa42fb43a9adb',1,'eth_tx_t']]],
-  ['event_27',['event',['../structui__msg__t.html#a50cdee05cb3c365e674b4c970201bbbc',1,'ui_msg_t']]]
+  ['eth_5frpc_5fset_5fca_5fcert_25',['eth_rpc_set_ca_cert',['../eth__rpc_8cpp.html#acabcedc1e08b643fb161f872b5ce2b98',1,'eth_rpc_set_ca_cert(const char *ca_pem):&#160;eth_rpc.cpp'],['../eth__rpc_8h.html#acabcedc1e08b643fb161f872b5ce2b98',1,'eth_rpc_set_ca_cert(const char *ca_pem):&#160;eth_rpc.cpp']]],
+  ['eth_5ftx_5ft_26',['eth_tx_t',['../structeth__tx__t.html',1,'']]],
+  ['eth_5fvalue_27',['eth_value',['../structeth__tx__t.html#a2729c720ecee7933d04fa42fb43a9adb',1,'eth_tx_t']]],
+  ['event_28',['event',['../structui__msg__t.html#a50cdee05cb3c365e674b4c970201bbbc',1,'ui_msg_t']]]
 ];
