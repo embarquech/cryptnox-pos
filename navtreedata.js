@@ -40,7 +40,8 @@ var NAVTREE =
       [ "Secure build", "index.html#autotoc_md13", null ],
       [ "Payment flow", "index.html#autotoc_md15", null ],
       [ "Troubleshooting", "index.html#autotoc_md17", null ],
-      [ "License", "index.html#autotoc_md19", null ],
+      [ "Documentation", "index.html#autotoc_md19", null ],
+      [ "License", "index.html#autotoc_md21", null ],
       [ "Class List", "annotated.html", "annotated_dup" ],
       [ "Class Index", "classes.html", null ],
       [ "Class Hierarchy", "hierarchy.html", "hierarchy" ],
@@ -68,7 +69,7 @@ var NAVTREE =
 var NAVTREEINDEX =
 [
 "annotated.html",
-"structeth__tx__t.html#a2729c720ecee7933d04fa42fb43a9adb"
+"structeth__tx__t.html#a171a8d94529023470b902414ccc6e4cb"
 ];
 
 var SYNCONMSG = 'click to disable panel synchronization';
