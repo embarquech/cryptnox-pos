@@ -37,7 +37,7 @@ var NAVTREE =
         [ "CYD CN1 ↔ PN532 NFC — I²C interface", "index.html#autotoc_md9", null ]
       ] ],
       [ "Configuration", "index.html#autotoc_md11", null ],
-      [ "Secure build (Flash Encryption + encrypted NVS + Secure Boot v2)", "index.html#autotoc_md13", null ],
+      [ "Secure build", "index.html#autotoc_md13", null ],
       [ "Payment flow", "index.html#autotoc_md15", null ],
       [ "Troubleshooting", "index.html#autotoc_md17", null ],
       [ "License", "index.html#autotoc_md19", null ],

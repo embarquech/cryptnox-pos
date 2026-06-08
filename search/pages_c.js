@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['troubleshooting_0',['Troubleshooting',['../index.html#autotoc_md17',1,'']]]
+  ['wallet_20smart_20cards_0',['Cryptnox Hardware Wallet smart cards',['../index.html#autotoc_md3',1,'']]]
 ];
