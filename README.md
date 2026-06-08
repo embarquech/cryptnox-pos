@@ -128,23 +128,17 @@ and fill in:
 
 | Field | Description |
 |-------|-------------|
-| `WIFI_SSID` / `WIFI_PASSWORD` | WPA2 credentials for the terminal's STA connection |
 | `RPC_URL` | Ethereum JSON-RPC endpoint (PublicNode Sepolia by default; an Infura variant is provided commented-out) |
 | `RPC_PROJECT_ID` / `RPC_API_SECRET` | Optional — only when using Infura (HTTP Basic Auth); leave undefined for PublicNode |
 | `ADDR_FROM` | Ethereum address of the **card** (`m/44'/60'/0'/0/0`) — used to fetch the nonce and validate the ecrecover parity |
 | `ADDR_TO` | Destination address for every transfer |
 | `ADDR_USDC` | USDC ERC-20 contract address on the target chain (Sepolia testnet by default) |
-| `CARD_PIN` / `CARD_PIN_LEN` | PIN configured on the Cryptnox card (4–9 ASCII digits) and its length |
-| `CHAIN_ID_SEPOLIA`, `MAX_PRIORITY_FEE`, `MAX_FEE`, `GAS_LIMIT_ERC20` | Chain ID and EIP-1559 gas parameters |
+| `CHAIN_ID_SEPOLIA`, `MAX_PRIORITY_FEE`, `MAX_FEE`, `GAS_LIMIT_ERC20` | Chain ID and EIP-1559 gas parameters (the fees are first-boot defaults, editable at run time in the settings) |
 
-The transfer amount is selected on the touchscreen at run time; it is not a
-config.h field.
-
-> [!WARNING]
-> Set a strong, unique `CARD_PIN` when initialising the card and never commit
-> `main/config.h`. The build fails with a `static_assert` if `CARD_PIN` is the
-> demo placeholder `"000000000"`; define `CRYPTNOX_POS_ALLOW_DEMO_PIN` only for
-> throwaway bench builds, never on a deployed terminal.
+**Not in `config.h`** — set on the device, never baked into the firmware:
+- **Wi-Fi** — provisioned at first boot via the touchscreen network picker (stored in NVS).
+- **Card PIN** — entered on the touchscreen keypad at sign time, scrubbed from RAM right after.
+- **Transfer amount** — chosen on the keypad per transaction.
 
 ---
 

@@ -15,10 +15,11 @@
 #include <stdint.h>
 
 /* =========================
- * WiFi Configuration
+ * WiFi
  * ========================= */
-#define WIFI_SSID        "<YOUR_SSID>"
-#define WIFI_PASSWORD    "<YOUR_PASSWORD>"
+/* Wi-Fi is NOT set here. It is provisioned on the device at first boot (the
+ * touchscreen network picker) and stored in NVS — no SSID/password is baked
+ * into the firmware. */
 
 /* =========================
  * Ethereum / RPC
@@ -51,20 +52,9 @@
 /* #define RPC_URL         "https://sepolia.infura.io/v3/" RPC_PROJECT_ID */
 /* #define RPC_API_SECRET  "<YOUR_INFURA_API_SECRET>"                 */
 
-/* =========================
- * Wallet / Keys (SENSITIVE)
- * ========================= */
-/**
- * ⚠️ NEVER COMMIT config.h — it contains credentials.
- *    Add config.h to .gitignore (already done in this repo).
- *
- * CARD_PIN: the PIN configured on the Cryptnox card (4-9 ASCII digits).
- * Use a strong, unique PIN — the build refuses the demo placeholder
- * "000000000" unless CRYPTNOX_POS_ALLOW_DEMO_PIN is defined (bench
- * builds only, never on a deployed terminal).
- */
-#define CARD_PIN      "<CARD_PIN>"   /* 4-9 digit PIN                    */
-#define CARD_PIN_LEN  (9U)           /* number of digits in CARD_PIN     */
+/* The card PIN is NOT set here — the operator types it on the touchscreen
+ * keypad at sign time, and it is scrubbed from RAM right after signing.
+ * Nothing PIN-related is baked into the firmware. */
 
 /* =========================
  * Ethereum Addresses
