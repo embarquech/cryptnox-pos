@@ -51,3 +51,7 @@ CONFIG_SECURE_BOOT_SIGNING_KEY="secure_keys/secure_boot_signing_key.pem"
 # 0x8000. Push the table to 0x10000 for comfortable headroom; partitions.csv
 # uses blank offsets so each partition auto-places after it.
 CONFIG_PARTITION_TABLE_OFFSET=0x10000
+
+# This overlay is the DEVELOPMENT secure build: encryption/signing on, but the
+# board stays reflashable and logs stay verbose for debugging. For the locked
+# production image, layer sdkconfig.defaults.release on top (see that file).

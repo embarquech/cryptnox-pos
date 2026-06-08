@@ -170,10 +170,13 @@ dev kit. An optional **secure build** closes three audit findings at once:
 > **offline, in multiple copies**.
 
 In the repo:
-- `sdkconfig.defaults.flash_encryption` — the overlay: Flash Encryption
-  (Development mode), `CONFIG_NVS_ENCRYPTION`, Secure Boot v2 + signing key,
-  `ESP32_REV_MIN_3` (required for SBv2) and `PARTITION_TABLE_OFFSET=0x10000`
-  (the signed+encrypted bootloader outgrows the default window).
+- `sdkconfig.defaults.flash_encryption` — **DEVELOPMENT** secure overlay: Flash
+  Encryption (Development mode), `CONFIG_NVS_ENCRYPTION`, Secure Boot v2 +
+  signing key, `ESP32_REV_MIN_3` (required for SBv2) and
+  `PARTITION_TABLE_OFFSET=0x10000`. Stays reflashable, keeps verbose logs.
+- `sdkconfig.defaults.release` — **RELEASE** overlay (layer on top): Flash
+  Encryption *Release* mode + boot log off. Locks the board — no plaintext
+  flash, no flash dump. Production only, irreversible.
 - `partitions.csv` — the `nvs_keys` partition (inert in a normal build).
 - `tools/secure_provision.py` — one-shot factory provisioning of a fresh board.
 - `tools/secure_flash.py` — pre-encrypt + flash for routine reflashing.
@@ -218,12 +221,16 @@ python tools/secure_flash.py --package    # -> dist/cryptnox_pos-encrypted-full.
 ```
 
 > [!WARNING]
-> The overlay uses Flash Encryption **Development** mode so the board stays
-> reflashable while you validate. Only in **manufacturing**, after full
-> validation, switch `..._MODE_DEVELOPMENT` → `..._MODE_RELEASE` and reflash:
-> that permanently disables plaintext UART flashing and flash dumps. Note: on
-> the classic ESP32 encrypted NVS **requires** Flash Encryption (no HMAC eFuse
-> scheme), so the two cannot be separated.
+> Steps 2–3 use the `flash_encryption` overlay = **Development** mode: the board
+> stays reflashable with verbose logs while you validate. For the locked
+> **production** image, layer the release overlay on top and reflash:
+> ```
+> idf.py -D "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.defaults.flash_encryption;sdkconfig.defaults.release" build
+> ```
+> Release mode permanently disables plaintext UART flashing + flash dumps and
+> silences the boot log — IRREVERSIBLE, manufacturing only. Note: on the classic
+> ESP32 encrypted NVS **requires** Flash Encryption (no HMAC eFuse scheme), so
+> the two cannot be separated.
 
 ---
 

@@ -1,0 +1,33 @@
+# ============================================================================
+# RELEASE overlay — production units only. Layer it ON TOP of the dev secure
+# overlay (order matters: release must come last so it overrides):
+#
+#   idf.py -D "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.defaults.flash_encryption;sdkconfig.defaults.release" build
+#
+# Turns the reflashable/verbose DEVELOPMENT secure build into the locked
+# production image.
+#
+#   *** IRREVERSIBLE once flashed and booted — validate on a sacrificial unit
+#       first. After this, no plaintext UART flashing and no flash dump. ***
+# ============================================================================
+
+# --- Flash Encryption: RELEASE mode -----------------------------------------
+# Burns DISABLE_DL_ENCRYPT/DECRYPT/CACHE and maxes FLASH_CRYPT_CNT: the download
+# path can no longer decrypt/encrypt, and plaintext reflash is gone for good.
+# Pre-encrypted reflash (tools/secure_flash.py) and signed OTA still work.
+# CONFIG_SECURE_FLASH_ENCRYPTION_MODE_DEVELOPMENT is not set
+CONFIG_SECURE_FLASH_ENCRYPTION_MODE_RELEASE=y
+
+# --- Quiet boot (finding F-18) ----------------------------------------------
+# No INFO logs on the UART: no app_init "Compile time" fingerprint, and our own
+# nonce / tx-hash lines are not echoed over serial.
+# CONFIG_LOG_DEFAULT_LEVEL_INFO is not set
+CONFIG_LOG_DEFAULT_LEVEL_NONE=y
+CONFIG_LOG_DEFAULT_LEVEL=0
+
+# --- Notes (NOT enabled here — deliberate trade-offs) -----------------------
+# * Secure Boot already disables JTAG on its eFuse burn (CONFIG_SECURE_BOOT_
+#   ALLOW_JTAG is off), closing the JTAG-reads-RAM vector.
+# * For maximum lockdown you can also disable the UART download ROM mode
+#   (CONFIG_SECURE_DISABLE_ROM_DL_MODE=y) — but then recovery is OTA-only, so
+#   only enable it once you have a robust signed-OTA path. Left off on purpose.
