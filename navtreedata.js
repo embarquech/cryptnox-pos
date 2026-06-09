@@ -25,23 +25,8 @@
 var NAVTREE =
 [
   [ "cryptnox-pos", "index.html", [
+    [ "Topics", "topics.html", "topics" ],
     [ "Classes", "annotated.html", [
-      [ "Supported hardware", "index.html#autotoc_md2", [
-        [ "Built on", "index.html#autotoc_md0", null ],
-        [ "Cryptnox Hardware Wallet smart cards", "index.html#autotoc_md3", null ],
-        [ "NFC readers", "index.html#autotoc_md4", null ],
-        [ "Host board", "index.html#autotoc_md5", null ]
-      ] ],
-      [ "Installation", "index.html#autotoc_md7", null ],
-      [ "Hardware setup", "index.html#autotoc_md8", [
-        [ "CYD CN1 ↔ PN532 NFC — I²C interface", "index.html#autotoc_md9", null ]
-      ] ],
-      [ "Configuration", "index.html#autotoc_md11", null ],
-      [ "Secure build", "index.html#autotoc_md13", null ],
-      [ "Payment flow", "index.html#autotoc_md15", null ],
-      [ "Troubleshooting", "index.html#autotoc_md17", null ],
-      [ "Documentation", "index.html#autotoc_md19", null ],
-      [ "License", "index.html#autotoc_md21", null ],
       [ "Class List", "annotated.html", "annotated_dup" ],
       [ "Class Index", "classes.html", null ],
       [ "Class Hierarchy", "hierarchy.html", "hierarchy" ],
@@ -69,7 +54,7 @@ var NAVTREE =
 var NAVTREEINDEX =
 [
 "annotated.html",
-"settings_8h.html"
+"ui_8cpp.html#a6ecfc755e46d8b6bffee458cf0439a69"
 ];
 
 var SYNCONMSG = 'click to disable panel synchronization';

@@ -11,7 +11,7 @@
 <!-- Node1 -->
 <g id="Node000001" class="node">
 <title>Node1</title>
-<g id="a_Node000001"><a xlink:title=" ">
+<g id="a_Node000001"><a xlink:title="Implementation of the hex Ethereum&#45;address parser.">
 <polygon fill="#999999" stroke="#666666" points="155,-129 48,-129 48,-110 155,-110 155,-129"/>
 <text text-anchor="middle" x="101.5" y="-117" font-family="Helvetica,sans-Serif" font-size="10.00">main/eth_addr.cpp</text>
 </a>

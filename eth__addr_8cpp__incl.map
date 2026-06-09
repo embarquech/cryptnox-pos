@@ -1,5 +1,5 @@
 <map id="main/eth_addr.cpp" name="main/eth_addr.cpp">
-<area shape="rect" id="Node000001" title=" " alt="" coords="69,5,212,31"/>
+<area shape="rect" id="Node000001" title="Implementation of the hex Ethereum&#45;address parser." alt="" coords="69,5,212,31"/>
 <area shape="rect" id="Node000002" href="$eth__addr_8h.html" title="Hex Ethereum&#45;address parsing — a pure, dependency&#45;free unit so it can be unit&#45;tested and fuzzed on th..." alt="" coords="43,79,134,104"/>
 <area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="134,33,107,69,103,66,130,29"/>
 <area shape="rect" id="Node000005" title=" " alt="" coords="159,79,229,104"/>

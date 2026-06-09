@@ -38,5 +38,6 @@ var searchData=
   ['eth_5frpc_5fset_5fca_5fcert_35',['eth_rpc_set_ca_cert',['../eth__rpc_8cpp.html#acabcedc1e08b643fb161f872b5ce2b98',1,'eth_rpc_set_ca_cert(const char *ca_pem):&#160;eth_rpc.cpp'],['../eth__rpc_8h.html#acabcedc1e08b643fb161f872b5ce2b98',1,'eth_rpc_set_ca_cert(const char *ca_pem):&#160;eth_rpc.cpp']]],
   ['eth_5ftx_5ft_36',['eth_tx_t',['../structeth__tx__t.html',1,'']]],
   ['eth_5fvalue_37',['eth_value',['../structeth__tx__t.html#a2729c720ecee7933d04fa42fb43a9adb',1,'eth_tx_t']]],
-  ['event_38',['event',['../structui__msg__t.html#a50cdee05cb3c365e674b4c970201bbbc',1,'ui_msg_t']]]
+  ['ethereum_20transaction_20layer_38',['Ethereum transaction layer',['../group__eth.html',1,'']]],
+  ['event_39',['event',['../structui__msg__t.html#a50cdee05cb3c365e674b4c970201bbbc',1,'ui_msg_t']]]
 ];

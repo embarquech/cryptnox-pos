@@ -1,10 +1,10 @@
 var searchData=
 [
   ['payload_0',['payload',['../structui__msg__t.html#a97c1e602e8dc9a6fbb9325ba15150f14',1,'ui_msg_t']]],
-  ['payment_20flow_1',['Payment flow',['../index.html#autotoc_md15',1,'']]],
+  ['payment_20flow_1',['Payment flow',['../index.html#payment-flow',1,'']]],
   ['pin_5fkbd_5fcb_2',['pin_kbd_cb',['../ui_8cpp.html#ae50f6f5be80985315f3775186403fbfd',1,'ui.cpp']]],
   ['pin_5fsubmit_3',['pin_submit',['../ui_8cpp.html#a714db8296c391b9fa33639d213f16627',1,'ui.cpp']]],
-  ['pn532_20nfc_20—_20i²c_20interface_4',['CYD CN1 ↔ PN532 NFC — I²C interface',['../index.html#autotoc_md9',1,'']]],
+  ['pn532_20nfc_20—_20i²c_20interface_4',['CYD CN1 ↔ PN532 NFC — I²C interface',['../index.html#cyd-cn1--pn532-nfc--i²c-interface',1,'']]],
   ['pn532_5fi2c_5fhz_5',['PN532_I2C_HZ',['../main_8cpp.html#a785980ca3a3f7ca30e4f6607effaca58',1,'main.cpp']]],
   ['pn532_5fi2c_5fport_6',['PN532_I2C_PORT',['../main_8cpp.html#a3b7cbe99900d5ff020df54ca5315ef2b',1,'main.cpp']]],
   ['pn532_5firq_7',['PN532_IRQ',['../main_8cpp.html#a04eeb1db4f8381537f1075bb5abd4b36',1,'main.cpp']]],

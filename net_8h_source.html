@@ -97,61 +97,61 @@ $(function(){initNavTree('net_8h_source.html','',''); });
 <div class="line"><a id="l00003" name="l00003"></a><span class="lineno">    3</span><span class="comment"> * Copyright (c) 2026 Cryptnox SA</span></div>
 <div class="line"><a id="l00004" name="l00004"></a><span class="lineno">    4</span><span class="comment"> */</span></div>
 <div class="line"><a id="l00005" name="l00005"></a><span class="lineno">    5</span></div>
-<div class="line"><a id="l00012" name="l00012"></a><span class="lineno">   12</span> </div>
-<div class="line"><a id="l00013" name="l00013"></a><span class="lineno">   13</span><span class="preprocessor">#ifndef NET_H</span></div>
-<div class="line"><a id="l00014" name="l00014"></a><span class="lineno">   14</span><span class="preprocessor">#define NET_H</span></div>
-<div class="line"><a id="l00015" name="l00015"></a><span class="lineno">   15</span> </div>
-<div class="line"><a id="l00016" name="l00016"></a><span class="lineno">   16</span><span class="comment">/******************************************************************</span></div>
-<div class="line"><a id="l00017" name="l00017"></a><span class="lineno">   17</span><span class="comment"> * 1. Included files</span></div>
-<div class="line"><a id="l00018" name="l00018"></a><span class="lineno">   18</span><span class="comment"> ******************************************************************/</span></div>
-<div class="line"><a id="l00019" name="l00019"></a><span class="lineno">   19</span> </div>
-<div class="line"><a id="l00020" name="l00020"></a><span class="lineno">   20</span><span class="preprocessor">#include &lt;stdint.h&gt;</span></div>
-<div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span><span class="preprocessor">#include &lt;stdbool.h&gt;</span></div>
-<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span> </div>
-<div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span><span class="preprocessor">#ifdef __cplusplus</span></div>
-<div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span><span class="keyword">extern</span> <span class="stringliteral">&quot;C&quot;</span> {</div>
-<div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span><span class="preprocessor">#endif</span></div>
-<div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span> </div>
-<div class="line"><a id="l00027" name="l00027"></a><span class="lineno">   27</span><span class="comment">/******************************************************************</span></div>
-<div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span><span class="comment"> * 2. Types</span></div>
-<div class="line"><a id="l00029" name="l00029"></a><span class="lineno">   29</span><span class="comment"> ******************************************************************/</span></div>
-<div class="line"><a id="l00030" name="l00030"></a><span class="lineno">   30</span></div>
-<div class="foldopen" id="foldopen00032" data-start="{" data-end="};">
-<div class="line"><a id="l00032" name="l00032"></a><span class="lineno"><a class="line" href="structnet__wifi__ap__t.html">   32</a></span><span class="keyword">typedef</span> <span class="keyword">struct </span>{</div>
-<div class="line"><a id="l00033" name="l00033"></a><span class="lineno"><a class="line" href="structnet__wifi__ap__t.html#abfccd5924571fcb9dc14436cab07cb9e">   33</a></span>    <span class="keywordtype">char</span>   <a class="code hl_variable" href="structnet__wifi__ap__t.html#abfccd5924571fcb9dc14436cab07cb9e">ssid</a>[33];   </div>
-<div class="line"><a id="l00034" name="l00034"></a><span class="lineno"><a class="line" href="structnet__wifi__ap__t.html#add5c01e9856461c804ea3891e01d1632">   34</a></span>    int8_t <a class="code hl_variable" href="structnet__wifi__ap__t.html#add5c01e9856461c804ea3891e01d1632">rssi</a>;       </div>
-<div class="line"><a id="l00035" name="l00035"></a><span class="lineno"><a class="line" href="structnet__wifi__ap__t.html#ad4f0dc49027ca1338231b70704f44f83">   35</a></span>    <span class="keywordtype">bool</span>   <a class="code hl_variable" href="structnet__wifi__ap__t.html#ad4f0dc49027ca1338231b70704f44f83">open</a>;       </div>
-<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span>} <a class="code hl_struct" href="structnet__wifi__ap__t.html">net_wifi_ap_t</a>;</div>
+<div class="line"><a id="l00013" name="l00013"></a><span class="lineno">   13</span> </div>
+<div class="line"><a id="l00014" name="l00014"></a><span class="lineno">   14</span><span class="preprocessor">#ifndef NET_H</span></div>
+<div class="line"><a id="l00015" name="l00015"></a><span class="lineno">   15</span><span class="preprocessor">#define NET_H</span></div>
+<div class="line"><a id="l00016" name="l00016"></a><span class="lineno">   16</span> </div>
+<div class="line"><a id="l00017" name="l00017"></a><span class="lineno">   17</span><span class="comment">/******************************************************************</span></div>
+<div class="line"><a id="l00018" name="l00018"></a><span class="lineno">   18</span><span class="comment"> * 1. Included files</span></div>
+<div class="line"><a id="l00019" name="l00019"></a><span class="lineno">   19</span><span class="comment"> ******************************************************************/</span></div>
+<div class="line"><a id="l00020" name="l00020"></a><span class="lineno">   20</span> </div>
+<div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span><span class="preprocessor">#include &lt;stdint.h&gt;</span></div>
+<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span><span class="preprocessor">#include &lt;stdbool.h&gt;</span></div>
+<div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span> </div>
+<div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span><span class="preprocessor">#ifdef __cplusplus</span></div>
+<div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span><span class="keyword">extern</span> <span class="stringliteral">&quot;C&quot;</span> {</div>
+<div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span><span class="preprocessor">#endif</span></div>
+<div class="line"><a id="l00027" name="l00027"></a><span class="lineno">   27</span> </div>
+<div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span><span class="comment">/******************************************************************</span></div>
+<div class="line"><a id="l00029" name="l00029"></a><span class="lineno">   29</span><span class="comment"> * 2. Types</span></div>
+<div class="line"><a id="l00030" name="l00030"></a><span class="lineno">   30</span><span class="comment"> ******************************************************************/</span></div>
+<div class="line"><a id="l00031" name="l00031"></a><span class="lineno">   31</span></div>
+<div class="foldopen" id="foldopen00033" data-start="{" data-end="};">
+<div class="line"><a id="l00033" name="l00033"></a><span class="lineno"><a class="line" href="structnet__wifi__ap__t.html">   33</a></span><span class="keyword">typedef</span> <span class="keyword">struct </span>{</div>
+<div class="line"><a id="l00034" name="l00034"></a><span class="lineno"><a class="line" href="structnet__wifi__ap__t.html#abfccd5924571fcb9dc14436cab07cb9e">   34</a></span>    <span class="keywordtype">char</span>   <a class="code hl_variable" href="structnet__wifi__ap__t.html#abfccd5924571fcb9dc14436cab07cb9e">ssid</a>[33];   </div>
+<div class="line"><a id="l00035" name="l00035"></a><span class="lineno"><a class="line" href="structnet__wifi__ap__t.html#add5c01e9856461c804ea3891e01d1632">   35</a></span>    int8_t <a class="code hl_variable" href="structnet__wifi__ap__t.html#add5c01e9856461c804ea3891e01d1632">rssi</a>;       </div>
+<div class="line"><a id="l00036" name="l00036"></a><span class="lineno"><a class="line" href="structnet__wifi__ap__t.html#ad4f0dc49027ca1338231b70704f44f83">   36</a></span>    <span class="keywordtype">bool</span>   <a class="code hl_variable" href="structnet__wifi__ap__t.html#ad4f0dc49027ca1338231b70704f44f83">open</a>;       </div>
+<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span>} <a class="code hl_struct" href="structnet__wifi__ap__t.html">net_wifi_ap_t</a>;</div>
 </div>
-<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span> </div>
-<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span><span class="comment">/******************************************************************</span></div>
-<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span><span class="comment"> * 3. Public API</span></div>
-<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span><span class="comment"> ******************************************************************/</span></div>
-<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span></div>
-<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span><span class="keywordtype">void</span> <a class="code hl_function" href="net_8h.html#aaf1ff99078677637758f3b20f1ed7a59">net_wifi_init</a>(<span class="keywordtype">void</span>);</div>
-<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span></div>
-<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>uint16_t <a class="code hl_function" href="net_8h.html#a867a6c53b986cda4b652192a14565753">net_wifi_scan</a>(<a class="code hl_struct" href="structnet__wifi__ap__t.html">net_wifi_ap_t</a> *out, uint16_t max);</div>
-<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span></div>
-<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span><span class="keywordtype">bool</span> <a class="code hl_function" href="net_8h.html#a85ab8d7927129c9f8c0cc0525eaa1b76">net_wifi_connect</a>(<span class="keyword">const</span> <span class="keywordtype">char</span> *ssid, <span class="keyword">const</span> <span class="keywordtype">char</span> *password);</div>
-<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span></div>
-<div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span><span class="keywordtype">bool</span> <a class="code hl_function" href="net_8h.html#a6daea14ec02799a6d0a0f41da5226895">net_wifi_rssi</a>(int8_t *rssi_out);</div>
-<div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span></div>
-<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span><span class="keywordtype">bool</span> <a class="code hl_function" href="net_8h.html#a6183c17880c3cc5dcf982e66bafbaafe">net_time_sync</a>(uint32_t timeout_ms);</div>
-<div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span> </div>
-<div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span><span class="preprocessor">#ifdef __cplusplus</span></div>
-<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span>}</div>
-<div class="line"><a id="l00092" name="l00092"></a><span class="lineno">   92</span><span class="preprocessor">#endif</span></div>
-<div class="line"><a id="l00093" name="l00093"></a><span class="lineno">   93</span> </div>
-<div class="line"><a id="l00094" name="l00094"></a><span class="lineno">   94</span><span class="preprocessor">#endif </span><span class="comment">// NET_H</span></div>
+<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span> </div>
+<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span><span class="comment">/******************************************************************</span></div>
+<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span><span class="comment"> * 3. Public API</span></div>
+<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span><span class="comment"> ******************************************************************/</span></div>
+<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span></div>
+<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span><span class="keywordtype">void</span> <a class="code hl_function" href="net_8h.html#aaf1ff99078677637758f3b20f1ed7a59">net_wifi_init</a>(<span class="keywordtype">void</span>);</div>
+<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span></div>
+<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span>uint16_t <a class="code hl_function" href="net_8h.html#a867a6c53b986cda4b652192a14565753">net_wifi_scan</a>(<a class="code hl_struct" href="structnet__wifi__ap__t.html">net_wifi_ap_t</a> *out, uint16_t max);</div>
+<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span></div>
+<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span><span class="keywordtype">bool</span> <a class="code hl_function" href="net_8h.html#a85ab8d7927129c9f8c0cc0525eaa1b76">net_wifi_connect</a>(<span class="keyword">const</span> <span class="keywordtype">char</span> *ssid, <span class="keyword">const</span> <span class="keywordtype">char</span> *password);</div>
+<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span></div>
+<div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span><span class="keywordtype">bool</span> <a class="code hl_function" href="net_8h.html#a6daea14ec02799a6d0a0f41da5226895">net_wifi_rssi</a>(int8_t *rssi_out);</div>
+<div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span></div>
+<div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span><span class="keywordtype">bool</span> <a class="code hl_function" href="net_8h.html#a6183c17880c3cc5dcf982e66bafbaafe">net_time_sync</a>(uint32_t timeout_ms);</div>
+<div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span> </div>
+<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span><span class="preprocessor">#ifdef __cplusplus</span></div>
+<div class="line"><a id="l00092" name="l00092"></a><span class="lineno">   92</span>}</div>
+<div class="line"><a id="l00093" name="l00093"></a><span class="lineno">   93</span><span class="preprocessor">#endif</span></div>
+<div class="line"><a id="l00094" name="l00094"></a><span class="lineno">   94</span> </div>
+<div class="line"><a id="l00095" name="l00095"></a><span class="lineno">   95</span><span class="preprocessor">#endif </span><span class="comment">// NET_H</span></div>
 <div class="ttc" id="anet_8h_html_a6183c17880c3cc5dcf982e66bafbaafe"><div class="ttname"><a href="net_8h.html#a6183c17880c3cc5dcf982e66bafbaafe">net_time_sync</a></div><div class="ttdeci">bool net_time_sync(uint32_t timeout_ms)</div><div class="ttdoc">Block until the system clock has been set via SNTP.</div><div class="ttdef"><b>Definition</b> <a href="net_8cpp_source.html#l00215">net.cpp:215</a></div></div>
 <div class="ttc" id="anet_8h_html_a6daea14ec02799a6d0a0f41da5226895"><div class="ttname"><a href="net_8h.html#a6daea14ec02799a6d0a0f41da5226895">net_wifi_rssi</a></div><div class="ttdeci">bool net_wifi_rssi(int8_t *rssi_out)</div><div class="ttdoc">Read the RSSI of the currently associated access point.</div><div class="ttdef"><b>Definition</b> <a href="net_8cpp_source.html#l00204">net.cpp:204</a></div></div>
 <div class="ttc" id="anet_8h_html_a85ab8d7927129c9f8c0cc0525eaa1b76"><div class="ttname"><a href="net_8h.html#a85ab8d7927129c9f8c0cc0525eaa1b76">net_wifi_connect</a></div><div class="ttdeci">bool net_wifi_connect(const char *ssid, const char *password)</div><div class="ttdoc">Connect to a WiFi network and block until an IP is obtained (up to 30 s). May be called repeatedly to...</div><div class="ttdef"><b>Definition</b> <a href="net_8cpp_source.html#l00164">net.cpp:164</a></div></div>
 <div class="ttc" id="anet_8h_html_a867a6c53b986cda4b652192a14565753"><div class="ttname"><a href="net_8h.html#a867a6c53b986cda4b652192a14565753">net_wifi_scan</a></div><div class="ttdeci">uint16_t net_wifi_scan(net_wifi_ap_t *out, uint16_t max)</div><div class="ttdoc">Scan for nearby access points (blocking).</div><div class="ttdef"><b>Definition</b> <a href="net_8cpp_source.html#l00122">net.cpp:122</a></div></div>
 <div class="ttc" id="anet_8h_html_aaf1ff99078677637758f3b20f1ed7a59"><div class="ttname"><a href="net_8h.html#aaf1ff99078677637758f3b20f1ed7a59">net_wifi_init</a></div><div class="ttdeci">void net_wifi_init(void)</div><div class="ttdoc">Bring up the WiFi driver in station mode (idempotent).</div><div class="ttdef"><b>Definition</b> <a href="net_8cpp_source.html#l00096">net.cpp:96</a></div></div>
-<div class="ttc" id="astructnet__wifi__ap__t_html"><div class="ttname"><a href="structnet__wifi__ap__t.html">net_wifi_ap_t</a></div><div class="ttdoc">A scanned access point (subset of fields the UI needs).</div><div class="ttdef"><b>Definition</b> <a href="#l00032">net.h:32</a></div></div>
-<div class="ttc" id="astructnet__wifi__ap__t_html_abfccd5924571fcb9dc14436cab07cb9e"><div class="ttname"><a href="structnet__wifi__ap__t.html#abfccd5924571fcb9dc14436cab07cb9e">net_wifi_ap_t::ssid</a></div><div class="ttdeci">char ssid[33]</div><div class="ttdef"><b>Definition</b> <a href="#l00033">net.h:33</a></div></div>
-<div class="ttc" id="astructnet__wifi__ap__t_html_ad4f0dc49027ca1338231b70704f44f83"><div class="ttname"><a href="structnet__wifi__ap__t.html#ad4f0dc49027ca1338231b70704f44f83">net_wifi_ap_t::open</a></div><div class="ttdeci">bool open</div><div class="ttdef"><b>Definition</b> <a href="#l00035">net.h:35</a></div></div>
-<div class="ttc" id="astructnet__wifi__ap__t_html_add5c01e9856461c804ea3891e01d1632"><div class="ttname"><a href="structnet__wifi__ap__t.html#add5c01e9856461c804ea3891e01d1632">net_wifi_ap_t::rssi</a></div><div class="ttdeci">int8_t rssi</div><div class="ttdef"><b>Definition</b> <a href="#l00034">net.h:34</a></div></div>
+<div class="ttc" id="astructnet__wifi__ap__t_html"><div class="ttname"><a href="structnet__wifi__ap__t.html">net_wifi_ap_t</a></div><div class="ttdoc">A scanned access point (subset of fields the UI needs).</div><div class="ttdef"><b>Definition</b> <a href="#l00033">net.h:33</a></div></div>
+<div class="ttc" id="astructnet__wifi__ap__t_html_abfccd5924571fcb9dc14436cab07cb9e"><div class="ttname"><a href="structnet__wifi__ap__t.html#abfccd5924571fcb9dc14436cab07cb9e">net_wifi_ap_t::ssid</a></div><div class="ttdeci">char ssid[33]</div><div class="ttdef"><b>Definition</b> <a href="#l00034">net.h:34</a></div></div>
+<div class="ttc" id="astructnet__wifi__ap__t_html_ad4f0dc49027ca1338231b70704f44f83"><div class="ttname"><a href="structnet__wifi__ap__t.html#ad4f0dc49027ca1338231b70704f44f83">net_wifi_ap_t::open</a></div><div class="ttdeci">bool open</div><div class="ttdef"><b>Definition</b> <a href="#l00036">net.h:36</a></div></div>
+<div class="ttc" id="astructnet__wifi__ap__t_html_add5c01e9856461c804ea3891e01d1632"><div class="ttname"><a href="structnet__wifi__ap__t.html#add5c01e9856461c804ea3891e01d1632">net_wifi_ap_t::rssi</a></div><div class="ttdeci">int8_t rssi</div><div class="ttdef"><b>Definition</b> <a href="#l00035">net.h:35</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 </div><!-- doc-content -->
 </div><!-- container -->

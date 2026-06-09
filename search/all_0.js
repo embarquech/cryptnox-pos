@@ -21,5 +21,6 @@ var searchData=
   ['app_5fmain_18',['app_main',['../main_8cpp.html#a630544a7f0a2cc40d8a7fefab7e2fe70',1,'main.cpp']]],
   ['app_5fversion_19',['APP_VERSION',['../ui_8cpp.html#a92673e33f27532767749b79edb8ef806',1,'ui.cpp']]],
   ['app_5fversion_5ftag_20',['APP_VERSION_TAG',['../main_8cpp.html#a80ab8fb5621ffc952ecbb715322b2352',1,'main.cpp']]],
-  ['auto_5fbrightness_5fcb_21',['auto_brightness_cb',['../ui_8cpp.html#a63065379f0daee2d654d94c56d45078a',1,'ui.cpp']]]
+  ['application_20core_21',['Application core',['../group__app.html',1,'']]],
+  ['auto_5fbrightness_5fcb_22',['auto_brightness_cb',['../ui_8cpp.html#a63065379f0daee2d654d94c56d45078a',1,'ui.cpp']]]
 ];

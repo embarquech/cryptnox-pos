@@ -1,6 +1,6 @@
 <map id="main/eth_json.h" name="main/eth_json.h">
 <area shape="rect" id="Node000001" title="JSON&#45;RPC response parsing helpers — kept in their own unit (cJSON + CW_Utils only,..." alt="" coords="94,5,221,31"/>
-<area shape="rect" id="Node000002" href="$eth__json_8cpp.html" title=" " alt="" coords="5,79,147,104"/>
+<area shape="rect" id="Node000002" href="$eth__json_8cpp.html" title="Implementation of the JSON&#45;RPC response parsing helpers." alt="" coords="5,79,147,104"/>
 <area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="136,42,91,80,88,76,132,38"/>
 <area shape="rect" id="Node000003" href="$eth__rpc_8cpp.html" title="Ethereum JSON&#45;RPC client implementation (HTTPS). Network bring&#45;up (Wi&#45;Fi, SNTP) lives in net...." alt="" coords="171,79,306,104"/>
 <area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="182,38,227,76,224,80,179,42"/>

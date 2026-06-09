@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['nonce_0',['nonce',['../structeth__tx__t.html#aaf2fd7bf4fa4970abab1b23db88d18be',1,'eth_tx_t']]]
+  ['open_0',['open',['../structnet__wifi__ap__t.html#ad4f0dc49027ca1338231b70704f44f83',1,'net_wifi_ap_t']]]
 ];

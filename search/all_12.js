@@ -42,8 +42,5 @@ var searchData=
   ['ui_5ftx_5fstate_5fsending_39',['UI_TX_STATE_SENDING',['../ui_8h.html#a64b6bbe2fbeb96a8d689ba887b204fa1a0673cfe1c12cfcc9173b0311205b20c9',1,'ui.h']]],
   ['ui_5ftx_5fstate_5fsigning_40',['UI_TX_STATE_SIGNING',['../ui_8h.html#a64b6bbe2fbeb96a8d689ba887b204fa1a0359cc2ea1fe9c3318c132e58d5c6073',1,'ui.h']]],
   ['ui_5ftx_5fstate_5ft_41',['ui_tx_state_t',['../ui_8h.html#a64b6bbe2fbeb96a8d689ba887b204fa1',1,'ui.h']]],
-  ['usdc_5flogo_42',['usdc_logo',['../usdc__logo_8c.html#a52e8536dcb369447e7bb94fe28bd956b',1,'usdc_logo:&#160;usdc_logo.c'],['../usdc__logo_8h.html#a52e8536dcb369447e7bb94fe28bd956b',1,'usdc_logo:&#160;usdc_logo.c']]],
-  ['usdc_5flogo_2ec_43',['usdc_logo.c',['../usdc__logo_8c.html',1,'']]],
-  ['usdc_5flogo_2eh_44',['usdc_logo.h',['../usdc__logo_8h.html',1,'']]],
-  ['usdc_5flogo_5fmap_45',['usdc_logo_map',['../usdc__logo_8c.html#a530d062eb5700b5f9403bc3ec06abd85',1,'usdc_logo.c']]]
+  ['user_20interface_42',['User interface',['../group__ui.html',1,'']]]
 ];

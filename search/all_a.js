@@ -1,21 +1,14 @@
 var searchData=
 [
-  ['ldr_5fadc_5fchannel_0',['LDR_ADC_CHANNEL',['../ui_8cpp.html#aba2238a4f931e5e0b23b777b7c39911b',1,'ui.cpp']]],
-  ['ldr_5fadc_5funit_1',['LDR_ADC_UNIT',['../ui_8cpp.html#a0f8851f7868a97095cacd0c9ab128450',1,'ui.cpp']]],
-  ['ldr_5fbrightness_5fpct_2',['ldr_brightness_pct',['../ui_8cpp.html#a3261bd3e209de4db5f3d8aa032915318',1,'ui.cpp']]],
-  ['ldr_5finit_3',['ldr_init',['../ui_8cpp.html#a738ed529592a324c177291a6ef72d9c8',1,'ui.cpp']]],
-  ['ldr_5fpct_5fmax_4',['LDR_PCT_MAX',['../ui_8cpp.html#a8e3629439ab2020420b606c2ae632828',1,'ui.cpp']]],
-  ['ldr_5fpct_5fmin_5',['LDR_PCT_MIN',['../ui_8cpp.html#a86646a101861d4cd9f5941f6c65559da',1,'ui.cpp']]],
-  ['ldr_5fraw_5fmax_6',['LDR_RAW_MAX',['../ui_8cpp.html#a72e540ca4b8d75731008ce40d1dd4944',1,'ui.cpp']]],
-  ['ldr_5fraw_5fmin_7',['LDR_RAW_MIN',['../ui_8cpp.html#a80edea75eca62a8c2f00f3f91a9a2925',1,'ui.cpp']]],
-  ['license_8',['License',['../index.html#autotoc_md21',1,'']]],
-  ['logo_5fimg_9',['logo_img',['../logo__img_8c.html#a34be52bb734cb4e6028d4fffd4ef9c60',1,'logo_img:&#160;logo_img.c'],['../logo__img_8h.html#a34be52bb734cb4e6028d4fffd4ef9c60',1,'logo_img:&#160;logo_img.c']]],
-  ['logo_5fimg_2ec_10',['logo_img.c',['../logo__img_8c.html',1,'']]],
-  ['logo_5fimg_2eh_11',['logo_img.h',['../logo__img_8h.html',1,'']]],
-  ['logo_5fmap_12',['logo_map',['../logo__img_8c.html#a5fabe66dac1532f6a236270b54e558e7',1,'logo_img.c']]],
-  ['logo_5fsmall_13',['logo_small',['../logo__small_8c.html#a804601a7e9961f09ae0c09225d4d3aeb',1,'logo_small:&#160;logo_small.c'],['../logo__small_8h.html#a804601a7e9961f09ae0c09225d4d3aeb',1,'logo_small:&#160;logo_small.c']]],
-  ['logo_5fsmall_2ec_14',['logo_small.c',['../logo__small_8c.html',1,'']]],
-  ['logo_5fsmall_2eh_15',['logo_small.h',['../logo__small_8h.html',1,'']]],
-  ['logo_5fsmall_5fmap_16',['logo_small_map',['../logo__small_8c.html#aac4c33fb9b90fc775ffa0a99ba0a7de4',1,'logo_small.c']]],
-  ['lv_5ftick_5fperiod_5fms_17',['LV_TICK_PERIOD_MS',['../ui_8cpp.html#a31c507ab1a1074ac1ab0a4ce6bbba2f6',1,'ui.cpp']]]
+  ['layer_0',['Ethereum transaction layer',['../group__eth.html',1,'']]],
+  ['ldr_5fadc_5fchannel_1',['LDR_ADC_CHANNEL',['../ui_8cpp.html#aba2238a4f931e5e0b23b777b7c39911b',1,'ui.cpp']]],
+  ['ldr_5fadc_5funit_2',['LDR_ADC_UNIT',['../ui_8cpp.html#a0f8851f7868a97095cacd0c9ab128450',1,'ui.cpp']]],
+  ['ldr_5fbrightness_5fpct_3',['ldr_brightness_pct',['../ui_8cpp.html#a3261bd3e209de4db5f3d8aa032915318',1,'ui.cpp']]],
+  ['ldr_5finit_4',['ldr_init',['../ui_8cpp.html#a738ed529592a324c177291a6ef72d9c8',1,'ui.cpp']]],
+  ['ldr_5fpct_5fmax_5',['LDR_PCT_MAX',['../ui_8cpp.html#a8e3629439ab2020420b606c2ae632828',1,'ui.cpp']]],
+  ['ldr_5fpct_5fmin_6',['LDR_PCT_MIN',['../ui_8cpp.html#a86646a101861d4cd9f5941f6c65559da',1,'ui.cpp']]],
+  ['ldr_5fraw_5fmax_7',['LDR_RAW_MAX',['../ui_8cpp.html#a72e540ca4b8d75731008ce40d1dd4944',1,'ui.cpp']]],
+  ['ldr_5fraw_5fmin_8',['LDR_RAW_MIN',['../ui_8cpp.html#a80edea75eca62a8c2f00f3f91a9a2925',1,'ui.cpp']]],
+  ['license_9',['License',['../index.html#license',1,'']]],
+  ['lv_5ftick_5fperiod_5fms_10',['LV_TICK_PERIOD_MS',['../ui_8cpp.html#a31c507ab1a1074ac1ab0a4ce6bbba2f6',1,'ui.cpp']]]
 ];

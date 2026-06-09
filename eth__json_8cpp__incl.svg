@@ -11,7 +11,7 @@
 <!-- Node1 -->
 <g id="Node000001" class="node">
 <title>Node1</title>
-<g id="a_Node000001"><a xlink:title=" ">
+<g id="a_Node000001"><a xlink:title="Implementation of the JSON&#45;RPC response parsing helpers.">
 <polygon fill="#999999" stroke="#666666" points="204.5,-129 98.5,-129 98.5,-110 204.5,-110 204.5,-129"/>
 <text text-anchor="middle" x="151.5" y="-117" font-family="Helvetica,sans-Serif" font-size="10.00">main/eth_json.cpp</text>
 </a>
