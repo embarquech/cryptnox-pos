@@ -5,6 +5,7 @@
 
 /**
  * @file net.h
+ * @ingroup device
  * @brief Network bring-up: Wi-Fi station (init/scan/connect/RSSI) and SNTP
  *        time sync.  No application-protocol logic lives here — the Ethereum
  *        JSON-RPC client is in eth_rpc.h.

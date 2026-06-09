@@ -3,6 +3,11 @@
  * Copyright (c) 2026 Cryptnox SA
  */
 
+/**
+ * @file eth_json.cpp
+ * @brief Implementation of the JSON-RPC response parsing helpers.
+ */
+
 #include "eth_json.h"
 
 #include <string.h>

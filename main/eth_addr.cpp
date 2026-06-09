@@ -3,6 +3,11 @@
  * Copyright (c) 2026 Cryptnox SA
  */
 
+/**
+ * @file eth_addr.cpp
+ * @brief Implementation of the hex Ethereum-address parser.
+ */
+
 #include "eth_addr.h"
 
 #include <string.h>

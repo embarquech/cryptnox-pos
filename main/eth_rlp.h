@@ -5,6 +5,7 @@
 
 /**
  * @file eth_rlp.h
+ * @ingroup eth
  * @brief Minimal RLP encoder for EIP-1559 (type 2) Ethereum transactions.
  */
 

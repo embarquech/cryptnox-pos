@@ -5,6 +5,7 @@
 
 /**
  * @file settings.h
+ * @ingroup device
  * @brief Persistent device settings stored in NVS (backlight, Wi-Fi creds).
  *
  * All getters are safe to call before any value has ever been written — they

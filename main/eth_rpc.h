@@ -5,6 +5,7 @@
 
 /**
  * @file eth_rpc.h
+ * @ingroup eth
  * @brief Ethereum JSON-RPC client over HTTPS (nonce / ecrecover parity /
  *        raw-tx broadcast / receipt polling).  Network bring-up (Wi-Fi,
  *        SNTP) lives in net.h.

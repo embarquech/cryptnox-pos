@@ -5,6 +5,7 @@
 
 /**
  * @file eth_addr.h
+ * @ingroup eth
  * @brief Hex Ethereum-address parsing — a pure, dependency-free unit so it can
  *        be unit-tested and fuzzed on the host (see fuzz/fuzz_parse_address.cpp).
  */

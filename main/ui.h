@@ -5,6 +5,7 @@
 
 /**
  * @file ui.h
+ * @ingroup ui
  * @brief Touchscreen UI API: screens, events and transaction states for the
  *        CYD (ILI9341 + XPT2046) payment flow.
  */

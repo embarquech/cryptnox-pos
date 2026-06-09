@@ -5,6 +5,7 @@
 
 /**
  * @file keccak256.h
+ * @ingroup eth
  * @brief Original Keccak-256 digest as used by Ethereum.
  */
 

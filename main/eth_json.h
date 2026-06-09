@@ -5,6 +5,7 @@
 
 /**
  * @file eth_json.h
+ * @ingroup eth
  * @brief JSON-RPC response parsing helpers — kept in their own unit (cJSON +
  *        CW_Utils only, no ESP-IDF networking) so they can be fuzzed on the
  *        host (see fuzz/fuzz_eth_rpc_json.cpp).

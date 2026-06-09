@@ -5,6 +5,7 @@
 
 /**
  * @file main.cpp
+ * @ingroup app
  * @brief cryptnox-pos entry point: touchscreen USDC payment terminal.
  *
  * Drives the amount → confirm → sign → broadcast flow on the Cheap Yellow
@@ -199,12 +200,14 @@ struct WipeGuard {
  * PIN is copied into the sign request at the last moment and scrubbed with
  * @c CW_Utils::secure_wipe immediately after signing (F-04); the message hash,
  * signature and encoded transactions are scrubbed on every exit path via
- * @ref WipeGuard.
+ * @c WipeGuard.
  *
  * @param[in]  wallet       Initialised wallet instance.
  * @param[in]  transport    PN532 transport, used for the cancellable
  *                          connect loop.
  * @param[in]  amount_units Transfer amount in USDC base units (6 decimals).
+ * @param[in]  pin          Operator-entered card PIN (scrubbed after signing).
+ * @param[in]  pin_chars    Number of PIN characters in @p pin.
  * @param[out] tx_hash_out  "0x..."-prefixed tx hash on success.
  * @param[in]  tx_hash_max  Capacity of @p tx_hash_out (>= 68 bytes).
  * @param[out] err_out      Short UI-facing error message on failure.
