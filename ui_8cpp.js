@@ -18,6 +18,7 @@ var ui_8cpp =
     [ "COL_SUCCESS", "ui_8cpp.html#abed5f9d955a9b744d5684d7607a4aae2", null ],
     [ "COL_SURFACE", "ui_8cpp.html#a6c10ea4c20f9b6c4ed5cd040356fe41a", null ],
     [ "COL_TEXT", "ui_8cpp.html#a94d8e598975a3e013cfbe24aba7d6593", null ],
+    [ "COL_TITLE", "ui_8cpp.html#a9a6e0a333faaa5efeb3393e3db962352", null ],
     [ "FEE_MAX_GWEI", "ui_8cpp.html#ae43377b554c0811dd3669f064523bd64", null ],
     [ "FEE_MIN_GWEI", "ui_8cpp.html#ae840cf51dcd9a2d364e3503b2b4f7952", null ],
     [ "FEE_STEP_GWEI", "ui_8cpp.html#ad3cab8f13bd19ca04727bff64f2fceb5", null ],
