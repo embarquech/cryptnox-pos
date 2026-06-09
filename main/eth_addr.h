@@ -25,7 +25,7 @@ extern "C" {
  *
  * Accepts an optional @c 0x / @c 0X prefix, then requires exactly 40 hex
  * characters and rejects any non-hex input instead of silently decoding
- * garbage (F-07).
+ * garbage.
  *
  * @param[in]  hex Address string (with or without @c 0x prefix).
  * @param[out] out 20-byte decoded address; zeroed then left partially written

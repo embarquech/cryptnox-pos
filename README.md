@@ -140,7 +140,7 @@ and fill in:
 |-------|-------------|
 | `RPC_URL` | Ethereum JSON-RPC endpoint (PublicNode Sepolia by default; an Infura variant is provided commented-out) |
 | `RPC_PROJECT_ID` / `RPC_API_SECRET` | Optional — only when using Infura (HTTP Basic Auth); leave undefined for PublicNode |
-| `RPC_CA_CERT_PEM` | Optional — pin the RPC endpoint's TLS certificate (audit F-05); trusts only that cert instead of the full CA bundle. Undefined = Mozilla bundle |
+| `RPC_CA_CERT_PEM` | Optional — pin the RPC endpoint's TLS certificate; trusts only that cert instead of the full CA bundle. Undefined = Mozilla bundle |
 | `ADDR_FROM` | Ethereum address of the **card** (`m/44'/60'/0'/0/0`) — used to fetch the nonce and validate the ecrecover parity |
 | `ADDR_TO` | Destination address for every transfer |
 | `ADDR_USDC` | USDC ERC-20 contract address on the target chain (Sepolia testnet by default) |
@@ -156,13 +156,13 @@ and fill in:
 ## Secure build
 
 By default the firmware and NVS are **unencrypted and unsigned** — fine for the
-dev kit. An optional **secure build** closes three audit findings at once:
+dev kit. An optional **secure build** hardens the device on three fronts:
 
-| Feature | Closes | Effect |
-|---------|--------|--------|
-| Flash Encryption | F-01-at-rest | a flash dump is ciphertext, useless without the key |
-| Encrypted NVS (`nvs_keys` partition) | F-16 | the Wi-Fi password / fees in NVS are encrypted |
-| Secure Boot v2 (RSA-3072) | F-02 | only firmware signed with your key boots |
+| Feature | Effect |
+|---------|--------|
+| Flash Encryption | a flash dump is ciphertext, useless without the key |
+| Encrypted NVS (`nvs_keys` partition) | the Wi-Fi password / fees in NVS are encrypted |
+| Secure Boot v2 (RSA-3072) | only firmware signed with your key boots |
 
 > [!CAUTION]
 > These burn **eFuses — IRREVERSIBLE**. Validate on a **sacrificial board

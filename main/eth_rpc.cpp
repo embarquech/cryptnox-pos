@@ -39,11 +39,11 @@ static const char *const TAG = "eth_rpc";
 /* Hex chars per byte */
 #define HEX_PER_BYTE  2U
 
-/* F-12: never dump full RPC responses (they can echo credentials embedded
+/* never dump full RPC responses (they can echo credentials embedded
  * in the URL) — log at most this many bytes on parse failures. */
 #define RESP_LOG_MAX  80
 
-/* F-09: sanity bound for the account nonce — a real terminal never gets
+/* sanity bound for the account nonce — a real terminal never gets
  * anywhere near 2^32 transactions, so anything above is a bogus response. */
 #define NONCE_MAX  0xFFFFFFFFULL
 
@@ -58,7 +58,7 @@ static const char *s_rpc_url     = NULL;
 static const char *s_from_addr   = NULL;
 static const char *s_project_id  = NULL;
 static const char *s_api_secret  = NULL;
-static const char *s_ca_cert     = NULL;   /* pinned cert (F-05); NULL = CA bundle */
+static const char *s_ca_cert     = NULL;   /* pinned cert; NULL = CA bundle */
 
 /******************************************************************
  * 4. HTTP helper
@@ -75,7 +75,7 @@ static const char *s_ca_cert     = NULL;   /* pinned cert (F-05); NULL = CA bund
  * @param[out] resp_buf      Response buffer, NUL-terminated on return.
  * @param[in]  resp_buf_size Capacity of @p resp_buf.
  * @return true only if at least one byte was read AND the server answered
- *         HTTP 200 (F-09); false on transport error or non-200 status.
+ *         HTTP 200; false on transport error or non-200 status.
  */
 static bool do_post(const char *body, char *resp_buf, size_t resp_buf_size)
 {
@@ -89,7 +89,7 @@ static bool do_post(const char *body, char *resp_buf, size_t resp_buf_size)
     cfg.url               = s_rpc_url;
     cfg.method            = HTTP_METHOD_POST;
     cfg.timeout_ms        = 15000;
-    /* F-05: if a cert was pinned via eth_rpc_set_ca_cert(), trust ONLY it —
+    /* if a cert was pinned via eth_rpc_set_ca_cert(), trust ONLY it —
      * otherwise any of the ~150 CAs in the Mozilla bundle could MITM the RPC. */
     if (s_ca_cert != NULL) {
         cfg.cert_pem = s_ca_cert;
@@ -137,7 +137,7 @@ static bool do_post(const char *body, char *resp_buf, size_t resp_buf_size)
 
         resp_buf[total] = '\0';
 
-        /* F-09: a 4xx/5xx body that happens to contain "result" must not
+        /* a 4xx/5xx body that happens to contain "result" must not
          * be mistaken for a successful JSON-RPC response. */
         int status = esp_http_client_get_status_code(client);
         if (status != 200) {
@@ -237,7 +237,7 @@ bool eth_rpc_get_nonce(uint64_t *nonce_out)
         ESP_LOGE(TAG, "nonce: malformed hex: %.*s", RESP_LOG_MAX, result);
         return false;
     }
-    /* F-09: strtoull saturates silently — reject absurd values outright. */
+    /* strtoull saturates silently — reject absurd values outright. */
     if (nonce > NONCE_MAX) {
         ESP_LOGE(TAG, "nonce: out of range: %" PRIu64, nonce);
         return false;
@@ -255,7 +255,7 @@ eth_rpc_parity_result_t eth_rpc_ecrecover_parity(const uint8_t hash[32],
 {
     /* Track whether at least one eth_call produced a usable recovered
      * address, so the caller can distinguish "RPC down" from "address
-     * mismatch" (F-10). */
+     * mismatch". */
     bool got_recovered = false;
 
     /* ecrecover precompile input: hash(32) || v_uint256(32) || r(32) || s(32) */
@@ -320,7 +320,7 @@ eth_rpc_parity_result_t eth_rpc_ecrecover_parity(const uint8_t hash[32],
         }
     }
 
-    /* F-10: no silent v=0 fallback — broadcasting with a wrong parity just
+    /* no silent v=0 fallback — broadcasting with a wrong parity just
      * produces an invalid signature and an opaque failure downstream. */
     if (got_recovered) {
         ESP_LOGE(TAG, "ecrecover: neither parity matches from_addr "
@@ -362,7 +362,7 @@ bool eth_rpc_send_raw_tx(const uint8_t *tx, size_t tx_len,
     if (!ok) { return false; }
 
     /* Extract the "result" string (the tx hash) with a real JSON parse, so
-     * a JSON-RPC error object is reported as a failure (F-09). */
+     * a JSON-RPC error object is reported as a failure. */
     char result[RESULT_STR_MAX];
     if (!eth_json_result_string(resp, result, sizeof(result))) {
         ESP_LOGE(TAG, "send_raw_tx: no result in: %.*s", RESP_LOG_MAX, resp);

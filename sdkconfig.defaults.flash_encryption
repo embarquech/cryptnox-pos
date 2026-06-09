@@ -4,10 +4,9 @@
 #   idf.py -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.flash_encryption" \
 #          build flash monitor
 #
-# Scope: Flash Encryption + encrypted NVS. Closes audit findings F-16 (NVS in
-# plaintext) and the at-rest half of F-01/F-02 (a flash dump no longer yields
-# the Wi-Fi password or any NVS secret). Secure Boot v2 is intentionally NOT
-# enabled here — that is a separate, later step.
+# Scope: Flash Encryption + encrypted NVS. Encrypts secrets at rest — a flash
+# dump no longer yields the Wi-Fi password or any NVS secret. Secure Boot v2 is
+# intentionally NOT enabled here — that is a separate, later step.
 # ============================================================================
 
 # --- Flash Encryption -------------------------------------------------------
@@ -36,7 +35,7 @@ CONFIG_NVS_ENCRYPTION=y
 # This board is ESP32-D0WD-V3 rev v3.1.
 CONFIG_ESP32_REV_MIN_3=y
 
-# --- Secure Boot v2 (firmware authenticity, finding F-02) -------------------
+# --- Secure Boot v2 (firmware authenticity) ---------------------------------
 # Only firmware signed with the RSA-3072 key below boots. The bootloader and
 # app are signed automatically at build time. First boot burns the public-key
 # digest (eFuse BLOCK2) + ABS_DONE_1 — ONE-WAY. Keep the .pem offline: losing

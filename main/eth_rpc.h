@@ -30,7 +30,7 @@ extern "C" {
  * 2. Types
  ******************************************************************/
 
-/** @brief Result of the ecrecover parity probe (F-10: failures are explicit). */
+/** @brief Result of the ecrecover parity probe (failures are explicit). */
 typedef enum {
     ETH_RPC_PARITY_OK = 0,      /**< *v_out is valid (0 or 1)                    */
     ETH_RPC_PARITY_MISMATCH,    /**< RPC answered but neither parity recovered
@@ -58,7 +58,7 @@ typedef enum {
  *
  * Lifetime: the module stores the pointers as-is (no copy).  Both strings
  * must outlive every eth_rpc_* call — pass string literals or static
- * storage, never stack buffers (F-19).
+ * storage, never stack buffers.
  *
  * @param[in] rpc_url   HTTPS JSON-RPC endpoint URL.
  * @param[in] from_addr "0x..."-prefixed 40-hex-char sender address.
@@ -76,7 +76,7 @@ void eth_rpc_init(const char *rpc_url, const char *from_addr);
 void eth_rpc_set_auth(const char *project_id, const char *api_secret);
 
 /**
- * @brief Optional: pin the RPC endpoint's TLS certificate (F-05).
+ * @brief Optional: pin the RPC endpoint's TLS certificate.
  *
  * When set, the HTTPS connection is validated **only** against this PEM
  * (leaf or its issuing CA) instead of the full Mozilla CA bundle, so no
@@ -91,7 +91,7 @@ void eth_rpc_set_ca_cert(const char *ca_pem);
  * @brief Fetch the pending transaction count (nonce) for from_addr.
  *
  * Responses with an HTTP status other than 200, malformed JSON, or a nonce
- * above 2^32-1 are rejected (F-09).
+ * above 2^32-1 are rejected.
  *
  * @param[out] nonce_out Nonce on success; untouched on failure.
  * @return true on success, false on transport, parse or range error.
@@ -111,7 +111,7 @@ bool eth_rpc_get_nonce(uint64_t *nonce_out);
  *                   failure.
  * @retval ETH_RPC_PARITY_OK        *v_out is valid.
  * @retval ETH_RPC_PARITY_MISMATCH  The RPC answered but neither parity
- *                                  recovers from_addr (F-10).
+ *                                  recovers from_addr.
  * @retval ETH_RPC_PARITY_RPC_ERROR No usable RPC response for either parity.
  */
 eth_rpc_parity_result_t eth_rpc_ecrecover_parity(const uint8_t hash[32],

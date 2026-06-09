@@ -7,8 +7,8 @@
  * fuzz_parse_address.cpp — libFuzzer harness for the hex address parser.
  *
  * Target: eth_addr_parse() — decodes a "0x"-optional 40-char hex string into a
- * 20-byte Ethereum address (audit F-07: address validation before it is baked
- * into the USDC transfer calldata).
+ * 20-byte Ethereum address (address validation before it is baked into the
+ * USDC transfer calldata).
  *
  * The parser lives in main/eth_addr.cpp, a pure unit (only <string.h>), so it
  * is #included directly — no copy, no risk of drift from the firmware.

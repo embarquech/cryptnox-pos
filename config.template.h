@@ -51,7 +51,7 @@
 /* #define RPC_URL         "https://sepolia.infura.io/v3/" RPC_PROJECT_ID */
 /* #define RPC_API_SECRET  "<YOUR_INFURA_API_SECRET>"                 */
 
-/* --- Optional: pin the RPC TLS certificate (audit F-05) ----------- */
+/* --- Optional: pin the RPC TLS certificate ----------- */
 /* By default the HTTPS chain is validated against the full Mozilla CA bundle
  * (~150 CAs, any of which could MITM). Define RPC_CA_CERT_PEM with the
  * endpoint's certificate (leaf, or — more stable across renewals — its issuing

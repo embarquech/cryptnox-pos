@@ -34,7 +34,7 @@ typedef enum {
  * @brief Extract the top-level @c "result" string from a JSON-RPC response.
  *
  * Uses a real JSON parser (cJSON) instead of strstr so that JSON-RPC error
- * objects, HTTP error bodies, or look-alike substrings are rejected (F-09).
+ * objects, HTTP error bodies, or look-alike substrings are rejected.
  *
  * @param[in]  resp     NUL-terminated response body.
  * @param[out] out      NUL-terminated "result" value on success; untouched

@@ -79,7 +79,7 @@ extern "C" {
 
 /* The card PIN is entered by the operator on the touchscreen keypad at sign
  * time (see ui PIN screen) — it is no longer baked into config.h, so the old
- * demo-PIN build guard (F-14) is gone. */
+ * demo-PIN build guard is gone. */
 
 static const char *const TAG = "cryptnox_pos";
 
@@ -113,7 +113,7 @@ static QueueHandle_t s_ui_queue = NULL;
  * by the main task after sign_and_broadcast returns so we skip the FAILED
  * flash and stay on the amount-entry screen.  std::atomic (seq_cst) rather
  * than volatile so the cross-task access is well-defined per the C++ memory
- * model (F-11). */
+ * model. */
 static std::atomic<bool> s_user_cancelled{false};
 
 /**
@@ -121,7 +121,7 @@ static std::atomic<bool> s_user_cancelled{false};
  *
  * Runs in the UI task context.  A Cancel tap also raises the atomic
  * @ref s_user_cancelled flag so the in-flight signing flow can abort
- * without waiting for the queue to drain (F-11).
+ * without waiting for the queue to drain.
  *
  * @param[in] event   UI event identifier.
  * @param[in] payload Event payload (amount in USDC base units, or 0).
@@ -150,7 +150,7 @@ static void ui_event_dispatch(ui_event_t event, uint64_t payload) {
  * @param[out] out    68-byte output buffer; contents are undefined on failure.
  * @param[in]  to_hex Recipient address as hex (with or without @c 0x prefix).
  * @param[in]  amount Transfer amount in USDC base units (6 decimals).
- * @return true on success, false if @p to_hex fails address validation (F-07).
+ * @return true on success, false if @p to_hex fails address validation.
  */
 static bool build_usdc_calldata(uint8_t out[68], const char *to_hex, uint64_t amount)
 {
@@ -198,7 +198,7 @@ struct WipeGuard {
  * Full pipeline: build calldata → fetch nonce → RLP-encode + keccak256 →
  * card connect/sign (cancellable) → ecrecover parity → broadcast.  The card
  * PIN is copied into the sign request at the last moment and scrubbed with
- * @c CW_Utils::secure_wipe immediately after signing (F-04); the message hash,
+ * @c CW_Utils::secure_wipe immediately after signing; the message hash,
  * signature and encoded transactions are scrubbed on every exit path via
  * @c WipeGuard.
  *
@@ -355,7 +355,7 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
     WipeGuard g_sig(result.signature, sizeof(result.signature));
     wallet.disconnect(session);
 
-    /* F-04: scrub the PIN immediately after use (secure_wipe is not
+    /* scrub the PIN immediately after use (secure_wipe is not
      * dead-store-eliminated); ~CW_SignRequest wipes it again as a backstop. */
     CW_Utils::secure_wipe(req.pin, sizeof(req.pin));
 
@@ -372,7 +372,7 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
         ui_show_tx_status(UI_TX_STATE_SENDING, NULL);
     }
 
-    /* F-10: the parity recovery now fails explicitly instead of silently
+    /* the parity recovery now fails explicitly instead of silently
      * defaulting to v=0, so the operator sees the actual root cause. */
     uint8_t v = 0U;
     switch (eth_rpc_ecrecover_parity(hash, sig_r, sig_s, &v)) {
@@ -396,7 +396,7 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
         return false;
     }
 
-    /* F-11: last cancel check right before the irreversible broadcast. */
+    /* last cancel check right before the irreversible broadcast. */
     if (s_user_cancelled) {
         return false;
     }
@@ -419,7 +419,7 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
  * @brief ESP-IDF application entry point.
  *
  * Brings up the UI (splash), NVS, PN532 reader, wallet, WiFi, and a
- * blocking SNTP time sync (F-06), then services UI events in the main
+ * blocking SNTP time sync, then services UI events in the main
  * interaction loop (amount → confirm → sign+broadcast).
  */
 /**
@@ -473,7 +473,7 @@ extern "C" void app_main(void)
 {
     ESP_LOGI(TAG, "===== cryptnox-pos boot =====");
 #ifdef CRYPTNOX_POS_DEV_BUILD
-    /* F-18: build timestamp helps firmware fingerprinting — dev builds only. */
+    /* build timestamp helps firmware fingerprinting — dev builds only. */
     ESP_LOGI(TAG, "Build: %s %s", __DATE__, __TIME__);
 #endif
     ESP_LOGI(TAG, "Tag:   %s", APP_VERSION_TAG);
@@ -548,7 +548,7 @@ extern "C" void app_main(void)
     eth_rpc_set_auth(RPC_PROJECT_ID, RPC_API_SECRET);
 #endif
 #ifdef RPC_CA_CERT_PEM
-    /* F-05: pin the RPC endpoint's certificate instead of the CA bundle. */
+    /* pin the RPC endpoint's certificate instead of the CA bundle. */
     eth_rpc_set_ca_cert(RPC_CA_CERT_PEM);
 #endif
     net_wifi_init();
@@ -556,7 +556,7 @@ extern "C" void app_main(void)
      * (config.h Wi-Fi is no longer used). */
     ensure_wifi();
 
-    /* F-06: block on a first SNTP sync so TLS certificate validity-period
+    /* block on a first SNTP sync so TLS certificate validity-period
      * checks run against real time instead of the 1970 epoch. Retry a couple
      * of rounds — flaky uplinks (phone hotspots) often need a second try. */
     bool time_ok = false;
@@ -610,7 +610,7 @@ extern "C" void app_main(void)
                                               pin, pin_chars,
                                               tx_hash, sizeof(tx_hash),
                                               err_msg, sizeof(err_msg));
-                /* F-04: scrub our copy of the PIN as soon as signing is done. */
+                /* scrub our copy of the PIN as soon as signing is done. */
                 CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(pin), sizeof(pin));
 
                 pending_amount = 0U;  /* next sign requires fresh New Payment flow */

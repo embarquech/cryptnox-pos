@@ -53,7 +53,7 @@ typedef struct {
  * @param[out] out     Output buffer for the encoded bytes.
  * @param[in]  out_max Capacity of @p out.
  * @return Total bytes written, or 0 if the output would overflow @p out_max
- *         or tx->calldata_len exceeds the internal scratch bound (F-08).
+ *         or tx->calldata_len exceeds the internal scratch bound.
  */
 size_t eth_rlp_encode_unsigned(const eth_tx_t *tx, uint8_t *out, size_t out_max);
 
@@ -68,7 +68,7 @@ size_t eth_rlp_encode_unsigned(const eth_tx_t *tx, uint8_t *out, size_t out_max)
  * @param[out] out     Output buffer for the encoded bytes.
  * @param[in]  out_max Capacity of @p out.
  * @return Total bytes written, or 0 if the output would overflow @p out_max
- *         or tx->calldata_len exceeds the internal scratch bound (F-08).
+ *         or tx->calldata_len exceeds the internal scratch bound.
  */
 size_t eth_rlp_encode_signed(const eth_tx_t *tx, uint8_t v,
                               const uint8_t r[32], const uint8_t s[32],

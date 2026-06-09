@@ -18,7 +18,7 @@
 # CONFIG_SECURE_FLASH_ENCRYPTION_MODE_DEVELOPMENT is not set
 CONFIG_SECURE_FLASH_ENCRYPTION_MODE_RELEASE=y
 
-# --- Quiet boot (finding F-18) ----------------------------------------------
+# --- Quiet boot ----------------------------------------------
 # No INFO logs on the UART: no app_init "Compile time" fingerprint, and our own
 # nonce / tx-hash lines are not echoed over serial.
 # CONFIG_LOG_DEFAULT_LEVEL_INFO is not set

@@ -80,8 +80,8 @@ bool net_wifi_rssi(int8_t *rssi_out);
  * @brief Block until the system clock has been set via SNTP.
  *
  * Must be called after net_wifi_connect() and before any HTTPS request:
- * without real time, TLS certificate validity-period checks are meaningless
- * (F-06).  SNTP keeps running in the background for periodic resyncs.
+ * without real time, TLS certificate validity-period checks are meaningless.
+ * SNTP keeps running in the background for periodic resyncs.
  *
  * @param[in] timeout_ms Maximum time to wait for the first sync.
  * @return true once the first sync completes, false on init error or timeout.

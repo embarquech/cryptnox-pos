@@ -11,7 +11,7 @@
  *   eth_rlp_encode_signed()     0x02 || RLP([..., v, r, s])
  *
  * Why fuzz it: in production the calldata is a fixed 68-byte USDC transfer,
- * but the length-prefixing and the internal scratch bound (audit F-08) are
+ * but the length-prefixing and the internal scratch bound are
  * exactly the kind of arithmetic that breaks under an attacker-chosen calldata
  * length — so we drive the full eth_tx_t from fuzz input and let ASan watch
  * the buffer math. eth_rlp.cpp routes every copy through CW_Utils::safe_memcpy
@@ -92,7 +92,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     }
 
     /* Whatever is left becomes the calldata — the only attacker-influenced
-     * length, which is what stresses the F-08 scratch bound. */
+     * length, which is what stresses the internal scratch bound. */
     tx.calldata     = (rem > 0U) ? p : NULL;
     tx.calldata_len = rem;
 

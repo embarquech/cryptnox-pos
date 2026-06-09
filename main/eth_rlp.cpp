@@ -23,7 +23,7 @@
 #define ITEMS_BUF_MAX  320U
 
 /*
- * Worst-case bytes consumed in items[] by every non-calldata field (F-08):
+ * Worst-case bytes consumed in items[] by every non-calldata field:
  *   5x uint64 (<=9 each = 45) + to (21) + eth_value (<=9) + calldata
  *   header (<=9) + empty access list (1) + v (<=9) + r (<=33) + s (<=33) = 160.
  * Any calldata longer than what remains would overflow the stack buffer
@@ -204,7 +204,7 @@ static size_t rlp_list_header(size_t content_len, uint8_t *out, size_t out_cap)
  * @brief Encode the nine common EIP-1559 fields into the items buffer.
  *
  * The calldata length is bounds-checked up front against @ref CALLDATA_MAX
- * so the fixed-size items buffer can never overflow (F-08).
+ * so the fixed-size items buffer can never overflow.
  *
  * @param[in]  tx        Transaction to encode.
  * @param[out] items     Scratch buffer.
@@ -245,7 +245,7 @@ size_t eth_rlp_encode_unsigned(const eth_tx_t *tx, uint8_t *out, size_t out_max)
 {
     uint8_t items[ITEMS_BUF_MAX];
     size_t  items_len = encode_common_fields(tx, items, sizeof(items));
-    if (items_len == 0U) { return 0U; }   /* calldata too large (F-08) */
+    if (items_len == 0U) { return 0U; }   /* calldata too large */
 
     uint8_t hdr[10];
     size_t  hdr_len = rlp_list_header(items_len, hdr, sizeof(hdr));
@@ -271,7 +271,7 @@ size_t eth_rlp_encode_signed(const eth_tx_t *tx, uint8_t v,
 {
     uint8_t items[ITEMS_BUF_MAX];
     size_t  items_len = encode_common_fields(tx, items, sizeof(items));
-    if (items_len == 0U) { return 0U; }   /* calldata too large (F-08) */
+    if (items_len == 0U) { return 0U; }   /* calldata too large */
 
     size_t w;
     w = rlp_uint64(static_cast<uint64_t>(v),
