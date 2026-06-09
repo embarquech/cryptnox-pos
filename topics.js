@@ -1,6 +1,7 @@
 var topics =
 [
     [ "Supported hardware", "index.html#supported-hardware", [
+      [ "cryptnox-pos", "index.html#cryptnox-pos", null ],
       [ "Built on", "index.html#built-on", null ],
       [ "Cryptnox Hardware Wallet smart cards", "index.html#cryptnox-hardware-wallet-smart-cards", null ],
       [ "NFC readers", "index.html#nfc-readers", null ],
