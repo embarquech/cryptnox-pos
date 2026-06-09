@@ -71,6 +71,7 @@ static XPT2046_Touchscreen touch(T_CS, T_IRQ);
 #define COL_SURFACE  lv_color_hex(0xF2F2F2)   /* light grey — cards/secondary  */
 #define COL_TEXT     lv_color_hex(0x000000)   /* black — primary text          */
 #define COL_DIM      lv_color_hex(0x9A9A9A)   /* grey — secondary labels       */
+#define COL_TITLE    lv_color_hex(0x424242)   /* dark grey — screen titles     */
 #define COL_ACCENT   lv_color_hex(0x000000)   /* black — primary action button */
 #define COL_SUCCESS  lv_color_hex(0x1E9E50)   /* green — "Sent"                */
 #define COL_DANGER   lv_color_hex(0xD63A3A)   /* red — failures / reset        */
@@ -884,7 +885,7 @@ static void add_menu_button(void) {
 /* Title + divider only — the burger (settings) lives solely on the amount
  * screen so settings can't be opened mid-transaction. */
 static void build_header(const char *title) {
-    make_label(lv_scr_act(), title, COL_DIM, &lv_font_montserrat_20,
+    make_label(lv_scr_act(), title, COL_TITLE, &lv_font_montserrat_20,
                LV_ALIGN_TOP_MID, 0, HDR_TITLE_Y);
     make_divider(lv_scr_act(), HDR_DIVIDER_Y);
 }
@@ -912,9 +913,6 @@ static void build_splash(void) {
     lv_obj_set_style_arc_width(sp, 3, LV_PART_INDICATOR);
     lv_obj_set_style_arc_color(sp, COL_SURFACE, LV_PART_MAIN);
     lv_obj_set_style_arc_color(sp, COL_ACCENT, LV_PART_INDICATOR);
-
-    make_label(lv_scr_act(), APP_VERSION, COL_DIM, &lv_font_montserrat_14,
-               LV_ALIGN_BOTTOM_MID, 0, -14);
 }
 
 static void build_amount(void) {
@@ -1039,7 +1037,7 @@ static void build_pin(void) {
     CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_pin), sizeof(s_pin));
     s_pin_len = 0;
 
-    make_label(lv_scr_act(), "Enter PIN", COL_DIM, &lv_font_montserrat_20,
+    make_label(lv_scr_act(), "Enter PIN", COL_TITLE, &lv_font_montserrat_20,
                LV_ALIGN_TOP_MID, 0, HDR_TITLE_Y);
     /* Back (cancel) icon, top-left like the burger on other screens. */
     (void)make_icon_button(LV_SYMBOL_LEFT, ACT_PIN_CANCEL);
@@ -1085,7 +1083,7 @@ static void build_pin(void) {
 
 /* Header with a back arrow (to amount entry) instead of the burger. */
 static void build_header_back(const char *title) {
-    make_label(lv_scr_act(), title, COL_DIM, &lv_font_montserrat_20,
+    make_label(lv_scr_act(), title, COL_TITLE, &lv_font_montserrat_20,
                LV_ALIGN_TOP_MID, 0, HDR_TITLE_Y);
     make_divider(lv_scr_act(), HDR_DIVIDER_Y);
     (void)make_icon_button(LV_SYMBOL_LEFT, ACT_WIFI_CANCEL);
