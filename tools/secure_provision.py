@@ -51,7 +51,15 @@ def fresh_check(port):
     """Abort unless every secure eFuse is still in its virgin state."""
     out = subprocess.check_output(
         efuse(port, "summary", "--format", "json"), text=True)
-    fuses = json.loads(out)
+    # espefuse can print a connection banner before (and log lines after) the
+    # JSON object, so isolate it instead of parsing the whole stdout.
+    start = out.find("{")
+    end = out.rfind("}")
+    if start < 0 or end < 0:
+        sys.exit("ABORT: espefuse returned no JSON summary (is the port free? "
+                 "close any idf.py monitor / serial monitor and retry).\n"
+                 "--- espefuse output ---\n" + out[:400])
+    fuses = json.loads(out[start:end + 1])
 
     def val(name):
         return fuses.get(name, {}).get("value")
