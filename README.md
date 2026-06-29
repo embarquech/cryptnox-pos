@@ -131,6 +131,15 @@ and a calibrated XPT2046 touch mapping. The backlight is PWM-dimmable (LEDC).
 
 ---
 
+## Enclosure
+
+The 3D-printed case in [`hardware/case/`](hardware/case/) is adapted from the
+[CYD (Cheap Yellow Display) Modular Case](https://www.thingiverse.com/thing:6991968)
+by **DanielBrunod**, licensed **CC BY-SA** — see
+[`hardware/case/CREDITS.md`](hardware/case/CREDITS.md).
+
+---
+
 ## Configuration
 
 `main/config.h` is gitignored. Copy `config.template.h` to `main/config.h`
