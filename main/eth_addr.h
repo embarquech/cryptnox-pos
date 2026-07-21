@@ -25,12 +25,15 @@ extern "C" {
  *
  * Accepts an optional @c 0x / @c 0X prefix, then requires exactly 40 hex
  * characters and rejects any non-hex input instead of silently decoding
- * garbage.
+ * garbage. A mixed-case input is treated as EIP-55 checksummed and its
+ * checksum is verified (keccak256 recomputed, rejected on case mismatch); an
+ * all-lower/all-upper input is accepted as un-checksummed.
  *
  * @param[in]  hex Address string (with or without @c 0x prefix).
  * @param[out] out 20-byte decoded address; zeroed then left partially written
  *                 on failure — must not be used unless true is returned.
- * @return true on success, false on wrong length or non-hex character.
+ * @return true on success, false on wrong length, non-hex character, or a
+ *         failed EIP-55 checksum.
  */
 bool eth_addr_parse(const char *hex, uint8_t out[20]);
 

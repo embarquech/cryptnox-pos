@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "main.cpp" "keccak256.cpp" "eth_addr.cpp" "eth_rlp.cpp"
+    SRCS "hardening.cpp" "main.cpp" "keccak256.cpp" "eth_addr.cpp" "eth_rlp.cpp"
          "eth_json.cpp" "eth_rpc.cpp" "net.cpp" "ui.cpp"
          "logo_img.c" "settings.cpp" "usdc_logo.c" "card_img.c" "logo_small.c"
     INCLUDE_DIRS "."

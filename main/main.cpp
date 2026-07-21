@@ -65,6 +65,7 @@ extern "C" {
 #include "pn532.h"
 #include "keccak256.h"
 #include "eth_addr.h"
+#include "hardening.h"
 #include "eth_rlp.h"
 #include "eth_rpc.h"
 #include "net.h"
@@ -109,6 +110,11 @@ typedef struct {
 
 static QueueHandle_t s_ui_queue = NULL;
 
+/* Dual-stored recipient (§3.2/§7.1): ADDR_TO parsed twice at boot into two
+ * independent copies, reconciled before calldata encode and before signing so
+ * a transient flip on the working copy can't redirect funds. */
+static pos_addr_t s_dest;
+
 /* Set from the UI task when the user taps Cancel during PLACE_CARD; checked
  * by the main task after sign_and_broadcast returns so we skip the FAILED
  * flash and stay on the amount-entry screen.  std::atomic (seq_cst) rather
@@ -147,26 +153,20 @@ static void ui_event_dispatch(ui_event_t event, uint64_t payload) {
  * selector(4) | zeroes(12) | to(20) | zeroes(24) | amount_be(8)
  * @endcode
  *
- * @param[out] out    68-byte output buffer; contents are undefined on failure.
- * @param[in]  to_hex Recipient address as hex (with or without @c 0x prefix).
+ * @param[out] out    68-byte output buffer.
+ * @param[in]  to     20-byte recipient address (already parsed/validated).
  * @param[in]  amount Transfer amount in USDC base units (6 decimals).
- * @return true on success, false if @p to_hex fails address validation.
  */
-static bool build_usdc_calldata(uint8_t out[68], const char *to_hex, uint64_t amount)
+static void build_usdc_calldata(uint8_t out[68], const uint8_t to[20], uint64_t amount)
 {
     (void)memset(out, 0, 68U);
     (void)CW_Utils::safe_memcpy(out, 68U, TRANSFER_SELECTOR, 4U);
-    uint8_t addr[20];
-    if (!eth_addr_parse(to_hex, addr)) {
-        return false;
-    }
-    (void)CW_Utils::safe_memcpy(out + 4U + 12U, 68U - (4U + 12U), addr, 20U);
+    (void)CW_Utils::safe_memcpy(out + 4U + 12U, 68U - (4U + 12U), to, 20U);
 
     size_t j;
     for (j = 0U; j < 8U; j++) {
         out[67U - j] = static_cast<uint8_t>((amount >> (8U * j)) & 0xFFU);
     }
-    return true;
 }
 
 /******************************************************************
@@ -217,16 +217,24 @@ struct WipeGuard {
  */
 static bool sign_and_broadcast(CryptnoxWallet &wallet,
                                 Pn532NfcTransport &transport,
-                                uint64_t amount_units,
+                                const pos_amount_t *amount,
+                                const pos_addr_t *to,
                                 const char *pin, size_t pin_chars,
                                 char *tx_hash_out, size_t tx_hash_max,
                                 char *err_out, size_t err_max)
 {
-    uint8_t calldata[68];
-    if (!build_usdc_calldata(calldata, "0x" ADDR_TO, amount_units)) {
-        (void)snprintf(err_out, err_max, "Bad ADDR_TO in config");
+    /* Reconcile amount + recipient right before they enter the calldata
+     * (§3.2/§7.1); a mismatch means the working copy was corrupted. */
+    if (!IS_TRUE32(amount_consistent(amount)) ||
+        !IS_TRUE32(address_consistent(to))) {
+        pos_handle_anomaly("pre-calldata reconcile");
+        (void)snprintf(err_out, err_max, "Integrity check failed");
         return false;
     }
+    const uint64_t amount_units = amount->amount_minor;
+
+    uint8_t calldata[68];
+    build_usdc_calldata(calldata, to->addr, amount_units);
 
     uint64_t nonce = 0U;
     if (!eth_rpc_get_nonce(&nonce)) {
@@ -342,6 +350,16 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
     req.hashLength       = static_cast<uint8_t>(CW_HASH_SIZE);
     req.derivePath       = eth_path;
     req.derivePathLength = static_cast<uint8_t>(sizeof(eth_path));
+
+    /* Re-reconcile amount + recipient right before signing — this is the last
+     * point before the card produces an irreversible signature over the
+     * calldata (§3.2/§7.1). */
+    if (!IS_TRUE32(amount_consistent(amount)) ||
+        !IS_TRUE32(address_consistent(to))) {
+        pos_handle_anomaly("pre-sign reconcile");
+        (void)snprintf(err_out, err_max, "Integrity check failed");
+        return false;
+    }
 
     /* Copy the operator-entered PIN into the request as late as possible;
      * req.pin is zero-initialised by the CW_SignRequest constructor. */
@@ -508,6 +526,16 @@ extern "C" void app_main(void)
     ui_set_addresses("0x" ADDR_USDC, "0x" ADDR_TO);
     ui_show_splash();
 
+    /* Parse ADDR_TO twice into the dual store (§7.1). Also runs the EIP-55
+     * checksum on ADDR_TO once at boot — a mistyped recipient is caught here,
+     * before any payment. */
+    if (!eth_addr_parse("0x" ADDR_TO, s_dest.addr) ||
+        !eth_addr_parse("0x" ADDR_TO, s_dest.addr_echo)) {
+        ESP_LOGE(TAG, "Bad ADDR_TO in config");
+        ui_show_tx_status(UI_TX_STATE_FAILED, "Bad ADDR_TO in config");
+        return;
+    }
+
     /* ── PN532 NFC reader ──────────────────────────────────────── */
     pn532_t nfc;
     (void)memset(&nfc, 0, sizeof(nfc));
@@ -574,7 +602,8 @@ extern "C" void app_main(void)
     /* ── Main interaction loop ────────────────────────────────── */
     ui_show_amount_entry();
 
-    uint64_t pending_amount = 0U;
+    pos_amount_t pending_amount;
+    pos_amount_set(&pending_amount, 0U);
     ui_msg_t msg;
 
     while (true) {
@@ -584,8 +613,17 @@ extern "C" void app_main(void)
 
         switch (msg.event) {
             case UI_EVENT_AMOUNT_CONFIRMED:
-                pending_amount = msg.payload;
-                ui_show_confirm(pending_amount, "0x" ADDR_TO);
+                pos_amount_set(&pending_amount, msg.payload);
+                /* Reconcile amount + recipient before they are shown to the
+                 * customer — displayed value must equal what gets signed. */
+                if (!IS_TRUE32(amount_consistent(&pending_amount)) ||
+                    !IS_TRUE32(address_consistent(&s_dest))) {
+                    pos_handle_anomaly("pre-display reconcile");
+                    ui_show_tx_status(UI_TX_STATE_FAILED, "Integrity check failed");
+                    pos_amount_set(&pending_amount, 0U);
+                    break;
+                }
+                ui_show_confirm(pending_amount.amount_minor, "0x" ADDR_TO);
                 break;
 
             case UI_EVENT_CONFIRM_CANCEL:
@@ -593,7 +631,7 @@ extern "C" void app_main(void)
                 break;
 
             case UI_EVENT_PIN_ENTERED: {
-                if (pending_amount == 0U) {
+                if (pending_amount.amount_minor == 0U) {
                     /* No fresh AMOUNT_CONFIRMED preceded this — likely a stale
                      * event from a stuck touch or queue replay. Drop it. */
                     ESP_LOGW(TAG, "stale PIN_ENTERED ignored");
@@ -606,14 +644,18 @@ extern "C" void app_main(void)
                 s_user_cancelled = false;
                 char tx_hash[68] = { 0 };
                 char err_msg[64] = { 0 };
-                bool ok = sign_and_broadcast(wallet, nfcTransport, pending_amount,
+                bool ok = sign_and_broadcast(wallet, nfcTransport,
+                                              &pending_amount, &s_dest,
                                               pin, pin_chars,
                                               tx_hash, sizeof(tx_hash),
                                               err_msg, sizeof(err_msg));
                 /* scrub our copy of the PIN as soon as signing is done. */
                 CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(pin), sizeof(pin));
 
-                pending_amount = 0U;  /* next sign requires fresh New Payment flow */
+                /* Snapshot the decided amount for the final gate, then clear
+                 * pending so the next sign needs a fresh New Payment flow. */
+                pos_amount_t decided = pending_amount;
+                pos_amount_set(&pending_amount, 0U);
                 if (s_user_cancelled) {
                     /* Cancel during PLACE_CARD — UI already on amount entry. */
                 } else if (ok) {
@@ -633,9 +675,23 @@ extern "C" void app_main(void)
                         /* PENDING or transient RPC error — try again. */
                         vTaskDelay(pdMS_TO_TICKS(4000));
                     }
-                    if (rc == ETH_RPC_RECEIPT_SUCCESS) {
+                    /* §4: render PAID only if the monotonic gate holds — the
+                     * on-chain APPROVED verdict AND amount/recipient still
+                     * self-consistent through the decide→render window. */
+                    pos_verdict_t verdict = (rc == ETH_RPC_RECEIPT_SUCCESS)
+                                                ? POS_VERDICT_APPROVED
+                                                : POS_VERDICT_DECLINED;
+                    bool32 decision =
+                        run_payment_decision(&decided, &s_dest, verdict);
+                    if (rc == ETH_RPC_RECEIPT_SUCCESS && IS_TRUE32(decision)) {
                         ESP_LOGI(TAG, "Tx confirmed on-chain");
                         ui_show_tx_status(UI_TX_STATE_DONE, tx_hash);
+                    } else if (rc == ETH_RPC_RECEIPT_SUCCESS) {
+                        /* Mined OK but the integrity gate failed — never show
+                         * PAID on a corrupted decision. */
+                        pos_handle_anomaly("final decision gate");
+                        ESP_LOGE(TAG, "Integrity gate failed post-receipt: %s", tx_hash);
+                        ui_show_tx_status(UI_TX_STATE_FAILED, "Integrity check failed");
                     } else if (rc == ETH_RPC_RECEIPT_REVERTED) {
                         ESP_LOGE(TAG, "Tx reverted on-chain: %s", tx_hash);
                         ui_show_tx_status(UI_TX_STATE_FAILED, "Payment reverted");
