@@ -15,6 +15,7 @@
 #include <stdbool.h>
 
 #include "keccak256.h"
+#include "CW_Utils.h"   /* SDK hardened primitives: secure_wipe */
 
 /**
  * @brief Decode a single ASCII hex digit.
@@ -40,7 +41,7 @@ bool eth_addr_parse(const char *hex, uint8_t out[20])
         return false;
     }
 
-    (void)memset(out, 0, 20U);
+    CW_Utils::secure_wipe(out, 20U);
 
     /* Single pass: validate every nibble, decode the 20 bytes, lower-case a
      * copy for the checksum hash, and note whether the source is mixed-case. */

@@ -159,7 +159,7 @@ static void ui_event_dispatch(ui_event_t event, uint64_t payload) {
  */
 static void build_usdc_calldata(uint8_t out[68], const uint8_t to[20], uint64_t amount)
 {
-    (void)memset(out, 0, 68U);
+    CW_Utils::secure_wipe(out, 68U);
     (void)CW_Utils::safe_memcpy(out, 68U, TRANSFER_SELECTOR, 4U);
     (void)CW_Utils::safe_memcpy(out + 4U + 12U, 68U - (4U + 12U), to, 20U);
 
@@ -243,7 +243,7 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
     }
 
     eth_tx_t tx;
-    (void)memset(&tx, 0, sizeof(tx));
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(&tx), sizeof(tx));
     tx.chain_id          = CHAIN_ID_SEPOLIA;
     tx.nonce             = nonce;
     /* Fees come from the settings menu (defaulting to the config.h values on
@@ -538,10 +538,10 @@ extern "C" void app_main(void)
 
     /* ── PN532 NFC reader ──────────────────────────────────────── */
     pn532_t nfc;
-    (void)memset(&nfc, 0, sizeof(nfc));
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(&nfc), sizeof(nfc));
 
     pn532_config_t nfc_cfg;
-    (void)memset(&nfc_cfg, 0, sizeof(nfc_cfg));
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(&nfc_cfg), sizeof(nfc_cfg));
     nfc_cfg.transport     = PN532_TRANSPORT_I2C;
     nfc_cfg.i2c_port      = PN532_I2C_PORT;
     nfc_cfg.pin_sda       = PN532_SDA;

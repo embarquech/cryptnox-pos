@@ -85,7 +85,7 @@ static bool do_post(const char *body, char *resp_buf, size_t resp_buf_size)
                      (s_api_secret != NULL) && (s_api_secret[0] != '\0'));
 
     esp_http_client_config_t cfg;
-    (void)memset(&cfg, 0, sizeof(cfg));
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(&cfg), sizeof(cfg));
     cfg.url               = s_rpc_url;
     cfg.method            = HTTP_METHOD_POST;
     cfg.timeout_ms        = 15000;
@@ -260,7 +260,7 @@ eth_rpc_parity_result_t eth_rpc_ecrecover_parity(const uint8_t hash[32],
 
     /* ecrecover precompile input: hash(32) || v_uint256(32) || r(32) || s(32) */
     uint8_t input[128];
-    (void)memset(input, 0, sizeof(input));
+    CW_Utils::secure_wipe(input, sizeof(input));
     (void)CW_Utils::safe_memcpy(input, sizeof(input), hash, 32U);
     /* v occupies the last byte of the second 32-byte slot (index 63) */
     (void)CW_Utils::safe_memcpy(input + 64U, sizeof(input) - 64U, r, 32U);

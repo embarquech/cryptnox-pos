@@ -125,7 +125,7 @@ uint16_t net_wifi_scan(net_wifi_ap_t *out, uint16_t max)
     if ((out == NULL) || (max == 0U)) { return 0U; }
 
     wifi_scan_config_t scan_cfg;
-    (void)memset(&scan_cfg, 0, sizeof(scan_cfg));   /* all channels, all SSIDs */
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(&scan_cfg), sizeof(scan_cfg));   /* all channels, all SSIDs */
     if (esp_wifi_scan_start(&scan_cfg, true) != ESP_OK) {
         return 0U;
     }
@@ -169,7 +169,7 @@ bool net_wifi_connect(const char *ssid, const char *password)
     s_retry_num = 0;
 
     wifi_config_t wifi_cfg;
-    (void)memset(&wifi_cfg, 0, sizeof(wifi_cfg));
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(&wifi_cfg), sizeof(wifi_cfg));
     (void)strncpy(reinterpret_cast<char *>(wifi_cfg.sta.ssid),     ssid,     sizeof(wifi_cfg.sta.ssid)     - 1U);
     (void)strncpy(reinterpret_cast<char *>(wifi_cfg.sta.password), password, sizeof(wifi_cfg.sta.password) - 1U);
     /* Open networks have an empty passphrase; otherwise require WPA2+. */

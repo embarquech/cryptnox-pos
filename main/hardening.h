@@ -26,6 +26,10 @@
 #include <string.h>
 
 #ifdef __cplusplus
+#include "CW_Utils.h"   /* SDK hardened primitives: constant-time secure_compare */
+#endif
+
+#ifdef __cplusplus
 extern "C" {
 #endif
 
@@ -90,7 +94,11 @@ static inline bool32 amount_consistent(const pos_amount_t *a)
 
 static inline bool32 address_consistent(const pos_addr_t *a)
 {
+#ifdef __cplusplus
+    return CW_Utils::secure_compare(a->addr, a->addr_echo, 20) ? TRUE32 : FALSE32;
+#else
     return (memcmp(a->addr, a->addr_echo, 20) == 0) ? TRUE32 : FALSE32;
+#endif
 }
 
 /**
