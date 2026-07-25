@@ -535,6 +535,11 @@ extern "C" void app_main(void)
         ui_show_tx_status(UI_TX_STATE_FAILED, "Bad ADDR_TO in config");
         return;
     }
+    /* Warn if ADDR_TO carries no EIP-55 checksum (no upper-case hex letter) —
+     * the boot-time typo check above is a no-op on an all-lowercase address. */
+    if (strpbrk(ADDR_TO, "ABCDEF") == NULL) {
+        ESP_LOGW(TAG, "ADDR_TO is all-lowercase: no EIP-55 checksum verified");
+    }
 
     /* ── PN532 NFC reader ──────────────────────────────────────── */
     pn532_t nfc;

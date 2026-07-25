@@ -137,7 +137,7 @@ int main(void)
     assert(IS_TRUE32(run_payment_decision(&amt, &to, POS_VERDICT_APPROVED)));
     assert(!IS_TRUE32(run_payment_decision(&amt, &to, POS_VERDICT_DECLINED)));
 
-    amt.amount_minor_echo ^= 1ULL;   /* simulate a bit-flip on the echo */
+    amt.amount_minor_inv ^= 1ULL;   /* simulate a bit-flip on the echo */
     assert(!IS_TRUE32(run_payment_decision(&amt, &to, POS_VERDICT_APPROVED)));
 
     pos_amount_set(&amt, 1000000ULL);

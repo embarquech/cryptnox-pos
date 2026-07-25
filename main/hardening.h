@@ -55,8 +55,9 @@ static_assert(POS_VERDICT_APPROVED == (pos_verdict_t)~POS_VERDICT_DECLINED,
 
 /* ── §3.2 dual-stored business data ───────────────────────────────── */
 typedef struct {
-    uint64_t amount_minor;       /**< primary (USDC base units, 6 dp) */
-    uint64_t amount_minor_echo;  /**< written independently           */
+    uint64_t amount_minor;      /**< primary (USDC base units, 6 dp)            */
+    uint64_t amount_minor_inv;  /**< bitwise complement of the primary, written
+                                     independently — anti-symmetric like bool32 */
 } pos_amount_t;
 
 typedef struct {
@@ -67,8 +68,9 @@ typedef struct {
 /** @brief Write both amount stores from one value (two independent writes). */
 static inline void pos_amount_set(pos_amount_t *a, uint64_t v)
 {
-    a->amount_minor      = v;
-    a->amount_minor_echo = v;
+    a->amount_minor     = v;
+    a->amount_minor_inv = ~v;   /* distinct pattern: the two stores can't be
+                                   proven redundant, so neither is elided */
 }
 
 /**
@@ -89,16 +91,14 @@ uint32_t pos_anomaly_count(void);
 
 static inline bool32 amount_consistent(const pos_amount_t *a)
 {
-    return (a->amount_minor == a->amount_minor_echo) ? TRUE32 : FALSE32;
+    return (a->amount_minor == (uint64_t)~a->amount_minor_inv) ? TRUE32 : FALSE32;
 }
 
 static inline bool32 address_consistent(const pos_addr_t *a)
 {
-#ifdef __cplusplus
+    /* ponytail: C++-only; every consumer is a .cpp. Restore a memcmp #else
+     * branch if a C translation unit ever needs this header. */
     return CW_Utils::secure_compare(a->addr, a->addr_echo, 20) ? TRUE32 : FALSE32;
-#else
-    return (memcmp(a->addr, a->addr_echo, 20) == 0) ? TRUE32 : FALSE32;
-#endif
 }
 
 /**
@@ -121,8 +121,15 @@ static inline bool32 run_payment_decision(const pos_amount_t *amount,
     if (!IS_TRUE32(amount_consistent(amount)))  { return FALSE32; }
     if (!IS_TRUE32(address_consistent(to)))     { return FALSE32; }
 
-    bool32 ok = TRUE32;
-    if (!IS_TRUE32(ok) || (verdict != POS_VERDICT_APPROVED)) { return FALSE32; }
+    /* volatile forces both witnesses to RAM and a real reload here, so the
+     * store→reload window is actually emitted (and checkable) in the optimized
+     * build — without it the compiler folds this to `return TRUE32`. This stops
+     * dead-code elimination, NOT a physical fault: an attacker who can glitch
+     * RAM can glitch the reload too. Robustness signal only — the FI boundary is
+     * the STM32U585 host (HARDENING.md §1/§5). */
+    volatile bool32        ok = TRUE32;
+    volatile pos_verdict_t v  = verdict;
+    if (!IS_TRUE32(ok) || (v != POS_VERDICT_APPROVED)) { return FALSE32; }
     return ok;
 }
 
