@@ -34,8 +34,13 @@ static const char *const TAG = "net";
 
 #define WIFI_CONNECTED_BIT  BIT0
 #define WIFI_FAIL_BIT       BIT1
-#define WIFI_MAX_RETRY      5
-#define WIFI_TIMEOUT_MS     30000
+/* Retries inside one connect call. Kept low: main.cpp retries the whole call
+ * (WIFI_SAVED_ATTEMPTS), and each of those resets the association properly. */
+#define WIFI_MAX_RETRY      2
+
+/* Way out when the association succeeds but no IP ever arrives (hung DHCP):
+ * the FAIL bit is never set, so only this timeout ends the call. */
+#define WIFI_TIMEOUT_MS     15000
 
 /******************************************************************
  * 2. Module state
