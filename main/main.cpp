@@ -97,7 +97,10 @@ static const char *const TAG = "cryptnox_pos";
 static const uint8_t TRANSFER_SELECTOR[4] = { 0xa9U, 0x05U, 0x9cU, 0xbbU };
 #define ABI_SELECTOR_LEN    4U     /* transfer(address,uint256) selector      */
 #define ABI_WORD_LEN        32U    /* one ABI-encoded argument word           */
-#define USDC_CALLDATA_LEN   (ABI_SELECTOR_LEN + (2U * ABI_WORD_LEN))  /* 68 */
+/* size_t multiply, as in ETH_ADDR_HEX_LEN: the length feeds size_t parameters
+ * (secure_wipe/safe_memcpy), and a narrower multiply widened there trips
+ * bugprone-implicit-widening-of-multiplication-result. */
+#define USDC_CALLDATA_LEN   (ABI_SELECTOR_LEN + ((size_t)ABI_WORD_LEN * 2U))  /* 68 */
 #define ABI_TO_OFFSET       (ABI_SELECTOR_LEN + (ABI_WORD_LEN - ETH_ADDR_LEN))
 
 /* ── Unsigned and signed tx buffers (EIP-1559 type 2) ─────────── */

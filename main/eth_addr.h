@@ -23,8 +23,15 @@ extern "C" {
 
 /** @brief Length of a raw (binary) Ethereum address, in bytes. */
 #define ETH_ADDR_LEN     20U
-/** @brief Length of the same address in hex characters (no @c 0x prefix). */
-#define ETH_ADDR_HEX_LEN (2U * ETH_ADDR_LEN)
+/**
+ * @brief Length of the same address in hex characters (no @c 0x prefix).
+ *
+ * Two hex chars per byte. The multiply is performed in @c size_t because every
+ * use site is a @c size_t context (@c strlen result, array bound, loop bound):
+ * multiplying in @c unsigned @c int and widening at the use site trips
+ * bugprone-implicit-widening-of-multiplication-result on a 64-bit host.
+ */
+#define ETH_ADDR_HEX_LEN ((size_t)ETH_ADDR_LEN * 2U)
 
 /**
  * @brief Parse a 20-byte Ethereum address from a hex string.
