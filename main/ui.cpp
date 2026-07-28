@@ -596,6 +596,16 @@ static void fee_step_cb(lv_event_t *e) {
     fee_update_labels();
 }
 
+/* Network dropdown: Ethereum only. Solana (index 1) is non-selectable — the
+ * Cryptnox card signs secp256k1/r1, Solana needs Ed25519, so any pick other
+ * than Ethereum snaps back to it. */
+static void network_dd_cb(lv_event_t *e) {
+    lv_obj_t *dd = lv_event_get_target(e);
+    if (lv_dropdown_get_selected(dd) != 0U) {
+        lv_dropdown_set_selected(dd, 0U);   /* Ethereum */
+    }
+}
+
 /* One "caption  [-] value [+]" row in the Tx tab; returns the value label. */
 static lv_obj_t *build_fee_row(lv_obj_t *parent, const char *cap, lv_coord_t y,
                                intptr_t dec_code, intptr_t inc_code) {
@@ -752,20 +762,27 @@ static void build_settings(void) {
                 lv_pct(100), ACT_BTN_H, LV_ALIGN_TOP_MID, 0, 104, ACT_WIFI,
                 &lv_font_montserrat_20);
 
-    /* ── Transaction tab: where the funds go (read-only) ── */
-    make_label(t_tx, "USDC contract", COL_DIM, &lv_font_montserrat_14,
+    /* ── Transaction tab ── */
+    /* Network selector at the top (Ethereum only; Solana listed but
+     * non-selectable). Dropdown last in z-order so its open list overlays the
+     * rows below it. */
+    make_label(t_tx, "Network", COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_LEFT, 0, 0);
+
+    /* Where the funds go (read-only). */
+    make_label(t_tx, "USDC contract", COL_DIM, &lv_font_montserrat_14,
+               LV_ALIGN_TOP_LEFT, 0, 64);
     lv_obj_t *a_usdc = make_label(t_tx, (s_addr_usdc != NULL) ? s_addr_usdc : "-",
                                   COL_TEXT, &lv_font_montserrat_14,
-                                  LV_ALIGN_TOP_LEFT, 0, 18);
+                                  LV_ALIGN_TOP_LEFT, 0, 82);
     lv_label_set_long_mode(a_usdc, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(a_usdc, 200);
 
     make_label(t_tx, "Send to", COL_DIM, &lv_font_montserrat_14,
-               LV_ALIGN_TOP_LEFT, 0, 64);
+               LV_ALIGN_TOP_LEFT, 0, 128);
     lv_obj_t *a_dest = make_label(t_tx, (s_addr_dest != NULL) ? s_addr_dest : "-",
                                   COL_TEXT, &lv_font_montserrat_14,
-                                  LV_ALIGN_TOP_LEFT, 0, 82);
+                                  LV_ALIGN_TOP_LEFT, 0, 146);
     lv_label_set_long_mode(a_dest, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(a_dest, 200);
 
@@ -773,9 +790,17 @@ static void build_settings(void) {
     s_maxfee_gwei = settings_get_max_fee_gwei();
     s_prio_gwei   = settings_get_priority_fee_gwei();
     if (s_prio_gwei > s_maxfee_gwei) { s_prio_gwei = s_maxfee_gwei; }
-    s_maxfee_lbl  = build_fee_row(t_tx, "Max fee (Gwei)",      128, 0, 1);
-    s_prio_lbl    = build_fee_row(t_tx, "Priority fee (Gwei)", 196, 2, 3);
+    s_maxfee_lbl  = build_fee_row(t_tx, "Max fee (Gwei)",      192, 0, 1);
+    s_prio_lbl    = build_fee_row(t_tx, "Priority fee (Gwei)", 260, 2, 3);
     fee_update_labels();
+
+    lv_obj_t *net_dd = lv_dropdown_create(t_tx);
+    lv_dropdown_set_options_static(net_dd, "Ethereum\nSolana");
+    lv_dropdown_set_selected(net_dd, 0);   /* Ethereum */
+    lv_obj_set_width(net_dd, 200);
+    lv_obj_align(net_dd, LV_ALIGN_TOP_LEFT, 0, 18);
+    lv_obj_set_style_text_font(net_dd, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_add_event_cb(net_dd, network_dd_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
     /* ── About tab: small C logo, name, version, info ── */
     lv_obj_t *blogo = lv_img_create(t_about);
