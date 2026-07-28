@@ -60,6 +60,11 @@ static const char *TAG = "ui";
 #define SCR_W   240
 #define SCR_H   320
 
+/* Splash logo X trim, tuned by eye on the panel: the bitmap is geometrically
+ * centred, but 0 reads as too far right. A calibration value — do not "correct"
+ * it from the image geometry. */
+#define LOGO_X_NUDGE (-4)
+
 static TFT_eSPI            tft;
 static SPIClass            touchSPI(VSPI);
 static XPT2046_Touchscreen touch(T_CS, T_IRQ);
@@ -922,9 +927,7 @@ static void build_splash(void) {
 
     lv_obj_t *logo = lv_img_create(lv_scr_act());
     lv_img_set_src(logo, &logo_img);
-    /* X offset tuned by eye on the panel — the bitmap is geometrically centred,
-     * but 0 reads as too far right. Do not "correct" it from the geometry. */
-    lv_obj_align(logo, LV_ALIGN_CENTER, -4, -36);
+    lv_obj_align(logo, LV_ALIGN_CENTER, LOGO_X_NUDGE, -36);
     /* No pop_in() here: at power-on the backlight has only just come up, so a
      * scale-in reads as the logo blinking. Kept for the tx check/cross. */
 
@@ -1140,7 +1143,7 @@ static void build_wifi_list(void) {
     build_header_back("Wi-Fi");
 
     /* Why the picker opened, otherwise the operator lands in Wi-Fi setup with no
-     * idea what failed. Fixed band, so the list sits the same at one or two lines. */
+     * idea what failed. */
     lv_coord_t list_y = 48;
     if (s_wifi_note[0] != '\0') {
         lv_obj_t *note = make_label(lv_scr_act(), s_wifi_note, COL_DANGER,
@@ -1149,7 +1152,10 @@ static void build_wifi_list(void) {
         lv_label_set_long_mode(note, LV_LABEL_LONG_WRAP);
         lv_obj_set_width(note, 216);
         lv_obj_set_style_text_align(note, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        list_y = 50 + 40;   /* two montserrat_14 lines + breathing room */
+        /* Measure rather than assume two lines: the list then clears the note at
+         * any wrap depth, so a longer message can never overprint it. */
+        lv_obj_update_layout(note);
+        list_y = 50 + lv_obj_get_height(note) + 6;
     }
 
     if (s_ap_count == 0U) {
@@ -1388,7 +1394,10 @@ static void build_boot_error(void) {
     lv_obj_set_style_text_align(b, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
 
     /* Technician detail, kept off the main message so the operator reads the
-     * instruction and not the error code. */
+     * instruction and not the error code. Sits at the foot of the screen, but
+     * never above the body: anchoring to the body instead of the screen edge
+     * means a long instruction or a long esp_err name clips at the bottom
+     * rather than overprinting the text the operator has to act on. */
     if (s_boot_detail[0] != '\0') {
         lv_obj_t *d = make_label(lv_scr_act(), s_boot_detail, COL_DIM,
                                  &lv_font_montserrat_14,
@@ -1396,6 +1405,13 @@ static void build_boot_error(void) {
         lv_label_set_long_mode(d, LV_LABEL_LONG_WRAP);
         lv_obj_set_width(d, 216);
         lv_obj_set_style_text_align(d, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+
+        lv_obj_update_layout(b);
+        lv_obj_update_layout(d);
+        const lv_coord_t body_end = lv_obj_get_y(b) + lv_obj_get_height(b) + 8;
+        if (lv_obj_get_y(d) < body_end) {
+            lv_obj_align(d, LV_ALIGN_TOP_MID, 0, body_end);
+        }
     }
 }
 

@@ -429,12 +429,40 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
 #define WIFI_SAVED_ATTEMPTS  3U
 #define TIME_SYNC_ATTEMPTS   3U
 
+/* Credentials the picker just joined with, held until a clock sync proves the
+ * network usable end to end (see wifi_keep_or_drop). Associating is not enough:
+ * a captive-portal or offline AP joins fine and would then be reached for on
+ * every boot. Deferring the write also means a transient NTP outage never
+ * erases a saved network that does work. */
+static char s_join_ssid[33] = { 0 };
+static char s_join_pass[65] = { 0 };
+
+/**
+ * @brief Persist or discard the pending picker credentials, then scrub them.
+ *
+ * @param[in] keep true once the clock is set — the only proof the network is
+ *                 actually usable; false to drop them unpersisted.
+ */
+static void wifi_keep_or_drop(bool keep)
+{
+    if (keep && (s_join_ssid[0] != '\0')) {
+        settings_set_wifi(s_join_ssid, s_join_pass);
+        ESP_LOGI(TAG, "saved network '%s' (clock synced)", s_join_ssid);
+    }
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_join_pass), sizeof(s_join_pass));
+    (void)memset(s_join_ssid, 0, sizeof(s_join_ssid));
+}
+
 /**
  * @brief Bring up Wi-Fi: retry the saved credentials, then run the network
  *        picker (scan → list → keyboard → connect) until connected.
  *
  * Blocks until a connection succeeds; the operator cannot leave setup without
  * one. config.h Wi-Fi credentials are intentionally not used (NVS only).
+ *
+ * A network joined through the picker is not persisted here — the credentials
+ * are staged for @ref wifi_keep_or_drop, which the caller invokes once the
+ * clock proves the uplink usable.
  *
  * @param[in] try_saved Try the saved credentials first; false goes straight to
  *                      the picker, for a saved network already proven unusable.
@@ -452,8 +480,9 @@ static bool ensure_wifi(bool try_saved, const char *note)
          * screen the operator never asked for. */
         ui_set_boot_status("Connecting to Wi-Fi");
         bool ok = false;
-        for (unsigned a = 1U; (a <= WIFI_SAVED_ATTEMPTS) && !ok; a++) {
-            ESP_LOGI(TAG, "Wi-Fi '%s': attempt %u/%u", ssid, a, WIFI_SAVED_ATTEMPTS);
+        for (uint32_t a = 1U; (a <= WIFI_SAVED_ATTEMPTS) && !ok; a++) {
+            ESP_LOGI(TAG, "Wi-Fi '%s': attempt %" PRIu32 "/%u",
+                     ssid, a, WIFI_SAVED_ATTEMPTS);
             ok = net_wifi_connect(ssid, pass);
         }
         CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(pass), sizeof(pass));
@@ -481,7 +510,12 @@ static bool ensure_wifi(bool try_saved, const char *note)
                 /* Interactive: the operator expects to see the attempt. */
                 ui_show_wifi_connecting(w_ssid);
                 ok = net_wifi_connect(w_ssid, w_pass);
-                if (ok) { settings_set_wifi(w_ssid, w_pass); }
+                if (ok) {
+                    /* Staged, not saved — wifi_keep_or_drop() decides once the
+                     * clock has proven this network carries real internet. */
+                    (void)snprintf(s_join_ssid, sizeof(s_join_ssid), "%s", w_ssid);
+                    (void)snprintf(s_join_pass, sizeof(s_join_pass), "%s", w_pass);
+                }
             }
             CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(w_pass), sizeof(w_pass));
             if (ok) { return true; }   /* the picker owns the screen */
@@ -506,8 +540,8 @@ static bool ensure_wifi(bool try_saved, const char *note)
  */
 static bool sync_time(void)
 {
-    for (unsigned a = 1U; a <= TIME_SYNC_ATTEMPTS; a++) {
-        ESP_LOGI(TAG, "SNTP sync: attempt %u/%u", a, TIME_SYNC_ATTEMPTS);
+    for (uint32_t a = 1U; a <= TIME_SYNC_ATTEMPTS; a++) {
+        ESP_LOGI(TAG, "SNTP sync: attempt %" PRIu32 "/%u", a, TIME_SYNC_ATTEMPTS);
         if (net_time_sync(15000U)) { return true; }
     }
     return false;
@@ -628,8 +662,14 @@ extern "C" void app_main(void)
             ui_show_splash();   /* only when the picker took the screen */
         }
         ui_set_boot_status("Syncing clock");
-        if (sync_time()) { break; }
+        if (sync_time()) {
+            wifi_keep_or_drop(true);    /* proven usable — safe to persist */
+            break;
+        }
         ESP_LOGE(TAG, "SNTP time sync failed on this network");
+        /* Drop it unpersisted: it associates, so keeping it would burn the whole
+         * sync budget on the splash every boot before reaching the picker. */
+        wifi_keep_or_drop(false);
         /* Force the picker: retrying the same network loops straight back here. */
         try_saved = false;
         net_note  = "No network time - this Wi-Fi has no usable internet";
