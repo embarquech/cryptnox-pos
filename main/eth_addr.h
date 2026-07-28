@@ -15,10 +15,16 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>   /* eth_addr_parse returns bool — keep this header self-contained */
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/** @brief Length of a raw (binary) Ethereum address, in bytes. */
+#define ETH_ADDR_LEN     20U
+/** @brief Length of the same address in hex characters (no @c 0x prefix). */
+#define ETH_ADDR_HEX_LEN (2U * ETH_ADDR_LEN)
 
 /**
  * @brief Parse a 20-byte Ethereum address from a hex string.
@@ -35,7 +41,7 @@ extern "C" {
  * @return true on success, false on wrong length, non-hex character, or a
  *         failed EIP-55 checksum.
  */
-bool eth_addr_parse(const char *hex, uint8_t out[20]);
+bool eth_addr_parse(const char *hex, uint8_t out[ETH_ADDR_LEN]);
 
 #ifdef __cplusplus
 }

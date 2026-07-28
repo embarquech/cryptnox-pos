@@ -93,8 +93,12 @@ static const char *const TAG = "cryptnox_pos";
 #define PN532_RST           (-1)
 #define PN532_I2C_HZ        100000U
 
-/* ── USDC ERC-20 transfer(address,uint256) selector ──────────── */
+/* ── USDC ERC-20 transfer(address,uint256) selector + calldata ── */
 static const uint8_t TRANSFER_SELECTOR[4] = { 0xa9U, 0x05U, 0x9cU, 0xbbU };
+#define ABI_SELECTOR_LEN    4U     /* transfer(address,uint256) selector      */
+#define ABI_WORD_LEN        32U    /* one ABI-encoded argument word           */
+#define USDC_CALLDATA_LEN   (ABI_SELECTOR_LEN + (2U * ABI_WORD_LEN))  /* 68 */
+#define ABI_TO_OFFSET       (ABI_SELECTOR_LEN + (ABI_WORD_LEN - ETH_ADDR_LEN))
 
 /* ── Unsigned and signed tx buffers (EIP-1559 type 2) ─────────── */
 #define TX_BUF_SIZE 300U
@@ -153,19 +157,26 @@ static void ui_event_dispatch(ui_event_t event, uint64_t payload) {
  * selector(4) | zeroes(12) | to(20) | zeroes(24) | amount_be(8)
  * @endcode
  *
- * @param[out] out    68-byte output buffer.
- * @param[in]  to     20-byte recipient address (already parsed/validated).
+ * @param[out] out    Output buffer of #USDC_CALLDATA_LEN bytes.
+ * @param[in]  to     Recipient address, #ETH_ADDR_LEN bytes (already
+ *                    parsed/validated).
  * @param[in]  amount Transfer amount in USDC base units (6 decimals).
  */
-static void build_usdc_calldata(uint8_t out[68], const uint8_t to[20], uint64_t amount)
+static void build_usdc_calldata(uint8_t out[USDC_CALLDATA_LEN],
+                                const uint8_t to[ETH_ADDR_LEN],
+                                uint64_t amount)
 {
-    CW_Utils::secure_wipe(out, 68U);
-    (void)CW_Utils::safe_memcpy(out, 68U, TRANSFER_SELECTOR, 4U);
-    (void)CW_Utils::safe_memcpy(out + 4U + 12U, 68U - (4U + 12U), to, 20U);
+    CW_Utils::secure_wipe(out, USDC_CALLDATA_LEN);
+    (void)CW_Utils::safe_memcpy(out, USDC_CALLDATA_LEN,
+                                TRANSFER_SELECTOR, ABI_SELECTOR_LEN);
+    (void)CW_Utils::safe_memcpy(out + ABI_TO_OFFSET,
+                                USDC_CALLDATA_LEN - ABI_TO_OFFSET,
+                                to, ETH_ADDR_LEN);
 
     size_t j;
-    for (j = 0U; j < 8U; j++) {
-        out[67U - j] = static_cast<uint8_t>((amount >> (8U * j)) & 0xFFU);
+    for (j = 0U; j < sizeof(amount); j++) {
+        out[(USDC_CALLDATA_LEN - 1U) - j] =
+            static_cast<uint8_t>((amount >> (8U * j)) & 0xFFU);
     }
 }
 
@@ -233,7 +244,7 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
     }
     const uint64_t amount_units = amount->amount_minor;
 
-    uint8_t calldata[68];
+    uint8_t calldata[USDC_CALLDATA_LEN];
     build_usdc_calldata(calldata, to->addr, amount_units);
 
     uint64_t nonce = 0U;
@@ -536,8 +547,14 @@ extern "C" void app_main(void)
         return;
     }
     /* Warn if ADDR_TO carries no EIP-55 checksum (no upper-case hex letter) —
-     * the boot-time typo check above is a no-op on an all-lowercase address. */
-    if (strpbrk(ADDR_TO, "ABCDEF") == NULL) {
+     * the boot-time typo check above is a no-op on an all-lowercase address.
+     * Manual scan, not strpbrk: ADDR_TO is a literal, so strpbrk(...)==NULL
+     * folds to a provably-false pointer compare (-Werror=address). */
+    bool addr_checksummed = false;
+    for (const char *pc = ADDR_TO; *pc != '\0'; ++pc) {
+        if ((*pc >= 'A') && (*pc <= 'F')) { addr_checksummed = true; break; }
+    }
+    if (!addr_checksummed) {
         ESP_LOGW(TAG, "ADDR_TO is all-lowercase: no EIP-55 checksum verified");
     }
 

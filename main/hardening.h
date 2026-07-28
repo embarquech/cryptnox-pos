@@ -9,14 +9,13 @@
  * @brief Decision-integrity primitives (see docs/HARDENING.md §3, §4).
  *
  * Anti-symmetric booleans, dual-stored business data (amount, recipient) and a
- * monotonic payment-decision gate. On ESP32 these give bit-flip robustness,
+ * fail-closed payment-decision gate. On ESP32 these give bit-flip robustness,
  * NOT a fault-injection boundary — scope any FI claim to the STM32U585 secure
  * host, per the threat model.
  *
  * The types and the *pure* comparators are header-only (no ESP-IDF deps) so
- * they build and self-test on the host (see the ETH_ADDR_SELFTEST block in
- * eth_addr.cpp). Anomaly persistence (NVS + log) lives in hardening.cpp,
- * firmware-only.
+ * they build and self-test on the host (see tests/units/test_hardening.cpp).
+ * Anomaly persistence (NVS + log) lives in hardening.cpp, firmware-only.
  */
 
 #ifndef HARDENING_H
@@ -24,6 +23,8 @@
 
 #include <stdint.h>
 #include <string.h>
+
+#include "eth_addr.h"   /* ETH_ADDR_LEN — the recipient is an ETH address */
 
 #ifdef __cplusplus
 #include "CW_Utils.h"   /* SDK hardened primitives: constant-time secure_compare */
@@ -61,8 +62,8 @@ typedef struct {
 } pos_amount_t;
 
 typedef struct {
-    uint8_t addr[20];       /**< primary 20-byte recipient      */
-    uint8_t addr_echo[20];  /**< parsed independently, compared */
+    uint8_t addr[ETH_ADDR_LEN];       /**< primary recipient              */
+    uint8_t addr_echo[ETH_ADDR_LEN];  /**< parsed independently, compared */
 } pos_addr_t;
 
 /** @brief Write both amount stores from one value (two independent writes). */
@@ -98,38 +99,34 @@ static inline bool32 address_consistent(const pos_addr_t *a)
 {
     /* ponytail: C++-only; every consumer is a .cpp. Restore a memcmp #else
      * branch if a C translation unit ever needs this header. */
-    return CW_Utils::secure_compare(a->addr, a->addr_echo, 20) ? TRUE32 : FALSE32;
+    return CW_Utils::secure_compare(a->addr, a->addr_echo, ETH_ADDR_LEN) ? TRUE32
+                                                                        : FALSE32;
 }
 
 /**
- * @brief §4 monotonic decision gate: return TRUE32 only if amount and
- *        recipient are self-consistent AND the verdict is the explicit
- *        APPROVED token — then re-confirm both in the decide→render window.
+ * @brief §4 decision gate: return TRUE32 only if amount and recipient are
+ *        self-consistent AND the verdict is the explicit APPROVED token.
  *
- * Pure: returns FALSE32 on any anomaly and leaves logging to the caller.
+ * Single exit, default FALSE32 — every unexpected path (including a flip on
+ * @p ok itself) leaves the gate closed. Pure: leaves logging to the caller.
+ *
+ * @param[in] amount  Dual-stored amount to reconcile.
+ * @param[in] to      Dual-stored recipient to reconcile.
+ * @param[in] verdict Verdict token from the operator's confirmation.
+ * @return TRUE32 to proceed with the payment, FALSE32 otherwise.
  */
 static inline bool32 run_payment_decision(const pos_amount_t *amount,
                                           const pos_addr_t   *to,
                                           pos_verdict_t       verdict)
 {
-    if (!IS_TRUE32(amount_consistent(amount)))  { return FALSE32; }
-    if (!IS_TRUE32(address_consistent(to)))     { return FALSE32; }
-    if (verdict != POS_VERDICT_APPROVED)        { return FALSE32; }
+    bool32 ok = FALSE32;
 
-    /* Re-confirm right before the outcome is committed — the window between
-     * "decided" and "rendered" is exactly where a UI-level flip pays off. */
-    if (!IS_TRUE32(amount_consistent(amount)))  { return FALSE32; }
-    if (!IS_TRUE32(address_consistent(to)))     { return FALSE32; }
+    if (IS_TRUE32(amount_consistent(amount)) &&
+        IS_TRUE32(address_consistent(to))    &&
+        (verdict == POS_VERDICT_APPROVED)) {
+        ok = TRUE32;
+    }
 
-    /* volatile forces both witnesses to RAM and a real reload here, so the
-     * store→reload window is actually emitted (and checkable) in the optimized
-     * build — without it the compiler folds this to `return TRUE32`. This stops
-     * dead-code elimination, NOT a physical fault: an attacker who can glitch
-     * RAM can glitch the reload too. Robustness signal only — the FI boundary is
-     * the STM32U585 host (HARDENING.md §1/§5). */
-    volatile bool32        ok = TRUE32;
-    volatile pos_verdict_t v  = verdict;
-    if (!IS_TRUE32(ok) || (v != POS_VERDICT_APPROVED)) { return FALSE32; }
     return ok;
 }
 

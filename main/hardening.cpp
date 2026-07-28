@@ -35,17 +35,39 @@ static volatile uint32_t s_ctr      = 0U;
 static volatile uint32_t s_ctr_echo = 0U;
 static bool              s_loaded   = false;
 
+/**
+ * @brief Read the persisted anomaly counter from NVS.
+ *
+ * @return The stored count, or 0 when nothing is stored yet or the entry
+ *         could not be read (never fails — a lost history must not brick).
+ */
 static uint32_t nvs_load_ctr(void)
 {
     uint32_t v = 0U;
     nvs_handle_t h;
     if (nvs_open(NS_HARDEN, NVS_READONLY, &h) == ESP_OK) {
-        (void)nvs_get_u32(h, K_ANOMALY, &v);
+        esp_err_t err = nvs_get_u32(h, K_ANOMALY, &v);
+        if (err == ESP_ERR_NVS_NOT_FOUND) {
+            /* First boot: no anomaly has ever been recorded. */
+        } else if (err != ESP_OK) {
+            /* The entry exists but failed its CRC — the history is lost, and
+             * that loss is itself worth surfacing to the technician. */
+            ESP_LOGE(TAG, "anomaly counter unreadable (%s), restarting from 0",
+                     esp_err_to_name(err));
+            v = 0U;
+        }
         nvs_close(h);
+    } else {
+        ESP_LOGW(TAG, "anomaly counter: nvs_open failed");
     }
     return v;
 }
 
+/**
+ * @brief Persist the anomaly counter to NVS.
+ *
+ * @param[in] v Counter value to store. Write failures are logged and ignored.
+ */
 static void nvs_store_ctr(uint32_t v)
 {
     nvs_handle_t h;
@@ -58,11 +80,19 @@ static void nvs_store_ctr(uint32_t v)
     }
 }
 
+/**
+ * @brief Lazily seed both counter copies from NVS on first use.
+ *
+ * Idempotent: later calls are no-ops, so every public entry point can call it
+ * without caring whether NVS has been read yet.
+ */
 static void ensure_loaded(void)
 {
     if (!s_loaded) {
-        s_ctr = s_ctr_echo = nvs_load_ctr();
-        s_loaded = true;
+        const uint32_t v = nvs_load_ctr();
+        s_ctr      = v;
+        s_ctr_echo = v;
+        s_loaded   = true;
     }
 }
 
@@ -74,8 +104,9 @@ void pos_handle_anomaly(const char *where)
     s_ctr_echo += 1U;
     if (s_ctr != s_ctr_echo) {
         /* the counter got glitched too — take the higher of the two */
-        uint32_t hi = (s_ctr > s_ctr_echo) ? s_ctr : s_ctr_echo;
-        s_ctr = s_ctr_echo = hi;
+        const uint32_t hi = (s_ctr > s_ctr_echo) ? s_ctr : s_ctr_echo;
+        s_ctr      = hi;
+        s_ctr_echo = hi;
     }
 
     anom_entry_t *e = &s_ring[s_ring_head % ANOM_RING];
