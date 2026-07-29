@@ -54,6 +54,39 @@ bool settings_get_wifi(char *ssid, size_t ssid_n, char *pass, size_t pass_n);
 void settings_set_wifi(const char *ssid, const char *pass);
 
 /**
+ * @brief true once an admin code exists, i.e. first-run setup is done.
+ *
+ * Cleared by @ref settings_factory_reset, so a reset device asks for a new code.
+ */
+bool settings_has_admin_code(void);
+
+/**
+ * @brief Store a new admin code, with a fresh random salt.
+ *
+ * The code is never persisted — only a salted, stretched keccak256 digest of it.
+ * Resets the failure counter.
+ *
+ * @param[in] code NUL-terminated code; the caller wipes its own copy.
+ */
+void settings_set_admin_code(const char *code);
+
+/**
+ * @brief Check a candidate code, maintaining the failure counter.
+ *
+ * @param[in] code NUL-terminated candidate.
+ * @return true on match (counter cleared); false on mismatch or when no code is
+ *         stored (counter incremented on a genuine mismatch).
+ */
+bool settings_check_admin_code(const char *code);
+
+/**
+ * @brief Consecutive failed unlock attempts, persisted.
+ *
+ * Kept in NVS so power-cycling does not clear the penalty the UI derives from it.
+ */
+uint8_t settings_admin_fail_count(void);
+
+/**
  * @brief EIP-1559 max fee per gas, in Gwei.
  * @return the stored override, or the config.h compile-time default (MAX_FEE)
  *         if the user has never changed it.

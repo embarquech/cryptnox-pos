@@ -281,6 +281,25 @@ static char          s_wifi_pass[65] = {0};   /* entered passphrase (handoff) */
 static char          s_wifi_msg[64]  = {0};   /* "Scanning…" / "Connecting to <ssid>…" */
 static lv_obj_t     *s_wifi_pass_ta  = NULL;
 
+/* Admin code (burger-menu lock). 4 digits on purpose: the threat is a customer
+ * left alone with the terminal for a minute, which the escalating penalty below
+ * already defeats. Someone with days of unattended physical access is out of
+ * scope for this code — the funds are behind the card PIN, not behind it. The
+ * merchant can always choose a longer one, up to ADMIN_CODE_MAX. */
+#define ADMIN_CODE_MIN   4
+#define ADMIN_CODE_MAX   9
+static lv_obj_t     *s_admin_ta      = NULL;
+static lv_obj_t     *s_admin_note_lbl = NULL;
+static char          s_admin_first[ADMIN_CODE_MAX + 1] = {0};  /* 1st of 2 passes */
+static char          s_admin_note[48] = {0};
+static bool          s_admin_confirming = false;   /* 2nd pass of the creation */
+static bool          s_welcome_sent     = false;   /* Start already reported */
+/* Penalty clock, monotonic since boot (lv_tick_elaps handles the wrap). The
+ * attempt count itself lives in NVS, so power-cycling shortens the current wait
+ * but never resets the escalation. */
+static uint32_t      s_admin_lock_start = 0;
+static uint32_t      s_admin_lock_ms    = 0;
+
 /* Destination info shown on the settings "Tx" tab (set by main, static). */
 static const char *s_addr_usdc = NULL;
 static const char *s_addr_dest = NULL;
@@ -302,7 +321,8 @@ static uint32_t  s_prio_gwei   = 0U;
 enum BtnAction {
     ACT_CONFIRM, ACT_CANCEL, ACT_SEND, ACT_NEW,
     ACT_SETTINGS, ACT_CLOSE, ACT_PIN_CANCEL,
-    ACT_WIFI, ACT_WIFI_CANCEL, ACT_RESET, ACT_RESET_CONFIRM, ACT_RESET_CANCEL,
+    ACT_WIFI, ACT_WIFI_CANCEL, ACT_ADMIN_CANCEL, ACT_WELCOME_OK,
+    ACT_RESET, ACT_RESET_CONFIRM, ACT_RESET_CANCEL,
 };
 
 /* Firmware version shown on the splash and the About tab. */
@@ -313,6 +333,7 @@ static void settings_persist(void);
 static void open_reset_confirm(void);
 static void close_reset_confirm(void);
 static void pop_in(lv_obj_t *obj);   /* defined in section 8 (animations) */
+static uint32_t admin_penalty_ms(uint8_t fails);   /* defined with the admin screens */
 static ui_screen_t s_settings_return = UI_SCREEN_AMOUNT;   /* screen to go back to */
 
 static void request_screen(ui_screen_t s) {
@@ -392,7 +413,42 @@ static void btn_event_cb(lv_event_t *e) {
             break;
         case ACT_SETTINGS:
             s_settings_return = s_req_screen;   /* remember where we came from */
-            request_screen(UI_SCREEN_SETTINGS);
+            /* One lock for the whole menu: Wi-Fi, fee caps and the factory reset
+             * are all merchant operations, and the reset in particular must not
+             * be one tap away from a customer left alone with the terminal.
+             *
+             * No code stored means first-run setup has not finished, so the tap
+             * is ignored rather than let through. main creates the code before
+             * anything else, so this state is never reachable for long — but it
+             * WAS reachable, by backing out of the first-run Wi-Fi picker onto
+             * the amount screen while main was still waiting. */
+            if (!settings_has_admin_code()) { break; }
+            s_admin_confirming = false;
+            s_admin_note[0]    = '\0';
+            /* Re-arm the wait from the persisted attempt count. The wait itself
+             * has to live in RAM — persisting a deadline would need a trustworthy
+             * absolute clock, and the wall clock is exactly what an attacker on
+             * the network can move — so a power cycle used to clear it and bring
+             * the cost of one guess down to a single reboot. Deriving it here
+             * instead makes the escalation survive reboots, at no extra write. */
+            s_admin_lock_ms    = admin_penalty_ms(settings_admin_fail_count());
+            s_admin_lock_start = lv_tick_get();
+            request_screen(UI_SCREEN_ADMIN_UNLOCK);
+            break;
+        case ACT_WELCOME_OK:
+            /* main answers by showing the code screen straight away, so there is
+             * nothing to fill here. Guarded all the same: request_screen only
+             * takes effect on the UI task's next pass, so a double tap could
+             * otherwise emit twice. */
+            if (!s_welcome_sent) {
+                s_welcome_sent = true;
+                if (s_cb != NULL) { s_cb(UI_EVENT_WELCOME_DONE, 0); }
+            }
+            break;
+        case ACT_ADMIN_CANCEL:
+            CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_admin_first),
+                                  sizeof(s_admin_first));
+            request_screen(UI_SCREEN_AMOUNT);
             break;
         case ACT_CLOSE:
             settings_persist();
@@ -501,6 +557,8 @@ static void clear_screen(void) {
     s_amount_usdc  = NULL;
     s_pin_ta       = NULL;   /* deleted by lv_obj_clean — drop the dangling ref */
     s_wifi_pass_ta = NULL;
+    s_admin_ta       = NULL;
+    s_admin_note_lbl = NULL;
     s_reset_btn    = NULL;
     s_close_btn    = NULL;
     s_maxfee_lbl   = NULL;
@@ -890,6 +948,46 @@ static void build_header(const char *title) {
     make_divider(lv_scr_act(), HDR_DIVIDER_Y);
 }
 
+/* First-run greeting. Same white/logo treatment as the splash, but this one waits
+ * for a tap: it is the only moment the terminal has the operator's attention
+ * before the setup steps start asking for things. */
+static void build_welcome(void) {
+    clear_screen();
+    lv_obj_set_style_bg_color(lv_scr_act(), lv_color_white(), LV_PART_MAIN);
+
+    /* Logo is 120x120: -70 puts it 30 px off the top edge and still leaves 18 px
+     * before the text. The whole column is hand-balanced — moving one offset
+     * eats into a neighbour, the screen has no slack left. */
+    lv_obj_t *logo = lv_img_create(lv_scr_act());
+    lv_img_set_src(logo, &logo_img);
+    lv_obj_align(logo, LV_ALIGN_CENTER, 0, -70);
+    pop_in(logo);   /* settled screen, so the flourish is welcome here */
+
+    /* "Thank you for choosing Cryptnox POS." split over two lines: the product
+     * name stays black to carry the sentence, the lead-in is grey. */
+    make_label(lv_scr_act(), "Thank you for choosing", COL_DIM,
+               &lv_font_montserrat_14, LV_ALIGN_CENTER, 0, 16);
+    lv_obj_t *brand = make_label(lv_scr_act(), "Cryptnox POS", COL_TEXT,
+                                 &lv_font_montserrat_20, LV_ALIGN_CENTER, 0, 44);
+
+    /* Anchored under the brand rather than to the screen centre: this sentence
+     * sits within a few pixels of the wrap threshold at 216 px, so an absolute
+     * offset would give a different gap depending on whether it takes one line
+     * or two. Width and long mode first, so the measurement sees them. */
+    lv_obj_t *sub = make_label(lv_scr_act(), "Let's configure your terminal.",
+                               COL_DIM, &lv_font_montserrat_14,
+                               LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_width(sub, SCR_W - 24);
+    lv_label_set_long_mode(sub, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(sub, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_update_layout(brand);
+    lv_obj_align_to(sub, brand, LV_ALIGN_OUT_BOTTOM_MID, 0, 8);
+
+    (void)make_button(lv_scr_act(), "Start", COL_ACCENT, COL_BG,
+                      SCR_W - 24, ACT_BTN_H, LV_ALIGN_BOTTOM_MID, 0, -10,
+                      ACT_WELCOME_OK, &lv_font_montserrat_20);
+}
+
 static void build_splash(void) {
     clear_screen();
     /* The logo is black-on-white; put the whole splash on white so it blends. */
@@ -1031,32 +1129,27 @@ static void pin_kbd_cb(lv_event_t *e) {
     }
 }
 
-static void build_pin(void) {
-    clear_screen();
-    /* Wipe any stale PIN from a previous attempt. */
-    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_pin), sizeof(s_pin));
-    s_pin_len = 0;
+/* Masked one-line code field, centred, with no soft-keyboard popup — the on-screen
+ * keypad is the only input. Shared by the card PIN and the admin code. */
+static lv_obj_t *make_code_field(uint32_t max_len, lv_coord_t y) {
+    lv_obj_t *ta = lv_textarea_create(lv_scr_act());
+    lv_textarea_set_password_mode(ta, true);
+    lv_textarea_set_one_line(ta, true);
+    lv_textarea_set_max_length(ta, max_len);
+    lv_textarea_set_text(ta, "");
+    lv_obj_clear_flag(ta, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_width(ta, 160);
+    lv_obj_align(ta, LV_ALIGN_TOP_MID, 0, y);
+    lv_obj_set_style_text_align(ta, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(ta, COL_SURFACE, LV_PART_MAIN);
+    lv_obj_set_style_text_color(ta, COL_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_border_color(ta, COL_BORDER, LV_PART_MAIN);
+    return ta;
+}
 
-    make_label(lv_scr_act(), "Enter PIN", COL_TITLE, &lv_font_montserrat_20,
-               LV_ALIGN_TOP_MID, 0, HDR_TITLE_Y);
-    /* Back (cancel) icon, top-left like the burger on other screens. */
-    (void)make_icon_button(LV_SYMBOL_LEFT, ACT_PIN_CANCEL);
-
-    /* Masked input field (password mode renders bullets). */
-    s_pin_ta = lv_textarea_create(lv_scr_act());
-    lv_textarea_set_password_mode(s_pin_ta, true);
-    lv_textarea_set_one_line(s_pin_ta, true);
-    lv_textarea_set_max_length(s_pin_ta, 9);
-    lv_textarea_set_text(s_pin_ta, "");
-    lv_obj_clear_flag(s_pin_ta, LV_OBJ_FLAG_CLICKABLE);   /* no soft-keyboard popup */
-    lv_obj_set_width(s_pin_ta, 160);
-    lv_obj_align(s_pin_ta, LV_ALIGN_TOP_MID, 0, 48);
-    lv_obj_set_style_text_align(s_pin_ta, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(s_pin_ta, COL_SURFACE, LV_PART_MAIN);
-    lv_obj_set_style_text_color(s_pin_ta, COL_TEXT, LV_PART_MAIN);
-    lv_obj_set_style_border_color(s_pin_ta, COL_BORDER, LV_PART_MAIN);
-
-    /* Numeric keypad. The map is static — lv_btnmatrix keeps the pointer. */
+/* Numeric keypad: no key boxes — black glyphs on white, grey flash on press.
+ * The map is static because lv_btnmatrix keeps the pointer. */
+static lv_obj_t *make_numeric_keypad(lv_event_cb_t cb) {
     static const char *kbd_map[] = {
         "1", "2", "3", "\n",
         "4", "5", "6", "\n",
@@ -1069,7 +1162,6 @@ static void build_pin(void) {
     lv_obj_align(kb, LV_ALIGN_BOTTOM_MID, 0, -6);
     lv_obj_set_style_bg_opa(kb, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(kb, 0, LV_PART_MAIN);
-    /* Minimal keypad: no key boxes — black glyphs on white, grey flash on press. */
     lv_obj_set_style_bg_opa(kb, LV_OPA_TRANSP, LV_PART_ITEMS);
     lv_obj_set_style_bg_color(kb, COL_SURFACE, LV_PART_ITEMS | LV_STATE_PRESSED);
     lv_obj_set_style_bg_opa(kb, LV_OPA_COVER, LV_PART_ITEMS | LV_STATE_PRESSED);
@@ -1078,7 +1170,171 @@ static void build_pin(void) {
     lv_obj_set_style_text_color(kb, COL_TEXT, LV_PART_ITEMS);
     lv_obj_set_style_text_font(kb, &lv_font_montserrat_28, LV_PART_ITEMS);
     lv_obj_set_style_radius(kb, 8, LV_PART_ITEMS);
-    lv_obj_add_event_cb(kb, pin_kbd_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_add_event_cb(kb, cb, LV_EVENT_VALUE_CHANGED, NULL);
+    return kb;
+}
+
+static void build_pin(void) {
+    clear_screen();
+    /* Wipe any stale PIN from a previous attempt. */
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_pin), sizeof(s_pin));
+    s_pin_len = 0;
+
+    make_label(lv_scr_act(), "Enter PIN", COL_TITLE, &lv_font_montserrat_20,
+               LV_ALIGN_TOP_MID, 0, HDR_TITLE_Y);
+    /* Back (cancel) icon, top-left like the burger on other screens. */
+    (void)make_icon_button(LV_SYMBOL_LEFT, ACT_PIN_CANCEL);
+
+    s_pin_ta = make_code_field(9U, 48);
+    (void)make_numeric_keypad(pin_kbd_cb);
+}
+
+/**
+ * @brief Wait imposed after repeated wrong admin codes.
+ *
+ * Free for the first three tries, then doubling, capped at 60 s. Never a
+ * permanent lock: the code gates the factory reset too, so locking for good
+ * would leave no way back in short of a USB reflash.
+ */
+static uint32_t admin_penalty_ms(uint8_t fails) {
+    if (fails < 3U) { return 0U; }
+    uint32_t shift = static_cast<uint32_t>(fails) - 3U;
+    if (shift > 6U) { shift = 6U; }          /* cap before the shift overflows */
+    uint32_t secs = 1U << shift;
+    if (secs > 60U) { secs = 60U; }
+    return secs * 1000U;
+}
+
+/* Seconds left on the penalty, 0 once it has elapsed. */
+static uint32_t admin_lock_remaining_s(void) {
+    if (s_admin_lock_ms == 0U) { return 0U; }
+    const uint32_t elapsed = lv_tick_elaps(s_admin_lock_start);
+    if (elapsed >= s_admin_lock_ms) {
+        s_admin_lock_ms = 0U;
+        return 0U;
+    }
+    return ((s_admin_lock_ms - elapsed) + 999U) / 1000U;
+}
+
+static void admin_set_note(const char *msg) {
+    strncpy(s_admin_note, (msg != NULL) ? msg : "", sizeof(s_admin_note) - 1);
+    s_admin_note[sizeof(s_admin_note) - 1] = '\0';
+    if (s_admin_note_lbl != NULL) {
+        lv_label_set_text(s_admin_note_lbl, s_admin_note);
+    }
+}
+
+static void admin_submit(void) {
+    if (s_admin_ta == NULL) { return; }
+
+    char code[ADMIN_CODE_MAX + 1] = {0};
+    const char *txt = lv_textarea_get_text(s_admin_ta);
+    strncpy(code, (txt != NULL) ? txt : "", sizeof(code) - 1);
+    code[sizeof(code) - 1] = '\0';
+
+    if (s_req_screen == UI_SCREEN_ADMIN_SET) {
+        if (!s_admin_confirming) {
+            if (strlen(code) < ADMIN_CODE_MIN) {
+                char msg[sizeof(s_admin_note)];
+                (void)snprintf(msg, sizeof(msg), "At least %d digits",
+                               ADMIN_CODE_MIN);
+                admin_set_note(msg);   /* built, so it cannot drift from the limit */
+            } else {
+                strncpy(s_admin_first, code, sizeof(s_admin_first) - 1);
+                s_admin_first[sizeof(s_admin_first) - 1] = '\0';
+                s_admin_confirming = true;
+                admin_set_note("");
+                request_screen(UI_SCREEN_ADMIN_SET);   /* rebuild, confirm pass */
+            }
+        } else if (strcmp(code, s_admin_first) == 0) {
+            settings_set_admin_code(code);
+            CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_admin_first),
+                                  sizeof(s_admin_first));
+            s_admin_confirming = false;
+            admin_set_note("");
+            /* Not the amount screen: this is the first-run path, so main answers
+             * by bringing the network up and that blocks on a scan for a couple
+             * of seconds — the payment keypad would flash up and be replaced by
+             * the Wi-Fi list. Say what is actually happening instead. */
+            strncpy(s_wifi_msg, "Scanning...", sizeof(s_wifi_msg) - 1);
+            s_wifi_msg[sizeof(s_wifi_msg) - 1] = '\0';
+            request_screen(UI_SCREEN_WIFI_CONNECTING);
+            if (s_cb != NULL) { s_cb(UI_EVENT_ADMIN_SET, 0); }
+        } else {
+            CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_admin_first),
+                                  sizeof(s_admin_first));
+            s_admin_confirming = false;
+            admin_set_note("Codes did not match");
+            request_screen(UI_SCREEN_ADMIN_SET);
+        }
+    } else {
+        const uint32_t wait_s = admin_lock_remaining_s();
+        char msg[sizeof(s_admin_note)];
+        if (wait_s > 0U) {
+            (void)snprintf(msg, sizeof(msg), "Too many tries - wait %us",
+                           static_cast<unsigned>(wait_s));
+            admin_set_note(msg);
+        } else if (settings_check_admin_code(code)) {
+            s_admin_lock_ms = 0U;
+            request_screen(UI_SCREEN_SETTINGS);
+        } else {
+            const uint32_t penalty = admin_penalty_ms(settings_admin_fail_count());
+            if (penalty > 0U) {
+                s_admin_lock_start = lv_tick_get();
+                s_admin_lock_ms    = penalty;
+                (void)snprintf(msg, sizeof(msg), "Wrong code - wait %us",
+                               static_cast<unsigned>(penalty / 1000U));
+                admin_set_note(msg);
+            } else {
+                admin_set_note("Wrong code");
+            }
+            lv_textarea_set_text(s_admin_ta, "");
+        }
+    }
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(code), sizeof(code));
+}
+
+static void admin_kbd_cb(lv_event_t *e) {
+    lv_obj_t *bm = lv_event_get_target(e);
+    uint32_t id = lv_btnmatrix_get_selected_btn(bm);
+    const char *txt = lv_btnmatrix_get_btn_text(bm, id);
+    if ((txt == NULL) || (s_admin_ta == NULL)) { return; }
+
+    if (strcmp(txt, LV_SYMBOL_OK) == 0) {
+        admin_submit();
+    } else if (strcmp(txt, LV_SYMBOL_BACKSPACE) == 0) {
+        lv_textarea_del_char(s_admin_ta);
+    } else if ((txt[0] >= '0') && (txt[0] <= '9') && (txt[1] == '\0')) {
+        lv_textarea_add_char(s_admin_ta, static_cast<uint32_t>(txt[0]));
+    }
+}
+
+/* Shared body of both admin screens; only the title and the way out differ. */
+static void build_admin_screen(const char *title, bool allow_cancel) {
+    clear_screen();
+    make_label(lv_scr_act(), title, COL_TITLE, &lv_font_montserrat_20,
+               LV_ALIGN_TOP_MID, 0, HDR_TITLE_Y);
+    if (allow_cancel) {
+        (void)make_icon_button(LV_SYMBOL_LEFT, ACT_ADMIN_CANCEL);
+    }
+
+    s_admin_ta = make_code_field(ADMIN_CODE_MAX, 44);
+
+    /* Note band above the keypad: wrong code, mismatch, or the remaining wait. */
+    s_admin_note_lbl = make_label(lv_scr_act(), s_admin_note, COL_DANGER,
+                                  &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0, 82);
+    (void)make_numeric_keypad(admin_kbd_cb);
+}
+
+static void build_admin_set(void) {
+    /* No way out: first-run setup is mandatory, since the whole menu — including
+     * the factory reset — hides behind this code. */
+    build_admin_screen(s_admin_confirming ? "Confirm code" : "Set admin code",
+                       false);
+}
+
+static void build_admin_unlock(void) {
+    build_admin_screen("Admin code", true);
 }
 
 /* Header with a back arrow (to amount entry) instead of the burger. */
@@ -1289,6 +1545,9 @@ static void render_requested_screen(void) {
         case UI_SCREEN_WIFI_CONNECTING: build_wifi_connecting(); break;
         case UI_SCREEN_SETTINGS:  build_settings();  break;
         case UI_SCREEN_TX_STATUS: build_tx_status(); break;
+        case UI_SCREEN_ADMIN_SET:    build_admin_set();    break;
+        case UI_SCREEN_ADMIN_UNLOCK: build_admin_unlock(); break;
+        case UI_SCREEN_WELCOME:      build_welcome();      break;
     }
 
     /* Guard the freshly built screen against a tap carried over from the
@@ -1450,6 +1709,19 @@ extern "C" void ui_show_wifi_connecting(const char *ssid) {
     snprintf(s_wifi_msg, sizeof(s_wifi_msg), "Connecting to %s...",
              (ssid != NULL) ? ssid : "");
     request_screen(UI_SCREEN_WIFI_CONNECTING);
+}
+
+extern "C" void ui_show_welcome(void) {
+    s_welcome_sent = false;
+    request_screen(UI_SCREEN_WELCOME);
+}
+
+extern "C" void ui_show_admin_set(void) {
+    s_admin_confirming = false;
+    s_admin_note[0]    = '\0';
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_admin_first),
+                          sizeof(s_admin_first));
+    request_screen(UI_SCREEN_ADMIN_SET);
 }
 
 extern "C" size_t ui_take_wifi_creds(char *ssid, size_t ssid_n,
