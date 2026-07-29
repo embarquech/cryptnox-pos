@@ -429,6 +429,13 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
 #define WIFI_SAVED_ATTEMPTS  3U
 #define TIME_SYNC_ATTEMPTS   3U
 
+/* Picker notes, shared by the boot bring-up and the settings Wi-Fi change so the
+ * two cannot drift apart. */
+static const char *const NOTE_JOIN_FAILED =
+    "Could not join that network - check the password";
+static const char *const NOTE_NO_TIME =
+    "No network time - this Wi-Fi has no usable internet";
+
 /* Credentials the picker just joined with, held until a clock sync proves the
  * network usable end to end (see wifi_keep_or_drop). Associating is not enough:
  * a captive-portal or offline AP joins fine and would then be reached for on
@@ -519,7 +526,7 @@ static bool ensure_wifi(bool try_saved, const char *note)
             }
             CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(w_pass), sizeof(w_pass));
             if (ok) { return true; }   /* the picker owns the screen */
-            note = "Could not join that network - check the password";
+            note = NOTE_JOIN_FAILED;
         } else if (msg.event == UI_EVENT_WIFI_SCAN) {
             note = NULL;   /* rescan asked for — the old reason is stale */
         }
@@ -667,12 +674,13 @@ extern "C" void app_main(void)
             break;
         }
         ESP_LOGE(TAG, "SNTP time sync failed on this network");
-        /* Drop it unpersisted: it associates, so keeping it would burn the whole
-         * sync budget on the splash every boot before reaching the picker. */
+        /* Drop the staged credentials, but leave an already-saved network alone:
+         * it may well work again after a reboot, and erasing it would cost the
+         * operator the password for what is often a transient outage. */
         wifi_keep_or_drop(false);
         /* Force the picker: retrying the same network loops straight back here. */
         try_saved = false;
-        net_note  = "No network time - this Wi-Fi has no usable internet";
+        net_note  = NOTE_NO_TIME;
     }
 
     ESP_LOGI(TAG, "Ready");
@@ -775,15 +783,30 @@ extern "C" void app_main(void)
                 if (ui_take_wifi_creds(w_ssid, sizeof(w_ssid),
                                        w_pass, sizeof(w_pass)) > 0U) {
                     ui_show_wifi_connecting(w_ssid);
-                    if (net_wifi_connect(w_ssid, w_pass)) {
+
+                    /* Same rule as boot: associating proves nothing, so make the
+                     * clock prove the uplink before overwriting saved credentials
+                     * that may well be working. One round only — the operator is
+                     * standing there and can tap again, where boot has to be
+                     * patient on its own. */
+                    const char *why = NULL;
+                    if (!net_wifi_connect(w_ssid, w_pass)) {
+                        why = NOTE_JOIN_FAILED;
+                    } else if (!net_time_sync(15000U)) {
+                        ESP_LOGW(TAG, "'%s' joined but has no network time -"
+                                      " not saved", w_ssid);
+                        why = NOTE_NO_TIME;
+                    } else {
                         settings_set_wifi(w_ssid, w_pass);   /* persist for next boot */
                         ui_show_amount_entry();
-                    } else {
-                        /* Failed — rescan and reopen the list, saying why. */
+                    }
+
+                    if (why != NULL) {
+                        /* Back to the picker with the reason, so another network
+                         * can be chosen instead of a dead end. */
                         net_wifi_ap_t aps[16];
                         uint16_t n = net_wifi_scan(aps, 16);
-                        ui_show_wifi_list(aps, n,
-                                          "Could not join that network - check the password");
+                        ui_show_wifi_list(aps, n, why);
                     }
                 }
                 CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(w_pass), sizeof(w_pass));

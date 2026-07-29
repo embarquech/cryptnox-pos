@@ -83,8 +83,11 @@ bool net_wifi_rssi(int8_t *rssi_out);
  * without real time, TLS certificate validity-period checks are meaningless.
  * SNTP keeps running in the background for periodic resyncs.
  *
- * @param[in] timeout_ms Maximum time to wait for the first sync.
- * @return true once the first sync completes, false on init error or timeout.
+ * Callable repeatedly: each call re-subscribes and waits for a fresh packet, so
+ * it doubles as a probe for whether the network just joined reaches the internet.
+ *
+ * @param[in] timeout_ms Maximum time to wait for the sync.
+ * @return true once the clock is set, false on init error or timeout.
  */
 bool net_time_sync(uint32_t timeout_ms);
 

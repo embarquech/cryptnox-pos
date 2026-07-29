@@ -49,6 +49,7 @@ static const char *const TAG = "net";
 static EventGroupHandle_t s_wifi_event_group = NULL;
 static int                s_retry_num        = 0;
 static bool               s_wifi_inited      = false;
+static bool               s_sntp_running     = false;
 
 /******************************************************************
  * 3. WiFi event handler
@@ -219,6 +220,15 @@ bool net_wifi_rssi(int8_t *rssi_out)
 
 bool net_time_sync(uint32_t timeout_ms)
 {
+    /* A successful sync leaves SNTP subscribed, so a second call would fail on
+     * ESP_ERR_INVALID_STATE. Drop it first: every call then waits for a fresh
+     * packet, which is what makes this usable as a per-network probe rather than
+     * a one-shot at boot. */
+    if (s_sntp_running) {
+        esp_netif_sntp_deinit();
+        s_sntp_running = false;
+    }
+
     /* Several reliable servers — phone hotspots often slow or drop NTP (UDP
      * 123) to pool.ntp.org, so fall back to Google / Cloudflare time. */
     esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(3,
@@ -242,13 +252,16 @@ bool net_time_sync(uint32_t timeout_ms)
         }
     }
 
+    /* Stay subscribed on failure too: lwIP then retries on its own (15 s, backing
+     * off to 150 s) and sets the clock if the network comes back. A deinit here
+     * would leave no client running at all. */
+    s_sntp_running = true;
+
     if (!synced) {
         ESP_LOGE(TAG, "SNTP sync timed out");
-        esp_netif_sntp_deinit();
         return false;
     }
 
     ESP_LOGI(TAG, "System time synced via SNTP");
-    /* Leave SNTP running for periodic background resyncs. */
     return true;
 }
