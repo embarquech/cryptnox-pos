@@ -802,6 +802,27 @@ extern "C" void app_main(void)
                     }
 
                     if (why != NULL) {
+                        /* Refusing to persist is not enough: the radio is still
+                         * associated with the network we just rejected, and the
+                         * picker's back arrow goes straight to amount entry. So
+                         * without this the terminal looks ready while every
+                         * payment fails at the RPC call. Roll back to the saved
+                         * network — which boot already proved usable — before
+                         * handing over the screen. Costs up to one association
+                         * timeout, hence the progress screen. */
+                        char b_ssid[33] = { 0 };
+                        char b_pass[65] = { 0 };
+                        if (settings_get_wifi(b_ssid, sizeof(b_ssid),
+                                              b_pass, sizeof(b_pass)) &&
+                            (b_ssid[0] != '\0')) {
+                            ESP_LOGW(TAG, "rolling back to saved network '%s'",
+                                     b_ssid);
+                            ui_show_wifi_connecting(b_ssid);
+                            (void)net_wifi_connect(b_ssid, b_pass);
+                        }
+                        CW_Utils::secure_wipe(
+                            reinterpret_cast<uint8_t *>(b_pass), sizeof(b_pass));
+
                         /* Back to the picker with the reason, so another network
                          * can be chosen instead of a dead end. */
                         net_wifi_ap_t aps[16];
