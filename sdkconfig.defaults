@@ -7,6 +7,20 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
 
+# Actually enforce certificate notBefore/notAfter. HAVE_TIME alone only buys
+# relative timekeeping (session-ticket expiry) — without HAVE_TIME_DATE
+# mbedTLS compiles the date comparison out entirely (x509_crt.c guards the
+# BADCERT_EXPIRED/BADCERT_FUTURE block on it), so an expired certificate is
+# accepted and the blocking SNTP sync at boot buys nothing.
+#
+# NOTE: sdkconfig is gitignored and an existing value there WINS over this
+# default — delete your sdkconfig (or flip the line by hand) after pulling.
+#
+# Safe with the current pinning: RPC_CA_CERT_PEM pins the GTS WE1
+# intermediate (notAfter = Feb 20 14:00:00 2029 GMT), so server-side leaf
+# renewals keep working. Re-pin before Feb 2029 regardless.
+CONFIG_MBEDTLS_HAVE_TIME_DATE=y
+
 # HTTPS support in the HTTP client
 CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS=y
 

@@ -569,6 +569,27 @@ extern "C" void app_main(void)
         return;
     }
 
+    /* One RPC round-trip at boot, for two reasons at once: it proves the
+     * endpoint is reachable, and it is the first request whose authenticated
+     * Date header can contradict the unauthenticated SNTP clock we just set.
+     * Without it a clock wrong in the *forward* direction — the direction that
+     * carries a certificate past its notAfter — would sail through boot and
+     * only surface mid-payment, with a customer waiting.
+     *
+     * Retried like the sync above, since a single failure is more often a
+     * flaky uplink than a hostile one. The payment path re-checks every
+     * request regardless, so this is early warning, not the enforcement. */
+    bool rpc_ok = false;
+    for (int attempt = 0; (attempt < 3) && !rpc_ok; attempt++) {
+        uint64_t boot_nonce = 0U;
+        rpc_ok = eth_rpc_get_nonce(&boot_nonce);
+    }
+    if (!rpc_ok) {
+        ESP_LOGE(TAG, "RPC unreachable or clock rejected at boot");
+        ui_show_tx_status(UI_TX_STATE_FAILED, "RPC/clock check failed - see log");
+        return;
+    }
+
     ESP_LOGI(TAG, "Ready");
 
     /* ── Main interaction loop ────────────────────────────────── */
