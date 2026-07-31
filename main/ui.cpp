@@ -1062,6 +1062,9 @@ static void build_pin(void) {
     /* Masked input field (password mode renders bullets). */
     s_pin_ta = lv_textarea_create(lv_scr_act());
     lv_textarea_set_password_mode(s_pin_ta, true);
+    /* Same grace period the Wi-Fi field disables, and the card PIN has less
+     * business flashing digits in clear than the passphrase does. */
+    lv_textarea_set_password_show_time(s_pin_ta, 0);
     lv_textarea_set_one_line(s_pin_ta, true);
     lv_textarea_set_max_length(s_pin_ta, 9);
     lv_textarea_set_text(s_pin_ta, "");
@@ -1172,6 +1175,11 @@ static void build_wifi_pass(void) {
     /* Masked by default: this screen faces the customer. The eye beside it
      * reveals on demand, for checking a long passphrase. */
     lv_textarea_set_password_mode(s_wifi_pass_ta, true);
+    /* Mask immediately, with no grace period. LVGL otherwise leaves each new
+     * character in clear for LV_TEXTAREA_DEF_PWD_SHOW_TIME (1500 ms here), which
+     * on a customer-facing screen hands a shoulder-surfer the whole passphrase
+     * one key at a time — the reveal is the eye's job, on the merchant's terms. */
+    lv_textarea_set_password_show_time(s_wifi_pass_ta, 0);
     lv_obj_set_width(s_wifi_pass_ta, SCR_W - 24 - MENU_BTN_W);
     lv_obj_align(s_wifi_pass_ta, LV_ALIGN_TOP_LEFT, 12, 28);
     lv_obj_set_style_bg_color(s_wifi_pass_ta, COL_SURFACE, LV_PART_MAIN);
