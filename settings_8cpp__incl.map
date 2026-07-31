@@ -1,19 +1,27 @@
 <map id="main/settings.cpp" name="main/settings.cpp">
-<area shape="rect" id="Node000001" title="NVS&#45;backed implementation of the persistent device settings." alt="" coords="263,5,402,31"/>
-<area shape="rect" id="Node000002" href="$settings_8h.html" title="Persistent device settings stored in NVS (backlight, Wi&#45;Fi creds)." alt="" coords="99,79,185,104"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="303,33,187,76,185,71,301,28"/>
-<area shape="rect" id="Node000006" title=" " alt="" coords="209,79,280,104"/>
-<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="320,33,271,72,268,68,317,29"/>
-<area shape="rect" id="Node000007" title=" " alt="" coords="304,79,361,104"/>
-<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="335,31,335,65,330,65,330,31"/>
-<area shape="rect" id="Node000008" title=" " alt="" coords="385,79,469,104"/>
-<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="349,29,402,68,399,72,346,33"/>
-<area shape="rect" id="Node000009" title=" " alt="" coords="493,79,567,104"/>
-<area shape="poly" id="edge8_Node000001_Node000009" title=" " alt="" coords="365,28,486,71,484,76,363,33"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="5,152,76,177"/>
-<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="127,106,70,146,67,142,124,102"/>
-<area shape="rect" id="Node000004" title=" " alt="" coords="101,152,183,177"/>
-<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="145,104,145,138,139,138,139,104"/>
-<area shape="rect" id="Node000005" title=" " alt="" coords="207,152,282,177"/>
-<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="160,102,218,142,215,146,157,106"/>
+<area shape="rect" id="Node000001" title="NVS&#45;backed implementation of the persistent device settings." alt="" coords="343,5,482,31"/>
+<area shape="rect" id="Node000002" href="$settings_8h.html" title="Persistent device settings stored in NVS (backlight, Wi&#45;Fi creds)." alt="" coords="132,79,219,104"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="375,33,228,77,226,72,374,28"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="243,79,313,104"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="392,33,313,74,311,70,390,28"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="337,79,395,104"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="407,32,383,69,379,66,403,30"/>
+<area shape="rect" id="Node000008" title=" " alt="" coords="419,79,503,104"/>
+<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="423,30,448,66,443,69,418,33"/>
+<area shape="rect" id="Node000009" title=" " alt="" coords="527,79,642,104"/>
+<area shape="poly" id="edge8_Node000001_Node000009" title=" " alt="" coords="441,28,545,71,543,76,439,33"/>
+<area shape="rect" id="Node000010" title=" " alt="" coords="666,79,759,104"/>
+<area shape="poly" id="edge9_Node000001_Node000010" title=" " alt="" coords="461,28,653,73,652,78,460,33"/>
+<area shape="rect" id="Node000011" href="$keccak256_8h.html" title="Original Keccak&#45;256 digest as used by Ethereum." alt="" coords="5,79,108,104"/>
+<area shape="poly" id="edge10_Node000001_Node000011" title=" " alt="" coords="356,33,122,80,121,74,355,28"/>
+<area shape="rect" id="Node000012" title=" " alt="" coords="784,79,857,104"/>
+<area shape="poly" id="edge13_Node000001_Node000012" title=" " alt="" coords="483,27,612,47,771,76,770,81,611,53,482,32"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="119,152,189,177"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="174,105,164,140,159,138,169,104"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="214,152,297,177"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="190,102,234,141,230,145,186,106"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="19,152,94,177"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="158,106,89,147,87,142,155,102"/>
+<area shape="poly" id="edge11_Node000011_Node000003" title=" " alt="" coords="74,102,128,141,125,146,71,106"/>
+<area shape="poly" id="edge12_Node000011_Node000005" title=" " alt="" coords="59,104,59,138,54,138,54,104"/>
 </map>

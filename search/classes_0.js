@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['eth_5ftx_5ft_0',['eth_tx_t',['../structeth__tx__t.html',1,'']]]
+  ['anom_5fentry_5ft_0',['anom_entry_t',['../structanom__entry__t.html',1,'']]]
 ];

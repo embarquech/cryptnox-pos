@@ -1,6 +1,8 @@
 var searchData=
 [
-  ['calldata_0',['calldata',['../structeth__tx__t.html#a27ff1aea011fdd7d0816ef5a88059ca4',1,'eth_tx_t']]],
-  ['calldata_5flen_1',['calldata_len',['../structeth__tx__t.html#a067c4eea13d63445ebfd1f5576727b76',1,'eth_tx_t']]],
-  ['chain_5fid_2',['chain_id',['../structeth__tx__t.html#a5d7283c07033aac7f521e8b8150d5166',1,'eth_tx_t']]]
+  ['addr_0',['addr',['../structpos__addr__t.html#a8e0a77d5d991fca59850c310d022dcde',1,'pos_addr_t']]],
+  ['addr_5fecho_1',['addr_echo',['../structpos__addr__t.html#a621357eed623c236e048685f5aef30ad',1,'pos_addr_t']]],
+  ['amount_5fminor_2',['amount_minor',['../structpos__amount__t.html#abe011591157a5b430b50d953d485d44a',1,'pos_amount_t']]],
+  ['amount_5fminor_5finv_3',['amount_minor_inv',['../structpos__amount__t.html#a8cae59a869af148241a6652a8891da46',1,'pos_amount_t']]],
+  ['at_5fcount_4',['at_count',['../structanom__entry__t.html#a7160664d21116ba9b76ce5fb84b65d4c',1,'anom_entry_t']]]
 ];

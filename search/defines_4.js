@@ -1,6 +1,5 @@
 var searchData=
 [
-  ['fee_5fmax_5fgwei_0',['FEE_MAX_GWEI',['../ui_8cpp.html#ae43377b554c0811dd3669f064523bd64',1,'ui.cpp']]],
-  ['fee_5fmin_5fgwei_1',['FEE_MIN_GWEI',['../ui_8cpp.html#ae840cf51dcd9a2d364e3503b2b4f7952',1,'ui.cpp']]],
-  ['fee_5fstep_5fgwei_2',['FEE_STEP_GWEI',['../ui_8cpp.html#ad3cab8f13bd19ca04727bff64f2fceb5',1,'ui.cpp']]]
+  ['eth_5faddr_5fhex_5flen_0',['ETH_ADDR_HEX_LEN',['../eth__addr_8h.html#a7234733ce1719ff96362dd68e5531c85',1,'eth_addr.h']]],
+  ['eth_5faddr_5flen_1',['ETH_ADDR_LEN',['../eth__addr_8h.html#a78fc3e3fe5c33412e9f47a214f6e0415',1,'eth_addr.h']]]
 ];

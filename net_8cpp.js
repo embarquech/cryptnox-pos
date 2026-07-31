@@ -13,6 +13,7 @@ var net_8cpp =
     [ "net_wifi_scan", "net_8cpp.html#a867a6c53b986cda4b652192a14565753", null ],
     [ "wifi_event_handler", "net_8cpp.html#ac31e38637f7a5e5c8ce4d033b0955fec", null ],
     [ "s_retry_num", "net_8cpp.html#ae4da33fdcdaa6688ed25dab508ed5592", null ],
+    [ "s_sntp_running", "net_8cpp.html#ab496eea23eef6396e6d21344d104124c", null ],
     [ "s_wifi_event_group", "net_8cpp.html#a6aaca350cca4b3d105d88a6f399cb381", null ],
     [ "s_wifi_inited", "net_8cpp.html#a5a67b39cd8bf0968ea4cb9a01dd62a5d", null ],
     [ "TAG", "net_8cpp.html#a4ef5b5f197804a60836ab1e8907d8301", null ]

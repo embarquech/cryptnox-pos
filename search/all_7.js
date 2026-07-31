@@ -1,13 +1,15 @@
 var searchData=
 [
-  ['hardware_0',['Supported hardware',['../index.html#supported-hardware',1,'']]],
-  ['hardware_20setup_1',['Hardware setup',['../index.html#hardware-setup',1,'']]],
-  ['hardware_20wallet_20smart_20cards_2',['Cryptnox Hardware Wallet smart cards',['../index.html#cryptnox-hardware-wallet-smart-cards',1,'']]],
-  ['hdr_5fdivider_5fy_3',['HDR_DIVIDER_Y',['../ui_8cpp.html#a48b6df0d8f2a03a744233b9bf0ece746',1,'ui.cpp']]],
-  ['hdr_5ftitle_5fy_4',['HDR_TITLE_Y',['../ui_8cpp.html#a4a0a6ff3d2c60d17b9dce470a0d50b65',1,'ui.cpp']]],
-  ['hex_5fnibble_5',['hex_nibble',['../eth__rpc_8cpp.html#a6bf679e2f6724eb2899eb08f3a82dda8',1,'eth_rpc.cpp']]],
-  ['hex_5fnibble_5fval_6',['hex_nibble_val',['../eth__addr_8cpp.html#a5fa491b178dd50fcffc38c6c46636593',1,'eth_addr.cpp']]],
-  ['hex_5fper_5fbyte_7',['HEX_PER_BYTE',['../eth__rpc_8cpp.html#aa987c4aef2205ae111e627a9725f2939',1,'eth_rpc.cpp']]],
-  ['host_20board_8',['Host board',['../index.html#host-board',1,'']]],
-  ['http_5fevent_5fcb_9',['http_event_cb',['../eth__rpc_8cpp.html#a9cbad727cc2a9e34cccb58560b19c056',1,'eth_rpc.cpp']]]
+  ['hardening_2ecpp_0',['hardening.cpp',['../hardening_8cpp.html',1,'']]],
+  ['hardening_2eh_1',['hardening.h',['../hardening_8h.html',1,'']]],
+  ['hardware_2',['Supported hardware',['../index.html#supported-hardware',1,'']]],
+  ['hardware_20setup_3',['Hardware setup',['../index.html#hardware-setup',1,'']]],
+  ['hardware_20wallet_20smart_20cards_4',['Cryptnox Hardware Wallet smart cards',['../index.html#cryptnox-hardware-wallet-smart-cards',1,'']]],
+  ['hdr_5fdivider_5fy_5',['HDR_DIVIDER_Y',['../ui_8cpp.html#a48b6df0d8f2a03a744233b9bf0ece746',1,'ui.cpp']]],
+  ['hdr_5ftitle_5fy_6',['HDR_TITLE_Y',['../ui_8cpp.html#a4a0a6ff3d2c60d17b9dce470a0d50b65',1,'ui.cpp']]],
+  ['hex_5fnibble_7',['hex_nibble',['../eth__rpc_8cpp.html#a6bf679e2f6724eb2899eb08f3a82dda8',1,'eth_rpc.cpp']]],
+  ['hex_5fnibble_5fval_8',['hex_nibble_val',['../eth__addr_8cpp.html#a5fa491b178dd50fcffc38c6c46636593',1,'eth_addr.cpp']]],
+  ['hex_5fper_5fbyte_9',['HEX_PER_BYTE',['../eth__rpc_8cpp.html#aa987c4aef2205ae111e627a9725f2939',1,'eth_rpc.cpp']]],
+  ['host_20board_10',['Host board',['../index.html#host-board',1,'']]],
+  ['http_5fevent_5fcb_11',['http_event_cb',['../eth__rpc_8cpp.html#a9cbad727cc2a9e34cccb58560b19c056',1,'eth_rpc.cpp']]]
 ];

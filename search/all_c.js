@@ -12,6 +12,11 @@ var searchData=
   ['nfc_20readers_9',['NFC readers',['../index.html#nfc-readers',1,'']]],
   ['nonce_10',['nonce',['../structeth__tx__t.html#aaf2fd7bf4fa4970abab1b23db88d18be',1,'eth_tx_t']]],
   ['nonce_5fmax_11',['NONCE_MAX',['../eth__rpc_8cpp.html#af62df3bcbbfae3443195a8a5b55eab80',1,'eth_rpc.cpp']]],
-  ['ns_5fsettings_12',['NS_SETTINGS',['../settings_8cpp.html#a9071ce359f8d002eb0abaa446fb63c0e',1,'settings.cpp']]],
-  ['nulllogger_13',['NullLogger',['../classNullLogger.html',1,'']]]
+  ['note_5fjoin_5ffailed_12',['NOTE_JOIN_FAILED',['../main_8cpp.html#a88b510df1910f36e55455c327249b36a',1,'main.cpp']]],
+  ['note_5fno_5ftime_13',['NOTE_NO_TIME',['../main_8cpp.html#a6d9acdc42c8d329f287ac14e86b36fc2',1,'main.cpp']]],
+  ['ns_5fharden_14',['NS_HARDEN',['../hardening_8cpp.html#a343f355d0ae9d2b5dee8ded03a0b3ee2',1,'hardening.cpp']]],
+  ['ns_5fsettings_15',['NS_SETTINGS',['../settings_8cpp.html#a9071ce359f8d002eb0abaa446fb63c0e',1,'settings.cpp']]],
+  ['nulllogger_16',['NullLogger',['../classNullLogger.html',1,'']]],
+  ['nvs_5fload_5fctr_17',['nvs_load_ctr',['../hardening_8cpp.html#af32f25e28b26fe3ef52f401f8b1cf661',1,'hardening.cpp']]],
+  ['nvs_5fstore_5fctr_18',['nvs_store_ctr',['../hardening_8cpp.html#a455037fc9a5d392bfbacfed611c544f4',1,'hardening.cpp']]]
 ];

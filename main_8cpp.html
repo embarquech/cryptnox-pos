@@ -132,6 +132,7 @@ document.addEventListener('DOMContentLoaded',() => { initNavTree('main_8cpp.html
 <code>#include &quot;freertos/queue.h&quot;</code><br />
 <code>#include &quot;driver/spi_master.h&quot;</code><br />
 <code>#include &quot;driver/gpio.h&quot;</code><br />
+<code>#include &quot;esp_err.h&quot;</code><br />
 <code>#include &quot;esp_log.h&quot;</code><br />
 <code>#include &quot;esp_timer.h&quot;</code><br />
 <code>#include &quot;nvs_flash.h&quot;</code><br />
@@ -145,6 +146,7 @@ document.addEventListener('DOMContentLoaded',() => { initNavTree('main_8cpp.html
 <code>#include &quot;pn532.h&quot;</code><br />
 <code>#include &quot;<a class="el" href="keccak256_8h_source.html">keccak256.h</a>&quot;</code><br />
 <code>#include &quot;<a class="el" href="eth__addr_8h_source.html">eth_addr.h</a>&quot;</code><br />
+<code>#include &quot;<a class="el" href="hardening_8h_source.html">hardening.h</a>&quot;</code><br />
 <code>#include &quot;<a class="el" href="eth__rlp_8h_source.html">eth_rlp.h</a>&quot;</code><br />
 <code>#include &quot;<a class="el" href="eth__rpc_8h_source.html">eth_rpc.h</a>&quot;</code><br />
 <code>#include &quot;<a class="el" href="net_8h_source.html">net.h</a>&quot;</code><br />
@@ -153,7 +155,7 @@ document.addEventListener('DOMContentLoaded',() => { initNavTree('main_8cpp.html
 </div><div class="textblock"><div class="dynheader">
 Include dependency graph for main.cpp:</div>
 <div class="dyncontent">
-<div class="center"><iframe scrolling="no" loading="lazy" frameborder="0" src="main_8cpp__incl.svg" width="3123" height="256"><p><b>This browser is not able to show SVG: try Firefox, Chrome, Safari, or Opera instead.</b></p></iframe></div>
+<div class="center"><iframe scrolling="no" loading="lazy" frameborder="0" src="main_8cpp__incl.svg" width="3430" height="256"><p><b>This browser is not able to show SVG: try Firefox, Chrome, Safari, or Opera instead.</b></p></iframe></div>
 </div>
 </div>
 <p><a href="main_8cpp_source.html">Go to the source code of this file.</a></p>
@@ -171,19 +173,32 @@ Macros</h2></td></tr>
 <tr class="memitem:a04eeb1db4f8381537f1075bb5abd4b36" id="r_a04eeb1db4f8381537f1075bb5abd4b36"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#a04eeb1db4f8381537f1075bb5abd4b36">PN532_IRQ</a>&#160;&#160;&#160;(-1)</td></tr>
 <tr class="memitem:a606424d1fd73f1524ec0d4e3203d9fab" id="r_a606424d1fd73f1524ec0d4e3203d9fab"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#a606424d1fd73f1524ec0d4e3203d9fab">PN532_RST</a>&#160;&#160;&#160;(-1)</td></tr>
 <tr class="memitem:a785980ca3a3f7ca30e4f6607effaca58" id="r_a785980ca3a3f7ca30e4f6607effaca58"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#a785980ca3a3f7ca30e4f6607effaca58">PN532_I2C_HZ</a>&#160;&#160;&#160;100000U</td></tr>
+<tr class="memitem:a8ac3f6d3e0397d09997ba5aee38dd7e8" id="r_a8ac3f6d3e0397d09997ba5aee38dd7e8"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#a8ac3f6d3e0397d09997ba5aee38dd7e8">ABI_SELECTOR_LEN</a>&#160;&#160;&#160;4U     /* transfer(address,uint256) selector      */</td></tr>
+<tr class="memitem:ac2d805657354840ae0a280aa01f258c0" id="r_ac2d805657354840ae0a280aa01f258c0"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#ac2d805657354840ae0a280aa01f258c0">ABI_WORD_LEN</a>&#160;&#160;&#160;32U    /* one ABI-encoded argument word           */</td></tr>
+<tr class="memitem:ae76115b1a46a228f57d674e8c422c44f" id="r_ae76115b1a46a228f57d674e8c422c44f"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#ae76115b1a46a228f57d674e8c422c44f">USDC_CALLDATA_LEN</a>&#160;&#160;&#160;(<a class="el" href="#a8ac3f6d3e0397d09997ba5aee38dd7e8">ABI_SELECTOR_LEN</a> + (2U * <a class="el" href="#ac2d805657354840ae0a280aa01f258c0">ABI_WORD_LEN</a>))  /* 68 */</td></tr>
+<tr class="memitem:a45922e0731a5d383545c084c1fb132a7" id="r_a45922e0731a5d383545c084c1fb132a7"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#a45922e0731a5d383545c084c1fb132a7">ABI_TO_OFFSET</a>&#160;&#160;&#160;(<a class="el" href="#a8ac3f6d3e0397d09997ba5aee38dd7e8">ABI_SELECTOR_LEN</a> + (<a class="el" href="#ac2d805657354840ae0a280aa01f258c0">ABI_WORD_LEN</a> - <a class="el" href="eth__addr_8h.html#a78fc3e3fe5c33412e9f47a214f6e0415">ETH_ADDR_LEN</a>))</td></tr>
 <tr class="memitem:a5d3fb1970e1e98050006978a14b3d95e" id="r_a5d3fb1970e1e98050006978a14b3d95e"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#a5d3fb1970e1e98050006978a14b3d95e">TX_BUF_SIZE</a>&#160;&#160;&#160;300U</td></tr>
 <tr class="memitem:a80ab8fb5621ffc952ecbb715322b2352" id="r_a80ab8fb5621ffc952ecbb715322b2352"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#a80ab8fb5621ffc952ecbb715322b2352">APP_VERSION_TAG</a>&#160;&#160;&#160;&quot;ui-r27 (cancellable connect loop)&quot;</td></tr>
+<tr class="memitem:af002955414725eb7bc904c9d1bb54da4" id="r_af002955414725eb7bc904c9d1bb54da4"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#af002955414725eb7bc904c9d1bb54da4">WIFI_SAVED_ATTEMPTS</a>&#160;&#160;&#160;3U</td></tr>
+<tr class="memdesc:af002955414725eb7bc904c9d1bb54da4"><td class="mdescLeft">&#160;</td><td class="mdescRight">ESP-IDF application entry point.  <br /></td></tr>
+<tr class="memitem:ad37e31ab6a533389e02cb41a4817bef2" id="r_ad37e31ab6a533389e02cb41a4817bef2"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#ad37e31ab6a533389e02cb41a4817bef2">TIME_SYNC_ATTEMPTS</a>&#160;&#160;&#160;3U</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 id="header-func-members" class="groupheader"><a id="func-members" name="func-members"></a>
 Functions</h2></td></tr>
 <tr class="memitem:afb52e5aa841a5387faa868ec0cfc15f4" id="r_afb52e5aa841a5387faa868ec0cfc15f4"><td class="memItemLeft">static void&#160;</td><td class="memItemRight"><a class="el" href="#afb52e5aa841a5387faa868ec0cfc15f4">ui_event_dispatch</a> (<a class="el" href="ui_8h.html#a9a99e204659fdc9573b3dc140ffeedd3">ui_event_t</a> event, uint64_t payload)</td></tr>
 <tr class="memdesc:afb52e5aa841a5387faa868ec0cfc15f4"><td class="mdescLeft">&#160;</td><td class="mdescRight">UI-task callback: forward a touch event to the main task queue.  <br /></td></tr>
-<tr class="memitem:aee37928ea69bedfc468a9beb3b518798" id="r_aee37928ea69bedfc468a9beb3b518798"><td class="memItemLeft">static bool&#160;</td><td class="memItemRight"><a class="el" href="#aee37928ea69bedfc468a9beb3b518798">build_usdc_calldata</a> (uint8_t out[68], const char *to_hex, uint64_t amount)</td></tr>
-<tr class="memdesc:aee37928ea69bedfc468a9beb3b518798"><td class="mdescLeft">&#160;</td><td class="mdescRight">Build the 68-byte ABI-encoded calldata for a USDC <code>transfer</code> call.  <br /></td></tr>
-<tr class="memitem:a3bf76a2039211bf46d73c58f44e6af0f" id="r_a3bf76a2039211bf46d73c58f44e6af0f"><td class="memItemLeft">static bool&#160;</td><td class="memItemRight"><a class="el" href="#a3bf76a2039211bf46d73c58f44e6af0f">sign_and_broadcast</a> (CryptnoxWallet &amp;wallet, Pn532NfcTransport &amp;transport, uint64_t amount_units, const char *pin, size_t pin_chars, char *tx_hash_out, size_t tx_hash_max, char *err_out, size_t err_max)</td></tr>
-<tr class="memdesc:a3bf76a2039211bf46d73c58f44e6af0f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Sign a USDC transfer on the card and broadcast it via JSON-RPC.  <br /></td></tr>
-<tr class="memitem:a9c72fd31d90d7fa1c114e4d8c1063bf1" id="r_a9c72fd31d90d7fa1c114e4d8c1063bf1"><td class="memItemLeft">static void&#160;</td><td class="memItemRight"><a class="el" href="#a9c72fd31d90d7fa1c114e4d8c1063bf1">ensure_wifi</a> (void)</td></tr>
-<tr class="memdesc:a9c72fd31d90d7fa1c114e4d8c1063bf1"><td class="mdescLeft">&#160;</td><td class="mdescRight">ESP-IDF application entry point.  <br /></td></tr>
+<tr class="memitem:abc5633634391300df7f9f943f41fea94" id="r_abc5633634391300df7f9f943f41fea94"><td class="memItemLeft">static void&#160;</td><td class="memItemRight"><a class="el" href="#abc5633634391300df7f9f943f41fea94">build_usdc_calldata</a> (uint8_t out[<a class="el" href="#ae76115b1a46a228f57d674e8c422c44f">USDC_CALLDATA_LEN</a>], const uint8_t to[<a class="el" href="eth__addr_8h.html#a78fc3e3fe5c33412e9f47a214f6e0415">ETH_ADDR_LEN</a>], uint64_t amount)</td></tr>
+<tr class="memdesc:abc5633634391300df7f9f943f41fea94"><td class="mdescLeft">&#160;</td><td class="mdescRight">Build the 68-byte ABI-encoded calldata for a USDC <code>transfer</code> call.  <br /></td></tr>
+<tr class="memitem:ad38fd2fce88a8da3bd15481c88e89d75" id="r_ad38fd2fce88a8da3bd15481c88e89d75"><td class="memItemLeft">static bool&#160;</td><td class="memItemRight"><a class="el" href="#ad38fd2fce88a8da3bd15481c88e89d75">sign_and_broadcast</a> (CryptnoxWallet &amp;wallet, Pn532NfcTransport &amp;transport, const <a class="el" href="structpos__amount__t.html">pos_amount_t</a> *amount, const <a class="el" href="structpos__addr__t.html">pos_addr_t</a> *to, const char *pin, size_t pin_chars, char *tx_hash_out, size_t tx_hash_max, char *err_out, size_t err_max)</td></tr>
+<tr class="memdesc:ad38fd2fce88a8da3bd15481c88e89d75"><td class="mdescLeft">&#160;</td><td class="mdescRight">Sign a USDC transfer on the card and broadcast it via JSON-RPC.  <br /></td></tr>
+<tr class="memitem:a45f2f4c0df1e5aae239ffc875bfc2a95" id="r_a45f2f4c0df1e5aae239ffc875bfc2a95"><td class="memItemLeft">static void&#160;</td><td class="memItemRight"><a class="el" href="#a45f2f4c0df1e5aae239ffc875bfc2a95">wifi_keep_or_drop</a> (bool keep)</td></tr>
+<tr class="memdesc:a45f2f4c0df1e5aae239ffc875bfc2a95"><td class="mdescLeft">&#160;</td><td class="mdescRight">Persist or discard the pending picker credentials, then scrub them.  <br /></td></tr>
+<tr class="memitem:a08303eb51e03922bf575854c6bb1c002" id="r_a08303eb51e03922bf575854c6bb1c002"><td class="memItemLeft">static void&#160;</td><td class="memItemRight"><a class="el" href="#a08303eb51e03922bf575854c6bb1c002">wait_for_ui_event</a> (<a class="el" href="ui_8h.html#a9a99e204659fdc9573b3dc140ffeedd3">ui_event_t</a> want)</td></tr>
+<tr class="memdesc:a08303eb51e03922bf575854c6bb1c002"><td class="mdescLeft">&#160;</td><td class="mdescRight">Block until the UI reports <code class="param">want</code>, discarding anything else.  <br /></td></tr>
+<tr class="memitem:ab1501281e6cb01d3684675cd5f7ead18" id="r_ab1501281e6cb01d3684675cd5f7ead18"><td class="memItemLeft">static bool&#160;</td><td class="memItemRight"><a class="el" href="#ab1501281e6cb01d3684675cd5f7ead18">ensure_wifi</a> (bool try_saved, const char *note)</td></tr>
+<tr class="memdesc:ab1501281e6cb01d3684675cd5f7ead18"><td class="mdescLeft">&#160;</td><td class="mdescRight">Bring up Wi-Fi: retry the saved credentials, then run the network picker (scan → list → keyboard → connect) until connected.  <br /></td></tr>
+<tr class="memitem:a795bec6eac52395ce73328296670ac98" id="r_a795bec6eac52395ce73328296670ac98"><td class="memItemLeft">static bool&#160;</td><td class="memItemRight"><a class="el" href="#a795bec6eac52395ce73328296670ac98">sync_time</a> (void)</td></tr>
+<tr class="memdesc:a795bec6eac52395ce73328296670ac98"><td class="mdescLeft">&#160;</td><td class="mdescRight">Block on an SNTP sync so TLS certificate validity-period checks run against real time instead of the 1970 epoch.  <br /></td></tr>
 <tr class="memitem:a630544a7f0a2cc40d8a7fefab7e2fe70" id="r_a630544a7f0a2cc40d8a7fefab7e2fe70"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#a630544a7f0a2cc40d8a7fefab7e2fe70">app_main</a> (void)</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 id="header-var-members" class="groupheader"><a id="var-members" name="var-members"></a>
@@ -191,7 +206,12 @@ Variables</h2></td></tr>
 <tr class="memitem:a4ef5b5f197804a60836ab1e8907d8301" id="r_a4ef5b5f197804a60836ab1e8907d8301"><td class="memItemLeft">static const char *const&#160;</td><td class="memItemRight"><a class="el" href="#a4ef5b5f197804a60836ab1e8907d8301">TAG</a> = &quot;cryptnox_pos&quot;</td></tr>
 <tr class="memitem:a0a0c78f86940abc6a3f2d706a275b98a" id="r_a0a0c78f86940abc6a3f2d706a275b98a"><td class="memItemLeft">static const uint8_t&#160;</td><td class="memItemRight"><a class="el" href="#a0a0c78f86940abc6a3f2d706a275b98a">TRANSFER_SELECTOR</a> [4] = { 0xa9U, 0x05U, 0x9cU, 0xbbU }</td></tr>
 <tr class="memitem:a2e89239103f265147a2e10259827353f" id="r_a2e89239103f265147a2e10259827353f"><td class="memItemLeft">static QueueHandle_t&#160;</td><td class="memItemRight"><a class="el" href="#a2e89239103f265147a2e10259827353f">s_ui_queue</a> = NULL</td></tr>
+<tr class="memitem:a8a04fcae204316043ece0f6c651ed57b" id="r_a8a04fcae204316043ece0f6c651ed57b"><td class="memItemLeft">static <a class="el" href="structpos__addr__t.html">pos_addr_t</a>&#160;</td><td class="memItemRight"><a class="el" href="#a8a04fcae204316043ece0f6c651ed57b">s_dest</a></td></tr>
 <tr class="memitem:a3fba9a1bad9bb6ef357f8efe7f15a365" id="r_a3fba9a1bad9bb6ef357f8efe7f15a365"><td class="memItemLeft">static std::atomic&lt; bool &gt;&#160;</td><td class="memItemRight"><a class="el" href="#a3fba9a1bad9bb6ef357f8efe7f15a365">s_user_cancelled</a> {false}</td></tr>
+<tr class="memitem:a88b510df1910f36e55455c327249b36a" id="r_a88b510df1910f36e55455c327249b36a"><td class="memItemLeft">static const char *const&#160;</td><td class="memItemRight"><a class="el" href="#a88b510df1910f36e55455c327249b36a">NOTE_JOIN_FAILED</a></td></tr>
+<tr class="memitem:a6d9acdc42c8d329f287ac14e86b36fc2" id="r_a6d9acdc42c8d329f287ac14e86b36fc2"><td class="memItemLeft">static const char *const&#160;</td><td class="memItemRight"><a class="el" href="#a6d9acdc42c8d329f287ac14e86b36fc2">NOTE_NO_TIME</a></td></tr>
+<tr class="memitem:a69bf13b7b4b56517bead10f9d363b236" id="r_a69bf13b7b4b56517bead10f9d363b236"><td class="memItemLeft">static char&#160;</td><td class="memItemRight"><a class="el" href="#a69bf13b7b4b56517bead10f9d363b236">s_join_ssid</a> [33] = { 0 }</td></tr>
+<tr class="memitem:aec6e9d08e75878e77f99a8d49eaf618e" id="r_aec6e9d08e75878e77f99a8d49eaf618e"><td class="memItemLeft">static char&#160;</td><td class="memItemRight"><a class="el" href="#aec6e9d08e75878e77f99a8d49eaf618e">s_join_pass</a> [65] = { 0 }</td></tr>
 </table>
 <a name="details" id="details"></a><h2 id="header-details" class="groupheader">Detailed Description</h2>
 <div class="textblock"><p>cryptnox-pos entry point: touchscreen USDC payment terminal. </p>
@@ -199,6 +219,58 @@ Variables</h2></td></tr>
 
 <p class="definition">Definition in file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 </div><a name="doc-define-members" id="doc-define-members"></a><h2 id="header-doc-define-members" class="groupheader">Macro Definition Documentation</h2>
+<a id="a8ac3f6d3e0397d09997ba5aee38dd7e8" name="a8ac3f6d3e0397d09997ba5aee38dd7e8"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a8ac3f6d3e0397d09997ba5aee38dd7e8">&#9670;&#160;</a></span>ABI_SELECTOR_LEN</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">#define ABI_SELECTOR_LEN&#160;&#160;&#160;4U     /* transfer(address,uint256) selector      */</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00099">99</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00166">build_usdc_calldata()</a>.</p>
+
+</div>
+</div>
+<a id="a45922e0731a5d383545c084c1fb132a7" name="a45922e0731a5d383545c084c1fb132a7"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a45922e0731a5d383545c084c1fb132a7">&#9670;&#160;</a></span>ABI_TO_OFFSET</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">#define ABI_TO_OFFSET&#160;&#160;&#160;(<a class="el" href="#a8ac3f6d3e0397d09997ba5aee38dd7e8">ABI_SELECTOR_LEN</a> + (<a class="el" href="#ac2d805657354840ae0a280aa01f258c0">ABI_WORD_LEN</a> - <a class="el" href="eth__addr_8h.html#a78fc3e3fe5c33412e9f47a214f6e0415">ETH_ADDR_LEN</a>))</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00102">102</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00166">build_usdc_calldata()</a>.</p>
+
+</div>
+</div>
+<a id="ac2d805657354840ae0a280aa01f258c0" name="ac2d805657354840ae0a280aa01f258c0"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ac2d805657354840ae0a280aa01f258c0">&#9670;&#160;</a></span>ABI_WORD_LEN</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">#define ABI_WORD_LEN&#160;&#160;&#160;32U    /* one ABI-encoded argument word           */</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00100">100</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+
+</div>
+</div>
 <a id="a80ab8fb5621ffc952ecbb715322b2352" name="a80ab8fb5621ffc952ecbb715322b2352"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a80ab8fb5621ffc952ecbb715322b2352">&#9670;&#160;</a></span>APP_VERSION_TAG</h2>
 
@@ -211,9 +283,9 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00416">416</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00446">446</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00472">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
 
 </div>
 </div>
@@ -229,9 +301,9 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00093">93</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00095">95</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00472">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
 
 </div>
 </div>
@@ -247,9 +319,9 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00088">88</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00090">90</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00472">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
 
 </div>
 </div>
@@ -265,9 +337,9 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00091">91</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00093">93</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00472">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
 
 </div>
 </div>
@@ -283,9 +355,9 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00092">92</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00094">94</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00472">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
 
 </div>
 </div>
@@ -301,9 +373,9 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00090">90</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00092">92</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00472">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
 
 </div>
 </div>
@@ -319,9 +391,27 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00089">89</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00091">91</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00472">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
+
+</div>
+</div>
+<a id="ad37e31ab6a533389e02cb41a4817bef2" name="ad37e31ab6a533389e02cb41a4817bef2"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ad37e31ab6a533389e02cb41a4817bef2">&#9670;&#160;</a></span>TIME_SYNC_ATTEMPTS</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">#define TIME_SYNC_ATTEMPTS&#160;&#160;&#160;3U</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00459">459</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00597">sync_time()</a>.</p>
 
 </div>
 </div>
@@ -337,9 +427,48 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00099">99</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00105">105</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00218">sign_and_broadcast()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00230">sign_and_broadcast()</a>.</p>
+
+</div>
+</div>
+<a id="ae76115b1a46a228f57d674e8c422c44f" name="ae76115b1a46a228f57d674e8c422c44f"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ae76115b1a46a228f57d674e8c422c44f">&#9670;&#160;</a></span>USDC_CALLDATA_LEN</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">#define USDC_CALLDATA_LEN&#160;&#160;&#160;(<a class="el" href="#a8ac3f6d3e0397d09997ba5aee38dd7e8">ABI_SELECTOR_LEN</a> + (2U * <a class="el" href="#ac2d805657354840ae0a280aa01f258c0">ABI_WORD_LEN</a>))  /* 68 */</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00101">101</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00166">build_usdc_calldata()</a>, and <a class="el" href="main_8cpp_source.html#l00230">sign_and_broadcast()</a>.</p>
+
+</div>
+</div>
+<a id="af002955414725eb7bc904c9d1bb54da4" name="af002955414725eb7bc904c9d1bb54da4"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#af002955414725eb7bc904c9d1bb54da4">&#9670;&#160;</a></span>WIFI_SAVED_ATTEMPTS</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">#define WIFI_SAVED_ATTEMPTS&#160;&#160;&#160;3U</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>ESP-IDF application entry point. </p>
+<p>Brings up the UI (splash), NVS, PN532 reader, wallet, WiFi, and a blocking SNTP time sync, then services UI events in the main interaction loop (amount → confirm → sign+broadcast). </p>
+
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00458">458</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00529">ensure_wifi()</a>.</p>
 
 </div>
 </div>
@@ -359,14 +488,14 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00472">472</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00606">606</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="main_8cpp_source.html#l00416">APP_VERSION_TAG</a>, <a class="el" href="main_8cpp_source.html#l00046">NullLogger::begin()</a>, <a class="el" href="main_8cpp_source.html#l00432">ensure_wifi()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00321">eth_rpc_get_nonce()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00499">eth_rpc_get_tx_receipt()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00304">eth_rpc_init()</a>, <a class="el" href="eth__rpc_8h_source.html#l00043">ETH_RPC_RECEIPT_PENDING</a>, <a class="el" href="eth__rpc_8h_source.html#l00045">ETH_RPC_RECEIPT_REVERTED</a>, <a class="el" href="eth__rpc_8h_source.html#l00044">ETH_RPC_RECEIPT_SUCCESS</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00310">eth_rpc_set_auth()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00316">eth_rpc_set_ca_cert()</a>, <a class="el" href="main_8cpp_source.html#l00106">ui_msg_t::event</a>, <a class="el" href="net_8cpp_source.html#l00252">net_time_sync()</a>, <a class="el" href="net_8cpp_source.html#l00168">net_wifi_connect()</a>, <a class="el" href="net_8cpp_source.html#l00100">net_wifi_init()</a>, <a class="el" href="net_8cpp_source.html#l00126">net_wifi_scan()</a>, <a class="el" href="main_8cpp_source.html#l00107">ui_msg_t::payload</a>, <a class="el" href="main_8cpp_source.html#l00093">PN532_I2C_HZ</a>, <a class="el" href="main_8cpp_source.html#l00088">PN532_I2C_PORT</a>, <a class="el" href="main_8cpp_source.html#l00091">PN532_IRQ</a>, <a class="el" href="main_8cpp_source.html#l00092">PN532_RST</a>, <a class="el" href="main_8cpp_source.html#l00090">PN532_SCL</a>, <a class="el" href="main_8cpp_source.html#l00089">PN532_SDA</a>, <a class="el" href="main_8cpp_source.html#l00110">s_ui_queue</a>, <a class="el" href="main_8cpp_source.html#l00117">s_user_cancelled</a>, <a class="el" href="settings_8cpp_source.html#l00102">settings_set_wifi()</a>, <a class="el" href="main_8cpp_source.html#l00218">sign_and_broadcast()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00036">TAG</a>, <a class="el" href="ui_8h_source.html#l00049">UI_EVENT_AMOUNT_CONFIRMED</a>, <a class="el" href="ui_8h_source.html#l00051">UI_EVENT_CONFIRM_CANCEL</a>, <a class="el" href="main_8cpp_source.html#l00129">ui_event_dispatch()</a>, <a class="el" href="ui_8h_source.html#l00052">UI_EVENT_PIN_ENTERED</a>, <a class="el" href="ui_8h_source.html#l00055">UI_EVENT_TX_RETRY</a>, <a class="el" href="ui_8h_source.html#l00053">UI_EVENT_WIFI_SCAN</a>, <a class="el" href="ui_8h_source.html#l00054">UI_EVENT_WIFI_TRY</a>, <a class="el" href="ui_8cpp_source.html#l01318">ui_init()</a>, <a class="el" href="ui_8cpp_source.html#l01369">ui_set_addresses()</a>, <a class="el" href="ui_8cpp_source.html#l01331">ui_show_amount_entry()</a>, <a class="el" href="ui_8cpp_source.html#l01337">ui_show_confirm()</a>, <a class="el" href="ui_8cpp_source.html#l01327">ui_show_splash()</a>, <a class="el" href="ui_8cpp_source.html#l01394">ui_show_tx_status()</a>, <a class="el" href="ui_8cpp_source.html#l01374">ui_show_wifi_connecting()</a>, <a class="el" href="ui_8cpp_source.html#l01361">ui_show_wifi_list()</a>, <a class="el" href="ui_8cpp_source.html#l01348">ui_take_pin()</a>, <a class="el" href="ui_8cpp_source.html#l01380">ui_take_wifi_creds()</a>, <a class="el" href="ui_8h_source.html#l00064">UI_TX_STATE_CONFIRMING</a>, <a class="el" href="ui_8h_source.html#l00065">UI_TX_STATE_DONE</a>, and <a class="el" href="ui_8h_source.html#l00066">UI_TX_STATE_FAILED</a>.</p>
+<p class="reference">References <a class="el" href="hardening_8h_source.html#l00098">address_consistent()</a>, <a class="el" href="hardening_8h_source.html#l00093">amount_consistent()</a>, <a class="el" href="hardening_8h_source.html#l00059">pos_amount_t::amount_minor</a>, <a class="el" href="main_8cpp_source.html#l00446">APP_VERSION_TAG</a>, <a class="el" href="main_8cpp_source.html#l00047">NullLogger::begin()</a>, <a class="el" href="main_8cpp_source.html#l00529">ensure_wifi()</a>, <a class="el" href="eth__addr_8cpp_source.html#l00034">eth_addr_parse()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00321">eth_rpc_get_nonce()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00499">eth_rpc_get_tx_receipt()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00304">eth_rpc_init()</a>, <a class="el" href="eth__rpc_8h_source.html#l00043">ETH_RPC_RECEIPT_PENDING</a>, <a class="el" href="eth__rpc_8h_source.html#l00045">ETH_RPC_RECEIPT_REVERTED</a>, <a class="el" href="eth__rpc_8h_source.html#l00044">ETH_RPC_RECEIPT_SUCCESS</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00310">eth_rpc_set_auth()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00316">eth_rpc_set_ca_cert()</a>, <a class="el" href="main_8cpp_source.html#l00112">ui_msg_t::event</a>, <a class="el" href="hardening_8h_source.html#l00043">IS_TRUE32</a>, <a class="el" href="net_8cpp_source.html#l00258">net_time_sync()</a>, <a class="el" href="net_8cpp_source.html#l00174">net_wifi_connect()</a>, <a class="el" href="net_8cpp_source.html#l00106">net_wifi_init()</a>, <a class="el" href="net_8cpp_source.html#l00132">net_wifi_scan()</a>, <a class="el" href="main_8cpp_source.html#l00463">NOTE_JOIN_FAILED</a>, <a class="el" href="main_8cpp_source.html#l00465">NOTE_NO_TIME</a>, <a class="el" href="main_8cpp_source.html#l00113">ui_msg_t::payload</a>, <a class="el" href="main_8cpp_source.html#l00095">PN532_I2C_HZ</a>, <a class="el" href="main_8cpp_source.html#l00090">PN532_I2C_PORT</a>, <a class="el" href="main_8cpp_source.html#l00093">PN532_IRQ</a>, <a class="el" href="main_8cpp_source.html#l00094">PN532_RST</a>, <a class="el" href="main_8cpp_source.html#l00092">PN532_SCL</a>, <a class="el" href="main_8cpp_source.html#l00091">PN532_SDA</a>, <a class="el" href="hardening_8h_source.html#l00070">pos_amount_set()</a>, <a class="el" href="hardening_8cpp_source.html#l00099">pos_handle_anomaly()</a>, <a class="el" href="hardening_8h_source.html#l00047">POS_VERDICT_APPROVED</a>, <a class="el" href="hardening_8h_source.html#l00048">POS_VERDICT_DECLINED</a>, <a class="el" href="hardening_8h_source.html#l00118">run_payment_decision()</a>, <a class="el" href="main_8cpp_source.html#l00121">s_dest</a>, <a class="el" href="main_8cpp_source.html#l00116">s_ui_queue</a>, <a class="el" href="main_8cpp_source.html#l00128">s_user_cancelled</a>, <a class="el" href="settings_8cpp_source.html#l00093">settings_get_wifi()</a>, <a class="el" href="settings_8cpp_source.html#l00207">settings_has_admin_code()</a>, <a class="el" href="settings_8cpp_source.html#l00119">settings_set_wifi()</a>, <a class="el" href="main_8cpp_source.html#l00230">sign_and_broadcast()</a>, <a class="el" href="main_8cpp_source.html#l00597">sync_time()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00036">TAG</a>, <a class="el" href="ui_8h_source.html#l00082">UI_BOOT_ERR_NFC</a>, <a class="el" href="ui_8h_source.html#l00083">UI_BOOT_ERR_WALLET</a>, <a class="el" href="ui_8h_source.html#l00060">UI_EVENT_ADMIN_SET</a>, <a class="el" href="ui_8h_source.html#l00053">UI_EVENT_AMOUNT_CONFIRMED</a>, <a class="el" href="ui_8h_source.html#l00055">UI_EVENT_CONFIRM_CANCEL</a>, <a class="el" href="main_8cpp_source.html#l00140">ui_event_dispatch()</a>, <a class="el" href="ui_8h_source.html#l00056">UI_EVENT_PIN_ENTERED</a>, <a class="el" href="ui_8h_source.html#l00059">UI_EVENT_TX_RETRY</a>, <a class="el" href="ui_8h_source.html#l00061">UI_EVENT_WELCOME_DONE</a>, <a class="el" href="ui_8h_source.html#l00057">UI_EVENT_WIFI_SCAN</a>, <a class="el" href="ui_8h_source.html#l00058">UI_EVENT_WIFI_TRY</a>, <a class="el" href="ui_8cpp_source.html#l01771">ui_init()</a>, <a class="el" href="ui_8cpp_source.html#l01830">ui_set_addresses()</a>, <a class="el" href="ui_8cpp_source.html#l01840">ui_set_boot_status()</a>, <a class="el" href="ui_8cpp_source.html#l01862">ui_show_admin_set()</a>, <a class="el" href="ui_8cpp_source.html#l01784">ui_show_amount_entry()</a>, <a class="el" href="ui_8cpp_source.html#l01846">ui_show_boot_error()</a>, <a class="el" href="ui_8cpp_source.html#l01790">ui_show_confirm()</a>, <a class="el" href="ui_8cpp_source.html#l01780">ui_show_splash()</a>, <a class="el" href="ui_8cpp_source.html#l01884">ui_show_tx_status()</a>, <a class="el" href="ui_8cpp_source.html#l01857">ui_show_welcome()</a>, <a class="el" href="ui_8cpp_source.html#l01835">ui_show_wifi_connecting()</a>, <a class="el" href="ui_8cpp_source.html#l01814">ui_show_wifi_list()</a>, <a class="el" href="ui_8cpp_source.html#l01801">ui_take_pin()</a>, <a class="el" href="ui_8cpp_source.html#l01870">ui_take_wifi_creds()</a>, <a class="el" href="ui_8h_source.html#l00070">UI_TX_STATE_CONFIRMING</a>, <a class="el" href="ui_8h_source.html#l00071">UI_TX_STATE_DONE</a>, <a class="el" href="ui_8h_source.html#l00072">UI_TX_STATE_FAILED</a>, <a class="el" href="main_8cpp_source.html#l00501">wait_for_ui_event()</a>, and <a class="el" href="main_8cpp_source.html#l00482">wifi_keep_or_drop()</a>.</p>
 
 </div>
 </div>
-<a id="aee37928ea69bedfc468a9beb3b518798" name="aee37928ea69bedfc468a9beb3b518798"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#aee37928ea69bedfc468a9beb3b518798">&#9670;&#160;</a></span>build_usdc_calldata()</h2>
+<a id="abc5633634391300df7f9f943f41fea94" name="abc5633634391300df7f9f943f41fea94"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#abc5633634391300df7f9f943f41fea94">&#9670;&#160;</a></span>build_usdc_calldata()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -375,14 +504,14 @@ Variables</h2></td></tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">bool build_usdc_calldata </td>
+          <td class="memname">void build_usdc_calldata </td>
           <td>(</td>
-          <td class="paramtype">uint8_t</td>          <td class="paramname"><span class="paramname"><em>out</em></span>[68], </td>
+          <td class="paramtype">uint8_t</td>          <td class="paramname"><span class="paramname"><em>out</em></span>[USDC_CALLDATA_LEN], </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const char *</td>          <td class="paramname"><span class="paramname"><em>to_hex</em></span>, </td>
+          <td class="paramtype">const uint8_t</td>          <td class="paramname"><span class="paramname"><em>to</em></span>[ETH_ADDR_LEN], </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -401,24 +530,23 @@ Variables</h2></td></tr>
 <p>Encodes the ERC-20 <code>transfer(address,uint256)</code> selector followed by the ABI-encoded arguments: </p><div class="fragment"><div class="line">selector(4) | zeroes(12) | to(20) | zeroes(24) | amount_be(8)</div>
 </div><!-- fragment --><dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramdir">[out]</td><td class="paramname">out</td><td>68-byte output buffer; contents are undefined on failure. </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">to_hex</td><td>Recipient address as hex (with or without <code>0x</code> prefix). </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">out</td><td>Output buffer of <a class="el" href="#ae76115b1a46a228f57d674e8c422c44f">USDC_CALLDATA_LEN</a> bytes. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">to</td><td>Recipient address, <a class="el" href="eth__addr_8h.html#a78fc3e3fe5c33412e9f47a214f6e0415" title="Length of a raw (binary) Ethereum address, in bytes.">ETH_ADDR_LEN</a> bytes (already parsed/validated). </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">amount</td><td>Transfer amount in USDC base units (6 decimals). </td></tr>
   </table>
   </dd>
 </dl>
-<dl class="section return"><dt>Returns</dt><dd>true on success, false if <code class="param">to_hex</code> fails address validation. </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00155">155</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00166">166</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="eth__addr_8cpp_source.html#l00029">eth_addr_parse()</a>, and <a class="el" href="main_8cpp_source.html#l00096">TRANSFER_SELECTOR</a>.</p>
+<p class="reference">References <a class="el" href="main_8cpp_source.html#l00099">ABI_SELECTOR_LEN</a>, <a class="el" href="main_8cpp_source.html#l00102">ABI_TO_OFFSET</a>, <a class="el" href="eth__addr_8h_source.html#l00025">ETH_ADDR_LEN</a>, <a class="el" href="main_8cpp_source.html#l00098">TRANSFER_SELECTOR</a>, and <a class="el" href="main_8cpp_source.html#l00101">USDC_CALLDATA_LEN</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00218">sign_and_broadcast()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00230">sign_and_broadcast()</a>.</p>
 
 </div>
 </div>
-<a id="a9c72fd31d90d7fa1c114e4d8c1063bf1" name="a9c72fd31d90d7fa1c114e4d8c1063bf1"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a9c72fd31d90d7fa1c114e4d8c1063bf1">&#9670;&#160;</a></span>ensure_wifi()</h2>
+<a id="ab1501281e6cb01d3684675cd5f7ead18" name="ab1501281e6cb01d3684675cd5f7ead18"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ab1501281e6cb01d3684675cd5f7ead18">&#9670;&#160;</a></span>ensure_wifi()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -427,10 +555,14 @@ Variables</h2></td></tr>
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">void ensure_wifi </td>
+          <td class="memname">bool ensure_wifi </td>
           <td>(</td>
-          <td class="paramtype">void</td>          <td class="paramname"><span class="paramname"><em></em></span></td><td>)</td>
+          <td class="paramtype">bool</td>          <td class="paramname"><span class="paramname"><em>try_saved</em></span>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
           <td></td>
+          <td class="paramtype">const char *</td>          <td class="paramname"><span class="paramname"><em>note</em></span>&#160;)</td>
         </tr>
       </table>
   </td>
@@ -440,21 +572,28 @@ Variables</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p>ESP-IDF application entry point. </p>
-<p>Brings up the UI (splash), NVS, PN532 reader, wallet, WiFi, and a blocking SNTP time sync, then services UI events in the main interaction loop (amount → confirm → sign+broadcast).</p>
-<p>Bring up Wi-Fi: connect with saved credentials, or run the first-run network picker (scan → list → keyboard → connect) until connected.</p>
-<p>Blocks until a connection succeeds; the operator cannot leave setup without one. config.h Wi-Fi credentials are intentionally not used (NVS only). </p>
+<p>Bring up Wi-Fi: retry the saved credentials, then run the network picker (scan → list → keyboard → connect) until connected. </p>
+<p>Blocks until a connection succeeds; the operator cannot leave setup without one. config.h Wi-Fi credentials are intentionally not used (NVS only).</p>
+<p>A network joined through the picker is not persisted here — the credentials are staged for <a class="el" href="#a45f2f4c0df1e5aae239ffc875bfc2a95" title="wifi_keep_or_drop">wifi_keep_or_drop</a>, which the caller invokes once the clock proves the uplink usable.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">try_saved</td><td>Try the saved credentials first; false goes straight to the picker, for a saved network already proven unusable. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">note</td><td>One-line reason shown above the picker, or NULL. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>true if the picker ran and took the screen, so the caller must restore the splash; false if the splash was never replaced. </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00432">432</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00529">529</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="main_8cpp_source.html#l00106">ui_msg_t::event</a>, <a class="el" href="net_8cpp_source.html#l00168">net_wifi_connect()</a>, <a class="el" href="net_8cpp_source.html#l00126">net_wifi_scan()</a>, <a class="el" href="main_8cpp_source.html#l00110">s_ui_queue</a>, <a class="el" href="settings_8cpp_source.html#l00076">settings_get_wifi()</a>, <a class="el" href="settings_8cpp_source.html#l00102">settings_set_wifi()</a>, <a class="el" href="ui_8h_source.html#l00054">UI_EVENT_WIFI_TRY</a>, <a class="el" href="ui_8cpp_source.html#l01374">ui_show_wifi_connecting()</a>, <a class="el" href="ui_8cpp_source.html#l01361">ui_show_wifi_list()</a>, and <a class="el" href="ui_8cpp_source.html#l01380">ui_take_wifi_creds()</a>.</p>
+<p class="reference">References <a class="el" href="main_8cpp_source.html#l00112">ui_msg_t::event</a>, <a class="el" href="net_8cpp_source.html#l00174">net_wifi_connect()</a>, <a class="el" href="net_8cpp_source.html#l00132">net_wifi_scan()</a>, <a class="el" href="main_8cpp_source.html#l00463">NOTE_JOIN_FAILED</a>, <a class="el" href="main_8cpp_source.html#l00474">s_join_pass</a>, <a class="el" href="main_8cpp_source.html#l00473">s_join_ssid</a>, <a class="el" href="main_8cpp_source.html#l00116">s_ui_queue</a>, <a class="el" href="settings_8cpp_source.html#l00093">settings_get_wifi()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00036">TAG</a>, <a class="el" href="ui_8h_source.html#l00057">UI_EVENT_WIFI_SCAN</a>, <a class="el" href="ui_8h_source.html#l00058">UI_EVENT_WIFI_TRY</a>, <a class="el" href="ui_8cpp_source.html#l01840">ui_set_boot_status()</a>, <a class="el" href="ui_8cpp_source.html#l01835">ui_show_wifi_connecting()</a>, <a class="el" href="ui_8cpp_source.html#l01814">ui_show_wifi_list()</a>, <a class="el" href="ui_8cpp_source.html#l01870">ui_take_wifi_creds()</a>, and <a class="el" href="main_8cpp_source.html#l00458">WIFI_SAVED_ATTEMPTS</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00472">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
 
 </div>
 </div>
-<a id="a3bf76a2039211bf46d73c58f44e6af0f" name="a3bf76a2039211bf46d73c58f44e6af0f"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a3bf76a2039211bf46d73c58f44e6af0f">&#9670;&#160;</a></span>sign_and_broadcast()</h2>
+<a id="ad38fd2fce88a8da3bd15481c88e89d75" name="ad38fd2fce88a8da3bd15481c88e89d75"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ad38fd2fce88a8da3bd15481c88e89d75">&#9670;&#160;</a></span>sign_and_broadcast()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -475,7 +614,12 @@ Variables</h2></td></tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">uint64_t</td>          <td class="paramname"><span class="paramname"><em>amount_units</em></span>, </td>
+          <td class="paramtype">const <a class="el" href="structpos__amount__t.html">pos_amount_t</a> *</td>          <td class="paramname"><span class="paramname"><em>amount</em></span>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const <a class="el" href="structpos__addr__t.html">pos_addr_t</a> *</td>          <td class="paramname"><span class="paramname"><em>to</em></span>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -533,11 +677,45 @@ Variables</h2></td></tr>
 </dl>
 <dl class="section return"><dt>Returns</dt><dd>true on successful broadcast; false on failure or user cancel (err_out is only meaningful when <a class="el" href="#a3fba9a1bad9bb6ef357f8efe7f15a365" title="s_user_cancelled">s_user_cancelled</a> is clear). </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00218">218</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00230">230</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="main_8cpp_source.html#l00155">build_usdc_calldata()</a>, <a class="el" href="eth__rlp_8h_source.html#l00040">eth_tx_t::calldata</a>, <a class="el" href="eth__rlp_8h_source.html#l00041">eth_tx_t::calldata_len</a>, <a class="el" href="eth__rlp_8h_source.html#l00032">eth_tx_t::chain_id</a>, <a class="el" href="eth__addr_8cpp_source.html#l00029">eth_addr_parse()</a>, <a class="el" href="eth__rlp_8cpp_source.html#l00268">eth_rlp_encode_signed()</a>, <a class="el" href="eth__rlp_8cpp_source.html#l00244">eth_rlp_encode_unsigned()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00361">eth_rpc_ecrecover_parity()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00321">eth_rpc_get_nonce()</a>, <a class="el" href="eth__rpc_8h_source.html#l00036">ETH_RPC_PARITY_MISMATCH</a>, <a class="el" href="eth__rpc_8h_source.html#l00035">ETH_RPC_PARITY_OK</a>, <a class="el" href="eth__rpc_8h_source.html#l00038">ETH_RPC_PARITY_RPC_ERROR</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00444">eth_rpc_send_raw_tx()</a>, <a class="el" href="eth__rlp_8h_source.html#l00038">eth_tx_t::eth_value</a>, <a class="el" href="eth__rlp_8h_source.html#l00036">eth_tx_t::gas_limit</a>, <a class="el" href="keccak256_8cpp_source.html#l00120">keccak256()</a>, <a class="el" href="eth__rlp_8h_source.html#l00035">eth_tx_t::max_fee</a>, <a class="el" href="eth__rlp_8h_source.html#l00034">eth_tx_t::max_priority_fee</a>, <a class="el" href="eth__rlp_8h_source.html#l00033">eth_tx_t::nonce</a>, <a class="el" href="main_8cpp_source.html#l00117">s_user_cancelled</a>, <a class="el" href="settings_8cpp_source.html#l00139">settings_get_max_fee_gwei()</a>, <a class="el" href="settings_8cpp_source.html#l00149">settings_get_priority_fee_gwei()</a>, <a class="el" href="eth__rlp_8h_source.html#l00037">eth_tx_t::to</a>, <a class="el" href="main_8cpp_source.html#l00099">TX_BUF_SIZE</a>, <a class="el" href="ui_8cpp_source.html#l01394">ui_show_tx_status()</a>, <a class="el" href="ui_8h_source.html#l00060">UI_TX_STATE_PLACE_CARD</a>, <a class="el" href="ui_8h_source.html#l00061">UI_TX_STATE_PROCESSING</a>, <a class="el" href="ui_8h_source.html#l00063">UI_TX_STATE_SENDING</a>, and <a class="el" href="ui_8h_source.html#l00062">UI_TX_STATE_SIGNING</a>.</p>
+<p class="reference">References <a class="el" href="hardening_8h_source.html#l00065">pos_addr_t::addr</a>, <a class="el" href="hardening_8h_source.html#l00098">address_consistent()</a>, <a class="el" href="hardening_8h_source.html#l00093">amount_consistent()</a>, <a class="el" href="hardening_8h_source.html#l00059">pos_amount_t::amount_minor</a>, <a class="el" href="main_8cpp_source.html#l00166">build_usdc_calldata()</a>, <a class="el" href="eth__rlp_8h_source.html#l00040">eth_tx_t::calldata</a>, <a class="el" href="eth__rlp_8h_source.html#l00041">eth_tx_t::calldata_len</a>, <a class="el" href="eth__rlp_8h_source.html#l00032">eth_tx_t::chain_id</a>, <a class="el" href="eth__addr_8cpp_source.html#l00034">eth_addr_parse()</a>, <a class="el" href="eth__rlp_8cpp_source.html#l00268">eth_rlp_encode_signed()</a>, <a class="el" href="eth__rlp_8cpp_source.html#l00244">eth_rlp_encode_unsigned()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00361">eth_rpc_ecrecover_parity()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00321">eth_rpc_get_nonce()</a>, <a class="el" href="eth__rpc_8h_source.html#l00036">ETH_RPC_PARITY_MISMATCH</a>, <a class="el" href="eth__rpc_8h_source.html#l00035">ETH_RPC_PARITY_OK</a>, <a class="el" href="eth__rpc_8h_source.html#l00038">ETH_RPC_PARITY_RPC_ERROR</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00444">eth_rpc_send_raw_tx()</a>, <a class="el" href="eth__rlp_8h_source.html#l00038">eth_tx_t::eth_value</a>, <a class="el" href="eth__rlp_8h_source.html#l00036">eth_tx_t::gas_limit</a>, <a class="el" href="hardening_8h_source.html#l00043">IS_TRUE32</a>, <a class="el" href="keccak256_8cpp_source.html#l00120">keccak256()</a>, <a class="el" href="eth__rlp_8h_source.html#l00035">eth_tx_t::max_fee</a>, <a class="el" href="eth__rlp_8h_source.html#l00034">eth_tx_t::max_priority_fee</a>, <a class="el" href="eth__rlp_8h_source.html#l00033">eth_tx_t::nonce</a>, <a class="el" href="hardening_8cpp_source.html#l00099">pos_handle_anomaly()</a>, <a class="el" href="main_8cpp_source.html#l00128">s_user_cancelled</a>, <a class="el" href="settings_8cpp_source.html#l00156">settings_get_max_fee_gwei()</a>, <a class="el" href="settings_8cpp_source.html#l00166">settings_get_priority_fee_gwei()</a>, <a class="el" href="eth__rlp_8h_source.html#l00037">eth_tx_t::to</a>, <a class="el" href="main_8cpp_source.html#l00105">TX_BUF_SIZE</a>, <a class="el" href="ui_8cpp_source.html#l01884">ui_show_tx_status()</a>, <a class="el" href="ui_8h_source.html#l00066">UI_TX_STATE_PLACE_CARD</a>, <a class="el" href="ui_8h_source.html#l00067">UI_TX_STATE_PROCESSING</a>, <a class="el" href="ui_8h_source.html#l00069">UI_TX_STATE_SENDING</a>, <a class="el" href="ui_8h_source.html#l00068">UI_TX_STATE_SIGNING</a>, and <a class="el" href="main_8cpp_source.html#l00101">USDC_CALLDATA_LEN</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00472">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
+
+</div>
+</div>
+<a id="a795bec6eac52395ce73328296670ac98" name="a795bec6eac52395ce73328296670ac98"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a795bec6eac52395ce73328296670ac98">&#9670;&#160;</a></span>sync_time()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">bool sync_time </td>
+          <td>(</td>
+          <td class="paramtype">void</td>          <td class="paramname"><span class="paramname"><em></em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel static">static</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Block on an SNTP sync so TLS certificate validity-period checks run against real time instead of the 1970 epoch. </p>
+<dl class="section return"><dt>Returns</dt><dd>true once the clock is set, false after <a class="el" href="#ad37e31ab6a533389e02cb41a4817bef2" title="TIME_SYNC_ATTEMPTS">TIME_SYNC_ATTEMPTS</a> rounds — flaky uplinks often need a second try. </dd></dl>
+
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00597">597</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="net_8cpp_source.html#l00258">net_time_sync()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00036">TAG</a>, and <a class="el" href="main_8cpp_source.html#l00459">TIME_SYNC_ATTEMPTS</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
 
 </div>
 </div>
@@ -578,15 +756,222 @@ Variables</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00129">129</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00140">140</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="main_8cpp_source.html#l00110">s_ui_queue</a>, <a class="el" href="main_8cpp_source.html#l00117">s_user_cancelled</a>, and <a class="el" href="ui_8h_source.html#l00051">UI_EVENT_CONFIRM_CANCEL</a>.</p>
+<p class="reference">References <a class="el" href="main_8cpp_source.html#l00116">s_ui_queue</a>, <a class="el" href="main_8cpp_source.html#l00128">s_user_cancelled</a>, and <a class="el" href="ui_8h_source.html#l00055">UI_EVENT_CONFIRM_CANCEL</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00472">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
+
+</div>
+</div>
+<a id="a08303eb51e03922bf575854c6bb1c002" name="a08303eb51e03922bf575854c6bb1c002"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a08303eb51e03922bf575854c6bb1c002">&#9670;&#160;</a></span>wait_for_ui_event()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">void wait_for_ui_event </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="ui_8h.html#a9a99e204659fdc9573b3dc140ffeedd3">ui_event_t</a></td>          <td class="paramname"><span class="paramname"><em>want</em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel static">static</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Block until the UI reports <code class="param">want</code>, discarding anything else. </p>
+<p>For the first-run steps, which are modal by design: nothing else the operator can tap matters until the step is done. The queue is flushed on the way out — a repeated tap would otherwise be read by the next stage, and <a class="el" href="#ab1501281e6cb01d3684675cd5f7ead18" title="Bring up Wi-Fi: retry the saved credentials, then run the network picker (scan → list → keyboard → co...">ensure_wifi()</a> treats an event it does not recognise as "rescan and reopen the picker", which would throw away a password half typed. </p>
+
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00501">501</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="main_8cpp_source.html#l00112">ui_msg_t::event</a>, and <a class="el" href="main_8cpp_source.html#l00116">s_ui_queue</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
+
+</div>
+</div>
+<a id="a45f2f4c0df1e5aae239ffc875bfc2a95" name="a45f2f4c0df1e5aae239ffc875bfc2a95"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a45f2f4c0df1e5aae239ffc875bfc2a95">&#9670;&#160;</a></span>wifi_keep_or_drop()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">void wifi_keep_or_drop </td>
+          <td>(</td>
+          <td class="paramtype">bool</td>          <td class="paramname"><span class="paramname"><em>keep</em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel static">static</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Persist or discard the pending picker credentials, then scrub them. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">keep</td><td>true once the clock is set — the only proof the network is actually usable; false to drop them unpersisted. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00482">482</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="main_8cpp_source.html#l00474">s_join_pass</a>, <a class="el" href="main_8cpp_source.html#l00473">s_join_ssid</a>, <a class="el" href="settings_8cpp_source.html#l00119">settings_set_wifi()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00036">TAG</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
 
 </div>
 </div>
 <a name="doc-var-members" id="doc-var-members"></a><h2 id="header-doc-var-members" class="groupheader">Variable Documentation</h2>
+<a id="a88b510df1910f36e55455c327249b36a" name="a88b510df1910f36e55455c327249b36a"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a88b510df1910f36e55455c327249b36a">&#9670;&#160;</a></span>NOTE_JOIN_FAILED</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">const char* const NOTE_JOIN_FAILED</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel static">static</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<b>Initial value:</b><div class="fragment"><div class="line">                                     =</div>
+<div class="line"><span class="stringliteral">&quot;Could not join that network - check the password&quot;</span></div>
+</div><!-- fragment -->
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00463">463</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>, and <a class="el" href="main_8cpp_source.html#l00529">ensure_wifi()</a>.</p>
+
+</div>
+</div>
+<a id="a6d9acdc42c8d329f287ac14e86b36fc2" name="a6d9acdc42c8d329f287ac14e86b36fc2"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a6d9acdc42c8d329f287ac14e86b36fc2">&#9670;&#160;</a></span>NOTE_NO_TIME</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">const char* const NOTE_NO_TIME</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel static">static</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<b>Initial value:</b><div class="fragment"><div class="line">                                 =</div>
+<div class="line"><span class="stringliteral">&quot;No network time - this Wi-Fi has no usable internet&quot;</span></div>
+</div><!-- fragment -->
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00465">465</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
+
+</div>
+</div>
+<a id="a8a04fcae204316043ece0f6c651ed57b" name="a8a04fcae204316043ece0f6c651ed57b"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a8a04fcae204316043ece0f6c651ed57b">&#9670;&#160;</a></span>s_dest</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="structpos__addr__t.html">pos_addr_t</a> s_dest</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel static">static</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00121">121</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
+
+</div>
+</div>
+<a id="aec6e9d08e75878e77f99a8d49eaf618e" name="aec6e9d08e75878e77f99a8d49eaf618e"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aec6e9d08e75878e77f99a8d49eaf618e">&#9670;&#160;</a></span>s_join_pass</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">char s_join_pass[65] = { 0 }</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel static">static</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00474">474</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00529">ensure_wifi()</a>, and <a class="el" href="main_8cpp_source.html#l00482">wifi_keep_or_drop()</a>.</p>
+
+</div>
+</div>
+<a id="a69bf13b7b4b56517bead10f9d363b236" name="a69bf13b7b4b56517bead10f9d363b236"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a69bf13b7b4b56517bead10f9d363b236">&#9670;&#160;</a></span>s_join_ssid</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">char s_join_ssid[33] = { 0 }</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel static">static</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00473">473</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00529">ensure_wifi()</a>, and <a class="el" href="main_8cpp_source.html#l00482">wifi_keep_or_drop()</a>.</p>
+
+</div>
+</div>
 <a id="a2e89239103f265147a2e10259827353f" name="a2e89239103f265147a2e10259827353f"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a2e89239103f265147a2e10259827353f">&#9670;&#160;</a></span>s_ui_queue</h2>
 
@@ -607,9 +992,9 @@ Variables</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00110">110</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00116">116</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00472">app_main()</a>, <a class="el" href="main_8cpp_source.html#l00432">ensure_wifi()</a>, and <a class="el" href="main_8cpp_source.html#l00129">ui_event_dispatch()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>, <a class="el" href="main_8cpp_source.html#l00529">ensure_wifi()</a>, <a class="el" href="main_8cpp_source.html#l00140">ui_event_dispatch()</a>, and <a class="el" href="main_8cpp_source.html#l00501">wait_for_ui_event()</a>.</p>
 
 </div>
 </div>
@@ -633,9 +1018,9 @@ Variables</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00117">117</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00128">128</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00472">app_main()</a>, <a class="el" href="main_8cpp_source.html#l00218">sign_and_broadcast()</a>, and <a class="el" href="main_8cpp_source.html#l00129">ui_event_dispatch()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>, <a class="el" href="main_8cpp_source.html#l00230">sign_and_broadcast()</a>, and <a class="el" href="main_8cpp_source.html#l00140">ui_event_dispatch()</a>.</p>
 
 </div>
 </div>
@@ -659,7 +1044,7 @@ Variables</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00084">84</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00086">86</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
 </div>
 </div>
@@ -683,9 +1068,9 @@ Variables</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00096">96</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="main_8cpp_source.html#l00098">98</a> of file <a class="el" href="main_8cpp_source.html">main.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00155">build_usdc_calldata()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00166">build_usdc_calldata()</a>.</p>
 
 </div>
 </div>

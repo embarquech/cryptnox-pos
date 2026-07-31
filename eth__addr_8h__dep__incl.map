@@ -1,7 +1,12 @@
 <map id="main/eth_addr.h" name="main/eth_addr.h">
-<area shape="rect" id="Node000001" title="Hex Ethereum&#45;address parsing — a pure, dependency&#45;free unit so it can be unit&#45;tested and fuzzed on th..." alt="" coords="91,5,217,31"/>
-<area shape="rect" id="Node000002" href="$eth__addr_8cpp.html" title="Implementation of the hex Ethereum&#45;address parser." alt="" coords="5,79,148,104"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="133,42,91,80,88,76,130,38"/>
-<area shape="rect" id="Node000003" href="$main_8cpp.html" title="cryptnox&#45;pos entry point: touchscreen USDC payment terminal." alt="" coords="172,79,291,104"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="178,38,220,76,217,80,175,42"/>
+<area shape="rect" id="Node000001" title="Hex Ethereum&#45;address parsing — a pure, dependency&#45;free unit so it can be unit&#45;tested and fuzzed on th..." alt="" coords="177,5,304,31"/>
+<area shape="rect" id="Node000002" href="$eth__addr_8cpp.html" title="Implementation of the hex Ethereum&#45;address parser, with EIP&#45;55 checksum verification (HARDENING...." alt="" coords="5,79,148,104"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="203,39,105,81,102,76,201,34"/>
+<area shape="rect" id="Node000003" href="$hardening_8h.html" title="Decision&#45;integrity primitives (see docs/HARDENING.md §3, §4)." alt="" coords="173,79,309,104"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="243,44,243,79,238,79,238,44"/>
+<area shape="rect" id="Node000005" href="$main_8cpp.html" title="cryptnox&#45;pos entry point: touchscreen USDC payment terminal." alt="" coords="287,152,405,177"/>
+<area shape="poly" id="edge5_Node000001_Node000005" title=" " alt="" coords="276,36,301,54,323,77,341,117,348,151,342,152,335,118,318,80,298,58,273,40"/>
+<area shape="rect" id="Node000004" href="$hardening_8cpp.html" title="Anomaly handling (§3.3): local fail&#45;closed + persisted counter and a RAM ring buffer for on&#45;site insp..." alt="" coords="112,152,263,177"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="226,117,198,153,194,150,222,113"/>
+<area shape="poly" id="edge4_Node000003_Node000005" title=" " alt="" coords="271,110,330,150,327,154,268,114"/>
 </map>

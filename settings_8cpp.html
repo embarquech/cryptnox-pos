@@ -126,11 +126,14 @@ document.addEventListener('DOMContentLoaded',() => { initNavTree('settings_8cpp.
 <code>#include &lt;string.h&gt;</code><br />
 <code>#include &quot;nvs.h&quot;</code><br />
 <code>#include &quot;esp_log.h&quot;</code><br />
+<code>#include &quot;esp_random.h&quot;</code><br />
+<code>#include &quot;CW_Utils.h&quot;</code><br />
+<code>#include &quot;<a class="el" href="keccak256_8h_source.html">keccak256.h</a>&quot;</code><br />
 <code>#include &quot;config.h&quot;</code><br />
 </div><div class="textblock"><div class="dynheader">
 Include dependency graph for settings.cpp:</div>
 <div class="dyncontent">
-<div class="center"><iframe scrolling="no" loading="lazy" frameborder="0" src="settings_8cpp__incl.svg" width="572" height="183"><p><b>This browser is not able to show SVG: try Firefox, Chrome, Safari, or Opera instead.</b></p></iframe></div>
+<div class="center"><iframe scrolling="no" loading="lazy" frameborder="0" src="settings_8cpp__incl.svg" width="863" height="183"><p><b>This browser is not able to show SVG: try Firefox, Chrome, Safari, or Opera instead.</b></p></iframe></div>
 </div>
 </div>
 <p><a href="settings_8cpp_source.html">Go to the source code of this file.</a></p>
@@ -143,6 +146,12 @@ Macros</h2></td></tr>
 <tr class="memitem:a35eba612a0a34fa2f6ff8d4627bcc612" id="r_a35eba612a0a34fa2f6ff8d4627bcc612"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#a35eba612a0a34fa2f6ff8d4627bcc612">K_WIFI_PASS</a>&#160;&#160;&#160;&quot;wifi_pass&quot;</td></tr>
 <tr class="memitem:acb77454d79222fe833cfc84b1ae19fbd" id="r_acb77454d79222fe833cfc84b1ae19fbd"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#acb77454d79222fe833cfc84b1ae19fbd">K_MAX_FEE</a>&#160;&#160;&#160;&quot;max_fee_gw&quot;</td></tr>
 <tr class="memitem:ae012344fa74c6f102c5b791aaa2ef32b" id="r_ae012344fa74c6f102c5b791aaa2ef32b"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#ae012344fa74c6f102c5b791aaa2ef32b">K_PRIO_FEE</a>&#160;&#160;&#160;&quot;prio_fee_gw&quot;</td></tr>
+<tr class="memitem:aa72b2f169ab28c9a336ae1edbd9ce704" id="r_aa72b2f169ab28c9a336ae1edbd9ce704"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#aa72b2f169ab28c9a336ae1edbd9ce704">K_ADMIN_SALT</a>&#160;&#160;&#160;&quot;adm_salt&quot;</td></tr>
+<tr class="memitem:a6f2a717ec52364f7112ac028b73845c7" id="r_a6f2a717ec52364f7112ac028b73845c7"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#a6f2a717ec52364f7112ac028b73845c7">K_ADMIN_HASH</a>&#160;&#160;&#160;&quot;adm_hash&quot;</td></tr>
+<tr class="memitem:a1d3833b087eb0a9da51887c654e17d0d" id="r_a1d3833b087eb0a9da51887c654e17d0d"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#a1d3833b087eb0a9da51887c654e17d0d">K_ADMIN_FAILS</a>&#160;&#160;&#160;&quot;adm_fails&quot;</td></tr>
+<tr class="memitem:aa02e7e4368c9abc453490360ea7c2fbd" id="r_aa02e7e4368c9abc453490360ea7c2fbd"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#aa02e7e4368c9abc453490360ea7c2fbd">ADMIN_SALT_LEN</a>&#160;&#160;&#160;16U</td></tr>
+<tr class="memitem:adb32f4c6a6fb494082a61f6e774b0f90" id="r_adb32f4c6a6fb494082a61f6e774b0f90"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#adb32f4c6a6fb494082a61f6e774b0f90">ADMIN_HASH_LEN</a>&#160;&#160;&#160;32U</td></tr>
+<tr class="memitem:a818b299e9ff01ad67914e8ad37988e3e" id="r_a818b299e9ff01ad67914e8ad37988e3e"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#a818b299e9ff01ad67914e8ad37988e3e">ADMIN_CODE_HASH_MAX</a>&#160;&#160;&#160;32U</td></tr>
 <tr class="memitem:ad27ad76d41bf29c6b9f95e8c41b86398" id="r_ad27ad76d41bf29c6b9f95e8c41b86398"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#ad27ad76d41bf29c6b9f95e8c41b86398">DEFAULT_BRIGHTNESS</a>&#160;&#160;&#160;80U</td></tr>
 <tr class="memitem:a772305602f10b600d9197f6b5c7cd1dd" id="r_a772305602f10b600d9197f6b5c7cd1dd"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#a772305602f10b600d9197f6b5c7cd1dd">WEI_PER_GWEI</a>&#160;&#160;&#160;1000000000ULL</td></tr>
 <tr class="memitem:a90784c22014f01279f348f2986bb98f8" id="r_a90784c22014f01279f348f2986bb98f8"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#a90784c22014f01279f348f2986bb98f8">DEFAULT_MAX_FEE_GWEI</a>&#160;&#160;&#160;(uint32_t)(MAX_FEE / <a class="el" href="#a772305602f10b600d9197f6b5c7cd1dd">WEI_PER_GWEI</a>)</td></tr>
@@ -170,6 +179,17 @@ Functions</h2></td></tr>
 <tr class="memdesc:a772911b2f26faae157630d855318f16c"><td class="mdescLeft">&#160;</td><td class="mdescRight">EIP-1559 max priority fee (tip) per gas, in Gwei.  <br /></td></tr>
 <tr class="memitem:ad2d146407abd6d6e53d26fef4a056bf1" id="r_ad2d146407abd6d6e53d26fef4a056bf1"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#ad2d146407abd6d6e53d26fef4a056bf1">settings_set_priority_fee_gwei</a> (uint32_t gwei)</td></tr>
 <tr class="memdesc:ad2d146407abd6d6e53d26fef4a056bf1"><td class="mdescLeft">&#160;</td><td class="mdescRight">Persist the max priority fee per gas (Gwei).  <br /></td></tr>
+<tr class="memitem:a01410e79510cca917c4ba175cdb3694e" id="r_a01410e79510cca917c4ba175cdb3694e"><td class="memItemLeft">static void&#160;</td><td class="memItemRight"><a class="el" href="#a01410e79510cca917c4ba175cdb3694e">admin_derive</a> (const char *code, const uint8_t *salt, uint8_t out[<a class="el" href="#adb32f4c6a6fb494082a61f6e774b0f90">ADMIN_HASH_LEN</a>])</td></tr>
+<tr class="memdesc:a01410e79510cca917c4ba175cdb3694e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Derive the stored digest: a single keccak256 over salt || code.  <br /></td></tr>
+<tr class="memitem:ae9acb92835fc43f707ae188814570e2b" id="r_ae9acb92835fc43f707ae188814570e2b"><td class="memItemLeft">static void&#160;</td><td class="memItemRight"><a class="el" href="#ae9acb92835fc43f707ae188814570e2b">admin_set_fails</a> (uint8_t n)</td></tr>
+<tr class="memitem:ad3200b5d1e2e3ad727bf971525ee44ca" id="r_ad3200b5d1e2e3ad727bf971525ee44ca"><td class="memItemLeft">bool&#160;</td><td class="memItemRight"><a class="el" href="#ad3200b5d1e2e3ad727bf971525ee44ca">settings_has_admin_code</a> (void)</td></tr>
+<tr class="memdesc:ad3200b5d1e2e3ad727bf971525ee44ca"><td class="mdescLeft">&#160;</td><td class="mdescRight">true once an admin code exists, i.e. first-run setup is done.  <br /></td></tr>
+<tr class="memitem:a8131914716c5a2264f972988a8a82057" id="r_a8131914716c5a2264f972988a8a82057"><td class="memItemLeft">bool&#160;</td><td class="memItemRight"><a class="el" href="#a8131914716c5a2264f972988a8a82057">settings_set_admin_code</a> (const char *code)</td></tr>
+<tr class="memdesc:a8131914716c5a2264f972988a8a82057"><td class="mdescLeft">&#160;</td><td class="mdescRight">Store a new admin code, with a fresh random salt.  <br /></td></tr>
+<tr class="memitem:a04a4d53c0bd72fef1bca3aa7a540001e" id="r_a04a4d53c0bd72fef1bca3aa7a540001e"><td class="memItemLeft">bool&#160;</td><td class="memItemRight"><a class="el" href="#a04a4d53c0bd72fef1bca3aa7a540001e">settings_check_admin_code</a> (const char *code)</td></tr>
+<tr class="memdesc:a04a4d53c0bd72fef1bca3aa7a540001e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Check a candidate code, maintaining the failure counter.  <br /></td></tr>
+<tr class="memitem:ab7cab7b76f913efe3d20f41ae7fed2fd" id="r_ab7cab7b76f913efe3d20f41ae7fed2fd"><td class="memItemLeft">uint8_t&#160;</td><td class="memItemRight"><a class="el" href="#ab7cab7b76f913efe3d20f41ae7fed2fd">settings_admin_fail_count</a> (void)</td></tr>
+<tr class="memdesc:ab7cab7b76f913efe3d20f41ae7fed2fd"><td class="mdescLeft">&#160;</td><td class="mdescRight">Consecutive failed unlock attempts, persisted.  <br /></td></tr>
 <tr class="memitem:ab6e8c2165049181e1c37d84624b3ba2a" id="r_ab6e8c2165049181e1c37d84624b3ba2a"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#ab6e8c2165049181e1c37d84624b3ba2a">settings_factory_reset</a> (void)</td></tr>
 <tr class="memdesc:ab6e8c2165049181e1c37d84624b3ba2a"><td class="mdescLeft">&#160;</td><td class="mdescRight">Erase all stored settings (brightness, auto, Wi-Fi creds, fees).  <br /></td></tr>
 </table><table class="memberdecls">
@@ -182,6 +202,60 @@ Variables</h2></td></tr>
 
 <p class="definition">Definition in file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 </div><a name="doc-define-members" id="doc-define-members"></a><h2 id="header-doc-define-members" class="groupheader">Macro Definition Documentation</h2>
+<a id="a818b299e9ff01ad67914e8ad37988e3e" name="a818b299e9ff01ad67914e8ad37988e3e"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a818b299e9ff01ad67914e8ad37988e3e">&#9670;&#160;</a></span>ADMIN_CODE_HASH_MAX</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">#define ADMIN_CODE_HASH_MAX&#160;&#160;&#160;32U</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00043">43</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="settings_8cpp_source.html#l00185">admin_derive()</a>.</p>
+
+</div>
+</div>
+<a id="adb32f4c6a6fb494082a61f6e774b0f90" name="adb32f4c6a6fb494082a61f6e774b0f90"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#adb32f4c6a6fb494082a61f6e774b0f90">&#9670;&#160;</a></span>ADMIN_HASH_LEN</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">#define ADMIN_HASH_LEN&#160;&#160;&#160;32U</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00039">39</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="settings_8cpp_source.html#l00185">admin_derive()</a>, <a class="el" href="settings_8cpp_source.html#l00249">settings_check_admin_code()</a>, <a class="el" href="settings_8cpp_source.html#l00207">settings_has_admin_code()</a>, and <a class="el" href="settings_8cpp_source.html#l00220">settings_set_admin_code()</a>.</p>
+
+</div>
+</div>
+<a id="aa02e7e4368c9abc453490360ea7c2fbd" name="aa02e7e4368c9abc453490360ea7c2fbd"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aa02e7e4368c9abc453490360ea7c2fbd">&#9670;&#160;</a></span>ADMIN_SALT_LEN</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">#define ADMIN_SALT_LEN&#160;&#160;&#160;16U</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00038">38</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="settings_8cpp_source.html#l00185">admin_derive()</a>, <a class="el" href="settings_8cpp_source.html#l00249">settings_check_admin_code()</a>, and <a class="el" href="settings_8cpp_source.html#l00220">settings_set_admin_code()</a>.</p>
+
+</div>
+</div>
 <a id="ad27ad76d41bf29c6b9f95e8c41b86398" name="ad27ad76d41bf29c6b9f95e8c41b86398"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#ad27ad76d41bf29c6b9f95e8c41b86398">&#9670;&#160;</a></span>DEFAULT_BRIGHTNESS</h2>
 
@@ -194,9 +268,9 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00028">28</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00045">45</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="settings_8cpp_source.html#l00035">settings_get_brightness()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="settings_8cpp_source.html#l00052">settings_get_brightness()</a>.</p>
 
 </div>
 </div>
@@ -212,9 +286,9 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00032">32</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00049">49</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="settings_8cpp_source.html#l00139">settings_get_max_fee_gwei()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="settings_8cpp_source.html#l00156">settings_get_max_fee_gwei()</a>.</p>
 
 </div>
 </div>
@@ -230,9 +304,63 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00033">33</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00050">50</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="settings_8cpp_source.html#l00149">settings_get_priority_fee_gwei()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="settings_8cpp_source.html#l00166">settings_get_priority_fee_gwei()</a>.</p>
+
+</div>
+</div>
+<a id="a1d3833b087eb0a9da51887c654e17d0d" name="a1d3833b087eb0a9da51887c654e17d0d"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a1d3833b087eb0a9da51887c654e17d0d">&#9670;&#160;</a></span>K_ADMIN_FAILS</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">#define K_ADMIN_FAILS&#160;&#160;&#160;&quot;adm_fails&quot;</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00036">36</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="settings_8cpp_source.html#l00197">admin_set_fails()</a>, <a class="el" href="settings_8cpp_source.html#l00283">settings_admin_fail_count()</a>, and <a class="el" href="settings_8cpp_source.html#l00220">settings_set_admin_code()</a>.</p>
+
+</div>
+</div>
+<a id="a6f2a717ec52364f7112ac028b73845c7" name="a6f2a717ec52364f7112ac028b73845c7"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a6f2a717ec52364f7112ac028b73845c7">&#9670;&#160;</a></span>K_ADMIN_HASH</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">#define K_ADMIN_HASH&#160;&#160;&#160;&quot;adm_hash&quot;</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00035">35</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="settings_8cpp_source.html#l00249">settings_check_admin_code()</a>, <a class="el" href="settings_8cpp_source.html#l00207">settings_has_admin_code()</a>, and <a class="el" href="settings_8cpp_source.html#l00220">settings_set_admin_code()</a>.</p>
+
+</div>
+</div>
+<a id="aa72b2f169ab28c9a336ae1edbd9ce704" name="aa72b2f169ab28c9a336ae1edbd9ce704"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aa72b2f169ab28c9a336ae1edbd9ce704">&#9670;&#160;</a></span>K_ADMIN_SALT</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">#define K_ADMIN_SALT&#160;&#160;&#160;&quot;adm_salt&quot;</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00034">34</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="settings_8cpp_source.html#l00249">settings_check_admin_code()</a>, and <a class="el" href="settings_8cpp_source.html#l00220">settings_set_admin_code()</a>.</p>
 
 </div>
 </div>
@@ -248,9 +376,9 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00022">22</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00029">29</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="settings_8cpp_source.html#l00035">settings_get_brightness()</a>, and <a class="el" href="settings_8cpp_source.html#l00049">settings_set_brightness()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="settings_8cpp_source.html#l00052">settings_get_brightness()</a>, and <a class="el" href="settings_8cpp_source.html#l00066">settings_set_brightness()</a>.</p>
 
 </div>
 </div>
@@ -266,9 +394,9 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00025">25</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00032">32</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="settings_8cpp_source.html#l00139">settings_get_max_fee_gwei()</a>, and <a class="el" href="settings_8cpp_source.html#l00144">settings_set_max_fee_gwei()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="settings_8cpp_source.html#l00156">settings_get_max_fee_gwei()</a>, and <a class="el" href="settings_8cpp_source.html#l00161">settings_set_max_fee_gwei()</a>.</p>
 
 </div>
 </div>
@@ -284,9 +412,9 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00026">26</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00033">33</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="settings_8cpp_source.html#l00149">settings_get_priority_fee_gwei()</a>, and <a class="el" href="settings_8cpp_source.html#l00154">settings_set_priority_fee_gwei()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="settings_8cpp_source.html#l00166">settings_get_priority_fee_gwei()</a>, and <a class="el" href="settings_8cpp_source.html#l00171">settings_set_priority_fee_gwei()</a>.</p>
 
 </div>
 </div>
@@ -302,9 +430,9 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00024">24</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00031">31</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="settings_8cpp_source.html#l00076">settings_get_wifi()</a>, and <a class="el" href="settings_8cpp_source.html#l00102">settings_set_wifi()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="settings_8cpp_source.html#l00093">settings_get_wifi()</a>, and <a class="el" href="settings_8cpp_source.html#l00119">settings_set_wifi()</a>.</p>
 
 </div>
 </div>
@@ -320,9 +448,9 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00023">23</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00030">30</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="settings_8cpp_source.html#l00076">settings_get_wifi()</a>, <a class="el" href="settings_8cpp_source.html#l00062">settings_has_wifi()</a>, and <a class="el" href="settings_8cpp_source.html#l00102">settings_set_wifi()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="settings_8cpp_source.html#l00093">settings_get_wifi()</a>, <a class="el" href="settings_8cpp_source.html#l00079">settings_has_wifi()</a>, and <a class="el" href="settings_8cpp_source.html#l00119">settings_set_wifi()</a>.</p>
 
 </div>
 </div>
@@ -338,9 +466,9 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00021">21</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00028">28</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="settings_8cpp_source.html#l00116">fee_get()</a>, <a class="el" href="settings_8cpp_source.html#l00127">fee_set()</a>, <a class="el" href="settings_8cpp_source.html#l00159">settings_factory_reset()</a>, <a class="el" href="settings_8cpp_source.html#l00035">settings_get_brightness()</a>, <a class="el" href="settings_8cpp_source.html#l00076">settings_get_wifi()</a>, <a class="el" href="settings_8cpp_source.html#l00062">settings_has_wifi()</a>, <a class="el" href="settings_8cpp_source.html#l00049">settings_set_brightness()</a>, and <a class="el" href="settings_8cpp_source.html#l00102">settings_set_wifi()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="settings_8cpp_source.html#l00197">admin_set_fails()</a>, <a class="el" href="settings_8cpp_source.html#l00133">fee_get()</a>, <a class="el" href="settings_8cpp_source.html#l00144">fee_set()</a>, <a class="el" href="settings_8cpp_source.html#l00283">settings_admin_fail_count()</a>, <a class="el" href="settings_8cpp_source.html#l00249">settings_check_admin_code()</a>, <a class="el" href="settings_8cpp_source.html#l00294">settings_factory_reset()</a>, <a class="el" href="settings_8cpp_source.html#l00052">settings_get_brightness()</a>, <a class="el" href="settings_8cpp_source.html#l00093">settings_get_wifi()</a>, <a class="el" href="settings_8cpp_source.html#l00207">settings_has_admin_code()</a>, <a class="el" href="settings_8cpp_source.html#l00079">settings_has_wifi()</a>, <a class="el" href="settings_8cpp_source.html#l00220">settings_set_admin_code()</a>, <a class="el" href="settings_8cpp_source.html#l00066">settings_set_brightness()</a>, and <a class="el" href="settings_8cpp_source.html#l00119">settings_set_wifi()</a>.</p>
 
 </div>
 </div>
@@ -356,11 +484,85 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00031">31</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00048">48</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
 </div>
 </div>
 <a name="doc-func-members" id="doc-func-members"></a><h2 id="header-doc-func-members" class="groupheader">Function Documentation</h2>
+<a id="a01410e79510cca917c4ba175cdb3694e" name="a01410e79510cca917c4ba175cdb3694e"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a01410e79510cca917c4ba175cdb3694e">&#9670;&#160;</a></span>admin_derive()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">void admin_derive </td>
+          <td>(</td>
+          <td class="paramtype">const char *</td>          <td class="paramname"><span class="paramname"><em>code</em></span>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const uint8_t *</td>          <td class="paramname"><span class="paramname"><em>salt</em></span>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">uint8_t</td>          <td class="paramname"><span class="paramname"><em>out</em></span>[ADMIN_HASH_LEN]&#160;)</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel static">static</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Derive the stored digest: a single keccak256 over salt || code. </p>
+<p>Not stretched, on purpose. The digest lives in the flash-encrypted NVS, so reading it already means the encryption is defeated — and past that point no KDF cost saves a 4-digit code anyway. The salt is still there so the same code yields a different digest on every unit. Guessing at the panel is what the escalating lockout in <a class="el" href="ui_8cpp.html" title="Touchscreen UI implementation built on LVGL 8.x.">ui.cpp</a> is for. </p>
+
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00185">185</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00043">ADMIN_CODE_HASH_MAX</a>, <a class="el" href="settings_8cpp_source.html#l00039">ADMIN_HASH_LEN</a>, <a class="el" href="settings_8cpp_source.html#l00038">ADMIN_SALT_LEN</a>, and <a class="el" href="keccak256_8cpp_source.html#l00120">keccak256()</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="settings_8cpp_source.html#l00249">settings_check_admin_code()</a>, and <a class="el" href="settings_8cpp_source.html#l00220">settings_set_admin_code()</a>.</p>
+
+</div>
+</div>
+<a id="ae9acb92835fc43f707ae188814570e2b" name="ae9acb92835fc43f707ae188814570e2b"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ae9acb92835fc43f707ae188814570e2b">&#9670;&#160;</a></span>admin_set_fails()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">void admin_set_fails </td>
+          <td>(</td>
+          <td class="paramtype">uint8_t</td>          <td class="paramname"><span class="paramname"><em>n</em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel static">static</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00197">197</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00036">K_ADMIN_FAILS</a>, and <a class="el" href="settings_8cpp_source.html#l00028">NS_SETTINGS</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="settings_8cpp_source.html#l00249">settings_check_admin_code()</a>.</p>
+
+</div>
+</div>
 <a id="acf3e8802d1c040b4443c9188ea26a237" name="acf3e8802d1c040b4443c9188ea26a237"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#acf3e8802d1c040b4443c9188ea26a237">&#9670;&#160;</a></span>fee_get()</h2>
 
@@ -388,11 +590,11 @@ Variables</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00116">116</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00133">133</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00021">NS_SETTINGS</a>.</p>
+<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00028">NS_SETTINGS</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="settings_8cpp_source.html#l00139">settings_get_max_fee_gwei()</a>, and <a class="el" href="settings_8cpp_source.html#l00149">settings_get_priority_fee_gwei()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="settings_8cpp_source.html#l00156">settings_get_max_fee_gwei()</a>, and <a class="el" href="settings_8cpp_source.html#l00166">settings_get_priority_fee_gwei()</a>.</p>
 
 </div>
 </div>
@@ -423,11 +625,69 @@ Variables</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00127">127</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00144">144</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00021">NS_SETTINGS</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00036">TAG</a>.</p>
+<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00028">NS_SETTINGS</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00036">TAG</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="settings_8cpp_source.html#l00144">settings_set_max_fee_gwei()</a>, and <a class="el" href="settings_8cpp_source.html#l00154">settings_set_priority_fee_gwei()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="settings_8cpp_source.html#l00161">settings_set_max_fee_gwei()</a>, and <a class="el" href="settings_8cpp_source.html#l00171">settings_set_priority_fee_gwei()</a>.</p>
+
+</div>
+</div>
+<a id="ab7cab7b76f913efe3d20f41ae7fed2fd" name="ab7cab7b76f913efe3d20f41ae7fed2fd"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ab7cab7b76f913efe3d20f41ae7fed2fd">&#9670;&#160;</a></span>settings_admin_fail_count()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">uint8_t settings_admin_fail_count </td>
+          <td>(</td>
+          <td class="paramtype">void</td>          <td class="paramname"><span class="paramname"><em></em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Consecutive failed unlock attempts, persisted. </p>
+<p>Kept in NVS so power-cycling does not clear the penalty the UI derives from it. </p>
+
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00283">283</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00036">K_ADMIN_FAILS</a>, and <a class="el" href="settings_8cpp_source.html#l00028">NS_SETTINGS</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l01222">admin_submit()</a>, <a class="el" href="ui_8cpp_source.html#l00382">btn_event_cb()</a>, and <a class="el" href="settings_8cpp_source.html#l00249">settings_check_admin_code()</a>.</p>
+
+</div>
+</div>
+<a id="a04a4d53c0bd72fef1bca3aa7a540001e" name="a04a4d53c0bd72fef1bca3aa7a540001e"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a04a4d53c0bd72fef1bca3aa7a540001e">&#9670;&#160;</a></span>settings_check_admin_code()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">bool settings_check_admin_code </td>
+          <td>(</td>
+          <td class="paramtype">const char *</td>          <td class="paramname"><span class="paramname"><em>code</em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Check a candidate code, maintaining the failure counter. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">code</td><td>NUL-terminated candidate. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>true on match (counter cleared); false on mismatch or when no code is stored (counter incremented on a genuine mismatch). </dd></dl>
+
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00249">249</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00185">admin_derive()</a>, <a class="el" href="settings_8cpp_source.html#l00039">ADMIN_HASH_LEN</a>, <a class="el" href="settings_8cpp_source.html#l00038">ADMIN_SALT_LEN</a>, <a class="el" href="settings_8cpp_source.html#l00197">admin_set_fails()</a>, <a class="el" href="settings_8cpp_source.html#l00035">K_ADMIN_HASH</a>, <a class="el" href="settings_8cpp_source.html#l00034">K_ADMIN_SALT</a>, <a class="el" href="settings_8cpp_source.html#l00028">NS_SETTINGS</a>, <a class="el" href="settings_8cpp_source.html#l00283">settings_admin_fail_count()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00036">TAG</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l01222">admin_submit()</a>.</p>
 
 </div>
 </div>
@@ -448,11 +708,11 @@ Variables</h2></td></tr>
 
 <p>Erase all stored settings (brightness, auto, Wi-Fi creds, fees). </p>
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00159">159</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00294">294</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00021">NS_SETTINGS</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00036">TAG</a>.</p>
+<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00028">NS_SETTINGS</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00036">TAG</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l00329">btn_event_cb()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l00382">btn_event_cb()</a>.</p>
 
 </div>
 </div>
@@ -473,11 +733,11 @@ Variables</h2></td></tr>
 
 <p>Backlight level in percent, or 80 if never set. </p>
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00035">35</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00052">52</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00028">DEFAULT_BRIGHTNESS</a>, <a class="el" href="settings_8cpp_source.html#l00022">K_BRIGHTNESS</a>, and <a class="el" href="settings_8cpp_source.html#l00021">NS_SETTINGS</a>.</p>
+<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00045">DEFAULT_BRIGHTNESS</a>, <a class="el" href="settings_8cpp_source.html#l00029">K_BRIGHTNESS</a>, and <a class="el" href="settings_8cpp_source.html#l00028">NS_SETTINGS</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l01243">ui_task()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l01686">ui_task()</a>.</p>
 
 </div>
 </div>
@@ -499,11 +759,11 @@ Variables</h2></td></tr>
 <p>EIP-1559 max fee per gas, in Gwei. </p>
 <dl class="section return"><dt>Returns</dt><dd>the stored override, or the config.h compile-time default (MAX_FEE) if the user has never changed it. </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00139">139</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00156">156</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00032">DEFAULT_MAX_FEE_GWEI</a>, <a class="el" href="settings_8cpp_source.html#l00116">fee_get()</a>, and <a class="el" href="settings_8cpp_source.html#l00025">K_MAX_FEE</a>.</p>
+<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00049">DEFAULT_MAX_FEE_GWEI</a>, <a class="el" href="settings_8cpp_source.html#l00133">fee_get()</a>, and <a class="el" href="settings_8cpp_source.html#l00032">K_MAX_FEE</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l00593">build_settings()</a>, and <a class="el" href="main_8cpp_source.html#l00218">sign_and_broadcast()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l00698">build_settings()</a>, and <a class="el" href="main_8cpp_source.html#l00230">sign_and_broadcast()</a>.</p>
 
 </div>
 </div>
@@ -525,11 +785,11 @@ Variables</h2></td></tr>
 <p>EIP-1559 max priority fee (tip) per gas, in Gwei. </p>
 <dl class="section return"><dt>Returns</dt><dd>the stored override, or the config.h default (MAX_PRIORITY_FEE). </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00149">149</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00166">166</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00033">DEFAULT_PRIORITY_FEE_GWEI</a>, <a class="el" href="settings_8cpp_source.html#l00116">fee_get()</a>, and <a class="el" href="settings_8cpp_source.html#l00026">K_PRIO_FEE</a>.</p>
+<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00050">DEFAULT_PRIORITY_FEE_GWEI</a>, <a class="el" href="settings_8cpp_source.html#l00133">fee_get()</a>, and <a class="el" href="settings_8cpp_source.html#l00033">K_PRIO_FEE</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l00593">build_settings()</a>, and <a class="el" href="main_8cpp_source.html#l00218">sign_and_broadcast()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l00698">build_settings()</a>, and <a class="el" href="main_8cpp_source.html#l00230">sign_and_broadcast()</a>.</p>
 
 </div>
 </div>
@@ -574,11 +834,37 @@ Variables</h2></td></tr>
 </dl>
 <dl class="section return"><dt>Returns</dt><dd>true if both SSID and password were present, false otherwise (buffers are left NUL-terminated/empty on failure). </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00076">76</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00093">93</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00024">K_WIFI_PASS</a>, <a class="el" href="settings_8cpp_source.html#l00023">K_WIFI_SSID</a>, and <a class="el" href="settings_8cpp_source.html#l00021">NS_SETTINGS</a>.</p>
+<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00031">K_WIFI_PASS</a>, <a class="el" href="settings_8cpp_source.html#l00030">K_WIFI_SSID</a>, and <a class="el" href="settings_8cpp_source.html#l00028">NS_SETTINGS</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l00593">build_settings()</a>, and <a class="el" href="main_8cpp_source.html#l00432">ensure_wifi()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>, <a class="el" href="ui_8cpp_source.html#l00698">build_settings()</a>, and <a class="el" href="main_8cpp_source.html#l00529">ensure_wifi()</a>.</p>
+
+</div>
+</div>
+<a id="ad3200b5d1e2e3ad727bf971525ee44ca" name="ad3200b5d1e2e3ad727bf971525ee44ca"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ad3200b5d1e2e3ad727bf971525ee44ca">&#9670;&#160;</a></span>settings_has_admin_code()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">bool settings_has_admin_code </td>
+          <td>(</td>
+          <td class="paramtype">void</td>          <td class="paramname"><span class="paramname"><em></em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>true once an admin code exists, i.e. first-run setup is done. </p>
+<p>Cleared by <a class="el" href="#ab6e8c2165049181e1c37d84624b3ba2a" title="settings_factory_reset">settings_factory_reset</a>, so a reset device asks for a new code. </p>
+
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00207">207</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00039">ADMIN_HASH_LEN</a>, <a class="el" href="settings_8cpp_source.html#l00035">K_ADMIN_HASH</a>, and <a class="el" href="settings_8cpp_source.html#l00028">NS_SETTINGS</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>, and <a class="el" href="ui_8cpp_source.html#l00382">btn_event_cb()</a>.</p>
 
 </div>
 </div>
@@ -599,9 +885,42 @@ Variables</h2></td></tr>
 
 <p>true if a Wi-Fi SSID has been stored. </p>
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00062">62</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00079">79</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00023">K_WIFI_SSID</a>, and <a class="el" href="settings_8cpp_source.html#l00021">NS_SETTINGS</a>.</p>
+<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00030">K_WIFI_SSID</a>, and <a class="el" href="settings_8cpp_source.html#l00028">NS_SETTINGS</a>.</p>
+
+</div>
+</div>
+<a id="a8131914716c5a2264f972988a8a82057" name="a8131914716c5a2264f972988a8a82057"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a8131914716c5a2264f972988a8a82057">&#9670;&#160;</a></span>settings_set_admin_code()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">bool settings_set_admin_code </td>
+          <td>(</td>
+          <td class="paramtype">const char *</td>          <td class="paramname"><span class="paramname"><em>code</em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Store a new admin code, with a fresh random salt. </p>
+<p>The code is never persisted — only a salted keccak256 digest of it, deliberately not stretched (see <a class="el" href="settings_8cpp.html" title="NVS-backed implementation of the persistent device settings.">settings.cpp</a>). Resets the failure counter.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">code</td><td>NUL-terminated code; the caller wipes its own copy. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>false if NVS refused the write — the caller must not treat setup as done, since a terminal with no stored code can never open its menu. </dd></dl>
+
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00220">220</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00185">admin_derive()</a>, <a class="el" href="settings_8cpp_source.html#l00039">ADMIN_HASH_LEN</a>, <a class="el" href="settings_8cpp_source.html#l00038">ADMIN_SALT_LEN</a>, <a class="el" href="settings_8cpp_source.html#l00036">K_ADMIN_FAILS</a>, <a class="el" href="settings_8cpp_source.html#l00035">K_ADMIN_HASH</a>, <a class="el" href="settings_8cpp_source.html#l00034">K_ADMIN_SALT</a>, <a class="el" href="settings_8cpp_source.html#l00028">NS_SETTINGS</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00036">TAG</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l01222">admin_submit()</a>.</p>
 
 </div>
 </div>
@@ -622,11 +941,11 @@ Variables</h2></td></tr>
 
 <p>Persist the backlight level (0..100). </p>
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00049">49</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00066">66</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00022">K_BRIGHTNESS</a>, <a class="el" href="settings_8cpp_source.html#l00021">NS_SETTINGS</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00036">TAG</a>.</p>
+<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00029">K_BRIGHTNESS</a>, <a class="el" href="settings_8cpp_source.html#l00028">NS_SETTINGS</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00036">TAG</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l00475">settings_persist()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l00580">settings_persist()</a>.</p>
 
 </div>
 </div>
@@ -647,11 +966,11 @@ Variables</h2></td></tr>
 
 <p>Persist the max fee per gas (Gwei). </p>
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00144">144</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00161">161</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00127">fee_set()</a>, and <a class="el" href="settings_8cpp_source.html#l00025">K_MAX_FEE</a>.</p>
+<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00144">fee_set()</a>, and <a class="el" href="settings_8cpp_source.html#l00032">K_MAX_FEE</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l00475">settings_persist()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l00580">settings_persist()</a>.</p>
 
 </div>
 </div>
@@ -672,11 +991,11 @@ Variables</h2></td></tr>
 
 <p>Persist the max priority fee per gas (Gwei). </p>
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00154">154</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00171">171</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00127">fee_set()</a>, and <a class="el" href="settings_8cpp_source.html#l00026">K_PRIO_FEE</a>.</p>
+<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00144">fee_set()</a>, and <a class="el" href="settings_8cpp_source.html#l00033">K_PRIO_FEE</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l00475">settings_persist()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l00580">settings_persist()</a>.</p>
 
 </div>
 </div>
@@ -701,11 +1020,11 @@ Variables</h2></td></tr>
 
 <p>Persist Wi-Fi credentials (plaintext — see README threat model). </p>
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00102">102</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00119">119</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00024">K_WIFI_PASS</a>, <a class="el" href="settings_8cpp_source.html#l00023">K_WIFI_SSID</a>, <a class="el" href="settings_8cpp_source.html#l00021">NS_SETTINGS</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00036">TAG</a>.</p>
+<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00031">K_WIFI_PASS</a>, <a class="el" href="settings_8cpp_source.html#l00030">K_WIFI_SSID</a>, <a class="el" href="settings_8cpp_source.html#l00028">NS_SETTINGS</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00036">TAG</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00472">app_main()</a>, and <a class="el" href="main_8cpp_source.html#l00432">ensure_wifi()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>, and <a class="el" href="main_8cpp_source.html#l00482">wifi_keep_or_drop()</a>.</p>
 
 </div>
 </div>
@@ -730,7 +1049,7 @@ Variables</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00019">19</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00026">26</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
 </div>
 </div>

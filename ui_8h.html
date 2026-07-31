@@ -158,6 +158,11 @@ Enumerations</h2></td></tr>
 , <a class="el" href="#a4a96c66658390ff80fefe7027730cc25a49ac1eb8fe5d58250e8d8be06ab7ec31">UI_SCREEN_SETTINGS</a>
 , <br />
 &#160;&#160;<a class="el" href="#a4a96c66658390ff80fefe7027730cc25aae44df521ee8bd24f5657aeac76fcffb">UI_SCREEN_TX_STATUS</a>
+, <a class="el" href="#a4a96c66658390ff80fefe7027730cc25a25d7fe30af2e19d0eec7644899e4e04d">UI_SCREEN_BOOT_ERROR</a>
+, <a class="el" href="#a4a96c66658390ff80fefe7027730cc25a3f28db6bb92e542bfca58112e10f51c7">UI_SCREEN_ADMIN_SET</a>
+, <a class="el" href="#a4a96c66658390ff80fefe7027730cc25a57b2dcdf0a37a96462fce996f06b293c">UI_SCREEN_ADMIN_UNLOCK</a>
+, <br />
+&#160;&#160;<a class="el" href="#a4a96c66658390ff80fefe7027730cc25abfbc60e7b0a01e586b8810dd72b55341">UI_SCREEN_WELCOME</a>
 <br />
  }</td></tr>
 <tr class="memdesc:a4a96c66658390ff80fefe7027730cc25"><td class="mdescLeft">&#160;</td><td class="mdescRight">Top-level screens of the payment flow.  <a href="#a4a96c66658390ff80fefe7027730cc25">More...</a><br /></td></tr>
@@ -170,6 +175,9 @@ Enumerations</h2></td></tr>
 &#160;&#160;<a class="el" href="#a9a99e204659fdc9573b3dc140ffeedd3a7207c33f562206d364a50ae60a8a55cc">UI_EVENT_WIFI_SCAN</a>
 , <a class="el" href="#a9a99e204659fdc9573b3dc140ffeedd3a39d85ddff76d37945076baec0d72f0cb">UI_EVENT_WIFI_TRY</a>
 , <a class="el" href="#a9a99e204659fdc9573b3dc140ffeedd3ad02010de6358696d9390fc93984d2323">UI_EVENT_TX_RETRY</a>
+, <a class="el" href="#a9a99e204659fdc9573b3dc140ffeedd3a52d8ee321f1b394c2dbc75c4a3c4a6da">UI_EVENT_ADMIN_SET</a>
+, <br />
+&#160;&#160;<a class="el" href="#a9a99e204659fdc9573b3dc140ffeedd3a6317d6177b1fd69b72c5486ae6ef4c49">UI_EVENT_WELCOME_DONE</a>
 <br />
  }</td></tr>
 <tr class="memdesc:a9a99e204659fdc9573b3dc140ffeedd3"><td class="mdescLeft">&#160;</td><td class="mdescRight">Events emitted by the UI task towards the main task.  <a href="#a9a99e204659fdc9573b3dc140ffeedd3">More...</a><br /></td></tr>
@@ -185,6 +193,10 @@ Enumerations</h2></td></tr>
 <br />
  }</td></tr>
 <tr class="memdesc:a64b6bbe2fbeb96a8d689ba887b204fa1"><td class="mdescLeft">&#160;</td><td class="mdescRight">States shown on the transaction-status screen.  <a href="#a64b6bbe2fbeb96a8d689ba887b204fa1">More...</a><br /></td></tr>
+<tr class="memitem:a9fd79a31065507efd38b2c834862c12e" id="r_a9fd79a31065507efd38b2c834862c12e"><td class="memItemLeft">enum &#160;</td><td class="memItemRight"><a class="el" href="#a9fd79a31065507efd38b2c834862c12e">ui_boot_err_t</a> { <a class="el" href="#a9fd79a31065507efd38b2c834862c12eaf106efffda1ba69240c152ca490df6aa">UI_BOOT_ERR_NFC</a>
+, <a class="el" href="#a9fd79a31065507efd38b2c834862c12eaaf8d2293735ea31d383ce359a523f196">UI_BOOT_ERR_WALLET</a>
+ }</td></tr>
+<tr class="memdesc:a9fd79a31065507efd38b2c834862c12e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Startup faults shown on <a class="el" href="#a4a96c66658390ff80fefe7027730cc25a25d7fe30af2e19d0eec7644899e4e04d" title="UI_SCREEN_BOOT_ERROR">UI_SCREEN_BOOT_ERROR</a>.  <a href="#a9fd79a31065507efd38b2c834862c12e">More...</a><br /></td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 id="header-func-members" class="groupheader"><a id="func-members" name="func-members"></a>
 Functions</h2></td></tr>
@@ -200,12 +212,20 @@ Functions</h2></td></tr>
 <tr class="memdesc:a876ff330ea0bf38a47969c689f6a0b83"><td class="mdescLeft">&#160;</td><td class="mdescRight">Switch to the transaction-status screen.  <br /></td></tr>
 <tr class="memitem:af3c14a388f70d71dc0b6ab53693d1a8a" id="r_af3c14a388f70d71dc0b6ab53693d1a8a"><td class="memItemLeft">size_t&#160;</td><td class="memItemRight"><a class="el" href="#af3c14a388f70d71dc0b6ab53693d1a8a">ui_take_pin</a> (char *out, size_t n)</td></tr>
 <tr class="memdesc:af3c14a388f70d71dc0b6ab53693d1a8a"><td class="mdescLeft">&#160;</td><td class="mdescRight">Copy the most recently entered PIN out and wipe the UI's copy.  <br /></td></tr>
-<tr class="memitem:a1dacfbcf7e991d86a87f92282d3dfafd" id="r_a1dacfbcf7e991d86a87f92282d3dfafd"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#a1dacfbcf7e991d86a87f92282d3dfafd">ui_show_wifi_list</a> (const <a class="el" href="structnet__wifi__ap__t.html">net_wifi_ap_t</a> *aps, uint16_t n)</td></tr>
-<tr class="memdesc:a1dacfbcf7e991d86a87f92282d3dfafd"><td class="mdescLeft">&#160;</td><td class="mdescRight">Show the scanned Wi-Fi networks for the user to pick from.  <br /></td></tr>
+<tr class="memitem:a41ad2a2faa04f60e2e2a0b6333cd4c54" id="r_a41ad2a2faa04f60e2e2a0b6333cd4c54"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#a41ad2a2faa04f60e2e2a0b6333cd4c54">ui_show_wifi_list</a> (const <a class="el" href="structnet__wifi__ap__t.html">net_wifi_ap_t</a> *aps, uint16_t n, const char *note)</td></tr>
+<tr class="memdesc:a41ad2a2faa04f60e2e2a0b6333cd4c54"><td class="mdescLeft">&#160;</td><td class="mdescRight">Show the scanned Wi-Fi networks for the user to pick from.  <br /></td></tr>
+<tr class="memitem:aed523cd9db6cfe38217658dacbd2cbdc" id="r_aed523cd9db6cfe38217658dacbd2cbdc"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#aed523cd9db6cfe38217658dacbd2cbdc">ui_show_boot_error</a> (<a class="el" href="#a9fd79a31065507efd38b2c834862c12e">ui_boot_err_t</a> kind, const char *detail)</td></tr>
+<tr class="memdesc:aed523cd9db6cfe38217658dacbd2cbdc"><td class="mdescLeft">&#160;</td><td class="mdescRight">Show a startup fault, naming the cause and what to do about it.  <br /></td></tr>
 <tr class="memitem:aeeaa931df47c4d584b1a643097c27b9b" id="r_aeeaa931df47c4d584b1a643097c27b9b"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#aeeaa931df47c4d584b1a643097c27b9b">ui_set_addresses</a> (const char *usdc_contract, const char *dest_addr)</td></tr>
 <tr class="memdesc:aeeaa931df47c4d584b1a643097c27b9b"><td class="mdescLeft">&#160;</td><td class="mdescRight">Provide the USDC contract and destination addresses for the settings "Tx" tab (pointers stored as-is; pass static/literal).  <br /></td></tr>
 <tr class="memitem:ae2278caf49fcb7affadd7c40ae3286e4" id="r_ae2278caf49fcb7affadd7c40ae3286e4"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#ae2278caf49fcb7affadd7c40ae3286e4">ui_show_wifi_connecting</a> (const char *ssid)</td></tr>
 <tr class="memdesc:ae2278caf49fcb7affadd7c40ae3286e4"><td class="mdescLeft">&#160;</td><td class="mdescRight">Show a "Connecting to &lt;ssid&gt;…" screen while main associates.  <br /></td></tr>
+<tr class="memitem:a3db450e73974ba379262c434734336f2" id="r_a3db450e73974ba379262c434734336f2"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#a3db450e73974ba379262c434734336f2">ui_set_boot_status</a> (const char *step)</td></tr>
+<tr class="memdesc:a3db450e73974ba379262c434734336f2"><td class="mdescLeft">&#160;</td><td class="mdescRight">Set the one-line progress note on the splash screen.  <br /></td></tr>
+<tr class="memitem:af063dee1c2e32c1c5cd20c5e85a85cd8" id="r_af063dee1c2e32c1c5cd20c5e85a85cd8"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#af063dee1c2e32c1c5cd20c5e85a85cd8">ui_show_welcome</a> (void)</td></tr>
+<tr class="memdesc:af063dee1c2e32c1c5cd20c5e85a85cd8"><td class="mdescLeft">&#160;</td><td class="mdescRight">Greet the operator at the start of first-run setup.  <br /></td></tr>
+<tr class="memitem:aa2e16dfdfda01546a1b44535b71ed626" id="r_aa2e16dfdfda01546a1b44535b71ed626"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#aa2e16dfdfda01546a1b44535b71ed626">ui_show_admin_set</a> (void)</td></tr>
+<tr class="memdesc:aa2e16dfdfda01546a1b44535b71ed626"><td class="mdescLeft">&#160;</td><td class="mdescRight">Run the first-run admin-code creation (enter, then confirm).  <br /></td></tr>
 <tr class="memitem:a739a9cae9614464d8306f4e6f84021fe" id="r_a739a9cae9614464d8306f4e6f84021fe"><td class="memItemLeft">size_t&#160;</td><td class="memItemRight"><a class="el" href="#a739a9cae9614464d8306f4e6f84021fe">ui_take_wifi_creds</a> (char *ssid, size_t ssid_n, char *pass, size_t pass_n)</td></tr>
 <tr class="memdesc:a739a9cae9614464d8306f4e6f84021fe"><td class="mdescLeft">&#160;</td><td class="mdescRight">Fetch the selected SSID + entered password and wipe the UI's copy.  <br /></td></tr>
 </table>
@@ -236,11 +256,36 @@ Functions</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="ui_8h_source.html#l00078">78</a> of file <a class="el" href="ui_8h_source.html">ui.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8h_source.html#l00095">95</a> of file <a class="el" href="ui_8h_source.html">ui.h</a>.</p>
 
 </div>
 </div>
 <a name="doc-enum-members" id="doc-enum-members"></a><h2 id="header-doc-enum-members" class="groupheader">Enumeration Type Documentation</h2>
+<a id="a9fd79a31065507efd38b2c834862c12e" name="a9fd79a31065507efd38b2c834862c12e"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a9fd79a31065507efd38b2c834862c12e">&#9670;&#160;</a></span>ui_boot_err_t</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">enum <a class="el" href="#a9fd79a31065507efd38b2c834862c12e">ui_boot_err_t</a></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Startup faults shown on <a class="el" href="#a4a96c66658390ff80fefe7027730cc25a25d7fe30af2e19d0eec7644899e4e04d" title="UI_SCREEN_BOOT_ERROR">UI_SCREEN_BOOT_ERROR</a>. </p>
+<p>Bring-up problems, not declined payments — hence their own screen. Wording lives in <a class="el" href="ui_8cpp.html" title="Touchscreen UI implementation built on LVGL 8.x.">ui.cpp</a>; the caller only names the fault. </p>
+<table class="fieldtable">
+<tr><th colspan="2">Enumerator</th></tr><tr><td class="fieldname"><a id="a9fd79a31065507efd38b2c834862c12eaf106efffda1ba69240c152ca490df6aa" name="a9fd79a31065507efd38b2c834862c12eaf106efffda1ba69240c152ca490df6aa"></a>UI_BOOT_ERR_NFC&#160;</td><td class="fielddoc"><p>PN532 did not answer — wiring/power/I2C. </p>
+</td></tr>
+<tr><td class="fieldname"><a id="a9fd79a31065507efd38b2c834862c12eaaf8d2293735ea31d383ce359a523f196" name="a9fd79a31065507efd38b2c834862c12eaaf8d2293735ea31d383ce359a523f196"></a>UI_BOOT_ERR_WALLET&#160;</td><td class="fielddoc"><p>Reader answered, wallet layer failed to start. </p>
+</td></tr>
+</table>
+
+<p class="definition">Definition at line <a class="el" href="ui_8h_source.html#l00081">81</a> of file <a class="el" href="ui_8h_source.html">ui.h</a>.</p>
+
+</div>
+</div>
 <a id="a9a99e204659fdc9573b3dc140ffeedd3" name="a9a99e204659fdc9573b3dc140ffeedd3"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a9a99e204659fdc9573b3dc140ffeedd3">&#9670;&#160;</a></span>ui_event_t</h2>
 
@@ -269,9 +314,13 @@ Functions</h2></td></tr>
 </td></tr>
 <tr><td class="fieldname"><a id="a9a99e204659fdc9573b3dc140ffeedd3ad02010de6358696d9390fc93984d2323" name="a9a99e204659fdc9573b3dc140ffeedd3ad02010de6358696d9390fc93984d2323"></a>UI_EVENT_TX_RETRY&#160;</td><td class="fielddoc"><p>New payment tapped after Done/Failed. </p>
 </td></tr>
+<tr><td class="fieldname"><a id="a9a99e204659fdc9573b3dc140ffeedd3a52d8ee321f1b394c2dbc75c4a3c4a6da" name="a9a99e204659fdc9573b3dc140ffeedd3a52d8ee321f1b394c2dbc75c4a3c4a6da"></a>UI_EVENT_ADMIN_SET&#160;</td><td class="fielddoc"><p>Admin code created and stored (first run). </p>
+</td></tr>
+<tr><td class="fieldname"><a id="a9a99e204659fdc9573b3dc140ffeedd3a6317d6177b1fd69b72c5486ae6ef4c49" name="a9a99e204659fdc9573b3dc140ffeedd3a6317d6177b1fd69b72c5486ae6ef4c49"></a>UI_EVENT_WELCOME_DONE&#160;</td><td class="fielddoc"><p>Start tapped on the welcome screen. </p>
+</td></tr>
 </table>
 
-<p class="definition">Definition at line <a class="el" href="ui_8h_source.html#l00048">48</a> of file <a class="el" href="ui_8h_source.html">ui.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8h_source.html#l00052">52</a> of file <a class="el" href="ui_8h_source.html">ui.h</a>.</p>
 
 </div>
 </div>
@@ -306,6 +355,14 @@ Functions</h2></td></tr>
 <tr><td class="fieldname"><a id="a4a96c66658390ff80fefe7027730cc25a49ac1eb8fe5d58250e8d8be06ab7ec31" name="a4a96c66658390ff80fefe7027730cc25a49ac1eb8fe5d58250e8d8be06ab7ec31"></a>UI_SCREEN_SETTINGS&#160;</td><td class="fielddoc"><p>Full-screen settings (tabs). </p>
 </td></tr>
 <tr><td class="fieldname"><a id="a4a96c66658390ff80fefe7027730cc25aae44df521ee8bd24f5657aeac76fcffb" name="a4a96c66658390ff80fefe7027730cc25aae44df521ee8bd24f5657aeac76fcffb"></a>UI_SCREEN_TX_STATUS&#160;</td><td class="fielddoc"><p>Card wait / signing / broadcast progress. </p>
+</td></tr>
+<tr><td class="fieldname"><a id="a4a96c66658390ff80fefe7027730cc25a25d7fe30af2e19d0eec7644899e4e04d" name="a4a96c66658390ff80fefe7027730cc25a25d7fe30af2e19d0eec7644899e4e04d"></a>UI_SCREEN_BOOT_ERROR&#160;</td><td class="fielddoc"><p>Startup fault — names the cause, not "Declined". </p>
+</td></tr>
+<tr><td class="fieldname"><a id="a4a96c66658390ff80fefe7027730cc25a3f28db6bb92e542bfca58112e10f51c7" name="a4a96c66658390ff80fefe7027730cc25a3f28db6bb92e542bfca58112e10f51c7"></a>UI_SCREEN_ADMIN_SET&#160;</td><td class="fielddoc"><p>First-run creation of the admin code. </p>
+</td></tr>
+<tr><td class="fieldname"><a id="a4a96c66658390ff80fefe7027730cc25a57b2dcdf0a37a96462fce996f06b293c" name="a4a96c66658390ff80fefe7027730cc25a57b2dcdf0a37a96462fce996f06b293c"></a>UI_SCREEN_ADMIN_UNLOCK&#160;</td><td class="fielddoc"><p>Admin code demanded before the settings. </p>
+</td></tr>
+<tr><td class="fieldname"><a id="a4a96c66658390ff80fefe7027730cc25abfbc60e7b0a01e586b8810dd72b55341" name="a4a96c66658390ff80fefe7027730cc25abfbc60e7b0a01e586b8810dd72b55341"></a>UI_SCREEN_WELCOME&#160;</td><td class="fielddoc"><p>Greeting opening first-run setup. </p>
 </td></tr>
 </table>
 
@@ -343,7 +400,7 @@ Functions</h2></td></tr>
 </td></tr>
 </table>
 
-<p class="definition">Definition at line <a class="el" href="ui_8h_source.html#l00059">59</a> of file <a class="el" href="ui_8h_source.html">ui.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8h_source.html#l00065">65</a> of file <a class="el" href="ui_8h_source.html">ui.h</a>.</p>
 
 </div>
 </div>
@@ -371,11 +428,11 @@ Functions</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01318">1318</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01771">1771</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00210">s_cb</a>, <a class="el" href="ui_8cpp_source.html#l00213">s_req_screen</a>, <a class="el" href="ui_8cpp_source.html#l00212">s_screen_dirty</a>, <a class="el" href="ui_8h_source.html#l00036">UI_SCREEN_SPLASH</a>, and <a class="el" href="ui_8cpp_source.html#l01243">ui_task()</a>.</p>
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00215">s_cb</a>, <a class="el" href="ui_8cpp_source.html#l00218">s_req_screen</a>, <a class="el" href="ui_8cpp_source.html#l00217">s_screen_dirty</a>, <a class="el" href="ui_8h_source.html#l00036">UI_SCREEN_SPLASH</a>, and <a class="el" href="ui_8cpp_source.html#l01686">ui_task()</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00472">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
 
 </div>
 </div>
@@ -400,11 +457,69 @@ Functions</h2></td></tr>
 
 <p>Provide the USDC contract and destination addresses for the settings "Tx" tab (pointers stored as-is; pass static/literal). </p>
 
-<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01369">1369</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01830">1830</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00248">s_addr_dest</a>, and <a class="el" href="ui_8cpp_source.html#l00247">s_addr_usdc</a>.</p>
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00289">s_addr_dest</a>, and <a class="el" href="ui_8cpp_source.html#l00288">s_addr_usdc</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00472">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
+
+</div>
+</div>
+<a id="a3db450e73974ba379262c434734336f2" name="a3db450e73974ba379262c434734336f2"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a3db450e73974ba379262c434734336f2">&#9670;&#160;</a></span>ui_set_boot_status()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void ui_set_boot_status </td>
+          <td>(</td>
+          <td class="paramtype">const char *</td>          <td class="paramname"><span class="paramname"><em>step</em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Set the one-line progress note on the splash screen. </p>
+<p>Updates the splash in place instead of switching screens. Safe from the main task: applied by the UI task on its next pass.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">step</td><td>Short label ("Starting NFC reader"), copied internally. NULL or "" clears the line. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01840">1840</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00260">s_boot_step</a>, and <a class="el" href="ui_8cpp_source.html#l00262">s_boot_step_dirty</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>, and <a class="el" href="main_8cpp_source.html#l00529">ensure_wifi()</a>.</p>
+
+</div>
+</div>
+<a id="aa2e16dfdfda01546a1b44535b71ed626" name="aa2e16dfdfda01546a1b44535b71ed626"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aa2e16dfdfda01546a1b44535b71ed626">&#9670;&#160;</a></span>ui_show_admin_set()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void ui_show_admin_set </td>
+          <td>(</td>
+          <td class="paramtype">void</td>          <td class="paramname"><span class="paramname"><em></em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Run the first-run admin-code creation (enter, then confirm). </p>
+<p>Deliberately has no way out: everything behind the burger menu — Wi-Fi, fees, factory reset — sits behind this code, so the terminal must not become usable without one. Emits <a class="el" href="#a9a99e204659fdc9573b3dc140ffeedd3a52d8ee321f1b394c2dbc75c4a3c4a6da" title="UI_EVENT_ADMIN_SET">UI_EVENT_ADMIN_SET</a> once stored. </p>
+
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01862">1862</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00324">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00279">s_admin_confirming</a>, <a class="el" href="ui_8cpp_source.html#l00277">s_admin_first</a>, <a class="el" href="ui_8cpp_source.html#l00278">s_admin_note</a>, and <a class="el" href="ui_8h_source.html#l00046">UI_SCREEN_ADMIN_SET</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
 
 </div>
 </div>
@@ -425,11 +540,47 @@ Functions</h2></td></tr>
 
 <p>Switch to the amount-entry screen (forces a value redraw). </p>
 
-<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01331">1331</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01784">1784</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00280">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00229">s_amount_cents</a>, <a class="el" href="ui_8cpp_source.html#l00216">s_amount_units</a>, and <a class="el" href="ui_8h_source.html#l00037">UI_SCREEN_AMOUNT</a>.</p>
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00324">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00234">s_amount_cents</a>, <a class="el" href="ui_8cpp_source.html#l00221">s_amount_units</a>, and <a class="el" href="ui_8h_source.html#l00037">UI_SCREEN_AMOUNT</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00472">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
+
+</div>
+</div>
+<a id="aed523cd9db6cfe38217658dacbd2cbdc" name="aed523cd9db6cfe38217658dacbd2cbdc"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aed523cd9db6cfe38217658dacbd2cbdc">&#9670;&#160;</a></span>ui_show_boot_error()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void ui_show_boot_error </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="#a9fd79a31065507efd38b2c834862c12e">ui_boot_err_t</a></td>          <td class="paramname"><span class="paramname"><em>kind</em></span>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const char *</td>          <td class="paramname"><span class="paramname"><em>detail</em></span>&#160;)</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Show a startup fault, naming the cause and what to do about it. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">kind</td><td>Which bring-up step failed. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">detail</td><td>Optional technical detail for a technician (an esp_err_t name, say); copied internally, may be NULL. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01846">1846</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00324">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00266">s_boot_detail</a>, <a class="el" href="ui_8cpp_source.html#l00265">s_boot_err</a>, and <a class="el" href="ui_8h_source.html#l00045">UI_SCREEN_BOOT_ERROR</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
 
 </div>
 </div>
@@ -461,11 +612,11 @@ Functions</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01337">1337</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01790">1790</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00280">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00220">s_confirm_addr</a>, <a class="el" href="ui_8cpp_source.html#l00219">s_confirm_amount</a>, and <a class="el" href="ui_8h_source.html#l00038">UI_SCREEN_CONFIRM</a>.</p>
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00324">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00225">s_confirm_addr</a>, <a class="el" href="ui_8cpp_source.html#l00224">s_confirm_amount</a>, and <a class="el" href="ui_8h_source.html#l00038">UI_SCREEN_CONFIRM</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00472">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
 
 </div>
 </div>
@@ -486,11 +637,11 @@ Functions</h2></td></tr>
 
 <p>Switch to the splash screen. </p>
 
-<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01327">1327</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01780">1780</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00280">request_screen()</a>, and <a class="el" href="ui_8h_source.html#l00036">UI_SCREEN_SPLASH</a>.</p>
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00324">request_screen()</a>, and <a class="el" href="ui_8h_source.html#l00036">UI_SCREEN_SPLASH</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00472">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
 
 </div>
 </div>
@@ -522,11 +673,37 @@ Functions</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01394">1394</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01884">1884</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00280">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00224">s_tx_info</a>, <a class="el" href="ui_8cpp_source.html#l00223">s_tx_state</a>, and <a class="el" href="ui_8h_source.html#l00044">UI_SCREEN_TX_STATUS</a>.</p>
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00324">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00229">s_tx_info</a>, <a class="el" href="ui_8cpp_source.html#l00228">s_tx_state</a>, and <a class="el" href="ui_8h_source.html#l00044">UI_SCREEN_TX_STATUS</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00472">app_main()</a>, and <a class="el" href="main_8cpp_source.html#l00218">sign_and_broadcast()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>, and <a class="el" href="main_8cpp_source.html#l00230">sign_and_broadcast()</a>.</p>
+
+</div>
+</div>
+<a id="af063dee1c2e32c1c5cd20c5e85a85cd8" name="af063dee1c2e32c1c5cd20c5e85a85cd8"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#af063dee1c2e32c1c5cd20c5e85a85cd8">&#9670;&#160;</a></span>ui_show_welcome()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void ui_show_welcome </td>
+          <td>(</td>
+          <td class="paramtype">void</td>          <td class="paramname"><span class="paramname"><em></em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Greet the operator at the start of first-run setup. </p>
+<p>Shown on a virgin or factory-reset terminal, before the Wi-Fi and admin-code steps. Emits <a class="el" href="#a9a99e204659fdc9573b3dc140ffeedd3a6317d6177b1fd69b72c5486ae6ef4c49" title="UI_EVENT_WELCOME_DONE">UI_EVENT_WELCOME_DONE</a> when Start is tapped. </p>
+
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01857">1857</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00324">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00280">s_welcome_sent</a>, and <a class="el" href="ui_8h_source.html#l00048">UI_SCREEN_WELCOME</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
 
 </div>
 </div>
@@ -546,17 +723,18 @@ Functions</h2></td></tr>
 </div><div class="memdoc">
 
 <p>Show a "Connecting to &lt;ssid&gt;…" screen while main associates. </p>
+<p>Interactive picker only; unattended boot reports through <a class="el" href="ui_8cpp.html#a3db450e73974ba379262c434734336f2" title="ui_set_boot_status">ui_set_boot_status</a> and stays on the splash. </p>
 
-<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01374">1374</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01835">1835</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00280">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00243">s_wifi_msg</a>, and <a class="el" href="ui_8h_source.html#l00042">UI_SCREEN_WIFI_CONNECTING</a>.</p>
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00324">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00330">set_wifi_progress()</a>, and <a class="el" href="ui_8h_source.html#l00042">UI_SCREEN_WIFI_CONNECTING</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00472">app_main()</a>, and <a class="el" href="main_8cpp_source.html#l00432">ensure_wifi()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>, and <a class="el" href="main_8cpp_source.html#l00529">ensure_wifi()</a>.</p>
 
 </div>
 </div>
-<a id="a1dacfbcf7e991d86a87f92282d3dfafd" name="a1dacfbcf7e991d86a87f92282d3dfafd"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a1dacfbcf7e991d86a87f92282d3dfafd">&#9670;&#160;</a></span>ui_show_wifi_list()</h2>
+<a id="a41ad2a2faa04f60e2e2a0b6333cd4c54" name="a41ad2a2faa04f60e2e2a0b6333cd4c54"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a41ad2a2faa04f60e2e2a0b6333cd4c54">&#9670;&#160;</a></span>ui_show_wifi_list()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -569,7 +747,12 @@ Functions</h2></td></tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">uint16_t</td>          <td class="paramname"><span class="paramname"><em>n</em></span>&#160;)</td>
+          <td class="paramtype">uint16_t</td>          <td class="paramname"><span class="paramname"><em>n</em></span>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const char *</td>          <td class="paramname"><span class="paramname"><em>note</em></span>&#160;)</td>
         </tr>
       </table>
 </div><div class="memdoc">
@@ -579,15 +762,16 @@ Functions</h2></td></tr>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">aps</td><td>Array of scanned APs (copied internally). </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">n</td><td>Number of entries in <code class="param">aps</code>. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">note</td><td>Optional one-line reason the picker (re)opened, shown above the list; copied internally, NULL for none. Applied on every call, so a stale note cannot survive a later render. </td></tr>
   </table>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01361">1361</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01814">1814</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00280">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00240">s_ap_count</a>, <a class="el" href="ui_8cpp_source.html#l00239">s_aps</a>, <a class="el" href="ui_8h_source.html#l00040">UI_SCREEN_WIFI_LIST</a>, and <a class="el" href="ui_8cpp_source.html#l00238">WIFI_MAX_APS</a>.</p>
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00324">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00245">s_ap_count</a>, <a class="el" href="ui_8cpp_source.html#l00244">s_aps</a>, <a class="el" href="ui_8cpp_source.html#l00248">s_wifi_note</a>, <a class="el" href="ui_8h_source.html#l00040">UI_SCREEN_WIFI_LIST</a>, and <a class="el" href="ui_8cpp_source.html#l00243">WIFI_MAX_APS</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00472">app_main()</a>, and <a class="el" href="main_8cpp_source.html#l00432">ensure_wifi()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>, and <a class="el" href="main_8cpp_source.html#l00529">ensure_wifi()</a>.</p>
 
 </div>
 </div>
@@ -621,11 +805,11 @@ Functions</h2></td></tr>
 </dl>
 <dl class="section return"><dt>Returns</dt><dd>number of PIN digits copied (0 if none available). </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01348">1348</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01801">1801</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00234">s_pin</a>, and <a class="el" href="ui_8cpp_source.html#l00235">s_pin_len</a>.</p>
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00239">s_pin</a>, and <a class="el" href="ui_8cpp_source.html#l00240">s_pin_len</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00472">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
 
 </div>
 </div>
@@ -671,11 +855,11 @@ Functions</h2></td></tr>
 </dl>
 <dl class="section return"><dt>Returns</dt><dd>length of the SSID (0 if none available). </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01380">1380</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01870">1870</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00242">s_wifi_pass</a>, and <a class="el" href="ui_8cpp_source.html#l00241">s_wifi_ssid</a>.</p>
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00247">s_wifi_pass</a>, and <a class="el" href="ui_8cpp_source.html#l00246">s_wifi_ssid</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00472">app_main()</a>, and <a class="el" href="main_8cpp_source.html#l00432">ensure_wifi()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>, and <a class="el" href="main_8cpp_source.html#l00529">ensure_wifi()</a>.</p>
 
 </div>
 </div>

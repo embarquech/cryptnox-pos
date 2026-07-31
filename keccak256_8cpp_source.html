@@ -238,7 +238,7 @@ document.addEventListener('DOMContentLoaded',() => { initNavTree('keccak256_8cpp
 <div class="line"><a id="l00124" name="l00124"></a><span class="lineno">  124</span>    <span class="keywordtype">size_t</span> offset = 0U;</div>
 <div class="line"><a id="l00125" name="l00125"></a><span class="lineno">  125</span>    <span class="keywordtype">size_t</span> i;</div>
 <div class="line"><a id="l00126" name="l00126"></a><span class="lineno">  126</span> </div>
-<div class="line"><a id="l00127" name="l00127"></a><span class="lineno">  127</span>    (void)memset(state, 0, <span class="keyword">sizeof</span>(state));</div>
+<div class="line"><a id="l00127" name="l00127"></a><span class="lineno">  127</span>    CW_Utils::secure_wipe(sb, <span class="keyword">sizeof</span>(state));</div>
 <div class="line"><a id="l00128" name="l00128"></a><span class="lineno">  128</span> </div>
 <div class="line"><a id="l00129" name="l00129"></a><span class="lineno">  129</span>    <span class="comment">/* Absorb full blocks */</span></div>
 <div class="line"><a id="l00130" name="l00130"></a><span class="lineno">  130</span>    <span class="keywordflow">while</span> ((length - offset) &gt;= <a class="code hl_define" href="keccak256_8cpp.html#aecbdcebd899f1fafbe45f990c1e1882e">KECCAK_RATE</a>) {</div>

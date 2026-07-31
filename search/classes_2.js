@@ -1,4 +1,5 @@
 var searchData=
 [
-  ['rpc_5fresp_5fhdrs_5ft_0',['rpc_resp_hdrs_t',['../structrpc__resp__hdrs__t.html',1,'']]]
+  ['net_5fwifi_5fap_5ft_0',['net_wifi_ap_t',['../structnet__wifi__ap__t.html',1,'']]],
+  ['nulllogger_1',['NullLogger',['../classNullLogger.html',1,'']]]
 ];

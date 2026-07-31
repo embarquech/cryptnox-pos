@@ -195,15 +195,15 @@ CYD CN1 ↔ PN532 NFC — I²C interface</h3>
 <tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone">VCC  </td><td class="markdownTableBodyNone">3.3V  </td><td class="markdownTableBodyNone">Red  </td></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone">SDA  </td><td class="markdownTableBodyNone">GPIO 27 (CN1 SDA)  </td><td class="markdownTableBodyNone">Blue  </td></tr>
+<td class="markdownTableBodyNone">SDA  </td><td class="markdownTableBodyNone">GPIO 27 (CN1 SDA)  </td><td class="markdownTableBodyNone">Yellow  </td></tr>
 <tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone">SCL  </td><td class="markdownTableBodyNone">GPIO 22 (CN1 SCL)  </td><td class="markdownTableBodyNone">Yellow  </td></tr>
+<td class="markdownTableBodyNone">SCL  </td><td class="markdownTableBodyNone">GPIO 22 (CN1 SCL)  </td><td class="markdownTableBodyNone">Blue  </td></tr>
 </table>
 <dl class="section important"><dt>Important</dt><dd>Make sure the switches on the PN532 module are configured for <b>I²C</b> mode: <br  />
 <br  />
 <ul>
-<li><b>Switch 0</b> → LOW</li>
-<li><b>Switch 1</b> → HIGH</li>
+<li><b>Switch 0</b> → HIGH</li>
+<li><b>Switch 1</b> → LOW</li>
 </ul>
 </dd></dl>
 <p><img src="hardware/schematics/cyd_esp32_pn532_i2c_bb.png" alt="cyd_pn532_i2c" width="800" class="inline"/></p>
@@ -224,9 +224,9 @@ Configuration</h2>
 <tr class="markdownTableRowEven">
 <td class="markdownTableBodyNone"><span class="tt">ADDR_FROM</span>  </td><td class="markdownTableBodyNone">Ethereum address of the <b>card</b> (<span class="tt">m/44'/60'/0'/0/0</span>) — used to fetch the nonce and validate the ecrecover parity  </td></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyNone"><span class="tt">ADDR_TO</span>  </td><td class="markdownTableBodyNone">Destination address for every transfer  </td></tr>
+<td class="markdownTableBodyNone"><span class="tt">ADDR_TO</span>  </td><td class="markdownTableBodyNone">Destination address for every transfer. <b>Use the EIP-55 mixed-case checksum form</b> — the firmware verifies the checksum at boot and refuses to start on a mismatch. All-lowercase is accepted but bypasses that typo protection (and warns at boot)  </td></tr>
 <tr class="markdownTableRowEven">
-<td class="markdownTableBodyNone"><span class="tt">ADDR_USDC</span>  </td><td class="markdownTableBodyNone">USDC ERC-20 contract address on the target chain (Sepolia testnet by default)  </td></tr>
+<td class="markdownTableBodyNone"><span class="tt">ADDR_USDC</span>  </td><td class="markdownTableBodyNone">USDC ERC-20 contract address on the target chain (Sepolia testnet by default). Same EIP-55 rule as <span class="tt">ADDR_TO</span>  </td></tr>
 <tr class="markdownTableRowOdd">
 <td class="markdownTableBodyNone"><span class="tt">CHAIN_ID_SEPOLIA</span>, <span class="tt">MAX_PRIORITY_FEE</span>, <span class="tt">MAX_FEE</span>, <span class="tt">GAS_LIMIT_ERC20</span>  </td><td class="markdownTableBodyNone">Chain ID and EIP-1559 gas parameters (the fees are first-boot defaults, editable at run time in the settings)  </td></tr>
 </table>

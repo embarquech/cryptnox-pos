@@ -260,7 +260,7 @@ document.addEventListener('DOMContentLoaded',() => { initNavTree('eth__rpc_8cpp_
 <div class="line"><a id="l00184" name="l00184"></a><span class="lineno">  184</span>    (void)memset(&amp;hdrs, 0, <span class="keyword">sizeof</span>(hdrs));</div>
 <div class="line"><a id="l00185" name="l00185"></a><span class="lineno">  185</span> </div>
 <div class="line"><a id="l00186" name="l00186"></a><span class="lineno">  186</span>    esp_http_client_config_t cfg;</div>
-<div class="line"><a id="l00187" name="l00187"></a><span class="lineno">  187</span>    (void)memset(&amp;cfg, 0, <span class="keyword">sizeof</span>(cfg));</div>
+<div class="line"><a id="l00187" name="l00187"></a><span class="lineno">  187</span>    CW_Utils::secure_wipe(<span class="keyword">reinterpret_cast&lt;</span>uint8_t *<span class="keyword">&gt;</span>(&amp;cfg), <span class="keyword">sizeof</span>(cfg));</div>
 <div class="line"><a id="l00188" name="l00188"></a><span class="lineno">  188</span>    cfg.url               = <a class="code hl_variable" href="eth__rpc_8cpp.html#a5d75174757ec540057663c024a4011bd">s_rpc_url</a>;</div>
 <div class="line"><a id="l00189" name="l00189"></a><span class="lineno">  189</span>    cfg.method            = HTTP_METHOD_POST;</div>
 <div class="line"><a id="l00190" name="l00190"></a><span class="lineno">  190</span>    cfg.timeout_ms        = 15000;</div>
@@ -447,7 +447,7 @@ document.addEventListener('DOMContentLoaded',() => { initNavTree('eth__rpc_8cpp_
 <div class="line"><a id="l00370" name="l00370"></a><span class="lineno">  370</span> </div>
 <div class="line"><a id="l00371" name="l00371"></a><span class="lineno">  371</span>    <span class="comment">/* ecrecover precompile input: hash(32) || v_uint256(32) || r(32) || s(32) */</span></div>
 <div class="line"><a id="l00372" name="l00372"></a><span class="lineno">  372</span>    uint8_t input[128];</div>
-<div class="line"><a id="l00373" name="l00373"></a><span class="lineno">  373</span>    (void)memset(input, 0, <span class="keyword">sizeof</span>(input));</div>
+<div class="line"><a id="l00373" name="l00373"></a><span class="lineno">  373</span>    CW_Utils::secure_wipe(input, <span class="keyword">sizeof</span>(input));</div>
 <div class="line"><a id="l00374" name="l00374"></a><span class="lineno">  374</span>    (void)CW_Utils::safe_memcpy(input, <span class="keyword">sizeof</span>(input), hash, 32U);</div>
 <div class="line"><a id="l00375" name="l00375"></a><span class="lineno">  375</span>    <span class="comment">/* v occupies the last byte of the second 32-byte slot (index 63) */</span></div>
 <div class="line"><a id="l00376" name="l00376"></a><span class="lineno">  376</span>    (void)CW_Utils::safe_memcpy(input + 64U, <span class="keyword">sizeof</span>(input) - 64U, r, 32U);</div>

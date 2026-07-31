@@ -1,6 +1,7 @@
 var searchData=
 [
-  ['hdr_5fdivider_5fy_0',['HDR_DIVIDER_Y',['../ui_8cpp.html#a48b6df0d8f2a03a744233b9bf0ece746',1,'ui.cpp']]],
-  ['hdr_5ftitle_5fy_1',['HDR_TITLE_Y',['../ui_8cpp.html#a4a0a6ff3d2c60d17b9dce470a0d50b65',1,'ui.cpp']]],
-  ['hex_5fper_5fbyte_2',['HEX_PER_BYTE',['../eth__rpc_8cpp.html#aa987c4aef2205ae111e627a9725f2939',1,'eth_rpc.cpp']]]
+  ['false32_0',['FALSE32',['../hardening_8h.html#ae4ead892a0295b8602627035035c04af',1,'hardening.h']]],
+  ['fee_5fmax_5fgwei_1',['FEE_MAX_GWEI',['../ui_8cpp.html#ae43377b554c0811dd3669f064523bd64',1,'ui.cpp']]],
+  ['fee_5fmin_5fgwei_2',['FEE_MIN_GWEI',['../ui_8cpp.html#ae840cf51dcd9a2d364e3503b2b4f7952',1,'ui.cpp']]],
+  ['fee_5fstep_5fgwei_3',['FEE_STEP_GWEI',['../ui_8cpp.html#ad3cab8f13bd19ca04727bff64f2fceb5',1,'ui.cpp']]]
 ];

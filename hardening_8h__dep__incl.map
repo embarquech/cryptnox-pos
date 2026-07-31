@@ -1,0 +1,7 @@
+<map id="main/hardening.h" name="main/hardening.h">
+<area shape="rect" id="Node000001" title="Decision&#45;integrity primitives (see docs/HARDENING.md §3, §4)." alt="" coords="91,5,227,31"/>
+<area shape="rect" id="Node000002" href="$hardening_8cpp.html" title="Anomaly handling (§3.3): local fail&#45;closed + persisted counter and a RAM ring buffer for on&#45;site insp..." alt="" coords="5,79,156,104"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="138,42,95,80,92,76,135,38"/>
+<area shape="rect" id="Node000003" href="$main_8cpp.html" title="cryptnox&#45;pos entry point: touchscreen USDC payment terminal." alt="" coords="180,79,299,104"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="184,38,228,76,224,80,180,42"/>
+</map>

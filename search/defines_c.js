@@ -1,6 +1,11 @@
 var searchData=
 [
-  ['resp_5fbuf_5fsize_0',['RESP_BUF_SIZE',['../eth__rpc_8cpp.html#aa071fca063bfc73fb09e7a10de50a788',1,'eth_rpc.cpp']]],
-  ['resp_5flog_5fmax_1',['RESP_LOG_MAX',['../eth__rpc_8cpp.html#ae6d7383da00dc8e461529805d8f8e7ed',1,'eth_rpc.cpp']]],
-  ['result_5fstr_5fmax_2',['RESULT_STR_MAX',['../eth__rpc_8cpp.html#a6c8ef3d7c17e1c7639d82aefd414f065',1,'eth_rpc.cpp']]]
+  ['pn532_5fi2c_5fhz_0',['PN532_I2C_HZ',['../main_8cpp.html#a785980ca3a3f7ca30e4f6607effaca58',1,'main.cpp']]],
+  ['pn532_5fi2c_5fport_1',['PN532_I2C_PORT',['../main_8cpp.html#a3b7cbe99900d5ff020df54ca5315ef2b',1,'main.cpp']]],
+  ['pn532_5firq_2',['PN532_IRQ',['../main_8cpp.html#a04eeb1db4f8381537f1075bb5abd4b36',1,'main.cpp']]],
+  ['pn532_5frst_3',['PN532_RST',['../main_8cpp.html#a606424d1fd73f1524ec0d4e3203d9fab',1,'main.cpp']]],
+  ['pn532_5fscl_4',['PN532_SCL',['../main_8cpp.html#a614af6ce2396908da10eba638dcc5059',1,'main.cpp']]],
+  ['pn532_5fsda_5',['PN532_SDA',['../main_8cpp.html#a4fe62d5410572e51c86de7e15ea04939',1,'main.cpp']]],
+  ['pos_5fverdict_5fapproved_6',['POS_VERDICT_APPROVED',['../hardening_8h.html#a921e145e26a10ad0200ae1fcaeab5e84',1,'hardening.h']]],
+  ['pos_5fverdict_5fdeclined_7',['POS_VERDICT_DECLINED',['../hardening_8h.html#ad692d25b854d5d6f334915ebdc857ecf',1,'hardening.h']]]
 ];
