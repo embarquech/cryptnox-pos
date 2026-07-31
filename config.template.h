@@ -73,11 +73,17 @@
 /* Sender address — the card's m/44'/60'/0'/0/0 key, lowercase hex, no 0x */
 #define ADDR_FROM         "<SENDER_ADDRESS>"
 
-/* Recipient address — destination of every transfer (no 0x) */
-#define ADDR_TO           "<RECIPIENT_ADDRESS>"
+/* Recipient address — destination of every transfer (no 0x).
+ * MUST be in EIP-55 mixed-case checksum form: the firmware verifies the
+ * checksum at boot and refuses to start on a mismatch, catching the most
+ * probable typo of the recipient. An all-lowercase address is accepted but
+ * bypasses that typo protection (and logs a warning at boot). */
+#define ADDR_TO           "<RECIPIENT_ADDRESS_EIP55>"
 
-/* USDC contract address (Sepolia testnet, no 0x) */
-#define ADDR_USDC         "<USDC_CONTRACT_ADDRESS>"
+/* USDC contract address (Sepolia testnet, no 0x).
+ * Same rule as ADDR_TO — use the EIP-55 mixed-case form for boot-time
+ * checksum verification. */
+#define ADDR_USDC         "<USDC_CONTRACT_ADDRESS_EIP55>"
 
 /* =========================
  * Transaction Parameters

@@ -85,15 +85,18 @@ bool net_wifi_rssi(int8_t *rssi_out);
  * is set (see sdkconfig.defaults) — HAVE_TIME alone is not enough.
  * SNTP keeps running in the background for periodic resyncs.
  *
+ * Callable repeatedly: each call re-subscribes and waits for a fresh packet, so
+ * it doubles as a probe for whether the network just joined reaches the internet.
+ *
  * SNTP is unauthenticated, so a synced time earlier than the firmware's own
  * build timestamp is rejected: back-dating is what an attacker needs to make
  * an expired certificate look valid again. Moving the clock forward is
  * harmless and is not restricted. A rejection returns false like any other
  * failure, so the caller's existing "no network time" path applies.
  *
- * @param[in] timeout_ms Maximum time to wait for the first sync.
- * @return true once the first sync completes and passes the lower-bound
- *         check, false on init error, timeout, or a back-dated clock.
+ * @param[in] timeout_ms Maximum time to wait for the sync.
+ * @return true once the clock is set and passes the lower-bound check, false on
+ *         init error, timeout, or a back-dated clock.
  */
 bool net_time_sync(uint32_t timeout_ms);
 

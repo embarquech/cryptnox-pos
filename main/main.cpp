@@ -27,6 +27,7 @@
 #include "freertos/queue.h"
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
+#include "esp_err.h"      /* esp_err_to_name for the startup fault screen */
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "nvs_flash.h"
@@ -65,6 +66,7 @@ extern "C" {
 #include "pn532.h"
 #include "keccak256.h"
 #include "eth_addr.h"
+#include "hardening.h"
 #include "eth_rlp.h"
 #include "eth_rpc.h"
 #include "net.h"
@@ -92,8 +94,12 @@ static const char *const TAG = "cryptnox_pos";
 #define PN532_RST           (-1)
 #define PN532_I2C_HZ        100000U
 
-/* ── USDC ERC-20 transfer(address,uint256) selector ──────────── */
+/* ── USDC ERC-20 transfer(address,uint256) selector + calldata ── */
 static const uint8_t TRANSFER_SELECTOR[4] = { 0xa9U, 0x05U, 0x9cU, 0xbbU };
+#define ABI_SELECTOR_LEN    4U     /* transfer(address,uint256) selector      */
+#define ABI_WORD_LEN        32U    /* one ABI-encoded argument word           */
+#define USDC_CALLDATA_LEN   (ABI_SELECTOR_LEN + (2U * ABI_WORD_LEN))  /* 68 */
+#define ABI_TO_OFFSET       (ABI_SELECTOR_LEN + (ABI_WORD_LEN - ETH_ADDR_LEN))
 
 /* ── Unsigned and signed tx buffers (EIP-1559 type 2) ─────────── */
 #define TX_BUF_SIZE 300U
@@ -108,6 +114,11 @@ typedef struct {
 } ui_msg_t;
 
 static QueueHandle_t s_ui_queue = NULL;
+
+/* Dual-stored recipient (§3.2/§7.1): ADDR_TO parsed twice at boot into two
+ * independent copies, reconciled before calldata encode and before signing so
+ * a transient flip on the working copy can't redirect funds. */
+static pos_addr_t s_dest;
 
 /* Set from the UI task when the user taps Cancel during PLACE_CARD; checked
  * by the main task after sign_and_broadcast returns so we skip the FAILED
@@ -147,26 +158,27 @@ static void ui_event_dispatch(ui_event_t event, uint64_t payload) {
  * selector(4) | zeroes(12) | to(20) | zeroes(24) | amount_be(8)
  * @endcode
  *
- * @param[out] out    68-byte output buffer; contents are undefined on failure.
- * @param[in]  to_hex Recipient address as hex (with or without @c 0x prefix).
+ * @param[out] out    Output buffer of #USDC_CALLDATA_LEN bytes.
+ * @param[in]  to     Recipient address, #ETH_ADDR_LEN bytes (already
+ *                    parsed/validated).
  * @param[in]  amount Transfer amount in USDC base units (6 decimals).
- * @return true on success, false if @p to_hex fails address validation.
  */
-static bool build_usdc_calldata(uint8_t out[68], const char *to_hex, uint64_t amount)
+static void build_usdc_calldata(uint8_t out[USDC_CALLDATA_LEN],
+                                const uint8_t to[ETH_ADDR_LEN],
+                                uint64_t amount)
 {
-    (void)memset(out, 0, 68U);
-    (void)CW_Utils::safe_memcpy(out, 68U, TRANSFER_SELECTOR, 4U);
-    uint8_t addr[20];
-    if (!eth_addr_parse(to_hex, addr)) {
-        return false;
-    }
-    (void)CW_Utils::safe_memcpy(out + 4U + 12U, 68U - (4U + 12U), addr, 20U);
+    CW_Utils::secure_wipe(out, USDC_CALLDATA_LEN);
+    (void)CW_Utils::safe_memcpy(out, USDC_CALLDATA_LEN,
+                                TRANSFER_SELECTOR, ABI_SELECTOR_LEN);
+    (void)CW_Utils::safe_memcpy(out + ABI_TO_OFFSET,
+                                USDC_CALLDATA_LEN - ABI_TO_OFFSET,
+                                to, ETH_ADDR_LEN);
 
     size_t j;
-    for (j = 0U; j < 8U; j++) {
-        out[67U - j] = static_cast<uint8_t>((amount >> (8U * j)) & 0xFFU);
+    for (j = 0U; j < sizeof(amount); j++) {
+        out[(USDC_CALLDATA_LEN - 1U) - j] =
+            static_cast<uint8_t>((amount >> (8U * j)) & 0xFFU);
     }
-    return true;
 }
 
 /******************************************************************
@@ -217,16 +229,24 @@ struct WipeGuard {
  */
 static bool sign_and_broadcast(CryptnoxWallet &wallet,
                                 Pn532NfcTransport &transport,
-                                uint64_t amount_units,
+                                const pos_amount_t *amount,
+                                const pos_addr_t *to,
                                 const char *pin, size_t pin_chars,
                                 char *tx_hash_out, size_t tx_hash_max,
                                 char *err_out, size_t err_max)
 {
-    uint8_t calldata[68];
-    if (!build_usdc_calldata(calldata, "0x" ADDR_TO, amount_units)) {
-        (void)snprintf(err_out, err_max, "Bad ADDR_TO in config");
+    /* Reconcile amount + recipient right before they enter the calldata
+     * (§3.2/§7.1); a mismatch means the working copy was corrupted. */
+    if (!IS_TRUE32(amount_consistent(amount)) ||
+        !IS_TRUE32(address_consistent(to))) {
+        pos_handle_anomaly("pre-calldata reconcile");
+        (void)snprintf(err_out, err_max, "Integrity check failed");
         return false;
     }
+    const uint64_t amount_units = amount->amount_minor;
+
+    uint8_t calldata[USDC_CALLDATA_LEN];
+    build_usdc_calldata(calldata, to->addr, amount_units);
 
     uint64_t nonce = 0U;
     if (!eth_rpc_get_nonce(&nonce)) {
@@ -235,7 +255,7 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
     }
 
     eth_tx_t tx;
-    (void)memset(&tx, 0, sizeof(tx));
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(&tx), sizeof(tx));
     tx.chain_id          = CHAIN_ID_SEPOLIA;
     tx.nonce             = nonce;
     /* Fees come from the settings menu (defaulting to the config.h values on
@@ -343,6 +363,16 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
     req.derivePath       = eth_path;
     req.derivePathLength = static_cast<uint8_t>(sizeof(eth_path));
 
+    /* Re-reconcile amount + recipient right before signing — this is the last
+     * point before the card produces an irreversible signature over the
+     * calldata (§3.2/§7.1). */
+    if (!IS_TRUE32(amount_consistent(amount)) ||
+        !IS_TRUE32(address_consistent(to))) {
+        pos_handle_anomaly("pre-sign reconcile");
+        (void)snprintf(err_out, err_max, "Integrity check failed");
+        return false;
+    }
+
     /* Copy the operator-entered PIN into the request as late as possible;
      * req.pin is zero-initialised by the CW_SignRequest constructor. */
     const size_t copy_len = (pin_chars < CW_MAX_PIN_LENGTH) ? pin_chars
@@ -422,27 +452,106 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
  * blocking SNTP time sync, then services UI events in the main
  * interaction loop (amount → confirm → sign+broadcast).
  */
+/* Startup retry budgets. The effort is spent out here rather than inside
+ * net_wifi_connect(), since each call resets the association properly:
+ * 3 x (1 + WIFI_MAX_RETRY) associations, 45 s worst case. */
+#define WIFI_SAVED_ATTEMPTS  3U
+#define TIME_SYNC_ATTEMPTS   3U
+
+/* Picker notes, shared by the boot bring-up and the settings Wi-Fi change so the
+ * two cannot drift apart. */
+static const char *const NOTE_JOIN_FAILED =
+    "Could not join that network - check the password";
+static const char *const NOTE_NO_TIME =
+    "No network time - this Wi-Fi has no usable internet";
+
+/* Credentials the picker just joined with, held until a clock sync proves the
+ * network usable end to end (see wifi_keep_or_drop). Associating is not enough:
+ * a captive-portal or offline AP joins fine and would then be reached for on
+ * every boot. Deferring the write also means a transient NTP outage never
+ * erases a saved network that does work. */
+static char s_join_ssid[33] = { 0 };
+static char s_join_pass[65] = { 0 };
+
 /**
- * @brief Bring up Wi-Fi: connect with saved credentials, or run the first-run
- *        network picker (scan → list → keyboard → connect) until connected.
+ * @brief Persist or discard the pending picker credentials, then scrub them.
+ *
+ * @param[in] keep true once the clock is set — the only proof the network is
+ *                 actually usable; false to drop them unpersisted.
+ */
+static void wifi_keep_or_drop(bool keep)
+{
+    if (keep && (s_join_ssid[0] != '\0')) {
+        settings_set_wifi(s_join_ssid, s_join_pass);
+        ESP_LOGI(TAG, "saved network '%s' (clock synced)", s_join_ssid);
+    }
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_join_pass), sizeof(s_join_pass));
+    (void)memset(s_join_ssid, 0, sizeof(s_join_ssid));
+}
+
+/**
+ * @brief Block until the UI reports @p want, discarding anything else.
+ *
+ * For the first-run steps, which are modal by design: nothing else the operator
+ * can tap matters until the step is done. The queue is flushed on the way out —
+ * a repeated tap would otherwise be read by the next stage, and ensure_wifi()
+ * treats an event it does not recognise as "rescan and reopen the picker",
+ * which would throw away a password half typed.
+ */
+static void wait_for_ui_event(ui_event_t want)
+{
+    ui_msg_t msg;
+    bool     got = false;
+    while (!got) {
+        if (xQueueReceive(s_ui_queue, &msg, portMAX_DELAY) != pdTRUE) { continue; }
+        got = (msg.event == want);
+    }
+    (void)xQueueReset(s_ui_queue);
+}
+
+/**
+ * @brief Bring up Wi-Fi: retry the saved credentials, then run the network
+ *        picker (scan → list → keyboard → connect) until connected.
  *
  * Blocks until a connection succeeds; the operator cannot leave setup without
  * one. config.h Wi-Fi credentials are intentionally not used (NVS only).
+ *
+ * A network joined through the picker is not persisted here — the credentials
+ * are staged for @ref wifi_keep_or_drop, which the caller invokes once the
+ * clock proves the uplink usable.
+ *
+ * @param[in] try_saved Try the saved credentials first; false goes straight to
+ *                      the picker, for a saved network already proven unusable.
+ * @param[in] note      One-line reason shown above the picker, or NULL.
+ * @return true if the picker ran and took the screen, so the caller must
+ *         restore the splash; false if the splash was never replaced.
  */
-static void ensure_wifi(void)
+static bool ensure_wifi(bool try_saved, const char *note)
 {
     char ssid[33] = { 0 };
     char pass[65] = { 0 };
-    if (settings_get_wifi(ssid, sizeof(ssid), pass, sizeof(pass))) {
-        bool ok = net_wifi_connect(ssid, pass);
+    if (try_saved &&
+        settings_get_wifi(ssid, sizeof(ssid), pass, sizeof(pass))) {
+        /* Unattended: report on the splash rather than flashing up a setup
+         * screen the operator never asked for. */
+        ui_set_boot_status("Connecting to Wi-Fi");
+        bool ok = false;
+        for (uint32_t a = 1U; (a <= WIFI_SAVED_ATTEMPTS) && !ok; a++) {
+            ESP_LOGI(TAG, "Wi-Fi '%s': attempt %" PRIu32 "/%u",
+                     ssid, a, WIFI_SAVED_ATTEMPTS);
+            ok = net_wifi_connect(ssid, pass);
+        }
         CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(pass), sizeof(pass));
-        if (ok) { return; }
+        if (ok) { return false; }   /* splash never left the screen */
+        ESP_LOGW(TAG, "saved network '%s' failed %u times - opening the picker",
+                 ssid, WIFI_SAVED_ATTEMPTS);
+        note = "Could not join the saved network";
     }
 
     /* No usable saved network — forced interactive setup. */
     net_wifi_ap_t aps[16];
     uint16_t n = net_wifi_scan(aps, 16);
-    ui_show_wifi_list(aps, n);
+    ui_show_wifi_list(aps, n, note);
 
     ui_msg_t msg;
     while (true) {
@@ -454,19 +563,44 @@ static void ensure_wifi(void)
             bool ok = false;
             if (ui_take_wifi_creds(w_ssid, sizeof(w_ssid),
                                    w_pass, sizeof(w_pass)) > 0U) {
+                /* Interactive: the operator expects to see the attempt. */
                 ui_show_wifi_connecting(w_ssid);
                 ok = net_wifi_connect(w_ssid, w_pass);
-                if (ok) { settings_set_wifi(w_ssid, w_pass); }
+                if (ok) {
+                    /* Staged, not saved — wifi_keep_or_drop() decides once the
+                     * clock has proven this network carries real internet. */
+                    (void)snprintf(s_join_ssid, sizeof(s_join_ssid), "%s", w_ssid);
+                    (void)snprintf(s_join_pass, sizeof(s_join_pass), "%s", w_pass);
+                }
             }
             CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(w_pass), sizeof(w_pass));
-            if (ok) { return; }
+            if (ok) { return true; }   /* the picker owns the screen */
+            note = NOTE_JOIN_FAILED;
+        } else if (msg.event == UI_EVENT_WIFI_SCAN) {
+            note = NULL;   /* rescan asked for — the old reason is stale */
         }
 
         /* WIFI_SCAN, a failed connect, or any stray event: re-scan and show
          * the list again so the user stays in setup until connected. */
         n = net_wifi_scan(aps, 16);
-        ui_show_wifi_list(aps, n);
+        ui_show_wifi_list(aps, n, note);
     }
+}
+
+/**
+ * @brief Block on an SNTP sync so TLS certificate validity-period checks run
+ *        against real time instead of the 1970 epoch.
+ *
+ * @return true once the clock is set, false after @ref TIME_SYNC_ATTEMPTS
+ *         rounds — flaky uplinks often need a second try.
+ */
+static bool sync_time(void)
+{
+    for (uint32_t a = 1U; a <= TIME_SYNC_ATTEMPTS; a++) {
+        ESP_LOGI(TAG, "SNTP sync: attempt %" PRIu32 "/%u", a, TIME_SYNC_ATTEMPTS);
+        if (net_time_sync(15000U)) { return true; }
+    }
+    return false;
 }
 
 extern "C" void app_main(void)
@@ -506,14 +640,37 @@ extern "C" void app_main(void)
     s_ui_queue = xQueueCreate(8, sizeof(ui_msg_t));
     ui_init(ui_event_dispatch);
     ui_set_addresses("0x" ADDR_USDC, "0x" ADDR_TO);
-    ui_show_splash();
+    /* No ui_show_splash() here — ui_init() already selects it, and asking twice
+     * races the UI task into rebuilding the screen and replaying the logo. */
+
+    /* Parse ADDR_TO twice into the dual store (§7.1). Also runs the EIP-55
+     * checksum on ADDR_TO once at boot — a mistyped recipient is caught here,
+     * before any payment. */
+    if (!eth_addr_parse("0x" ADDR_TO, s_dest.addr) ||
+        !eth_addr_parse("0x" ADDR_TO, s_dest.addr_echo)) {
+        ESP_LOGE(TAG, "Bad ADDR_TO in config");
+        ui_show_tx_status(UI_TX_STATE_FAILED, "Bad ADDR_TO in config");
+        return;
+    }
+    /* Warn if ADDR_TO carries no EIP-55 checksum (no upper-case hex letter) —
+     * the boot-time typo check above is a no-op on an all-lowercase address.
+     * Manual scan, not strpbrk: ADDR_TO is a literal, so strpbrk(...)==NULL
+     * folds to a provably-false pointer compare (-Werror=address). */
+    bool addr_checksummed = false;
+    for (const char *pc = ADDR_TO; *pc != '\0'; ++pc) {
+        if ((*pc >= 'A') && (*pc <= 'F')) { addr_checksummed = true; break; }
+    }
+    if (!addr_checksummed) {
+        ESP_LOGW(TAG, "ADDR_TO is all-lowercase: no EIP-55 checksum verified");
+    }
 
     /* ── PN532 NFC reader ──────────────────────────────────────── */
+    ui_set_boot_status("Starting NFC reader");
     pn532_t nfc;
-    (void)memset(&nfc, 0, sizeof(nfc));
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(&nfc), sizeof(nfc));
 
     pn532_config_t nfc_cfg;
-    (void)memset(&nfc_cfg, 0, sizeof(nfc_cfg));
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(&nfc_cfg), sizeof(nfc_cfg));
     nfc_cfg.transport     = PN532_TRANSPORT_I2C;
     nfc_cfg.i2c_port      = PN532_I2C_PORT;
     nfc_cfg.pin_sda       = PN532_SDA;
@@ -522,13 +679,31 @@ extern "C" void app_main(void)
     nfc_cfg.pin_rst       = PN532_RST;
     nfc_cfg.i2c_clock_hz  = PN532_I2C_HZ;
 
-    if (pn532_init(&nfc, &nfc_cfg) != ESP_OK) {
-        ESP_LOGE(TAG, "PN532 init failed");
-        ui_show_tx_status(UI_TX_STATE_FAILED, "PN532 not found");
+    /* Keep the error code — unplugged reader and misconfigured bus look
+     * identical on screen otherwise. */
+    esp_err_t nfc_ret = pn532_init(&nfc, &nfc_cfg);
+    if (nfc_ret != ESP_OK) {
+        ESP_LOGE(TAG, "PN532 bus init failed: %s", esp_err_to_name(nfc_ret));
+        ui_show_boot_error(UI_BOOT_ERR_NFC, esp_err_to_name(nfc_ret));
         return;
     }
 
+    /* pn532_init() only brings up the bus and ignores its own probe results
+     * (pn532.h), so it returns ESP_OK with no reader attached. Probe here —
+     * 0 means no answer — or an absent reader is reported as a wallet fault. */
+    uint32_t nfc_fw = pn532_get_firmware_version(&nfc);
+    if (nfc_fw == 0U) {
+        ESP_LOGE(TAG, "PN532 did not answer GetFirmwareVersion - reader absent?");
+        ui_show_boot_error(UI_BOOT_ERR_NFC, "No answer to GetFirmwareVersion");
+        return;
+    }
+    ESP_LOGI(TAG, "PN532 firmware: IC 0x%02X, version %u.%u",
+             (unsigned)((nfc_fw >> 24) & 0xFFU),
+             (unsigned)((nfc_fw >> 16) & 0xFFU),
+             (unsigned)((nfc_fw >> 8) & 0xFFU));
+
     /* ── Wallet ────────────────────────────────────────────────── */
+    ui_set_boot_status("Opening wallet");
     NullLogger logger;
     (void)logger.begin(115200UL);
     ESP32CryptoProvider cryptoProvider;
@@ -538,7 +713,7 @@ extern "C" void app_main(void)
 
     if (!wallet.begin()) {
         ESP_LOGE(TAG, "Wallet begin failed");
-        ui_show_tx_status(UI_TX_STATE_FAILED, "Wallet init failed");
+        ui_show_boot_error(UI_BOOT_ERR_WALLET, NULL);
         return;
     }
 
@@ -551,22 +726,52 @@ extern "C" void app_main(void)
     /* pin the RPC endpoint's certificate instead of the CA bundle. */
     eth_rpc_set_ca_cert(RPC_CA_CERT_PEM);
 #endif
-    net_wifi_init();
-    /* Connect with saved creds, or run the first-run picker until connected
-     * (config.h Wi-Fi is no longer used). */
-    ensure_wifi();
+    /* ── First run: greet, then set up ────────────────────────── */
+    /* A missing admin code means a virgin or factory-reset terminal, since the
+     * reset erases it too. Greet before the setup steps start asking for a
+     * network and a code — it is the one moment we have the operator's attention
+     * and nothing to demand of them yet. */
+    const bool first_run = !settings_has_admin_code();
+    if (first_run) {
+        ui_show_welcome();
+        wait_for_ui_event(UI_EVENT_WELCOME_DONE);
 
-    /* block on a first SNTP sync so TLS certificate validity-period
-     * checks run against real time instead of the 1970 epoch. Retry a couple
-     * of rounds — flaky uplinks (phone hotspots) often need a second try. */
-    bool time_ok = false;
-    for (int attempt = 0; (attempt < 3) && !time_ok; attempt++) {
-        time_ok = net_time_sync(15000U);
+        /* The code comes BEFORE the network, and not for tidiness: the Wi-Fi
+         * picker carries a back arrow that the UI task honours on its own, which
+         * drops the operator on the amount screen — burger included — while main
+         * is still blocked here. With no code stored yet, that burger opened the
+         * settings freely. Creating the code first closes that window; the
+         * creation screen itself has no way out. */
+        ESP_LOGI(TAG, "no admin code - first-run setup");
+        ui_show_admin_set();
+        wait_for_ui_event(UI_EVENT_ADMIN_SET);
     }
-    if (!time_ok) {
-        ESP_LOGE(TAG, "SNTP time sync failed");
-        ui_show_tx_status(UI_TX_STATE_FAILED, "Time sync failed - check network");
-        return;
+
+    ui_set_boot_status("Starting network");
+    net_wifi_init();
+
+    /* Wi-Fi and a valid clock are one bring-up step, since TLS needs both: a
+     * failed sync sends the operator back to the picker with the reason rather
+     * than stranding the terminal on an error screen. */
+    bool        try_saved = true;
+    const char *net_note  = NULL;
+    while (true) {
+        if (ensure_wifi(try_saved, net_note)) {
+            ui_show_splash();   /* only when the picker took the screen */
+        }
+        ui_set_boot_status("Syncing clock");
+        if (sync_time()) {
+            wifi_keep_or_drop(true);    /* proven usable — safe to persist */
+            break;
+        }
+        ESP_LOGE(TAG, "SNTP time sync failed on this network");
+        /* Drop the staged credentials, but leave an already-saved network alone:
+         * it may well work again after a reboot, and erasing it would cost the
+         * operator the password for what is often a transient outage. */
+        wifi_keep_or_drop(false);
+        /* Force the picker: retrying the same network loops straight back here. */
+        try_saved = false;
+        net_note  = NOTE_NO_TIME;
     }
 
     /* One RPC round-trip at boot, for two reasons at once: it proves the
@@ -595,7 +800,8 @@ extern "C" void app_main(void)
     /* ── Main interaction loop ────────────────────────────────── */
     ui_show_amount_entry();
 
-    uint64_t pending_amount = 0U;
+    pos_amount_t pending_amount;
+    pos_amount_set(&pending_amount, 0U);
     ui_msg_t msg;
 
     while (true) {
@@ -605,8 +811,17 @@ extern "C" void app_main(void)
 
         switch (msg.event) {
             case UI_EVENT_AMOUNT_CONFIRMED:
-                pending_amount = msg.payload;
-                ui_show_confirm(pending_amount, "0x" ADDR_TO);
+                pos_amount_set(&pending_amount, msg.payload);
+                /* Reconcile amount + recipient before they are shown to the
+                 * customer — displayed value must equal what gets signed. */
+                if (!IS_TRUE32(amount_consistent(&pending_amount)) ||
+                    !IS_TRUE32(address_consistent(&s_dest))) {
+                    pos_handle_anomaly("pre-display reconcile");
+                    ui_show_tx_status(UI_TX_STATE_FAILED, "Integrity check failed");
+                    pos_amount_set(&pending_amount, 0U);
+                    break;
+                }
+                ui_show_confirm(pending_amount.amount_minor, "0x" ADDR_TO);
                 break;
 
             case UI_EVENT_CONFIRM_CANCEL:
@@ -614,7 +829,7 @@ extern "C" void app_main(void)
                 break;
 
             case UI_EVENT_PIN_ENTERED: {
-                if (pending_amount == 0U) {
+                if (pending_amount.amount_minor == 0U) {
                     /* No fresh AMOUNT_CONFIRMED preceded this — likely a stale
                      * event from a stuck touch or queue replay. Drop it. */
                     ESP_LOGW(TAG, "stale PIN_ENTERED ignored");
@@ -627,14 +842,18 @@ extern "C" void app_main(void)
                 s_user_cancelled = false;
                 char tx_hash[68] = { 0 };
                 char err_msg[64] = { 0 };
-                bool ok = sign_and_broadcast(wallet, nfcTransport, pending_amount,
+                bool ok = sign_and_broadcast(wallet, nfcTransport,
+                                              &pending_amount, &s_dest,
                                               pin, pin_chars,
                                               tx_hash, sizeof(tx_hash),
                                               err_msg, sizeof(err_msg));
                 /* scrub our copy of the PIN as soon as signing is done. */
                 CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(pin), sizeof(pin));
 
-                pending_amount = 0U;  /* next sign requires fresh New Payment flow */
+                /* Snapshot the decided amount for the final gate, then clear
+                 * pending so the next sign needs a fresh New Payment flow. */
+                pos_amount_t decided = pending_amount;
+                pos_amount_set(&pending_amount, 0U);
                 if (s_user_cancelled) {
                     /* Cancel during PLACE_CARD — UI already on amount entry. */
                 } else if (ok) {
@@ -654,9 +873,23 @@ extern "C" void app_main(void)
                         /* PENDING or transient RPC error — try again. */
                         vTaskDelay(pdMS_TO_TICKS(4000));
                     }
-                    if (rc == ETH_RPC_RECEIPT_SUCCESS) {
+                    /* §4: render PAID only if the monotonic gate holds — the
+                     * on-chain APPROVED verdict AND amount/recipient still
+                     * self-consistent through the decide→render window. */
+                    pos_verdict_t verdict = (rc == ETH_RPC_RECEIPT_SUCCESS)
+                                                ? POS_VERDICT_APPROVED
+                                                : POS_VERDICT_DECLINED;
+                    bool32 decision =
+                        run_payment_decision(&decided, &s_dest, verdict);
+                    if (rc == ETH_RPC_RECEIPT_SUCCESS && IS_TRUE32(decision)) {
                         ESP_LOGI(TAG, "Tx confirmed on-chain");
                         ui_show_tx_status(UI_TX_STATE_DONE, tx_hash);
+                    } else if (rc == ETH_RPC_RECEIPT_SUCCESS) {
+                        /* Mined OK but the integrity gate failed — never show
+                         * PAID on a corrupted decision. */
+                        pos_handle_anomaly("final decision gate");
+                        ESP_LOGE(TAG, "Integrity gate failed post-receipt: %s", tx_hash);
+                        ui_show_tx_status(UI_TX_STATE_FAILED, "Integrity check failed");
                     } else if (rc == ETH_RPC_RECEIPT_REVERTED) {
                         ESP_LOGE(TAG, "Tx reverted on-chain: %s", tx_hash);
                         ui_show_tx_status(UI_TX_STATE_FAILED, "Payment reverted");
@@ -679,7 +912,8 @@ extern "C" void app_main(void)
                 /* Scan runs in this task so the UI stays responsive. */
                 net_wifi_ap_t aps[16];
                 uint16_t n = net_wifi_scan(aps, 16);
-                ui_show_wifi_list(aps, n);
+                /* Opened from settings, not after a failure — no note. */
+                ui_show_wifi_list(aps, n, NULL);
                 break;
             }
 
@@ -689,14 +923,51 @@ extern "C" void app_main(void)
                 if (ui_take_wifi_creds(w_ssid, sizeof(w_ssid),
                                        w_pass, sizeof(w_pass)) > 0U) {
                     ui_show_wifi_connecting(w_ssid);
-                    if (net_wifi_connect(w_ssid, w_pass)) {
+
+                    /* Same rule as boot: associating proves nothing, so make the
+                     * clock prove the uplink before overwriting saved credentials
+                     * that may well be working. One round only — the operator is
+                     * standing there and can tap again, where boot has to be
+                     * patient on its own. */
+                    const char *why = NULL;
+                    if (!net_wifi_connect(w_ssid, w_pass)) {
+                        why = NOTE_JOIN_FAILED;
+                    } else if (!net_time_sync(15000U)) {
+                        ESP_LOGW(TAG, "'%s' joined but has no network time -"
+                                      " not saved", w_ssid);
+                        why = NOTE_NO_TIME;
+                    } else {
                         settings_set_wifi(w_ssid, w_pass);   /* persist for next boot */
                         ui_show_amount_entry();
-                    } else {
-                        /* Failed — rescan and show the list again to retry. */
+                    }
+
+                    if (why != NULL) {
+                        /* Refusing to persist is not enough: the radio is still
+                         * associated with the network we just rejected, and the
+                         * picker's back arrow goes straight to amount entry. So
+                         * without this the terminal looks ready while every
+                         * payment fails at the RPC call. Roll back to the saved
+                         * network — which boot already proved usable — before
+                         * handing over the screen. Costs up to one association
+                         * timeout, hence the progress screen. */
+                        char b_ssid[33] = { 0 };
+                        char b_pass[65] = { 0 };
+                        if (settings_get_wifi(b_ssid, sizeof(b_ssid),
+                                              b_pass, sizeof(b_pass)) &&
+                            (b_ssid[0] != '\0')) {
+                            ESP_LOGW(TAG, "rolling back to saved network '%s'",
+                                     b_ssid);
+                            ui_show_wifi_connecting(b_ssid);
+                            (void)net_wifi_connect(b_ssid, b_pass);
+                        }
+                        CW_Utils::secure_wipe(
+                            reinterpret_cast<uint8_t *>(b_pass), sizeof(b_pass));
+
+                        /* Back to the picker with the reason, so another network
+                         * can be chosen instead of a dead end. */
                         net_wifi_ap_t aps[16];
                         uint16_t n = net_wifi_scan(aps, 16);
-                        ui_show_wifi_list(aps, n);
+                        ui_show_wifi_list(aps, n, why);
                     }
                 }
                 CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(w_pass), sizeof(w_pass));

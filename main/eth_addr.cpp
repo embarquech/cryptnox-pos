@@ -5,12 +5,17 @@
 
 /**
  * @file eth_addr.cpp
- * @brief Implementation of the hex Ethereum-address parser.
+ * @brief Implementation of the hex Ethereum-address parser, with EIP-55
+ *        checksum verification (HARDENING.md §7.1).
  */
 
 #include "eth_addr.h"
 
 #include <string.h>
+#include <stdbool.h>
+
+#include "keccak256.h"
+#include "CW_Utils.h"   /* SDK hardened primitives: secure_wipe */
 
 /**
  * @brief Decode a single ASCII hex digit.
@@ -26,25 +31,68 @@ static int hex_nibble_val(char c)
     return -1;
 }
 
-bool eth_addr_parse(const char *hex, uint8_t out[20])
+bool eth_addr_parse(const char *hex, uint8_t out[ETH_ADDR_LEN])
 {
     const char *p = hex;
     if ((p[0] == '0') && ((p[1] == 'x') || (p[1] == 'X'))) {
         p += 2;
     }
-    if (strlen(p) != 40U) {
+    if (strlen(p) != ETH_ADDR_HEX_LEN) {
         return false;
     }
-    (void)memset(out, 0, 20U);
+
+    CW_Utils::secure_wipe(out, ETH_ADDR_LEN);
+
+    /* Single pass: validate every nibble, decode the bytes, lower-case a copy
+     * for the checksum hash, and note whether the source is mixed-case. */
+    char lower[ETH_ADDR_HEX_LEN];
+    bool has_upper = false;
+    bool has_lower = false;
     size_t i;
-    for (i = 0U; i < 20U; i++) {
-        int hi = hex_nibble_val(p[i * 2U]);
-        int lo = hex_nibble_val(p[(i * 2U) + 1U]);
-        if ((hi < 0) || (lo < 0)) {
+    for (i = 0U; i < ETH_ADDR_HEX_LEN; i++) {
+        char c = p[i];
+        int  v = hex_nibble_val(c);
+        if (v < 0) {
             return false;
         }
-        out[i] = static_cast<uint8_t>((static_cast<uint8_t>(hi) << 4U) |
-                                       static_cast<uint8_t>(lo));
+        if ((c >= 'a') && (c <= 'f')) {
+            has_lower = true;
+            lower[i]  = c;
+        } else if ((c >= 'A') && (c <= 'F')) {
+            has_upper = true;
+            lower[i]  = static_cast<char>((c - 'A') + 'a');
+        } else {
+            lower[i] = c;   /* digit — case-neutral */
+        }
+        if ((i & 1U) == 0U) {
+            out[i / 2U] = static_cast<uint8_t>(static_cast<uint8_t>(v) << 4U);
+        } else {
+            out[i / 2U] |= static_cast<uint8_t>(v);
+        }
+    }
+
+    /* EIP-55: a mixed-case address carries a checksum, so verify it; an
+     * all-lower or all-upper address is treated as un-checksummed and accepted
+     * (standard lenient behaviour). A checksummed ADDR_TO thus rejects any
+     * single-nibble corruption or typo of the source string. */
+    if (has_upper && has_lower) {
+        uint8_t h[32];
+        keccak256(reinterpret_cast<const uint8_t *>(lower), ETH_ADDR_HEX_LEN, h);
+        for (i = 0U; i < ETH_ADDR_HEX_LEN; i++) {
+            char c = p[i];
+            bool is_alpha = ((c >= 'a') && (c <= 'f')) ||
+                            ((c >= 'A') && (c <= 'F'));
+            if (!is_alpha) {
+                continue;   /* digits have no case to check */
+            }
+            uint8_t nib = ((i & 1U) == 0U) ? static_cast<uint8_t>(h[i / 2U] >> 4U)
+                                           : static_cast<uint8_t>(h[i / 2U] & 0x0FU);
+            bool want_upper = (nib >= 8U);
+            bool is_upper   = ((c >= 'A') && (c <= 'F'));
+            if (want_upper != is_upper) {
+                return false;
+            }
+        }
     }
     return true;
 }

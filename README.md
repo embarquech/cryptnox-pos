@@ -113,14 +113,14 @@ the **I²C** interface to the PN532.
 |-----------|------------------|------------|
 | GND       | GND              | Black      |
 | VCC       | 3.3V             | Red        |
-| SDA       | GPIO 27 (CN1 SDA)| Blue       |
-| SCL       | GPIO 22 (CN1 SCL)| Yellow     |
+| SDA       | GPIO 27 (CN1 SDA)| Yellow     |
+| SCL       | GPIO 22 (CN1 SCL)| Blue       |
 
 > [!IMPORTANT]
 > Make sure the switches on the PN532 module are configured for **I²C** mode:
 >
-> - **Switch 0** → LOW
-> - **Switch 1** → HIGH
+> - **Switch 0** → HIGH
+> - **Switch 1** → LOW
 
 <img width="800" alt="cyd_pn532_i2c" src="hardware/schematics/cyd_esp32_pn532_i2c_bb.png" />
 
@@ -142,8 +142,8 @@ and fill in:
 | `RPC_PROJECT_ID` / `RPC_API_SECRET` | Optional — only when using Infura (HTTP Basic Auth); leave undefined for PublicNode |
 | `RPC_CA_CERT_PEM` | Optional — pin the RPC endpoint's TLS certificate; trusts only that cert instead of the full CA bundle. Undefined = Mozilla bundle |
 | `ADDR_FROM` | Ethereum address of the **card** (`m/44'/60'/0'/0/0`) — used to fetch the nonce and validate the ecrecover parity |
-| `ADDR_TO` | Destination address for every transfer |
-| `ADDR_USDC` | USDC ERC-20 contract address on the target chain (Sepolia testnet by default) |
+| `ADDR_TO` | Destination address for every transfer. **Use the EIP-55 mixed-case checksum form** — the firmware verifies the checksum at boot and refuses to start on a mismatch. All-lowercase is accepted but bypasses that typo protection (and warns at boot) |
+| `ADDR_USDC` | USDC ERC-20 contract address on the target chain (Sepolia testnet by default). Same EIP-55 rule as `ADDR_TO` |
 | `CHAIN_ID_SEPOLIA`, `MAX_PRIORITY_FEE`, `MAX_FEE`, `GAS_LIMIT_ERC20` | Chain ID and EIP-1559 gas parameters (the fees are first-boot defaults, editable at run time in the settings) |
 
 **Not in `config.h`** — set on the device, never baked into the firmware:

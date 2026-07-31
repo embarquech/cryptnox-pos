@@ -124,7 +124,7 @@ void keccak256(const uint8_t *input, size_t length, uint8_t digest[32])
     size_t offset = 0U;
     size_t i;
 
-    (void)memset(state, 0, sizeof(state));
+    CW_Utils::secure_wipe(sb, sizeof(state));
 
     /* Absorb full blocks */
     while ((length - offset) >= KECCAK_RATE) {

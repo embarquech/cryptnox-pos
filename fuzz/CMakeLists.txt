@@ -19,8 +19,12 @@ target_include_directories(fuzz_eth_rlp PRIVATE "${SDK_DIR}")
 target_compile_options(fuzz_eth_rlp PRIVATE ${FUZZ_FLAGS})
 target_link_options(fuzz_eth_rlp    PRIVATE -fsanitize=fuzzer,address)
 
-# ── Target 2: hex address parser (self-contained) ────────────────────
+# ── Target 2: hex address parser (now pulls in keccak256 for EIP-55) ──
+# eth_addr.cpp verifies the EIP-55 checksum via keccak256, which routes its
+# squeeze through CW_Utils::safe_memcpy — so, like the others, this harness
+# #includes CW_Utils.cpp and needs the SDK include path.
 add_executable(fuzz_parse_address fuzz_parse_address.cpp)
+target_include_directories(fuzz_parse_address PRIVATE "${SDK_DIR}")
 target_compile_options(fuzz_parse_address PRIVATE ${FUZZ_FLAGS})
 target_link_options(fuzz_parse_address    PRIVATE -fsanitize=fuzzer,address)
 

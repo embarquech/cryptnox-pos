@@ -38,8 +38,13 @@ static const char *const TAG = "net";
 
 #define WIFI_CONNECTED_BIT  BIT0
 #define WIFI_FAIL_BIT       BIT1
-#define WIFI_MAX_RETRY      5
-#define WIFI_TIMEOUT_MS     30000
+/* Retries inside one connect call. Kept low: main.cpp retries the whole call
+ * (WIFI_SAVED_ATTEMPTS), and each of those resets the association properly. */
+#define WIFI_MAX_RETRY      2
+
+/* Way out when the association succeeds but no IP ever arrives (hung DHCP):
+ * the FAIL bit is never set, so only this timeout ends the call. */
+#define WIFI_TIMEOUT_MS     15000
 
 /******************************************************************
  * 2. Module state
@@ -48,6 +53,7 @@ static const char *const TAG = "net";
 static EventGroupHandle_t s_wifi_event_group = NULL;
 static int                s_retry_num        = 0;
 static bool               s_wifi_inited      = false;
+static bool               s_sntp_running     = false;
 
 /******************************************************************
  * 3. WiFi event handler
@@ -129,7 +135,7 @@ uint16_t net_wifi_scan(net_wifi_ap_t *out, uint16_t max)
     if ((out == NULL) || (max == 0U)) { return 0U; }
 
     wifi_scan_config_t scan_cfg;
-    (void)memset(&scan_cfg, 0, sizeof(scan_cfg));   /* all channels, all SSIDs */
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(&scan_cfg), sizeof(scan_cfg));   /* all channels, all SSIDs */
     if (esp_wifi_scan_start(&scan_cfg, true) != ESP_OK) {
         return 0U;
     }
@@ -173,7 +179,7 @@ bool net_wifi_connect(const char *ssid, const char *password)
     s_retry_num = 0;
 
     wifi_config_t wifi_cfg;
-    (void)memset(&wifi_cfg, 0, sizeof(wifi_cfg));
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(&wifi_cfg), sizeof(wifi_cfg));
     (void)strncpy(reinterpret_cast<char *>(wifi_cfg.sta.ssid),     ssid,     sizeof(wifi_cfg.sta.ssid)     - 1U);
     (void)strncpy(reinterpret_cast<char *>(wifi_cfg.sta.password), password, sizeof(wifi_cfg.sta.password) - 1U);
     /* Open networks have an empty passphrase; otherwise require WPA2+. */
@@ -251,6 +257,15 @@ static int64_t build_time_floor(void)
 
 bool net_time_sync(uint32_t timeout_ms)
 {
+    /* A successful sync leaves SNTP subscribed, so a second call would fail on
+     * ESP_ERR_INVALID_STATE. Drop it first: every call then waits for a fresh
+     * packet, which is what makes this usable as a per-network probe rather than
+     * a one-shot at boot. */
+    if (s_sntp_running) {
+        esp_netif_sntp_deinit();
+        s_sntp_running = false;
+    }
+
     /* Several reliable servers — phone hotspots often slow or drop NTP (UDP
      * 123) to pool.ntp.org, so fall back to Google / Cloudflare time. */
     esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(3,
@@ -274,9 +289,13 @@ bool net_time_sync(uint32_t timeout_ms)
         }
     }
 
+    /* Stay subscribed on failure too: lwIP then retries on its own (15 s, backing
+     * off to 150 s) and sets the clock if the network comes back. A deinit here
+     * would leave no client running at all. */
+    s_sntp_running = true;
+
     if (!synced) {
         ESP_LOGE(TAG, "SNTP sync timed out");
-        esp_netif_sntp_deinit();
         return false;
     }
 
@@ -289,7 +308,12 @@ bool net_time_sync(uint32_t timeout_ms)
         ESP_LOGE(TAG, "SNTP time %" PRId64 " precedes firmware build floor %"
                       PRId64 " - refusing (spoofed NTP?)",
                  now_epoch, floor_epoch);
+        /* Unsubscribe here, unlike the timeout path above: a server feeding
+         * back-dated time is not one to leave resyncing us in the background.
+         * Keep the flag honest so the next call re-inits rather than double-
+         * deiniting. */
         esp_netif_sntp_deinit();
+        s_sntp_running = false;
         return false;
     }
 

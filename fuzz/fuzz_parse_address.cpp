@@ -10,8 +10,10 @@
  * 20-byte Ethereum address (address validation before it is baked into the
  * USDC transfer calldata).
  *
- * The parser lives in main/eth_addr.cpp, a pure unit (only <string.h>), so it
- * is #included directly — no copy, no risk of drift from the firmware.
+ * The parser lives in main/eth_addr.cpp. It now verifies the EIP-55 checksum
+ * via keccak256, whose squeeze routes through CW_Utils::safe_memcpy — so the
+ * harness also #includes keccak256.cpp and the real CW_Utils (SDK include
+ * path), the same single-TU pattern fuzz_eth_rlp uses. No copy, no drift.
  *
  * Build (Linux / macOS, or WSL on Windows — clang required):
  *   cd fuzz && mkdir build && cd build
@@ -29,7 +31,20 @@
 #include <stddef.h>
 #include <string.h>
 
-/* Production parser, compiled straight into the harness. */
+/* CW_Utils::fill_secure_random is ESP32-specific and never reached from
+ * safe_memcpy; stub it for the linker, like the SDK's own fuzz harness. */
+#include "CW_Utils.h"
+bool CW_Utils::fill_secure_random(uint8_t *dest, size_t len)
+{
+    (void)dest;
+    (void)len;
+    return false;
+}
+
+/* Real safe_memcpy, keccak256, and the production parser, all compiled
+ * straight into this harness. */
+#include "CW_Utils.cpp"
+#include "../main/keccak256.cpp"
 #include "../main/eth_addr.cpp"
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
