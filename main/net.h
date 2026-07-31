@@ -77,17 +77,26 @@ bool net_wifi_connect(const char *ssid, const char *password);
 bool net_wifi_rssi(int8_t *rssi_out);
 
 /**
- * @brief Block until the system clock has been set via SNTP.
+ * @brief Block until the system clock has been set via SNTP and sanity-checked.
  *
  * Must be called after net_wifi_connect() and before any HTTPS request:
  * without real time, TLS certificate validity-period checks are meaningless.
+ * Those checks are only actually compiled in when CONFIG_MBEDTLS_HAVE_TIME_DATE
+ * is set (see sdkconfig.defaults) — HAVE_TIME alone is not enough.
  * SNTP keeps running in the background for periodic resyncs.
  *
  * Callable repeatedly: each call re-subscribes and waits for a fresh packet, so
  * it doubles as a probe for whether the network just joined reaches the internet.
  *
+ * SNTP is unauthenticated, so a synced time earlier than the firmware's own
+ * build timestamp is rejected: back-dating is what an attacker needs to make
+ * an expired certificate look valid again. Moving the clock forward is
+ * harmless and is not restricted. A rejection returns false like any other
+ * failure, so the caller's existing "no network time" path applies.
+ *
  * @param[in] timeout_ms Maximum time to wait for the sync.
- * @return true once the clock is set, false on init error or timeout.
+ * @return true once the clock is set and passes the lower-bound check, false on
+ *         init error, timeout, or a back-dated clock.
  */
 bool net_time_sync(uint32_t timeout_ms);
 

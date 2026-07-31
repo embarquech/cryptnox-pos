@@ -13,9 +13,12 @@
  ******************************************************************/
 
 #include "net.h"
+#include "civil_time.h"
 
 #include <string.h>
 #include <stdlib.h>     /* malloc, free */
+#include <time.h>       /* time */
+#include <inttypes.h>   /* PRId64 */
 
 /* CW_Utils.h pulls in Arduino.h (via platform_compat.h); it must come before
  * any lwip-including IDF header (esp_netif.h, ...) so that IPAddress.h
@@ -28,6 +31,7 @@
 #include "esp_event.h"
 #include "esp_netif.h"
 #include "esp_netif_sntp.h"
+#include "esp_app_desc.h"   /* esp_app_get_description — build timestamp */
 #include "esp_log.h"
 
 static const char *const TAG = "net";
@@ -218,6 +222,39 @@ bool net_wifi_rssi(int8_t *rssi_out)
     return true;
 }
 
+/* __DATE__/__TIME__ are the build machine's LOCAL time but are read back here
+ * as if UTC, so the derived floor can sit up to ~14 h ahead of the real build
+ * instant. One day of slack absorbs every real-world TZ offset; it costs the
+ * attacker nothing, since reviving an expired certificate needs weeks of
+ * back-dating, not hours.
+ * ponytail: fixed slack, not a TZ database. */
+#define BUILD_FLOOR_SLACK_S  86400
+
+/**
+ * @brief Earliest system time this firmware will accept, as a Unix epoch.
+ *
+ * Derived from the firmware's own build timestamp: a clock at or after the
+ * build instant cannot make an already-expired certificate look valid, and
+ * pushing the clock *forward* is harmless for the same reason.
+ *
+ * @return Epoch-second floor, or 0 (no floor) if the build stamp is
+ *         unparseable — fail-open, so a toolchain that deviates from the
+ *         standard __DATE__ format cannot brick the terminal. The host
+ *         self-check (fuzz/test_civil_time.cpp) asserts our own stamp parses.
+ */
+static int64_t build_time_floor(void)
+{
+    const esp_app_desc_t *desc = esp_app_get_description();
+    int64_t stamp = 0;
+
+    if ((desc == NULL) ||
+        !civil_parse_build_stamp(desc->date, desc->time, &stamp)) {
+        ESP_LOGE(TAG, "build stamp unparseable - clock lower bound DISABLED");
+        return 0;
+    }
+    return stamp - BUILD_FLOOR_SLACK_S;
+}
+
 bool net_time_sync(uint32_t timeout_ms)
 {
     /* A successful sync leaves SNTP subscribed, so a second call would fail on
@@ -262,6 +299,25 @@ bool net_time_sync(uint32_t timeout_ms)
         return false;
     }
 
-    ESP_LOGI(TAG, "System time synced via SNTP");
+    /* SNTP is unauthenticated (plain UDP/123), so anyone on the path can
+     * dictate the time. Reject a clock earlier than our own build: that is
+     * the direction an attacker needs to resurrect an expired certificate. */
+    const int64_t floor_epoch = build_time_floor();
+    const int64_t now_epoch   = static_cast<int64_t>(time(NULL));
+    if (now_epoch < floor_epoch) {
+        ESP_LOGE(TAG, "SNTP time %" PRId64 " precedes firmware build floor %"
+                      PRId64 " - refusing (spoofed NTP?)",
+                 now_epoch, floor_epoch);
+        /* Unsubscribe here, unlike the timeout path above: a server feeding
+         * back-dated time is not one to leave resyncing us in the background.
+         * Keep the flag honest so the next call re-inits rather than double-
+         * deiniting. */
+        esp_netif_sntp_deinit();
+        s_sntp_running = false;
+        return false;
+    }
+
+    ESP_LOGI(TAG, "System time synced via SNTP (epoch %" PRId64 ")", now_epoch);
+    /* Leave SNTP running for periodic background resyncs. */
     return true;
 }
