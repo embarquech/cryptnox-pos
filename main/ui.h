@@ -42,6 +42,10 @@ typedef enum {
     UI_SCREEN_WIFI_CONNECTING, /**< "Connecting…" while main associates.   */
     UI_SCREEN_SETTINGS,    /**< Full-screen settings (tabs).               */
     UI_SCREEN_TX_STATUS,   /**< Card wait / signing / broadcast progress.  */
+    UI_SCREEN_BOOT_ERROR,  /**< Startup fault — names the cause, not "Declined". */
+    UI_SCREEN_ADMIN_SET,   /**< First-run creation of the admin code.      */
+    UI_SCREEN_ADMIN_UNLOCK,/**< Admin code demanded before the settings.   */
+    UI_SCREEN_WELCOME,     /**< Greeting opening first-run setup.          */
 } ui_screen_t;
 
 /** @brief Events emitted by the UI task towards the main task. */
@@ -53,6 +57,8 @@ typedef enum {
     UI_EVENT_WIFI_SCAN,         /**< User opened the Wi-Fi picker; main should scan. */
     UI_EVENT_WIFI_TRY,          /**< Wi-Fi creds entered; fetch via ui_take_wifi_creds. */
     UI_EVENT_TX_RETRY,          /**< New payment tapped after Done/Failed. */
+    UI_EVENT_ADMIN_SET,         /**< Admin code created and stored (first run). */
+    UI_EVENT_WELCOME_DONE,      /**< Start tapped on the welcome screen.   */
 } ui_event_t;
 
 /** @brief States shown on the transaction-status screen. */
@@ -65,6 +71,17 @@ typedef enum {
     UI_TX_STATE_DONE,        /**< Receipt mined with status 0x1.      */
     UI_TX_STATE_FAILED,      /**< Any failure; info line says why.    */
 } ui_tx_state_t;
+
+/**
+ * @brief Startup faults shown on @ref UI_SCREEN_BOOT_ERROR.
+ *
+ * Bring-up problems, not declined payments — hence their own screen. Wording
+ * lives in ui.cpp; the caller only names the fault.
+ */
+typedef enum {
+    UI_BOOT_ERR_NFC,      /**< PN532 did not answer — wiring/power/I2C.       */
+    UI_BOOT_ERR_WALLET,   /**< Reader answered, wallet layer failed to start. */
+} ui_boot_err_t;
 
 /**
  * @brief Callback invoked from the UI task on user interaction.
@@ -127,10 +144,22 @@ size_t ui_take_pin(char *out, size_t n);
 /**
  * @brief Show the scanned Wi-Fi networks for the user to pick from.
  *
- * @param[in] aps Array of scanned APs (copied internally).
- * @param[in] n   Number of entries in @p aps.
+ * @param[in] aps  Array of scanned APs (copied internally).
+ * @param[in] n    Number of entries in @p aps.
+ * @param[in] note Optional one-line reason the picker (re)opened, shown above
+ *                 the list; copied internally, NULL for none. Applied on every
+ *                 call, so a stale note cannot survive a later render.
  */
-void ui_show_wifi_list(const net_wifi_ap_t *aps, uint16_t n);
+void ui_show_wifi_list(const net_wifi_ap_t *aps, uint16_t n, const char *note);
+
+/**
+ * @brief Show a startup fault, naming the cause and what to do about it.
+ *
+ * @param[in] kind   Which bring-up step failed.
+ * @param[in] detail Optional technical detail for a technician (an esp_err_t
+ *                   name, say); copied internally, may be NULL.
+ */
+void ui_show_boot_error(ui_boot_err_t kind, const char *detail);
 
 /**
  * @brief Provide the USDC contract and destination addresses for the
@@ -138,8 +167,41 @@ void ui_show_wifi_list(const net_wifi_ap_t *aps, uint16_t n);
  */
 void ui_set_addresses(const char *usdc_contract, const char *dest_addr);
 
-/** @brief Show a "Connecting to <ssid>…" screen while main associates. */
+/**
+ * @brief Show a "Connecting to <ssid>…" screen while main associates.
+ *
+ * Interactive picker only; unattended boot reports through
+ * @ref ui_set_boot_status and stays on the splash.
+ */
 void ui_show_wifi_connecting(const char *ssid);
+
+/**
+ * @brief Set the one-line progress note on the splash screen.
+ *
+ * Updates the splash in place instead of switching screens. Safe from the main
+ * task: applied by the UI task on its next pass.
+ *
+ * @param[in] step Short label ("Starting NFC reader"), copied internally.
+ *                 NULL or "" clears the line.
+ */
+void ui_set_boot_status(const char *step);
+
+/**
+ * @brief Greet the operator at the start of first-run setup.
+ *
+ * Shown on a virgin or factory-reset terminal, before the Wi-Fi and admin-code
+ * steps. Emits @ref UI_EVENT_WELCOME_DONE when Start is tapped.
+ */
+void ui_show_welcome(void);
+
+/**
+ * @brief Run the first-run admin-code creation (enter, then confirm).
+ *
+ * Deliberately has no way out: everything behind the burger menu — Wi-Fi, fees,
+ * factory reset — sits behind this code, so the terminal must not become usable
+ * without one. Emits @ref UI_EVENT_ADMIN_SET once stored.
+ */
+void ui_show_admin_set(void);
 
 /**
  * @brief Fetch the selected SSID + entered password and wipe the UI's copy.

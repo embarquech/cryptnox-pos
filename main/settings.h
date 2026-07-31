@@ -29,12 +29,6 @@ uint8_t settings_get_brightness(void);
 /** @brief Persist the backlight level (0..100). */
 void settings_set_brightness(uint8_t pct);
 
-/** @brief true if automatic (light-sensor) brightness is enabled (default false). */
-bool settings_get_auto_brightness(void);
-
-/** @brief Persist the automatic-brightness flag. */
-void settings_set_auto_brightness(bool on);
-
 /** @brief true if a Wi-Fi SSID has been stored. */
 bool settings_has_wifi(void);
 
@@ -52,6 +46,41 @@ bool settings_get_wifi(char *ssid, size_t ssid_n, char *pass, size_t pass_n);
 
 /** @brief Persist Wi-Fi credentials (plaintext — see README threat model). */
 void settings_set_wifi(const char *ssid, const char *pass);
+
+/**
+ * @brief true once an admin code exists, i.e. first-run setup is done.
+ *
+ * Cleared by @ref settings_factory_reset, so a reset device asks for a new code.
+ */
+bool settings_has_admin_code(void);
+
+/**
+ * @brief Store a new admin code, with a fresh random salt.
+ *
+ * The code is never persisted — only a salted keccak256 digest of it,
+ * deliberately not stretched (see settings.cpp). Resets the failure counter.
+ *
+ * @param[in] code NUL-terminated code; the caller wipes its own copy.
+ * @return false if NVS refused the write — the caller must not treat setup as
+ *         done, since a terminal with no stored code can never open its menu.
+ */
+bool settings_set_admin_code(const char *code);
+
+/**
+ * @brief Check a candidate code, maintaining the failure counter.
+ *
+ * @param[in] code NUL-terminated candidate.
+ * @return true on match (counter cleared); false on mismatch or when no code is
+ *         stored (counter incremented on a genuine mismatch).
+ */
+bool settings_check_admin_code(const char *code);
+
+/**
+ * @brief Consecutive failed unlock attempts, persisted.
+ *
+ * Kept in NVS so power-cycling does not clear the penalty the UI derives from it.
+ */
+uint8_t settings_admin_fail_count(void);
 
 /**
  * @brief EIP-1559 max fee per gas, in Gwei.

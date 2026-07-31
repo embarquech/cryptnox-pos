@@ -13,9 +13,12 @@
  ******************************************************************/
 
 #include "net.h"
+#include "civil_time.h"
 
 #include <string.h>
 #include <stdlib.h>     /* malloc, free */
+#include <time.h>       /* time */
+#include <inttypes.h>   /* PRId64 */
 
 /* CW_Utils.h pulls in Arduino.h (via platform_compat.h); it must come before
  * any lwip-including IDF header (esp_netif.h, ...) so that IPAddress.h
@@ -28,14 +31,20 @@
 #include "esp_event.h"
 #include "esp_netif.h"
 #include "esp_netif_sntp.h"
+#include "esp_app_desc.h"   /* esp_app_get_description — build timestamp */
 #include "esp_log.h"
 
 static const char *const TAG = "net";
 
 #define WIFI_CONNECTED_BIT  BIT0
 #define WIFI_FAIL_BIT       BIT1
-#define WIFI_MAX_RETRY      5
-#define WIFI_TIMEOUT_MS     30000
+/* Retries inside one connect call. Kept low: main.cpp retries the whole call
+ * (WIFI_SAVED_ATTEMPTS), and each of those resets the association properly. */
+#define WIFI_MAX_RETRY      2
+
+/* Way out when the association succeeds but no IP ever arrives (hung DHCP):
+ * the FAIL bit is never set, so only this timeout ends the call. */
+#define WIFI_TIMEOUT_MS     15000
 
 /******************************************************************
  * 2. Module state
@@ -44,6 +53,7 @@ static const char *const TAG = "net";
 static EventGroupHandle_t s_wifi_event_group = NULL;
 static int                s_retry_num        = 0;
 static bool               s_wifi_inited      = false;
+static bool               s_sntp_running     = false;
 
 /******************************************************************
  * 3. WiFi event handler
@@ -212,8 +222,50 @@ bool net_wifi_rssi(int8_t *rssi_out)
     return true;
 }
 
+/* __DATE__/__TIME__ are the build machine's LOCAL time but are read back here
+ * as if UTC, so the derived floor can sit up to ~14 h ahead of the real build
+ * instant. One day of slack absorbs every real-world TZ offset; it costs the
+ * attacker nothing, since reviving an expired certificate needs weeks of
+ * back-dating, not hours.
+ * ponytail: fixed slack, not a TZ database. */
+#define BUILD_FLOOR_SLACK_S  86400
+
+/**
+ * @brief Earliest system time this firmware will accept, as a Unix epoch.
+ *
+ * Derived from the firmware's own build timestamp: a clock at or after the
+ * build instant cannot make an already-expired certificate look valid, and
+ * pushing the clock *forward* is harmless for the same reason.
+ *
+ * @return Epoch-second floor, or 0 (no floor) if the build stamp is
+ *         unparseable — fail-open, so a toolchain that deviates from the
+ *         standard __DATE__ format cannot brick the terminal. The host
+ *         self-check (fuzz/test_civil_time.cpp) asserts our own stamp parses.
+ */
+static int64_t build_time_floor(void)
+{
+    const esp_app_desc_t *desc = esp_app_get_description();
+    int64_t stamp = 0;
+
+    if ((desc == NULL) ||
+        !civil_parse_build_stamp(desc->date, desc->time, &stamp)) {
+        ESP_LOGE(TAG, "build stamp unparseable - clock lower bound DISABLED");
+        return 0;
+    }
+    return stamp - BUILD_FLOOR_SLACK_S;
+}
+
 bool net_time_sync(uint32_t timeout_ms)
 {
+    /* A successful sync leaves SNTP subscribed, so a second call would fail on
+     * ESP_ERR_INVALID_STATE. Drop it first: every call then waits for a fresh
+     * packet, which is what makes this usable as a per-network probe rather than
+     * a one-shot at boot. */
+    if (s_sntp_running) {
+        esp_netif_sntp_deinit();
+        s_sntp_running = false;
+    }
+
     /* Several reliable servers — phone hotspots often slow or drop NTP (UDP
      * 123) to pool.ntp.org, so fall back to Google / Cloudflare time. */
     esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(3,
@@ -237,13 +289,35 @@ bool net_time_sync(uint32_t timeout_ms)
         }
     }
 
+    /* Stay subscribed on failure too: lwIP then retries on its own (15 s, backing
+     * off to 150 s) and sets the clock if the network comes back. A deinit here
+     * would leave no client running at all. */
+    s_sntp_running = true;
+
     if (!synced) {
         ESP_LOGE(TAG, "SNTP sync timed out");
-        esp_netif_sntp_deinit();
         return false;
     }
 
-    ESP_LOGI(TAG, "System time synced via SNTP");
+    /* SNTP is unauthenticated (plain UDP/123), so anyone on the path can
+     * dictate the time. Reject a clock earlier than our own build: that is
+     * the direction an attacker needs to resurrect an expired certificate. */
+    const int64_t floor_epoch = build_time_floor();
+    const int64_t now_epoch   = static_cast<int64_t>(time(NULL));
+    if (now_epoch < floor_epoch) {
+        ESP_LOGE(TAG, "SNTP time %" PRId64 " precedes firmware build floor %"
+                      PRId64 " - refusing (spoofed NTP?)",
+                 now_epoch, floor_epoch);
+        /* Unsubscribe here, unlike the timeout path above: a server feeding
+         * back-dated time is not one to leave resyncing us in the background.
+         * Keep the flag honest so the next call re-inits rather than double-
+         * deiniting. */
+        esp_netif_sntp_deinit();
+        s_sntp_running = false;
+        return false;
+    }
+
+    ESP_LOGI(TAG, "System time synced via SNTP (epoch %" PRId64 ")", now_epoch);
     /* Leave SNTP running for periodic background resyncs. */
     return true;
 }
