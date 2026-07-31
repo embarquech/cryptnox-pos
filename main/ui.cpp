@@ -59,6 +59,11 @@ static const char *TAG = "ui";
 #define SCR_W   240
 #define SCR_H   320
 
+/* Splash logo X trim, tuned by eye on the panel: the bitmap is geometrically
+ * centred, but 0 reads as too far right. A calibration value — do not "correct"
+ * it from the image geometry. */
+#define LOGO_X_NUDGE (-4)
+
 static TFT_eSPI            tft;
 static SPIClass            touchSPI(VSPI);
 static XPT2046_Touchscreen touch(T_CS, T_IRQ);
@@ -241,9 +246,25 @@ static net_wifi_ap_t s_aps[WIFI_MAX_APS];
 static uint16_t      s_ap_count = 0;
 static char          s_wifi_ssid[33] = {0};   /* selected network          */
 static char          s_wifi_pass[65] = {0};   /* entered passphrase (handoff) */
-static char          s_wifi_msg[64]  = {0};   /* "Scanning…" / "Connecting to <ssid>…" */
+static char          s_wifi_note[64] = {0};   /* why the picker reopened (may be empty) */
 static lv_obj_t     *s_wifi_pass_ta  = NULL;
 static lv_obj_t     *s_wifi_eye_lbl  = NULL;   /* glyph swapped on reveal/hide */
+
+/* Progress screen (UI_SCREEN_WIFI_CONNECTING), two pieces rather than one
+ * preformatted line: the name is stored raw so the label elides it by real
+ * glyph width, which no character budget can do for every SSID. */
+static char          s_wifi_caption[24] = {0};  /* "Scanning..." / "Connecting to" */
+static char          s_wifi_name[33]    = {0};  /* network name; empty for none    */
+
+/* Splash progress line. Written by the main task, applied by the UI task
+ * (LVGL is not thread-safe) — same hand-off shape as request_screen(). */
+static char          s_boot_step[40]     = {0};
+static lv_obj_t     *s_boot_step_lbl     = NULL;
+static volatile bool s_boot_step_dirty   = false;
+
+/* Startup fault (UI_SCREEN_BOOT_ERROR). */
+static ui_boot_err_t s_boot_err            = UI_BOOT_ERR_NFC;
+static char          s_boot_detail[64]     = {0};
 
 /* Admin code (burger-menu lock). 4 digits on purpose: the threat is a customer
  * left alone with the terminal for a minute, which the escalating penalty below
@@ -304,6 +325,15 @@ static ui_screen_t s_settings_return = UI_SCREEN_AMOUNT;   /* screen to go back 
 static void request_screen(ui_screen_t s) {
     s_req_screen   = s;
     s_screen_dirty = true;
+}
+
+/* Sets both pieces at once, so no caller can leave a stale name behind. */
+static void set_wifi_progress(const char *caption, const char *name) {
+    strncpy(s_wifi_caption, (caption != NULL) ? caption : "",
+            sizeof(s_wifi_caption) - 1);
+    s_wifi_caption[sizeof(s_wifi_caption) - 1] = '\0';
+    strncpy(s_wifi_name, (name != NULL) ? name : "", sizeof(s_wifi_name) - 1);
+    s_wifi_name[sizeof(s_wifi_name) - 1] = '\0';
 }
 
 static void format_amount(uint64_t units, char *out, size_t n) {
@@ -421,8 +451,7 @@ static void btn_event_cb(lv_event_t *e) {
             break;
         case ACT_WIFI:
             settings_persist();
-            strncpy(s_wifi_msg, "Scanning...", sizeof(s_wifi_msg) - 1);
-            s_wifi_msg[sizeof(s_wifi_msg) - 1] = '\0';
+            set_wifi_progress("Scanning...", NULL);
             request_screen(UI_SCREEN_WIFI_CONNECTING);
             if (s_cb != NULL) { s_cb(UI_EVENT_WIFI_SCAN, 0); }
             break;
@@ -537,6 +566,7 @@ static void clear_screen(void) {
     s_pin_ta       = NULL;   /* deleted by lv_obj_clean — drop the dangling ref */
     s_wifi_pass_ta = NULL;
     s_wifi_eye_lbl   = NULL;
+    s_boot_step_lbl  = NULL;
     s_admin_ta       = NULL;
     s_admin_note_lbl = NULL;
     s_reset_btn    = NULL;
@@ -947,8 +977,9 @@ static void build_splash(void) {
 
     lv_obj_t *logo = lv_img_create(lv_scr_act());
     lv_img_set_src(logo, &logo_img);
-    lv_obj_align(logo, LV_ALIGN_CENTER, 0, -36);
-    pop_in(logo);   /* same overshoot entrance as the tx check/cross */
+    lv_obj_align(logo, LV_ALIGN_CENTER, LOGO_X_NUDGE, -36);
+    /* No pop_in() here: at power-on the backlight has only just come up, so a
+     * scale-in reads as the logo blinking. Kept for the tx check/cross. */
 
     /* Tight under the logo (the image carries its own breathing margin). */
     make_label(lv_scr_act(), "cryptnox-pos", lv_color_black(),
@@ -963,6 +994,16 @@ static void build_splash(void) {
     lv_obj_set_style_arc_width(sp, 3, LV_PART_INDICATOR);
     lv_obj_set_style_arc_color(sp, COL_SURFACE, LV_PART_MAIN);
     lv_obj_set_style_arc_color(sp, COL_ACCENT, LV_PART_INDICATOR);
+
+    /* Which boot step is running, so a slow start is legible rather than
+     * looking frozen. Discreet, and elided by width to never overflow. */
+    s_boot_step_lbl = make_label(lv_scr_act(), s_boot_step, COL_DIM,
+                                 &lv_font_montserrat_14,
+                                 LV_ALIGN_BOTTOM_MID, 0, -20);
+    lv_obj_set_width(s_boot_step_lbl, SCR_W - 24);
+    lv_label_set_long_mode(s_boot_step_lbl, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_align(s_boot_step_lbl, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_align(s_boot_step_lbl, LV_ALIGN_BOTTOM_MID, 0, -20);
 }
 
 static void build_amount(void) {
@@ -1220,8 +1261,7 @@ static void admin_submit(void) {
              * by bringing the network up and that blocks on a scan for a couple
              * of seconds — the payment keypad would flash up and be replaced by
              * the Wi-Fi list. Say what is actually happening instead. */
-            strncpy(s_wifi_msg, "Scanning...", sizeof(s_wifi_msg) - 1);
-            s_wifi_msg[sizeof(s_wifi_msg) - 1] = '\0';
+            set_wifi_progress("Scanning...", NULL);
             request_screen(UI_SCREEN_WIFI_CONNECTING);
             if (s_cb != NULL) { s_cb(UI_EVENT_ADMIN_SET, 0); }
         } else {
@@ -1326,6 +1366,22 @@ static void build_wifi_list(void) {
     clear_screen();
     build_header_back("Wi-Fi");
 
+    /* Why the picker opened, otherwise the operator lands in Wi-Fi setup with no
+     * idea what failed. */
+    lv_coord_t list_y = 48;
+    if (s_wifi_note[0] != '\0') {
+        lv_obj_t *note = make_label(lv_scr_act(), s_wifi_note, COL_DANGER,
+                                    &lv_font_montserrat_14,
+                                    LV_ALIGN_TOP_MID, 0, 50);
+        lv_label_set_long_mode(note, LV_LABEL_LONG_WRAP);
+        lv_obj_set_width(note, 216);
+        lv_obj_set_style_text_align(note, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+        /* Measure rather than assume two lines: the list then clears the note at
+         * any wrap depth, so a longer message can never overprint it. */
+        lv_obj_update_layout(note);
+        list_y = 50 + lv_obj_get_height(note) + 6;
+    }
+
     if (s_ap_count == 0U) {
         make_label(lv_scr_act(), "No networks found", COL_DIM,
                    &lv_font_montserrat_14, LV_ALIGN_CENTER, 0, 0);
@@ -1336,8 +1392,8 @@ static void build_wifi_list(void) {
     }
 
     lv_obj_t *list = lv_list_create(lv_scr_act());
-    lv_obj_set_size(list, SCR_W - 12, SCR_H - 52);
-    lv_obj_align(list, LV_ALIGN_TOP_MID, 0, 48);
+    lv_obj_set_size(list, SCR_W - 12, SCR_H - 4 - list_y);
+    lv_obj_align(list, LV_ALIGN_TOP_MID, 0, list_y);
     lv_obj_set_style_bg_color(list, COL_BG, LV_PART_MAIN);
     lv_obj_set_style_border_width(list, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_row(list, 4, LV_PART_MAIN);
@@ -1360,7 +1416,7 @@ static void wifi_pass_kb_cb(lv_event_t *e) {
             strncpy(s_wifi_pass, (p != NULL) ? p : "", sizeof(s_wifi_pass) - 1);
             s_wifi_pass[sizeof(s_wifi_pass) - 1] = '\0';
         }
-        snprintf(s_wifi_msg, sizeof(s_wifi_msg), "Connecting to %s...", s_wifi_ssid);
+        set_wifi_progress("Connecting to", s_wifi_ssid);
         request_screen(UI_SCREEN_WIFI_CONNECTING);
         if (s_cb != NULL) { s_cb(UI_EVENT_WIFI_TRY, 0); }
     } else if (code == LV_EVENT_CANCEL) {     /* keyboard close */
@@ -1403,8 +1459,24 @@ static void build_wifi_pass(void) {
 static void build_wifi_connecting(void) {
     clear_screen();
     build_header("Wi-Fi");
-    make_label(lv_scr_act(), s_wifi_msg, COL_TEXT, &lv_font_montserrat_20,
-               LV_ALIGN_CENTER, 0, 0);
+
+    if (s_wifi_name[0] == '\0') {
+        /* Nothing to name ("Scanning..."): the caption is the whole message. */
+        make_label(lv_scr_act(), s_wifi_caption, COL_TEXT,
+                   &lv_font_montserrat_20, LV_ALIGN_CENTER, 0, 0);
+    } else {
+        make_label(lv_scr_act(), s_wifi_caption, COL_DIM,
+                   &lv_font_montserrat_14, LV_ALIGN_CENTER, 0, -30);
+
+        /* LONG_DOT elides on real glyph metrics, so a 32-char SSID never
+         * overflows. Width must be set before the long mode. */
+        lv_obj_t *name = make_label(lv_scr_act(), s_wifi_name, COL_TEXT,
+                                    &lv_font_montserrat_20, LV_ALIGN_CENTER, 0, 0);
+        lv_obj_set_width(name, SCR_W - 24);
+        lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);
+        lv_obj_set_style_text_align(name, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+        lv_obj_align(name, LV_ALIGN_CENTER, 0, 0);   /* re-centre after the resize */
+    }
 }
 
 /* Animate an object's zoom (256 = 100%) — used for the success-check pop. */
@@ -1417,6 +1489,9 @@ static void pop_in(lv_obj_t *obj) {
     lv_obj_update_layout(obj);
     lv_obj_set_style_transform_pivot_x(obj, lv_obj_get_width(obj) / 2, LV_PART_MAIN);
     lv_obj_set_style_transform_pivot_y(obj, lv_obj_get_height(obj) / 2, LV_PART_MAIN);
+    /* Apply the start scale before the first render: lv_anim_start() only calls
+     * the exec cb on its first tick, so the object would flash at full size. */
+    zoom_anim_cb(obj, 10);
     lv_anim_t a;
     lv_anim_init(&a);
     lv_anim_set_var(&a, obj);
@@ -1516,6 +1591,67 @@ static void build_tx_status(void) {
     lv_obj_set_style_text_align(info, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
 }
 
+/* Startup fault. Not the transaction screen: its red cross and "Declined" made
+ * a wiring problem read as a refused sale. No action button — nothing here is
+ * recoverable from the touchscreen, so the body text says what to do. */
+static void build_boot_error(void) {
+    clear_screen();
+    build_header("Startup");
+
+    lv_obj_t *warn = make_label(lv_scr_act(), LV_SYMBOL_WARNING, COL_DANGER,
+                                &lv_font_montserrat_48, LV_ALIGN_TOP_MID, 0, 62);
+    pop_in(warn);
+
+    const char *title;
+    const char *body;
+    switch (s_boot_err) {
+        case UI_BOOT_ERR_WALLET:
+            title = "Wallet not ready";
+            body  = "The card reader answered but the Cryptnox wallet could not "
+                    "be initialised.\n\n"
+                    "Restart the terminal. If this keeps happening, the reader "
+                    "or its firmware is at fault.";
+            break;
+        case UI_BOOT_ERR_NFC:
+        default:
+            title = "NFC reader not found";
+            body  = "The PN532 module did not answer on the I2C bus.\n\n"
+                    "Check the SDA/SCL wiring, the RST pin and the 3V3 supply, "
+                    "then restart the terminal.";
+            break;
+    }
+
+    make_label(lv_scr_act(), title, COL_TEXT, &lv_font_montserrat_20,
+               LV_ALIGN_TOP_MID, 0, 124);
+
+    lv_obj_t *b = make_label(lv_scr_act(), body, COL_DIM,
+                             &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0, 158);
+    lv_label_set_long_mode(b, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(b, 216);
+    lv_obj_set_style_text_align(b, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+
+    /* Technician detail, kept off the main message so the operator reads the
+     * instruction and not the error code. Sits at the foot of the screen, but
+     * never above the body: anchoring to the body instead of the screen edge
+     * means a long instruction or a long esp_err name clips at the bottom
+     * rather than overprinting the text the operator has to act on. */
+    if (s_boot_detail[0] != '\0') {
+        lv_obj_t *d = make_label(lv_scr_act(), s_boot_detail, COL_DIM,
+                                 &lv_font_montserrat_14,
+                                 LV_ALIGN_BOTTOM_MID, 0, -8);
+        lv_label_set_long_mode(d, LV_LABEL_LONG_WRAP);
+        lv_obj_set_width(d, 216);
+        lv_obj_set_style_text_align(d, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+
+        lv_obj_update_layout(b);
+        lv_obj_update_layout(d);
+        const lv_coord_t body_end = lv_obj_get_y(b) + lv_obj_get_height(b) + 8;
+        if (lv_obj_get_y(d) < body_end) {
+            lv_obj_align(d, LV_ALIGN_TOP_MID, 0, body_end);
+        }
+    }
+}
+
 static void render_requested_screen(void) {
     switch (s_req_screen) {
         case UI_SCREEN_SPLASH:    build_splash();    break;
@@ -1527,6 +1663,7 @@ static void render_requested_screen(void) {
         case UI_SCREEN_WIFI_CONNECTING: build_wifi_connecting(); break;
         case UI_SCREEN_SETTINGS:  build_settings();  break;
         case UI_SCREEN_TX_STATUS: build_tx_status(); break;
+        case UI_SCREEN_BOOT_ERROR:   build_boot_error();   break;
         case UI_SCREEN_ADMIN_SET:    build_admin_set();    break;
         case UI_SCREEN_ADMIN_UNLOCK: build_admin_unlock(); break;
         case UI_SCREEN_WELCOME:      build_welcome();      break;
@@ -1568,7 +1705,9 @@ static void ui_task(void *arg) {
     tft.writecommand(0x26);
     tft.writedata(0x01);
 
-    tft.fillScreen(TFT_BLACK);
+    /* White, not black: the backlight comes on below, before LVGL's first
+     * frame, and the theme is white — black made power-on flash. */
+    tft.fillScreen(TFT_WHITE);
 
     touchSPI.begin(T_CLK, T_MISO, T_MOSI, T_CS);
     touch.begin(touchSPI);
@@ -1612,6 +1751,14 @@ static void ui_task(void *arg) {
         if (s_screen_dirty) {
             s_screen_dirty = false;
             render_requested_screen();
+        }
+        /* Boot-status update from the main task; targeted rather than a splash
+         * rebuild, which would restart the logo on every step. */
+        if (s_boot_step_dirty) {
+            s_boot_step_dirty = false;
+            if ((s_req_screen == UI_SCREEN_SPLASH) && (s_boot_step_lbl != NULL)) {
+                lv_label_set_text(s_boot_step_lbl, s_boot_step);
+            }
         }
         lv_timer_handler();
 
@@ -1665,10 +1812,18 @@ extern "C" size_t ui_take_pin(char *out, size_t n) {
     return len;
 }
 
-extern "C" void ui_show_wifi_list(const net_wifi_ap_t *aps, uint16_t n) {
+extern "C" void ui_show_wifi_list(const net_wifi_ap_t *aps, uint16_t n,
+                                  const char *note) {
     s_ap_count = (n > WIFI_MAX_APS) ? WIFI_MAX_APS : n;
     for (uint16_t i = 0U; i < s_ap_count; i++) {
         s_aps[i] = aps[i];
+    }
+    /* Set on every call, so an earlier failure's note cannot linger. */
+    if (note != NULL) {
+        strncpy(s_wifi_note, note, sizeof(s_wifi_note) - 1);
+        s_wifi_note[sizeof(s_wifi_note) - 1] = '\0';
+    } else {
+        s_wifi_note[0] = '\0';
     }
     request_screen(UI_SCREEN_WIFI_LIST);
 }
@@ -1679,9 +1834,25 @@ extern "C" void ui_set_addresses(const char *usdc_contract, const char *dest_add
 }
 
 extern "C" void ui_show_wifi_connecting(const char *ssid) {
-    snprintf(s_wifi_msg, sizeof(s_wifi_msg), "Connecting to %s...",
-             (ssid != NULL) ? ssid : "");
+    set_wifi_progress("Connecting to", ssid);
     request_screen(UI_SCREEN_WIFI_CONNECTING);
+}
+
+extern "C" void ui_set_boot_status(const char *step) {
+    strncpy(s_boot_step, (step != NULL) ? step : "", sizeof(s_boot_step) - 1);
+    s_boot_step[sizeof(s_boot_step) - 1] = '\0';
+    s_boot_step_dirty = true;   /* applied by the UI task — LVGL is single-thread */
+}
+
+extern "C" void ui_show_boot_error(ui_boot_err_t kind, const char *detail) {
+    s_boot_err = kind;
+    if (detail != NULL) {
+        strncpy(s_boot_detail, detail, sizeof(s_boot_detail) - 1);
+        s_boot_detail[sizeof(s_boot_detail) - 1] = '\0';
+    } else {
+        s_boot_detail[0] = '\0';
+    }
+    request_screen(UI_SCREEN_BOOT_ERROR);
 }
 
 extern "C" void ui_show_welcome(void) {

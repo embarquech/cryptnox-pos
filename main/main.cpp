@@ -27,6 +27,7 @@
 #include "freertos/queue.h"
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
+#include "esp_err.h"      /* esp_err_to_name for the startup fault screen */
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "nvs_flash.h"
@@ -422,13 +423,43 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
  * blocking SNTP time sync, then services UI events in the main
  * interaction loop (amount → confirm → sign+broadcast).
  */
+/* Startup retry budgets. The effort is spent out here rather than inside
+ * net_wifi_connect(), since each call resets the association properly:
+ * 3 x (1 + WIFI_MAX_RETRY) associations, 45 s worst case. */
+#define WIFI_SAVED_ATTEMPTS  3U
+#define TIME_SYNC_ATTEMPTS   3U
+
+/* Picker notes, shared by the boot bring-up and the settings Wi-Fi change so the
+ * two cannot drift apart. */
+static const char *const NOTE_JOIN_FAILED =
+    "Could not join that network - check the password";
+static const char *const NOTE_NO_TIME =
+    "No network time - this Wi-Fi has no usable internet";
+
+/* Credentials the picker just joined with, held until a clock sync proves the
+ * network usable end to end (see wifi_keep_or_drop). Associating is not enough:
+ * a captive-portal or offline AP joins fine and would then be reached for on
+ * every boot. Deferring the write also means a transient NTP outage never
+ * erases a saved network that does work. */
+static char s_join_ssid[33] = { 0 };
+static char s_join_pass[65] = { 0 };
+
 /**
- * @brief Bring up Wi-Fi: connect with saved credentials, or run the first-run
- *        network picker (scan → list → keyboard → connect) until connected.
+ * @brief Persist or discard the pending picker credentials, then scrub them.
  *
- * Blocks until a connection succeeds; the operator cannot leave setup without
- * one. config.h Wi-Fi credentials are intentionally not used (NVS only).
+ * @param[in] keep true once the clock is set — the only proof the network is
+ *                 actually usable; false to drop them unpersisted.
  */
+static void wifi_keep_or_drop(bool keep)
+{
+    if (keep && (s_join_ssid[0] != '\0')) {
+        settings_set_wifi(s_join_ssid, s_join_pass);
+        ESP_LOGI(TAG, "saved network '%s' (clock synced)", s_join_ssid);
+    }
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_join_pass), sizeof(s_join_pass));
+    (void)memset(s_join_ssid, 0, sizeof(s_join_ssid));
+}
+
 /**
  * @brief Block until the UI reports @p want, discarding anything else.
  *
@@ -449,20 +480,49 @@ static void wait_for_ui_event(ui_event_t want)
     (void)xQueueReset(s_ui_queue);
 }
 
-static void ensure_wifi(void)
+/**
+ * @brief Bring up Wi-Fi: retry the saved credentials, then run the network
+ *        picker (scan → list → keyboard → connect) until connected.
+ *
+ * Blocks until a connection succeeds; the operator cannot leave setup without
+ * one. config.h Wi-Fi credentials are intentionally not used (NVS only).
+ *
+ * A network joined through the picker is not persisted here — the credentials
+ * are staged for @ref wifi_keep_or_drop, which the caller invokes once the
+ * clock proves the uplink usable.
+ *
+ * @param[in] try_saved Try the saved credentials first; false goes straight to
+ *                      the picker, for a saved network already proven unusable.
+ * @param[in] note      One-line reason shown above the picker, or NULL.
+ * @return true if the picker ran and took the screen, so the caller must
+ *         restore the splash; false if the splash was never replaced.
+ */
+static bool ensure_wifi(bool try_saved, const char *note)
 {
     char ssid[33] = { 0 };
     char pass[65] = { 0 };
-    if (settings_get_wifi(ssid, sizeof(ssid), pass, sizeof(pass))) {
-        bool ok = net_wifi_connect(ssid, pass);
+    if (try_saved &&
+        settings_get_wifi(ssid, sizeof(ssid), pass, sizeof(pass))) {
+        /* Unattended: report on the splash rather than flashing up a setup
+         * screen the operator never asked for. */
+        ui_set_boot_status("Connecting to Wi-Fi");
+        bool ok = false;
+        for (uint32_t a = 1U; (a <= WIFI_SAVED_ATTEMPTS) && !ok; a++) {
+            ESP_LOGI(TAG, "Wi-Fi '%s': attempt %" PRIu32 "/%u",
+                     ssid, a, WIFI_SAVED_ATTEMPTS);
+            ok = net_wifi_connect(ssid, pass);
+        }
         CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(pass), sizeof(pass));
-        if (ok) { return; }
+        if (ok) { return false; }   /* splash never left the screen */
+        ESP_LOGW(TAG, "saved network '%s' failed %u times - opening the picker",
+                 ssid, WIFI_SAVED_ATTEMPTS);
+        note = "Could not join the saved network";
     }
 
     /* No usable saved network — forced interactive setup. */
     net_wifi_ap_t aps[16];
     uint16_t n = net_wifi_scan(aps, 16);
-    ui_show_wifi_list(aps, n);
+    ui_show_wifi_list(aps, n, note);
 
     ui_msg_t msg;
     while (true) {
@@ -474,19 +534,44 @@ static void ensure_wifi(void)
             bool ok = false;
             if (ui_take_wifi_creds(w_ssid, sizeof(w_ssid),
                                    w_pass, sizeof(w_pass)) > 0U) {
+                /* Interactive: the operator expects to see the attempt. */
                 ui_show_wifi_connecting(w_ssid);
                 ok = net_wifi_connect(w_ssid, w_pass);
-                if (ok) { settings_set_wifi(w_ssid, w_pass); }
+                if (ok) {
+                    /* Staged, not saved — wifi_keep_or_drop() decides once the
+                     * clock has proven this network carries real internet. */
+                    (void)snprintf(s_join_ssid, sizeof(s_join_ssid), "%s", w_ssid);
+                    (void)snprintf(s_join_pass, sizeof(s_join_pass), "%s", w_pass);
+                }
             }
             CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(w_pass), sizeof(w_pass));
-            if (ok) { return; }
+            if (ok) { return true; }   /* the picker owns the screen */
+            note = NOTE_JOIN_FAILED;
+        } else if (msg.event == UI_EVENT_WIFI_SCAN) {
+            note = NULL;   /* rescan asked for — the old reason is stale */
         }
 
         /* WIFI_SCAN, a failed connect, or any stray event: re-scan and show
          * the list again so the user stays in setup until connected. */
         n = net_wifi_scan(aps, 16);
-        ui_show_wifi_list(aps, n);
+        ui_show_wifi_list(aps, n, note);
     }
+}
+
+/**
+ * @brief Block on an SNTP sync so TLS certificate validity-period checks run
+ *        against real time instead of the 1970 epoch.
+ *
+ * @return true once the clock is set, false after @ref TIME_SYNC_ATTEMPTS
+ *         rounds — flaky uplinks often need a second try.
+ */
+static bool sync_time(void)
+{
+    for (uint32_t a = 1U; a <= TIME_SYNC_ATTEMPTS; a++) {
+        ESP_LOGI(TAG, "SNTP sync: attempt %" PRIu32 "/%u", a, TIME_SYNC_ATTEMPTS);
+        if (net_time_sync(15000U)) { return true; }
+    }
+    return false;
 }
 
 extern "C" void app_main(void)
@@ -526,9 +611,11 @@ extern "C" void app_main(void)
     s_ui_queue = xQueueCreate(8, sizeof(ui_msg_t));
     ui_init(ui_event_dispatch);
     ui_set_addresses("0x" ADDR_USDC, "0x" ADDR_TO);
-    ui_show_splash();
+    /* No ui_show_splash() here — ui_init() already selects it, and asking twice
+     * races the UI task into rebuilding the screen and replaying the logo. */
 
     /* ── PN532 NFC reader ──────────────────────────────────────── */
+    ui_set_boot_status("Starting NFC reader");
     pn532_t nfc;
     (void)memset(&nfc, 0, sizeof(nfc));
 
@@ -542,13 +629,31 @@ extern "C" void app_main(void)
     nfc_cfg.pin_rst       = PN532_RST;
     nfc_cfg.i2c_clock_hz  = PN532_I2C_HZ;
 
-    if (pn532_init(&nfc, &nfc_cfg) != ESP_OK) {
-        ESP_LOGE(TAG, "PN532 init failed");
-        ui_show_tx_status(UI_TX_STATE_FAILED, "PN532 not found");
+    /* Keep the error code — unplugged reader and misconfigured bus look
+     * identical on screen otherwise. */
+    esp_err_t nfc_ret = pn532_init(&nfc, &nfc_cfg);
+    if (nfc_ret != ESP_OK) {
+        ESP_LOGE(TAG, "PN532 bus init failed: %s", esp_err_to_name(nfc_ret));
+        ui_show_boot_error(UI_BOOT_ERR_NFC, esp_err_to_name(nfc_ret));
         return;
     }
 
+    /* pn532_init() only brings up the bus and ignores its own probe results
+     * (pn532.h), so it returns ESP_OK with no reader attached. Probe here —
+     * 0 means no answer — or an absent reader is reported as a wallet fault. */
+    uint32_t nfc_fw = pn532_get_firmware_version(&nfc);
+    if (nfc_fw == 0U) {
+        ESP_LOGE(TAG, "PN532 did not answer GetFirmwareVersion - reader absent?");
+        ui_show_boot_error(UI_BOOT_ERR_NFC, "No answer to GetFirmwareVersion");
+        return;
+    }
+    ESP_LOGI(TAG, "PN532 firmware: IC 0x%02X, version %u.%u",
+             (unsigned)((nfc_fw >> 24) & 0xFFU),
+             (unsigned)((nfc_fw >> 16) & 0xFFU),
+             (unsigned)((nfc_fw >> 8) & 0xFFU));
+
     /* ── Wallet ────────────────────────────────────────────────── */
+    ui_set_boot_status("Opening wallet");
     NullLogger logger;
     (void)logger.begin(115200UL);
     ESP32CryptoProvider cryptoProvider;
@@ -558,7 +663,7 @@ extern "C" void app_main(void)
 
     if (!wallet.begin()) {
         ESP_LOGE(TAG, "Wallet begin failed");
-        ui_show_tx_status(UI_TX_STATE_FAILED, "Wallet init failed");
+        ui_show_boot_error(UI_BOOT_ERR_WALLET, NULL);
         return;
     }
 
@@ -592,22 +697,31 @@ extern "C" void app_main(void)
         wait_for_ui_event(UI_EVENT_ADMIN_SET);
     }
 
+    ui_set_boot_status("Starting network");
     net_wifi_init();
-    /* Connect with saved creds, or run the first-run picker until connected
-     * (config.h Wi-Fi is no longer used). */
-    ensure_wifi();
 
-    /* block on a first SNTP sync so TLS certificate validity-period
-     * checks run against real time instead of the 1970 epoch. Retry a couple
-     * of rounds — flaky uplinks (phone hotspots) often need a second try. */
-    bool time_ok = false;
-    for (int attempt = 0; (attempt < 3) && !time_ok; attempt++) {
-        time_ok = net_time_sync(15000U);
-    }
-    if (!time_ok) {
-        ESP_LOGE(TAG, "SNTP time sync failed");
-        ui_show_tx_status(UI_TX_STATE_FAILED, "Time sync failed - check network");
-        return;
+    /* Wi-Fi and a valid clock are one bring-up step, since TLS needs both: a
+     * failed sync sends the operator back to the picker with the reason rather
+     * than stranding the terminal on an error screen. */
+    bool        try_saved = true;
+    const char *net_note  = NULL;
+    while (true) {
+        if (ensure_wifi(try_saved, net_note)) {
+            ui_show_splash();   /* only when the picker took the screen */
+        }
+        ui_set_boot_status("Syncing clock");
+        if (sync_time()) {
+            wifi_keep_or_drop(true);    /* proven usable — safe to persist */
+            break;
+        }
+        ESP_LOGE(TAG, "SNTP time sync failed on this network");
+        /* Drop the staged credentials, but leave an already-saved network alone:
+         * it may well work again after a reboot, and erasing it would cost the
+         * operator the password for what is often a transient outage. */
+        wifi_keep_or_drop(false);
+        /* Force the picker: retrying the same network loops straight back here. */
+        try_saved = false;
+        net_note  = NOTE_NO_TIME;
     }
 
     /* One RPC round-trip at boot, for two reasons at once: it proves the
@@ -720,7 +834,8 @@ extern "C" void app_main(void)
                 /* Scan runs in this task so the UI stays responsive. */
                 net_wifi_ap_t aps[16];
                 uint16_t n = net_wifi_scan(aps, 16);
-                ui_show_wifi_list(aps, n);
+                /* Opened from settings, not after a failure — no note. */
+                ui_show_wifi_list(aps, n, NULL);
                 break;
             }
 
@@ -730,14 +845,51 @@ extern "C" void app_main(void)
                 if (ui_take_wifi_creds(w_ssid, sizeof(w_ssid),
                                        w_pass, sizeof(w_pass)) > 0U) {
                     ui_show_wifi_connecting(w_ssid);
-                    if (net_wifi_connect(w_ssid, w_pass)) {
+
+                    /* Same rule as boot: associating proves nothing, so make the
+                     * clock prove the uplink before overwriting saved credentials
+                     * that may well be working. One round only — the operator is
+                     * standing there and can tap again, where boot has to be
+                     * patient on its own. */
+                    const char *why = NULL;
+                    if (!net_wifi_connect(w_ssid, w_pass)) {
+                        why = NOTE_JOIN_FAILED;
+                    } else if (!net_time_sync(15000U)) {
+                        ESP_LOGW(TAG, "'%s' joined but has no network time -"
+                                      " not saved", w_ssid);
+                        why = NOTE_NO_TIME;
+                    } else {
                         settings_set_wifi(w_ssid, w_pass);   /* persist for next boot */
                         ui_show_amount_entry();
-                    } else {
-                        /* Failed — rescan and show the list again to retry. */
+                    }
+
+                    if (why != NULL) {
+                        /* Refusing to persist is not enough: the radio is still
+                         * associated with the network we just rejected, and the
+                         * picker's back arrow goes straight to amount entry. So
+                         * without this the terminal looks ready while every
+                         * payment fails at the RPC call. Roll back to the saved
+                         * network — which boot already proved usable — before
+                         * handing over the screen. Costs up to one association
+                         * timeout, hence the progress screen. */
+                        char b_ssid[33] = { 0 };
+                        char b_pass[65] = { 0 };
+                        if (settings_get_wifi(b_ssid, sizeof(b_ssid),
+                                              b_pass, sizeof(b_pass)) &&
+                            (b_ssid[0] != '\0')) {
+                            ESP_LOGW(TAG, "rolling back to saved network '%s'",
+                                     b_ssid);
+                            ui_show_wifi_connecting(b_ssid);
+                            (void)net_wifi_connect(b_ssid, b_pass);
+                        }
+                        CW_Utils::secure_wipe(
+                            reinterpret_cast<uint8_t *>(b_pass), sizeof(b_pass));
+
+                        /* Back to the picker with the reason, so another network
+                         * can be chosen instead of a dead end. */
                         net_wifi_ap_t aps[16];
                         uint16_t n = net_wifi_scan(aps, 16);
-                        ui_show_wifi_list(aps, n);
+                        ui_show_wifi_list(aps, n, why);
                     }
                 }
                 CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(w_pass), sizeof(w_pass));
