@@ -1086,9 +1086,9 @@ static void pin_kbd_cb(lv_event_t *e) {
 static lv_obj_t *make_code_field(uint32_t max_len, lv_coord_t y) {
     lv_obj_t *ta = lv_textarea_create(lv_scr_act());
     lv_textarea_set_password_mode(ta, true);
-    /* Mask immediately: LVGL's default grace period would leave each digit in
-     * clear for 1500 ms, handing a shoulder-surfer the code one key at a time. */
-    lv_textarea_set_password_show_time(ta, 0);
+    /* Echo each digit briefly so the operator can confirm the keypress, then
+     * mask — a third of LVGL's 1500 ms default, which leaks the whole code. */
+    lv_textarea_set_password_show_time(ta, 500);
     lv_textarea_set_one_line(ta, true);
     lv_textarea_set_max_length(ta, max_len);
     lv_textarea_set_text(ta, "");
@@ -1380,11 +1380,10 @@ static void build_wifi_pass(void) {
     /* Masked by default: this screen faces the customer. The eye beside it
      * reveals on demand, for checking a long passphrase. */
     lv_textarea_set_password_mode(s_wifi_pass_ta, true);
-    /* Mask immediately, with no grace period. LVGL otherwise leaves each new
-     * character in clear for LV_TEXTAREA_DEF_PWD_SHOW_TIME (1500 ms here), which
-     * on a customer-facing screen hands a shoulder-surfer the whole passphrase
-     * one key at a time — the reveal is the eye's job, on the merchant's terms. */
-    lv_textarea_set_password_show_time(s_wifi_pass_ta, 0);
+    /* Echo each character briefly, then mask — long enough to catch a typo,
+     * a third of LVGL's 1500 ms default on a customer-facing screen. The eye
+     * stays the way to re-read the whole passphrase, on the merchant's terms. */
+    lv_textarea_set_password_show_time(s_wifi_pass_ta, 500);
     lv_obj_set_width(s_wifi_pass_ta, SCR_W - 24 - MENU_BTN_W);
     lv_obj_align(s_wifi_pass_ta, LV_ALIGN_TOP_LEFT, 12, 28);
     lv_obj_set_style_bg_color(s_wifi_pass_ta, COL_SURFACE, LV_PART_MAIN);
