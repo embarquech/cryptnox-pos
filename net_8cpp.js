@@ -1,9 +1,11 @@
 var net_8cpp =
 [
+    [ "BUILD_FLOOR_SLACK_S", "net_8cpp.html#ad272ca04bfdb58036903285347595784", null ],
     [ "WIFI_CONNECTED_BIT", "net_8cpp.html#ad552e7688532cbbecd3967538ced06ac", null ],
     [ "WIFI_FAIL_BIT", "net_8cpp.html#a7d013b55e50dfbda0904f5f933b63ec4", null ],
     [ "WIFI_MAX_RETRY", "net_8cpp.html#a9889f5062c963896a887cd62a23730bf", null ],
     [ "WIFI_TIMEOUT_MS", "net_8cpp.html#a4735ad9aef99f8584afd945f39260954", null ],
+    [ "build_time_floor", "net_8cpp.html#ade0505eaf7b2477a44c3fba30f4c0400", null ],
     [ "net_time_sync", "net_8cpp.html#a6183c17880c3cc5dcf982e66bafbaafe", null ],
     [ "net_wifi_connect", "net_8cpp.html#a85ab8d7927129c9f8c0cc0525eaa1b76", null ],
     [ "net_wifi_init", "net_8cpp.html#aaf1ff99078677637758f3b20f1ed7a59", null ],

@@ -14,10 +14,11 @@ var searchData=
   ['build_5fpin_11',['build_pin',['../ui_8cpp.html#a8d3dc1deafe6efbece30edc4d312b978',1,'ui.cpp']]],
   ['build_5fsettings_12',['build_settings',['../ui_8cpp.html#a372fecd272e8a46b01634a96fd2c3995',1,'ui.cpp']]],
   ['build_5fsplash_13',['build_splash',['../ui_8cpp.html#ad841daa9d6545751c62927da2a19465c',1,'ui.cpp']]],
-  ['build_5ftx_5fstatus_14',['build_tx_status',['../ui_8cpp.html#a5cedb7e8389365c7774b710132fc3326',1,'ui.cpp']]],
-  ['build_5fusdc_5fcalldata_15',['build_usdc_calldata',['../main_8cpp.html#aee37928ea69bedfc468a9beb3b518798',1,'main.cpp']]],
-  ['build_5fwifi_5fconnecting_16',['build_wifi_connecting',['../ui_8cpp.html#a3705b01f958d386641cef7c708d8e42b',1,'ui.cpp']]],
-  ['build_5fwifi_5flist_17',['build_wifi_list',['../ui_8cpp.html#aa9bc87dc1d057763eac6b108c9d1755a',1,'ui.cpp']]],
-  ['build_5fwifi_5fpass_18',['build_wifi_pass',['../ui_8cpp.html#a9a99cf7fa9e50c6fe490bb14ea1b8fc9',1,'ui.cpp']]],
-  ['bytes_5fto_5fhex_19',['bytes_to_hex',['../eth__rpc_8cpp.html#a9c088c626e687a17a455ae61b3e98f92',1,'eth_rpc.cpp']]]
+  ['build_5ftime_5ffloor_14',['build_time_floor',['../net_8cpp.html#ade0505eaf7b2477a44c3fba30f4c0400',1,'net.cpp']]],
+  ['build_5ftx_5fstatus_15',['build_tx_status',['../ui_8cpp.html#a5cedb7e8389365c7774b710132fc3326',1,'ui.cpp']]],
+  ['build_5fusdc_5fcalldata_16',['build_usdc_calldata',['../main_8cpp.html#aee37928ea69bedfc468a9beb3b518798',1,'main.cpp']]],
+  ['build_5fwifi_5fconnecting_17',['build_wifi_connecting',['../ui_8cpp.html#a3705b01f958d386641cef7c708d8e42b',1,'ui.cpp']]],
+  ['build_5fwifi_5flist_18',['build_wifi_list',['../ui_8cpp.html#aa9bc87dc1d057763eac6b108c9d1755a',1,'ui.cpp']]],
+  ['build_5fwifi_5fpass_19',['build_wifi_pass',['../ui_8cpp.html#a9a99cf7fa9e50c6fe490bb14ea1b8fc9',1,'ui.cpp']]],
+  ['bytes_5fto_5fhex_20',['bytes_to_hex',['../eth__rpc_8cpp.html#a9c088c626e687a17a455ae61b3e98f92',1,'eth_rpc.cpp']]]
 ];

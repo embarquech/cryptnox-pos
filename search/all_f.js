@@ -12,5 +12,6 @@ var searchData=
   ['rlp_5flist_5fheader_9',['rlp_list_header',['../eth__rlp_8cpp.html#afcd8883950916221b4559e7132abd776',1,'eth_rlp.cpp']]],
   ['rlp_5fuint64_10',['rlp_uint64',['../eth__rlp_8cpp.html#a4e0ad18671fc6c0e8b04d56179e1fb99',1,'eth_rlp.cpp']]],
   ['rot64_11',['rot64',['../keccak256_8cpp.html#a9085e44058b50bc6a267c71ec4c1e59c',1,'keccak256.cpp']]],
-  ['rssi_12',['rssi',['../structnet__wifi__ap__t.html#add5c01e9856461c804ea3891e01d1632',1,'net_wifi_ap_t']]]
+  ['rpc_5fresp_5fhdrs_5ft_12',['rpc_resp_hdrs_t',['../structrpc__resp__hdrs__t.html',1,'']]],
+  ['rssi_13',['rssi',['../structnet__wifi__ap__t.html#add5c01e9856461c804ea3891e01d1632',1,'net_wifi_ap_t']]]
 ];

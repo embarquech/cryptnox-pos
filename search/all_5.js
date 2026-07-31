@@ -7,6 +7,7 @@ var searchData=
   ['fee_5fstep_5fcb_4',['fee_step_cb',['../ui_8cpp.html#a3206df4017ad229a9a237762296902e4',1,'ui.cpp']]],
   ['fee_5fstep_5fgwei_5',['FEE_STEP_GWEI',['../ui_8cpp.html#ad3cab8f13bd19ca04727bff64f2fceb5',1,'ui.cpp']]],
   ['fee_5fupdate_5flabels_6',['fee_update_labels',['../ui_8cpp.html#a320919cbdb0cca79ebb2d18caf7338b7',1,'ui.cpp']]],
-  ['flow_7',['Payment flow',['../index.html#payment-flow',1,'']]],
-  ['format_5famount_8',['format_amount',['../ui_8cpp.html#ae5d80dbb2586ff23ea69e3f733648110',1,'ui.cpp']]]
+  ['fields_5fsane_7',['fields_sane',['../civil__time_8cpp.html#a72069f35bafb3ba8a85c4f3f04885040',1,'civil_time.cpp']]],
+  ['flow_8',['Payment flow',['../index.html#payment-flow',1,'']]],
+  ['format_5famount_9',['format_amount',['../ui_8cpp.html#ae5d80dbb2586ff23ea69e3f733648110',1,'ui.cpp']]]
 ];

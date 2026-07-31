@@ -123,8 +123,11 @@ document.addEventListener('DOMContentLoaded',() => { initNavTree('net_8cpp.html'
 <p>Wi-Fi station bring-up (init/scan/connect/RSSI) and SNTP time sync.  
 <a href="#details">More...</a></p>
 <div class="textblock"><code>#include &quot;<a class="el" href="net_8h_source.html">net.h</a>&quot;</code><br />
+<code>#include &quot;<a class="el" href="civil__time_8h_source.html">civil_time.h</a>&quot;</code><br />
 <code>#include &lt;string.h&gt;</code><br />
 <code>#include &lt;stdlib.h&gt;</code><br />
+<code>#include &lt;time.h&gt;</code><br />
+<code>#include &lt;inttypes.h&gt;</code><br />
 <code>#include &quot;CW_Utils.h&quot;</code><br />
 <code>#include &quot;freertos/FreeRTOS.h&quot;</code><br />
 <code>#include &quot;freertos/event_groups.h&quot;</code><br />
@@ -132,11 +135,12 @@ document.addEventListener('DOMContentLoaded',() => { initNavTree('net_8cpp.html'
 <code>#include &quot;esp_event.h&quot;</code><br />
 <code>#include &quot;esp_netif.h&quot;</code><br />
 <code>#include &quot;esp_netif_sntp.h&quot;</code><br />
+<code>#include &quot;esp_app_desc.h&quot;</code><br />
 <code>#include &quot;esp_log.h&quot;</code><br />
 </div><div class="textblock"><div class="dynheader">
 Include dependency graph for net.cpp:</div>
 <div class="dyncontent">
-<div class="center"><iframe scrolling="no" loading="lazy" frameborder="0" src="net_8cpp__incl.svg" width="1424" height="183"><p><b>This browser is not able to show SVG: try Firefox, Chrome, Safari, or Opera instead.</b></p></iframe></div>
+<div class="center"><iframe scrolling="no" loading="lazy" frameborder="0" src="net_8cpp__incl.svg" width="1840" height="183"><p><b>This browser is not able to show SVG: try Firefox, Chrome, Safari, or Opera instead.</b></p></iframe></div>
 </div>
 </div>
 <p><a href="net_8cpp_source.html">Go to the source code of this file.</a></p>
@@ -147,6 +151,7 @@ Macros</h2></td></tr>
 <tr class="memitem:a7d013b55e50dfbda0904f5f933b63ec4" id="r_a7d013b55e50dfbda0904f5f933b63ec4"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#a7d013b55e50dfbda0904f5f933b63ec4">WIFI_FAIL_BIT</a>&#160;&#160;&#160;BIT1</td></tr>
 <tr class="memitem:a9889f5062c963896a887cd62a23730bf" id="r_a9889f5062c963896a887cd62a23730bf"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#a9889f5062c963896a887cd62a23730bf">WIFI_MAX_RETRY</a>&#160;&#160;&#160;5</td></tr>
 <tr class="memitem:a4735ad9aef99f8584afd945f39260954" id="r_a4735ad9aef99f8584afd945f39260954"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#a4735ad9aef99f8584afd945f39260954">WIFI_TIMEOUT_MS</a>&#160;&#160;&#160;30000</td></tr>
+<tr class="memitem:ad272ca04bfdb58036903285347595784" id="r_ad272ca04bfdb58036903285347595784"><td class="memItemLeft">#define&#160;</td><td class="memItemRight"><a class="el" href="#ad272ca04bfdb58036903285347595784">BUILD_FLOOR_SLACK_S</a>&#160;&#160;&#160;86400</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 id="header-func-members" class="groupheader"><a id="func-members" name="func-members"></a>
 Functions</h2></td></tr>
@@ -160,8 +165,10 @@ Functions</h2></td></tr>
 <tr class="memdesc:a85ab8d7927129c9f8c0cc0525eaa1b76"><td class="mdescLeft">&#160;</td><td class="mdescRight">Connect to a WiFi network and block until an IP is obtained (up to 30 s). May be called repeatedly to switch networks.  <br /></td></tr>
 <tr class="memitem:a6daea14ec02799a6d0a0f41da5226895" id="r_a6daea14ec02799a6d0a0f41da5226895"><td class="memItemLeft">bool&#160;</td><td class="memItemRight"><a class="el" href="#a6daea14ec02799a6d0a0f41da5226895">net_wifi_rssi</a> (int8_t *rssi_out)</td></tr>
 <tr class="memdesc:a6daea14ec02799a6d0a0f41da5226895"><td class="mdescLeft">&#160;</td><td class="mdescRight">Read the RSSI of the currently associated access point.  <br /></td></tr>
+<tr class="memitem:ade0505eaf7b2477a44c3fba30f4c0400" id="r_ade0505eaf7b2477a44c3fba30f4c0400"><td class="memItemLeft">static int64_t&#160;</td><td class="memItemRight"><a class="el" href="#ade0505eaf7b2477a44c3fba30f4c0400">build_time_floor</a> (void)</td></tr>
+<tr class="memdesc:ade0505eaf7b2477a44c3fba30f4c0400"><td class="mdescLeft">&#160;</td><td class="mdescRight">Earliest system time this firmware will accept, as a Unix epoch.  <br /></td></tr>
 <tr class="memitem:a6183c17880c3cc5dcf982e66bafbaafe" id="r_a6183c17880c3cc5dcf982e66bafbaafe"><td class="memItemLeft">bool&#160;</td><td class="memItemRight"><a class="el" href="#a6183c17880c3cc5dcf982e66bafbaafe">net_time_sync</a> (uint32_t timeout_ms)</td></tr>
-<tr class="memdesc:a6183c17880c3cc5dcf982e66bafbaafe"><td class="mdescLeft">&#160;</td><td class="mdescRight">Block until the system clock has been set via SNTP.  <br /></td></tr>
+<tr class="memdesc:a6183c17880c3cc5dcf982e66bafbaafe"><td class="mdescLeft">&#160;</td><td class="mdescRight">Block until the system clock has been set via SNTP and sanity-checked.  <br /></td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 id="header-var-members" class="groupheader"><a id="var-members" name="var-members"></a>
 Variables</h2></td></tr>
@@ -175,6 +182,24 @@ Variables</h2></td></tr>
 
 <p class="definition">Definition in file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
 </div><a name="doc-define-members" id="doc-define-members"></a><h2 id="header-doc-define-members" class="groupheader">Macro Definition Documentation</h2>
+<a id="ad272ca04bfdb58036903285347595784" name="ad272ca04bfdb58036903285347595784"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ad272ca04bfdb58036903285347595784">&#9670;&#160;</a></span>BUILD_FLOOR_SLACK_S</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">#define BUILD_FLOOR_SLACK_S&#160;&#160;&#160;86400</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="net_8cpp_source.html#l00225">225</a> of file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="net_8cpp_source.html#l00239">build_time_floor()</a>.</p>
+
+</div>
+</div>
 <a id="ad552e7688532cbbecd3967538ced06ac" name="ad552e7688532cbbecd3967538ced06ac"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#ad552e7688532cbbecd3967538ced06ac">&#9670;&#160;</a></span>WIFI_CONNECTED_BIT</h2>
 
@@ -187,9 +212,9 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="net_8cpp_source.html#l00035">35</a> of file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="net_8cpp_source.html#l00039">39</a> of file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="net_8cpp_source.html#l00164">net_wifi_connect()</a>, and <a class="el" href="net_8cpp_source.html#l00063">wifi_event_handler()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="net_8cpp_source.html#l00168">net_wifi_connect()</a>, and <a class="el" href="net_8cpp_source.html#l00067">wifi_event_handler()</a>.</p>
 
 </div>
 </div>
@@ -205,9 +230,9 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="net_8cpp_source.html#l00036">36</a> of file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="net_8cpp_source.html#l00040">40</a> of file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="net_8cpp_source.html#l00164">net_wifi_connect()</a>, and <a class="el" href="net_8cpp_source.html#l00063">wifi_event_handler()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="net_8cpp_source.html#l00168">net_wifi_connect()</a>, and <a class="el" href="net_8cpp_source.html#l00067">wifi_event_handler()</a>.</p>
 
 </div>
 </div>
@@ -223,9 +248,9 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="net_8cpp_source.html#l00037">37</a> of file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="net_8cpp_source.html#l00041">41</a> of file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="net_8cpp_source.html#l00063">wifi_event_handler()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="net_8cpp_source.html#l00067">wifi_event_handler()</a>.</p>
 
 </div>
 </div>
@@ -241,13 +266,48 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="net_8cpp_source.html#l00038">38</a> of file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="net_8cpp_source.html#l00042">42</a> of file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="net_8cpp_source.html#l00164">net_wifi_connect()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="net_8cpp_source.html#l00168">net_wifi_connect()</a>.</p>
 
 </div>
 </div>
 <a name="doc-func-members" id="doc-func-members"></a><h2 id="header-doc-func-members" class="groupheader">Function Documentation</h2>
+<a id="ade0505eaf7b2477a44c3fba30f4c0400" name="ade0505eaf7b2477a44c3fba30f4c0400"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ade0505eaf7b2477a44c3fba30f4c0400">&#9670;&#160;</a></span>build_time_floor()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">int64_t build_time_floor </td>
+          <td>(</td>
+          <td class="paramtype">void</td>          <td class="paramname"><span class="paramname"><em></em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel static">static</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Earliest system time this firmware will accept, as a Unix epoch. </p>
+<p>Derived from the firmware's own build timestamp: a clock at or after the build instant cannot make an already-expired certificate look valid, and pushing the clock <em>forward</em> is harmless for the same reason.</p>
+<dl class="section return"><dt>Returns</dt><dd>Epoch-second floor, or 0 (no floor) if the build stamp is unparseable — fail-open, so a toolchain that deviates from the standard <b>DATE</b> format cannot brick the terminal. The host self-check (fuzz/test_civil_time.cpp) asserts our own stamp parses. </dd></dl>
+
+<p class="definition">Definition at line <a class="el" href="net_8cpp_source.html#l00239">239</a> of file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="net_8cpp_source.html#l00225">BUILD_FLOOR_SLACK_S</a>, <a class="el" href="civil__time_8cpp_source.html#l00105">civil_parse_build_stamp()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00036">TAG</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="net_8cpp_source.html#l00252">net_time_sync()</a>.</p>
+
+</div>
+</div>
 <a id="a6183c17880c3cc5dcf982e66bafbaafe" name="a6183c17880c3cc5dcf982e66bafbaafe"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a6183c17880c3cc5dcf982e66bafbaafe">&#9670;&#160;</a></span>net_time_sync()</h2>
 
@@ -263,19 +323,20 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p>Block until the system clock has been set via SNTP. </p>
-<p>Must be called after <a class="el" href="net_8h.html#a85ab8d7927129c9f8c0cc0525eaa1b76" title="Connect to a WiFi network and block until an IP is obtained (up to 30 s). May be called repeatedly to...">net_wifi_connect()</a> and before any HTTPS request: without real time, TLS certificate validity-period checks are meaningless. SNTP keeps running in the background for periodic resyncs.</p>
+<p>Block until the system clock has been set via SNTP and sanity-checked. </p>
+<p>Must be called after <a class="el" href="net_8h.html#a85ab8d7927129c9f8c0cc0525eaa1b76" title="Connect to a WiFi network and block until an IP is obtained (up to 30 s). May be called repeatedly to...">net_wifi_connect()</a> and before any HTTPS request: without real time, TLS certificate validity-period checks are meaningless. Those checks are only actually compiled in when CONFIG_MBEDTLS_HAVE_TIME_DATE is set (see sdkconfig.defaults) — HAVE_TIME alone is not enough. SNTP keeps running in the background for periodic resyncs.</p>
+<p>SNTP is unauthenticated, so a synced time earlier than the firmware's own build timestamp is rejected: back-dating is what an attacker needs to make an expired certificate look valid again. Moving the clock forward is harmless and is not restricted. A rejection returns false like any other failure, so the caller's existing "no network time" path applies.</p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">timeout_ms</td><td>Maximum time to wait for the first sync. </td></tr>
   </table>
   </dd>
 </dl>
-<dl class="section return"><dt>Returns</dt><dd>true once the first sync completes, false on init error or timeout. </dd></dl>
+<dl class="section return"><dt>Returns</dt><dd>true once the first sync completes and passes the lower-bound check, false on init error, timeout, or a back-dated clock. </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="net_8cpp_source.html#l00215">215</a> of file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="net_8cpp_source.html#l00252">252</a> of file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00034">TAG</a>.</p>
+<p class="reference">References <a class="el" href="net_8cpp_source.html#l00239">build_time_floor()</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00036">TAG</a>.</p>
 
 <p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00472">app_main()</a>.</p>
 
@@ -310,9 +371,9 @@ Variables</h2></td></tr>
 </dl>
 <dl class="section return"><dt>Returns</dt><dd>true on success, false on timeout or repeated association failure. </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="net_8cpp_source.html#l00164">164</a> of file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="net_8cpp_source.html#l00168">168</a> of file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="net_8cpp_source.html#l00096">net_wifi_init()</a>, <a class="el" href="net_8cpp_source.html#l00045">s_retry_num</a>, <a class="el" href="net_8cpp_source.html#l00044">s_wifi_event_group</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00034">TAG</a>, <a class="el" href="net_8cpp_source.html#l00035">WIFI_CONNECTED_BIT</a>, <a class="el" href="net_8cpp_source.html#l00036">WIFI_FAIL_BIT</a>, and <a class="el" href="net_8cpp_source.html#l00038">WIFI_TIMEOUT_MS</a>.</p>
+<p class="reference">References <a class="el" href="net_8cpp_source.html#l00100">net_wifi_init()</a>, <a class="el" href="net_8cpp_source.html#l00049">s_retry_num</a>, <a class="el" href="net_8cpp_source.html#l00048">s_wifi_event_group</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00036">TAG</a>, <a class="el" href="net_8cpp_source.html#l00039">WIFI_CONNECTED_BIT</a>, <a class="el" href="net_8cpp_source.html#l00040">WIFI_FAIL_BIT</a>, and <a class="el" href="net_8cpp_source.html#l00042">WIFI_TIMEOUT_MS</a>.</p>
 
 <p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00472">app_main()</a>, and <a class="el" href="main_8cpp_source.html#l00432">ensure_wifi()</a>.</p>
 
@@ -336,11 +397,11 @@ Variables</h2></td></tr>
 <p>Bring up the WiFi driver in station mode (idempotent). </p>
 <p>Initialises netif, the event loop and the WiFi driver and starts the STA. Call once before scanning or connecting. Safe to call repeatedly. </p>
 
-<p class="definition">Definition at line <a class="el" href="net_8cpp_source.html#l00096">96</a> of file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="net_8cpp_source.html#l00100">100</a> of file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="net_8cpp_source.html#l00045">s_retry_num</a>, <a class="el" href="net_8cpp_source.html#l00044">s_wifi_event_group</a>, <a class="el" href="net_8cpp_source.html#l00046">s_wifi_inited</a>, and <a class="el" href="net_8cpp_source.html#l00063">wifi_event_handler()</a>.</p>
+<p class="reference">References <a class="el" href="net_8cpp_source.html#l00049">s_retry_num</a>, <a class="el" href="net_8cpp_source.html#l00048">s_wifi_event_group</a>, <a class="el" href="net_8cpp_source.html#l00050">s_wifi_inited</a>, and <a class="el" href="net_8cpp_source.html#l00067">wifi_event_handler()</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00472">app_main()</a>, <a class="el" href="net_8cpp_source.html#l00164">net_wifi_connect()</a>, and <a class="el" href="net_8cpp_source.html#l00122">net_wifi_scan()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00472">app_main()</a>, <a class="el" href="net_8cpp_source.html#l00168">net_wifi_connect()</a>, and <a class="el" href="net_8cpp_source.html#l00126">net_wifi_scan()</a>.</p>
 
 </div>
 </div>
@@ -368,7 +429,7 @@ Variables</h2></td></tr>
 </dl>
 <dl class="section return"><dt>Returns</dt><dd>true if associated and <code class="param">rssi_out</code> was written, false otherwise. </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="net_8cpp_source.html#l00204">204</a> of file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="net_8cpp_source.html#l00208">208</a> of file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
 
 <p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l00646">build_settings()</a>.</p>
 
@@ -403,9 +464,9 @@ Variables</h2></td></tr>
 </dl>
 <dl class="section return"><dt>Returns</dt><dd>number of APs written (0 on error or none found). </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="net_8cpp_source.html#l00122">122</a> of file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="net_8cpp_source.html#l00126">126</a> of file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="net_8cpp_source.html#l00096">net_wifi_init()</a>, <a class="el" href="net_8h_source.html#l00036">net_wifi_ap_t::open</a>, <a class="el" href="net_8h_source.html#l00035">net_wifi_ap_t::rssi</a>, and <a class="el" href="net_8h_source.html#l00034">net_wifi_ap_t::ssid</a>.</p>
+<p class="reference">References <a class="el" href="net_8cpp_source.html#l00100">net_wifi_init()</a>, <a class="el" href="net_8h_source.html#l00036">net_wifi_ap_t::open</a>, <a class="el" href="net_8h_source.html#l00035">net_wifi_ap_t::rssi</a>, and <a class="el" href="net_8h_source.html#l00034">net_wifi_ap_t::ssid</a>.</p>
 
 <p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00472">app_main()</a>, and <a class="el" href="main_8cpp_source.html#l00432">ensure_wifi()</a>.</p>
 
@@ -460,11 +521,11 @@ Variables</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="net_8cpp_source.html#l00063">63</a> of file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="net_8cpp_source.html#l00067">67</a> of file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="net_8cpp_source.html#l00045">s_retry_num</a>, <a class="el" href="net_8cpp_source.html#l00044">s_wifi_event_group</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00034">TAG</a>, <a class="el" href="net_8cpp_source.html#l00035">WIFI_CONNECTED_BIT</a>, <a class="el" href="net_8cpp_source.html#l00036">WIFI_FAIL_BIT</a>, and <a class="el" href="net_8cpp_source.html#l00037">WIFI_MAX_RETRY</a>.</p>
+<p class="reference">References <a class="el" href="net_8cpp_source.html#l00049">s_retry_num</a>, <a class="el" href="net_8cpp_source.html#l00048">s_wifi_event_group</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00036">TAG</a>, <a class="el" href="net_8cpp_source.html#l00039">WIFI_CONNECTED_BIT</a>, <a class="el" href="net_8cpp_source.html#l00040">WIFI_FAIL_BIT</a>, and <a class="el" href="net_8cpp_source.html#l00041">WIFI_MAX_RETRY</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="net_8cpp_source.html#l00096">net_wifi_init()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="net_8cpp_source.html#l00100">net_wifi_init()</a>.</p>
 
 </div>
 </div>
@@ -489,9 +550,9 @@ Variables</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="net_8cpp_source.html#l00045">45</a> of file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="net_8cpp_source.html#l00049">49</a> of file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="net_8cpp_source.html#l00164">net_wifi_connect()</a>, <a class="el" href="net_8cpp_source.html#l00096">net_wifi_init()</a>, and <a class="el" href="net_8cpp_source.html#l00063">wifi_event_handler()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="net_8cpp_source.html#l00168">net_wifi_connect()</a>, <a class="el" href="net_8cpp_source.html#l00100">net_wifi_init()</a>, and <a class="el" href="net_8cpp_source.html#l00067">wifi_event_handler()</a>.</p>
 
 </div>
 </div>
@@ -515,9 +576,9 @@ Variables</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="net_8cpp_source.html#l00044">44</a> of file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="net_8cpp_source.html#l00048">48</a> of file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="net_8cpp_source.html#l00164">net_wifi_connect()</a>, <a class="el" href="net_8cpp_source.html#l00096">net_wifi_init()</a>, and <a class="el" href="net_8cpp_source.html#l00063">wifi_event_handler()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="net_8cpp_source.html#l00168">net_wifi_connect()</a>, <a class="el" href="net_8cpp_source.html#l00100">net_wifi_init()</a>, and <a class="el" href="net_8cpp_source.html#l00067">wifi_event_handler()</a>.</p>
 
 </div>
 </div>
@@ -541,9 +602,9 @@ Variables</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="net_8cpp_source.html#l00046">46</a> of file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="net_8cpp_source.html#l00050">50</a> of file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="net_8cpp_source.html#l00096">net_wifi_init()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="net_8cpp_source.html#l00100">net_wifi_init()</a>.</p>
 
 </div>
 </div>
@@ -567,7 +628,7 @@ Variables</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="net_8cpp_source.html#l00033">33</a> of file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="net_8cpp_source.html#l00037">37</a> of file <a class="el" href="net_8cpp_source.html">net.cpp</a>.</p>
 
 </div>
 </div>

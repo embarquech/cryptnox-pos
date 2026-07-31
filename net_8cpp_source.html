@@ -130,255 +130,299 @@ document.addEventListener('DOMContentLoaded',() => { initNavTree('net_8cpp_sourc
 <div class="line"><a id="l00013" name="l00013"></a><span class="lineno">   13</span><span class="comment"> ******************************************************************/</span></div>
 <div class="line"><a id="l00014" name="l00014"></a><span class="lineno">   14</span> </div>
 <div class="line"><a id="l00015" name="l00015"></a><span class="lineno">   15</span><span class="preprocessor">#include &quot;<a class="code" href="net_8h.html">net.h</a>&quot;</span></div>
-<div class="line"><a id="l00016" name="l00016"></a><span class="lineno">   16</span> </div>
-<div class="line"><a id="l00017" name="l00017"></a><span class="lineno">   17</span><span class="preprocessor">#include &lt;string.h&gt;</span></div>
-<div class="line"><a id="l00018" name="l00018"></a><span class="lineno">   18</span><span class="preprocessor">#include &lt;stdlib.h&gt;</span>     <span class="comment">/* malloc, free */</span></div>
-<div class="line"><a id="l00019" name="l00019"></a><span class="lineno">   19</span> </div>
-<div class="line"><a id="l00020" name="l00020"></a><span class="lineno">   20</span><span class="comment">/* CW_Utils.h pulls in Arduino.h (via platform_compat.h); it must come before</span></div>
-<div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span><span class="comment"> * any lwip-including IDF header (esp_netif.h, ...) so that IPAddress.h</span></div>
-<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span><span class="comment"> * declares INADDR_NONE before lwip defines it as a macro. */</span></div>
-<div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span><span class="preprocessor">#include &quot;CW_Utils.h&quot;</span>   <span class="comment">/* hardened memory primitives (CODING_RULES §1.4) */</span></div>
-<div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span> </div>
-<div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span><span class="preprocessor">#include &quot;freertos/FreeRTOS.h&quot;</span></div>
-<div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span><span class="preprocessor">#include &quot;freertos/event_groups.h&quot;</span></div>
-<div class="line"><a id="l00027" name="l00027"></a><span class="lineno">   27</span><span class="preprocessor">#include &quot;esp_wifi.h&quot;</span></div>
-<div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span><span class="preprocessor">#include &quot;esp_event.h&quot;</span></div>
-<div class="line"><a id="l00029" name="l00029"></a><span class="lineno">   29</span><span class="preprocessor">#include &quot;esp_netif.h&quot;</span></div>
-<div class="line"><a id="l00030" name="l00030"></a><span class="lineno">   30</span><span class="preprocessor">#include &quot;esp_netif_sntp.h&quot;</span></div>
-<div class="line"><a id="l00031" name="l00031"></a><span class="lineno">   31</span><span class="preprocessor">#include &quot;esp_log.h&quot;</span></div>
-<div class="line"><a id="l00032" name="l00032"></a><span class="lineno">   32</span> </div>
-<div class="line"><a id="l00033" name="l00033"></a><span class="lineno"><a class="line" href="net_8cpp.html#a4ef5b5f197804a60836ab1e8907d8301">   33</a></span><span class="keyword">static</span> <span class="keyword">const</span> <span class="keywordtype">char</span> *<span class="keyword">const</span> <a class="code hl_variable" href="eth__rpc_8cpp.html#a4ef5b5f197804a60836ab1e8907d8301">TAG</a> = <span class="stringliteral">&quot;net&quot;</span>;</div>
-<div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span> </div>
-<div class="line"><a id="l00035" name="l00035"></a><span class="lineno"><a class="line" href="net_8cpp.html#ad552e7688532cbbecd3967538ced06ac">   35</a></span><span class="preprocessor">#define WIFI_CONNECTED_BIT  BIT0</span></div>
-<div class="line"><a id="l00036" name="l00036"></a><span class="lineno"><a class="line" href="net_8cpp.html#a7d013b55e50dfbda0904f5f933b63ec4">   36</a></span><span class="preprocessor">#define WIFI_FAIL_BIT       BIT1</span></div>
-<div class="line"><a id="l00037" name="l00037"></a><span class="lineno"><a class="line" href="net_8cpp.html#a9889f5062c963896a887cd62a23730bf">   37</a></span><span class="preprocessor">#define WIFI_MAX_RETRY      5</span></div>
-<div class="line"><a id="l00038" name="l00038"></a><span class="lineno"><a class="line" href="net_8cpp.html#a4735ad9aef99f8584afd945f39260954">   38</a></span><span class="preprocessor">#define WIFI_TIMEOUT_MS     30000</span></div>
-<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span> </div>
-<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span><span class="comment">/******************************************************************</span></div>
-<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span><span class="comment"> * 2. Module state</span></div>
-<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span><span class="comment"> ******************************************************************/</span></div>
+<div class="line"><a id="l00016" name="l00016"></a><span class="lineno">   16</span><span class="preprocessor">#include &quot;<a class="code" href="civil__time_8h.html">civil_time.h</a>&quot;</span></div>
+<div class="line"><a id="l00017" name="l00017"></a><span class="lineno">   17</span> </div>
+<div class="line"><a id="l00018" name="l00018"></a><span class="lineno">   18</span><span class="preprocessor">#include &lt;string.h&gt;</span></div>
+<div class="line"><a id="l00019" name="l00019"></a><span class="lineno">   19</span><span class="preprocessor">#include &lt;stdlib.h&gt;</span>     <span class="comment">/* malloc, free */</span></div>
+<div class="line"><a id="l00020" name="l00020"></a><span class="lineno">   20</span><span class="preprocessor">#include &lt;time.h&gt;</span>       <span class="comment">/* time */</span></div>
+<div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span><span class="preprocessor">#include &lt;inttypes.h&gt;</span>   <span class="comment">/* PRId64 */</span></div>
+<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span> </div>
+<div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span><span class="comment">/* CW_Utils.h pulls in Arduino.h (via platform_compat.h); it must come before</span></div>
+<div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span><span class="comment"> * any lwip-including IDF header (esp_netif.h, ...) so that IPAddress.h</span></div>
+<div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span><span class="comment"> * declares INADDR_NONE before lwip defines it as a macro. */</span></div>
+<div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span><span class="preprocessor">#include &quot;CW_Utils.h&quot;</span>   <span class="comment">/* hardened memory primitives (CODING_RULES §1.4) */</span></div>
+<div class="line"><a id="l00027" name="l00027"></a><span class="lineno">   27</span> </div>
+<div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span><span class="preprocessor">#include &quot;freertos/FreeRTOS.h&quot;</span></div>
+<div class="line"><a id="l00029" name="l00029"></a><span class="lineno">   29</span><span class="preprocessor">#include &quot;freertos/event_groups.h&quot;</span></div>
+<div class="line"><a id="l00030" name="l00030"></a><span class="lineno">   30</span><span class="preprocessor">#include &quot;esp_wifi.h&quot;</span></div>
+<div class="line"><a id="l00031" name="l00031"></a><span class="lineno">   31</span><span class="preprocessor">#include &quot;esp_event.h&quot;</span></div>
+<div class="line"><a id="l00032" name="l00032"></a><span class="lineno">   32</span><span class="preprocessor">#include &quot;esp_netif.h&quot;</span></div>
+<div class="line"><a id="l00033" name="l00033"></a><span class="lineno">   33</span><span class="preprocessor">#include &quot;esp_netif_sntp.h&quot;</span></div>
+<div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span><span class="preprocessor">#include &quot;esp_app_desc.h&quot;</span>   <span class="comment">/* esp_app_get_description — build timestamp */</span></div>
+<div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span><span class="preprocessor">#include &quot;esp_log.h&quot;</span></div>
+<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span> </div>
+<div class="line"><a id="l00037" name="l00037"></a><span class="lineno"><a class="line" href="net_8cpp.html#a4ef5b5f197804a60836ab1e8907d8301">   37</a></span><span class="keyword">static</span> <span class="keyword">const</span> <span class="keywordtype">char</span> *<span class="keyword">const</span> <a class="code hl_variable" href="eth__rpc_8cpp.html#a4ef5b5f197804a60836ab1e8907d8301">TAG</a> = <span class="stringliteral">&quot;net&quot;</span>;</div>
+<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span> </div>
+<div class="line"><a id="l00039" name="l00039"></a><span class="lineno"><a class="line" href="net_8cpp.html#ad552e7688532cbbecd3967538ced06ac">   39</a></span><span class="preprocessor">#define WIFI_CONNECTED_BIT  BIT0</span></div>
+<div class="line"><a id="l00040" name="l00040"></a><span class="lineno"><a class="line" href="net_8cpp.html#a7d013b55e50dfbda0904f5f933b63ec4">   40</a></span><span class="preprocessor">#define WIFI_FAIL_BIT       BIT1</span></div>
+<div class="line"><a id="l00041" name="l00041"></a><span class="lineno"><a class="line" href="net_8cpp.html#a9889f5062c963896a887cd62a23730bf">   41</a></span><span class="preprocessor">#define WIFI_MAX_RETRY      5</span></div>
+<div class="line"><a id="l00042" name="l00042"></a><span class="lineno"><a class="line" href="net_8cpp.html#a4735ad9aef99f8584afd945f39260954">   42</a></span><span class="preprocessor">#define WIFI_TIMEOUT_MS     30000</span></div>
 <div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span> </div>
-<div class="line"><a id="l00044" name="l00044"></a><span class="lineno"><a class="line" href="net_8cpp.html#a6aaca350cca4b3d105d88a6f399cb381">   44</a></span><span class="keyword">static</span> EventGroupHandle_t <a class="code hl_variable" href="net_8cpp.html#a6aaca350cca4b3d105d88a6f399cb381">s_wifi_event_group</a> = NULL;</div>
-<div class="line"><a id="l00045" name="l00045"></a><span class="lineno"><a class="line" href="net_8cpp.html#ae4da33fdcdaa6688ed25dab508ed5592">   45</a></span><span class="keyword">static</span> <span class="keywordtype">int</span>                <a class="code hl_variable" href="net_8cpp.html#ae4da33fdcdaa6688ed25dab508ed5592">s_retry_num</a>        = 0;</div>
-<div class="line"><a id="l00046" name="l00046"></a><span class="lineno"><a class="line" href="net_8cpp.html#a5a67b39cd8bf0968ea4cb9a01dd62a5d">   46</a></span><span class="keyword">static</span> <span class="keywordtype">bool</span>               <a class="code hl_variable" href="net_8cpp.html#a5a67b39cd8bf0968ea4cb9a01dd62a5d">s_wifi_inited</a>      = <span class="keyword">false</span>;</div>
+<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span><span class="comment">/******************************************************************</span></div>
+<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span><span class="comment"> * 2. Module state</span></div>
+<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span><span class="comment"> ******************************************************************/</span></div>
 <div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span> </div>
-<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span><span class="comment">/******************************************************************</span></div>
-<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span><span class="comment"> * 3. WiFi event handler</span></div>
-<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span><span class="comment"> ******************************************************************/</span></div>
-<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span></div>
-<div class="foldopen" id="foldopen00063" data-start="{" data-end="}">
-<div class="line"><a id="l00063" name="l00063"></a><span class="lineno"><a class="line" href="net_8cpp.html#ac31e38637f7a5e5c8ce4d033b0955fec">   63</a></span><span class="keyword">static</span> <span class="keywordtype">void</span> <a class="code hl_function" href="net_8cpp.html#ac31e38637f7a5e5c8ce4d033b0955fec">wifi_event_handler</a>(<span class="keywordtype">void</span> *arg, esp_event_base_t event_base,</div>
-<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>                               int32_t event_id, <span class="keywordtype">void</span> *event_data)</div>
-<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span>{</div>
-<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>    (void)arg;</div>
-<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>    (void)event_data;</div>
-<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span> </div>
-<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>    <span class="keywordflow">if</span> ((event_base == WIFI_EVENT) &amp;&amp; (event_id == WIFI_EVENT_STA_START)) {</div>
-<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>        <span class="comment">/* Started — association is initiated explicitly by</span></div>
-<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span><span class="comment">         * net_wifi_connect(), not here, so a start with no credentials</span></div>
-<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span><span class="comment">         * (e.g. before provisioning) doesn&#39;t churn through retries. */</span></div>
-<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> ((event_base == WIFI_EVENT) &amp;&amp;</div>
-<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span>               (event_id == WIFI_EVENT_STA_DISCONNECTED)) {</div>
-<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span>        <span class="keywordflow">if</span> (<a class="code hl_variable" href="net_8cpp.html#ae4da33fdcdaa6688ed25dab508ed5592">s_retry_num</a> &lt; <a class="code hl_define" href="net_8cpp.html#a9889f5062c963896a887cd62a23730bf">WIFI_MAX_RETRY</a>) {</div>
-<div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span>            esp_wifi_connect();</div>
-<div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span>            <a class="code hl_variable" href="net_8cpp.html#ae4da33fdcdaa6688ed25dab508ed5592">s_retry_num</a>++;</div>
-<div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span>            ESP_LOGW(<a class="code hl_variable" href="eth__rpc_8cpp.html#a4ef5b5f197804a60836ab1e8907d8301">TAG</a>, <span class="stringliteral">&quot;WiFi retry %d/%d&quot;</span>, <a class="code hl_variable" href="net_8cpp.html#ae4da33fdcdaa6688ed25dab508ed5592">s_retry_num</a>, <a class="code hl_define" href="net_8cpp.html#a9889f5062c963896a887cd62a23730bf">WIFI_MAX_RETRY</a>);</div>
-<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>        } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (<a class="code hl_variable" href="net_8cpp.html#a6aaca350cca4b3d105d88a6f399cb381">s_wifi_event_group</a> != NULL) {</div>
-<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>            xEventGroupSetBits(<a class="code hl_variable" href="net_8cpp.html#a6aaca350cca4b3d105d88a6f399cb381">s_wifi_event_group</a>, <a class="code hl_define" href="net_8cpp.html#a7d013b55e50dfbda0904f5f933b63ec4">WIFI_FAIL_BIT</a>);</div>
-<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>        }</div>
-<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> ((event_base == IP_EVENT) &amp;&amp; (event_id == IP_EVENT_STA_GOT_IP)) {</div>
-<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>        <a class="code hl_variable" href="net_8cpp.html#ae4da33fdcdaa6688ed25dab508ed5592">s_retry_num</a> = 0;</div>
-<div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span>        <span class="keywordflow">if</span> (<a class="code hl_variable" href="net_8cpp.html#a6aaca350cca4b3d105d88a6f399cb381">s_wifi_event_group</a> != NULL) {</div>
-<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span>            xEventGroupSetBits(<a class="code hl_variable" href="net_8cpp.html#a6aaca350cca4b3d105d88a6f399cb381">s_wifi_event_group</a>, <a class="code hl_define" href="net_8cpp.html#ad552e7688532cbbecd3967538ced06ac">WIFI_CONNECTED_BIT</a>);</div>
-<div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span>        }</div>
-<div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span>    } <span class="keywordflow">else</span> {</div>
-<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span>        <span class="comment">/* other events ignored */</span></div>
-<div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span>    }</div>
-<div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span>}</div>
+<div class="line"><a id="l00048" name="l00048"></a><span class="lineno"><a class="line" href="net_8cpp.html#a6aaca350cca4b3d105d88a6f399cb381">   48</a></span><span class="keyword">static</span> EventGroupHandle_t <a class="code hl_variable" href="net_8cpp.html#a6aaca350cca4b3d105d88a6f399cb381">s_wifi_event_group</a> = NULL;</div>
+<div class="line"><a id="l00049" name="l00049"></a><span class="lineno"><a class="line" href="net_8cpp.html#ae4da33fdcdaa6688ed25dab508ed5592">   49</a></span><span class="keyword">static</span> <span class="keywordtype">int</span>                <a class="code hl_variable" href="net_8cpp.html#ae4da33fdcdaa6688ed25dab508ed5592">s_retry_num</a>        = 0;</div>
+<div class="line"><a id="l00050" name="l00050"></a><span class="lineno"><a class="line" href="net_8cpp.html#a5a67b39cd8bf0968ea4cb9a01dd62a5d">   50</a></span><span class="keyword">static</span> <span class="keywordtype">bool</span>               <a class="code hl_variable" href="net_8cpp.html#a5a67b39cd8bf0968ea4cb9a01dd62a5d">s_wifi_inited</a>      = <span class="keyword">false</span>;</div>
+<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span> </div>
+<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span><span class="comment">/******************************************************************</span></div>
+<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span><span class="comment"> * 3. WiFi event handler</span></div>
+<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span><span class="comment"> ******************************************************************/</span></div>
+<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span></div>
+<div class="foldopen" id="foldopen00067" data-start="{" data-end="}">
+<div class="line"><a id="l00067" name="l00067"></a><span class="lineno"><a class="line" href="net_8cpp.html#ac31e38637f7a5e5c8ce4d033b0955fec">   67</a></span><span class="keyword">static</span> <span class="keywordtype">void</span> <a class="code hl_function" href="net_8cpp.html#ac31e38637f7a5e5c8ce4d033b0955fec">wifi_event_handler</a>(<span class="keywordtype">void</span> *arg, esp_event_base_t event_base,</div>
+<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>                               int32_t event_id, <span class="keywordtype">void</span> *event_data)</div>
+<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>{</div>
+<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>    (void)arg;</div>
+<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>    (void)event_data;</div>
+<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span> </div>
+<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>    <span class="keywordflow">if</span> ((event_base == WIFI_EVENT) &amp;&amp; (event_id == WIFI_EVENT_STA_START)) {</div>
+<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span>        <span class="comment">/* Started — association is initiated explicitly by</span></div>
+<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span><span class="comment">         * net_wifi_connect(), not here, so a start with no credentials</span></div>
+<div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span><span class="comment">         * (e.g. before provisioning) doesn&#39;t churn through retries. */</span></div>
+<div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span>    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> ((event_base == WIFI_EVENT) &amp;&amp;</div>
+<div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span>               (event_id == WIFI_EVENT_STA_DISCONNECTED)) {</div>
+<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>        <span class="keywordflow">if</span> (<a class="code hl_variable" href="net_8cpp.html#ae4da33fdcdaa6688ed25dab508ed5592">s_retry_num</a> &lt; <a class="code hl_define" href="net_8cpp.html#a9889f5062c963896a887cd62a23730bf">WIFI_MAX_RETRY</a>) {</div>
+<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>            esp_wifi_connect();</div>
+<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>            <a class="code hl_variable" href="net_8cpp.html#ae4da33fdcdaa6688ed25dab508ed5592">s_retry_num</a>++;</div>
+<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>            ESP_LOGW(<a class="code hl_variable" href="eth__rpc_8cpp.html#a4ef5b5f197804a60836ab1e8907d8301">TAG</a>, <span class="stringliteral">&quot;WiFi retry %d/%d&quot;</span>, <a class="code hl_variable" href="net_8cpp.html#ae4da33fdcdaa6688ed25dab508ed5592">s_retry_num</a>, <a class="code hl_define" href="net_8cpp.html#a9889f5062c963896a887cd62a23730bf">WIFI_MAX_RETRY</a>);</div>
+<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>        } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (<a class="code hl_variable" href="net_8cpp.html#a6aaca350cca4b3d105d88a6f399cb381">s_wifi_event_group</a> != NULL) {</div>
+<div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span>            xEventGroupSetBits(<a class="code hl_variable" href="net_8cpp.html#a6aaca350cca4b3d105d88a6f399cb381">s_wifi_event_group</a>, <a class="code hl_define" href="net_8cpp.html#a7d013b55e50dfbda0904f5f933b63ec4">WIFI_FAIL_BIT</a>);</div>
+<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span>        }</div>
+<div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span>    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> ((event_base == IP_EVENT) &amp;&amp; (event_id == IP_EVENT_STA_GOT_IP)) {</div>
+<div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span>        <a class="code hl_variable" href="net_8cpp.html#ae4da33fdcdaa6688ed25dab508ed5592">s_retry_num</a> = 0;</div>
+<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span>        <span class="keywordflow">if</span> (<a class="code hl_variable" href="net_8cpp.html#a6aaca350cca4b3d105d88a6f399cb381">s_wifi_event_group</a> != NULL) {</div>
+<div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span>            xEventGroupSetBits(<a class="code hl_variable" href="net_8cpp.html#a6aaca350cca4b3d105d88a6f399cb381">s_wifi_event_group</a>, <a class="code hl_define" href="net_8cpp.html#ad552e7688532cbbecd3967538ced06ac">WIFI_CONNECTED_BIT</a>);</div>
+<div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span>        }</div>
+<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span>    } <span class="keywordflow">else</span> {</div>
+<div class="line"><a id="l00092" name="l00092"></a><span class="lineno">   92</span>        <span class="comment">/* other events ignored */</span></div>
+<div class="line"><a id="l00093" name="l00093"></a><span class="lineno">   93</span>    }</div>
+<div class="line"><a id="l00094" name="l00094"></a><span class="lineno">   94</span>}</div>
 </div>
-<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span> </div>
-<div class="line"><a id="l00092" name="l00092"></a><span class="lineno">   92</span><span class="comment">/******************************************************************</span></div>
-<div class="line"><a id="l00093" name="l00093"></a><span class="lineno">   93</span><span class="comment"> * 4. Public API</span></div>
-<div class="line"><a id="l00094" name="l00094"></a><span class="lineno">   94</span><span class="comment"> ******************************************************************/</span></div>
 <div class="line"><a id="l00095" name="l00095"></a><span class="lineno">   95</span> </div>
-<div class="foldopen" id="foldopen00096" data-start="{" data-end="}">
-<div class="line"><a id="l00096" name="l00096"></a><span class="lineno"><a class="line" href="net_8cpp.html#aaf1ff99078677637758f3b20f1ed7a59">   96</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="net_8cpp.html#aaf1ff99078677637758f3b20f1ed7a59">net_wifi_init</a>(<span class="keywordtype">void</span>)</div>
-<div class="line"><a id="l00097" name="l00097"></a><span class="lineno">   97</span>{</div>
-<div class="line"><a id="l00098" name="l00098"></a><span class="lineno">   98</span>    <span class="keywordflow">if</span> (<a class="code hl_variable" href="net_8cpp.html#a5a67b39cd8bf0968ea4cb9a01dd62a5d">s_wifi_inited</a>) { <span class="keywordflow">return</span>; }</div>
+<div class="line"><a id="l00096" name="l00096"></a><span class="lineno">   96</span><span class="comment">/******************************************************************</span></div>
+<div class="line"><a id="l00097" name="l00097"></a><span class="lineno">   97</span><span class="comment"> * 4. Public API</span></div>
+<div class="line"><a id="l00098" name="l00098"></a><span class="lineno">   98</span><span class="comment"> ******************************************************************/</span></div>
 <div class="line"><a id="l00099" name="l00099"></a><span class="lineno">   99</span> </div>
-<div class="line"><a id="l00100" name="l00100"></a><span class="lineno">  100</span>    <a class="code hl_variable" href="net_8cpp.html#a6aaca350cca4b3d105d88a6f399cb381">s_wifi_event_group</a> = xEventGroupCreate();</div>
-<div class="line"><a id="l00101" name="l00101"></a><span class="lineno">  101</span>    <a class="code hl_variable" href="net_8cpp.html#ae4da33fdcdaa6688ed25dab508ed5592">s_retry_num</a> = 0;</div>
-<div class="line"><a id="l00102" name="l00102"></a><span class="lineno">  102</span> </div>
-<div class="line"><a id="l00103" name="l00103"></a><span class="lineno">  103</span>    ESP_ERROR_CHECK(esp_netif_init());</div>
-<div class="line"><a id="l00104" name="l00104"></a><span class="lineno">  104</span>    ESP_ERROR_CHECK(esp_event_loop_create_default());</div>
-<div class="line"><a id="l00105" name="l00105"></a><span class="lineno">  105</span>    (void)esp_netif_create_default_wifi_sta();</div>
+<div class="foldopen" id="foldopen00100" data-start="{" data-end="}">
+<div class="line"><a id="l00100" name="l00100"></a><span class="lineno"><a class="line" href="net_8cpp.html#aaf1ff99078677637758f3b20f1ed7a59">  100</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="net_8cpp.html#aaf1ff99078677637758f3b20f1ed7a59">net_wifi_init</a>(<span class="keywordtype">void</span>)</div>
+<div class="line"><a id="l00101" name="l00101"></a><span class="lineno">  101</span>{</div>
+<div class="line"><a id="l00102" name="l00102"></a><span class="lineno">  102</span>    <span class="keywordflow">if</span> (<a class="code hl_variable" href="net_8cpp.html#a5a67b39cd8bf0968ea4cb9a01dd62a5d">s_wifi_inited</a>) { <span class="keywordflow">return</span>; }</div>
+<div class="line"><a id="l00103" name="l00103"></a><span class="lineno">  103</span> </div>
+<div class="line"><a id="l00104" name="l00104"></a><span class="lineno">  104</span>    <a class="code hl_variable" href="net_8cpp.html#a6aaca350cca4b3d105d88a6f399cb381">s_wifi_event_group</a> = xEventGroupCreate();</div>
+<div class="line"><a id="l00105" name="l00105"></a><span class="lineno">  105</span>    <a class="code hl_variable" href="net_8cpp.html#ae4da33fdcdaa6688ed25dab508ed5592">s_retry_num</a> = 0;</div>
 <div class="line"><a id="l00106" name="l00106"></a><span class="lineno">  106</span> </div>
-<div class="line"><a id="l00107" name="l00107"></a><span class="lineno">  107</span>    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();</div>
-<div class="line"><a id="l00108" name="l00108"></a><span class="lineno">  108</span>    ESP_ERROR_CHECK(esp_wifi_init(&amp;cfg));</div>
-<div class="line"><a id="l00109" name="l00109"></a><span class="lineno">  109</span> </div>
-<div class="line"><a id="l00110" name="l00110"></a><span class="lineno">  110</span>    <span class="comment">/* Persistent handlers (never unregistered) so init/connect can repeat. */</span></div>
-<div class="line"><a id="l00111" name="l00111"></a><span class="lineno">  111</span>    ESP_ERROR_CHECK(esp_event_handler_instance_register(</div>
-<div class="line"><a id="l00112" name="l00112"></a><span class="lineno">  112</span>        WIFI_EVENT, ESP_EVENT_ANY_ID, &amp;<a class="code hl_function" href="net_8cpp.html#ac31e38637f7a5e5c8ce4d033b0955fec">wifi_event_handler</a>, NULL, NULL));</div>
-<div class="line"><a id="l00113" name="l00113"></a><span class="lineno">  113</span>    ESP_ERROR_CHECK(esp_event_handler_instance_register(</div>
-<div class="line"><a id="l00114" name="l00114"></a><span class="lineno">  114</span>        IP_EVENT, IP_EVENT_STA_GOT_IP, &amp;<a class="code hl_function" href="net_8cpp.html#ac31e38637f7a5e5c8ce4d033b0955fec">wifi_event_handler</a>, NULL, NULL));</div>
-<div class="line"><a id="l00115" name="l00115"></a><span class="lineno">  115</span> </div>
-<div class="line"><a id="l00116" name="l00116"></a><span class="lineno">  116</span>    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));</div>
-<div class="line"><a id="l00117" name="l00117"></a><span class="lineno">  117</span>    ESP_ERROR_CHECK(esp_wifi_start());</div>
-<div class="line"><a id="l00118" name="l00118"></a><span class="lineno">  118</span> </div>
-<div class="line"><a id="l00119" name="l00119"></a><span class="lineno">  119</span>    <a class="code hl_variable" href="net_8cpp.html#a5a67b39cd8bf0968ea4cb9a01dd62a5d">s_wifi_inited</a> = <span class="keyword">true</span>;</div>
-<div class="line"><a id="l00120" name="l00120"></a><span class="lineno">  120</span>}</div>
+<div class="line"><a id="l00107" name="l00107"></a><span class="lineno">  107</span>    ESP_ERROR_CHECK(esp_netif_init());</div>
+<div class="line"><a id="l00108" name="l00108"></a><span class="lineno">  108</span>    ESP_ERROR_CHECK(esp_event_loop_create_default());</div>
+<div class="line"><a id="l00109" name="l00109"></a><span class="lineno">  109</span>    (void)esp_netif_create_default_wifi_sta();</div>
+<div class="line"><a id="l00110" name="l00110"></a><span class="lineno">  110</span> </div>
+<div class="line"><a id="l00111" name="l00111"></a><span class="lineno">  111</span>    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();</div>
+<div class="line"><a id="l00112" name="l00112"></a><span class="lineno">  112</span>    ESP_ERROR_CHECK(esp_wifi_init(&amp;cfg));</div>
+<div class="line"><a id="l00113" name="l00113"></a><span class="lineno">  113</span> </div>
+<div class="line"><a id="l00114" name="l00114"></a><span class="lineno">  114</span>    <span class="comment">/* Persistent handlers (never unregistered) so init/connect can repeat. */</span></div>
+<div class="line"><a id="l00115" name="l00115"></a><span class="lineno">  115</span>    ESP_ERROR_CHECK(esp_event_handler_instance_register(</div>
+<div class="line"><a id="l00116" name="l00116"></a><span class="lineno">  116</span>        WIFI_EVENT, ESP_EVENT_ANY_ID, &amp;<a class="code hl_function" href="net_8cpp.html#ac31e38637f7a5e5c8ce4d033b0955fec">wifi_event_handler</a>, NULL, NULL));</div>
+<div class="line"><a id="l00117" name="l00117"></a><span class="lineno">  117</span>    ESP_ERROR_CHECK(esp_event_handler_instance_register(</div>
+<div class="line"><a id="l00118" name="l00118"></a><span class="lineno">  118</span>        IP_EVENT, IP_EVENT_STA_GOT_IP, &amp;<a class="code hl_function" href="net_8cpp.html#ac31e38637f7a5e5c8ce4d033b0955fec">wifi_event_handler</a>, NULL, NULL));</div>
+<div class="line"><a id="l00119" name="l00119"></a><span class="lineno">  119</span> </div>
+<div class="line"><a id="l00120" name="l00120"></a><span class="lineno">  120</span>    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));</div>
+<div class="line"><a id="l00121" name="l00121"></a><span class="lineno">  121</span>    ESP_ERROR_CHECK(esp_wifi_start());</div>
+<div class="line"><a id="l00122" name="l00122"></a><span class="lineno">  122</span> </div>
+<div class="line"><a id="l00123" name="l00123"></a><span class="lineno">  123</span>    <a class="code hl_variable" href="net_8cpp.html#a5a67b39cd8bf0968ea4cb9a01dd62a5d">s_wifi_inited</a> = <span class="keyword">true</span>;</div>
+<div class="line"><a id="l00124" name="l00124"></a><span class="lineno">  124</span>}</div>
 </div>
-<div class="line"><a id="l00121" name="l00121"></a><span class="lineno">  121</span> </div>
-<div class="foldopen" id="foldopen00122" data-start="{" data-end="}">
-<div class="line"><a id="l00122" name="l00122"></a><span class="lineno"><a class="line" href="net_8cpp.html#a867a6c53b986cda4b652192a14565753">  122</a></span>uint16_t <a class="code hl_function" href="net_8cpp.html#a867a6c53b986cda4b652192a14565753">net_wifi_scan</a>(<a class="code hl_struct" href="structnet__wifi__ap__t.html">net_wifi_ap_t</a> *out, uint16_t max)</div>
-<div class="line"><a id="l00123" name="l00123"></a><span class="lineno">  123</span>{</div>
-<div class="line"><a id="l00124" name="l00124"></a><span class="lineno">  124</span>    <a class="code hl_function" href="net_8cpp.html#aaf1ff99078677637758f3b20f1ed7a59">net_wifi_init</a>();</div>
-<div class="line"><a id="l00125" name="l00125"></a><span class="lineno">  125</span>    <span class="keywordflow">if</span> ((out == NULL) || (max == 0U)) { <span class="keywordflow">return</span> 0U; }</div>
-<div class="line"><a id="l00126" name="l00126"></a><span class="lineno">  126</span> </div>
-<div class="line"><a id="l00127" name="l00127"></a><span class="lineno">  127</span>    wifi_scan_config_t scan_cfg;</div>
-<div class="line"><a id="l00128" name="l00128"></a><span class="lineno">  128</span>    (void)memset(&amp;scan_cfg, 0, <span class="keyword">sizeof</span>(scan_cfg));   <span class="comment">/* all channels, all SSIDs */</span></div>
-<div class="line"><a id="l00129" name="l00129"></a><span class="lineno">  129</span>    <span class="keywordflow">if</span> (esp_wifi_scan_start(&amp;scan_cfg, <span class="keyword">true</span>) != ESP_OK) {</div>
-<div class="line"><a id="l00130" name="l00130"></a><span class="lineno">  130</span>        <span class="keywordflow">return</span> 0U;</div>
-<div class="line"><a id="l00131" name="l00131"></a><span class="lineno">  131</span>    }</div>
-<div class="line"><a id="l00132" name="l00132"></a><span class="lineno">  132</span> </div>
-<div class="line"><a id="l00133" name="l00133"></a><span class="lineno">  133</span>    uint16_t num = 0U;</div>
-<div class="line"><a id="l00134" name="l00134"></a><span class="lineno">  134</span>    (void)esp_wifi_scan_get_ap_num(&amp;num);</div>
-<div class="line"><a id="l00135" name="l00135"></a><span class="lineno">  135</span>    <span class="keywordflow">if</span> (num == 0U) { <span class="keywordflow">return</span> 0U; }</div>
+<div class="line"><a id="l00125" name="l00125"></a><span class="lineno">  125</span> </div>
+<div class="foldopen" id="foldopen00126" data-start="{" data-end="}">
+<div class="line"><a id="l00126" name="l00126"></a><span class="lineno"><a class="line" href="net_8cpp.html#a867a6c53b986cda4b652192a14565753">  126</a></span>uint16_t <a class="code hl_function" href="net_8cpp.html#a867a6c53b986cda4b652192a14565753">net_wifi_scan</a>(<a class="code hl_struct" href="structnet__wifi__ap__t.html">net_wifi_ap_t</a> *out, uint16_t max)</div>
+<div class="line"><a id="l00127" name="l00127"></a><span class="lineno">  127</span>{</div>
+<div class="line"><a id="l00128" name="l00128"></a><span class="lineno">  128</span>    <a class="code hl_function" href="net_8cpp.html#aaf1ff99078677637758f3b20f1ed7a59">net_wifi_init</a>();</div>
+<div class="line"><a id="l00129" name="l00129"></a><span class="lineno">  129</span>    <span class="keywordflow">if</span> ((out == NULL) || (max == 0U)) { <span class="keywordflow">return</span> 0U; }</div>
+<div class="line"><a id="l00130" name="l00130"></a><span class="lineno">  130</span> </div>
+<div class="line"><a id="l00131" name="l00131"></a><span class="lineno">  131</span>    wifi_scan_config_t scan_cfg;</div>
+<div class="line"><a id="l00132" name="l00132"></a><span class="lineno">  132</span>    (void)memset(&amp;scan_cfg, 0, <span class="keyword">sizeof</span>(scan_cfg));   <span class="comment">/* all channels, all SSIDs */</span></div>
+<div class="line"><a id="l00133" name="l00133"></a><span class="lineno">  133</span>    <span class="keywordflow">if</span> (esp_wifi_scan_start(&amp;scan_cfg, <span class="keyword">true</span>) != ESP_OK) {</div>
+<div class="line"><a id="l00134" name="l00134"></a><span class="lineno">  134</span>        <span class="keywordflow">return</span> 0U;</div>
+<div class="line"><a id="l00135" name="l00135"></a><span class="lineno">  135</span>    }</div>
 <div class="line"><a id="l00136" name="l00136"></a><span class="lineno">  136</span> </div>
-<div class="line"><a id="l00137" name="l00137"></a><span class="lineno">  137</span>    wifi_ap_record_t *recs =</div>
-<div class="line"><a id="l00138" name="l00138"></a><span class="lineno">  138</span>        <span class="keyword">static_cast&lt;</span>wifi_ap_record_t *<span class="keyword">&gt;</span>(malloc(num * <span class="keyword">sizeof</span>(wifi_ap_record_t)));</div>
-<div class="line"><a id="l00139" name="l00139"></a><span class="lineno">  139</span>    <span class="keywordflow">if</span> (recs == NULL) { <span class="keywordflow">return</span> 0U; }</div>
-<div class="line"><a id="l00140" name="l00140"></a><span class="lineno">  140</span>    (void)esp_wifi_scan_get_ap_records(&amp;num, recs);</div>
-<div class="line"><a id="l00141" name="l00141"></a><span class="lineno">  141</span> </div>
-<div class="line"><a id="l00142" name="l00142"></a><span class="lineno">  142</span>    uint16_t count = 0U;</div>
-<div class="line"><a id="l00143" name="l00143"></a><span class="lineno">  143</span>    <span class="keywordflow">for</span> (uint16_t i = 0U; (i &lt; num) &amp;&amp; (count &lt; max); i++) {</div>
-<div class="line"><a id="l00144" name="l00144"></a><span class="lineno">  144</span>        <span class="keyword">const</span> <span class="keywordtype">char</span> *ssid = <span class="keyword">reinterpret_cast&lt;</span><span class="keyword">const </span><span class="keywordtype">char</span> *<span class="keyword">&gt;</span>(recs[i].ssid);</div>
-<div class="line"><a id="l00145" name="l00145"></a><span class="lineno">  145</span>        <span class="keywordflow">if</span> (ssid[0] == <span class="charliteral">&#39;\0&#39;</span>) { <span class="keywordflow">continue</span>; }          <span class="comment">/* hidden network */</span></div>
-<div class="line"><a id="l00146" name="l00146"></a><span class="lineno">  146</span> </div>
-<div class="line"><a id="l00147" name="l00147"></a><span class="lineno">  147</span>        <span class="keywordtype">bool</span> dup = <span class="keyword">false</span>;                            <span class="comment">/* one entry per SSID */</span></div>
-<div class="line"><a id="l00148" name="l00148"></a><span class="lineno">  148</span>        <span class="keywordflow">for</span> (uint16_t j = 0U; j &lt; count; j++) {</div>
-<div class="line"><a id="l00149" name="l00149"></a><span class="lineno">  149</span>            <span class="keywordflow">if</span> (strcmp(out[j].ssid, ssid) == 0) { dup = <span class="keyword">true</span>; <span class="keywordflow">break</span>; }</div>
-<div class="line"><a id="l00150" name="l00150"></a><span class="lineno">  150</span>        }</div>
-<div class="line"><a id="l00151" name="l00151"></a><span class="lineno">  151</span>        <span class="keywordflow">if</span> (dup) { <span class="keywordflow">continue</span>; }</div>
-<div class="line"><a id="l00152" name="l00152"></a><span class="lineno">  152</span> </div>
-<div class="line"><a id="l00153" name="l00153"></a><span class="lineno">  153</span>        (void)strncpy(out[count].ssid, ssid, <span class="keyword">sizeof</span>(out[count].ssid) - 1U);</div>
-<div class="line"><a id="l00154" name="l00154"></a><span class="lineno">  154</span>        out[count].<a class="code hl_variable" href="structnet__wifi__ap__t.html#abfccd5924571fcb9dc14436cab07cb9e">ssid</a>[<span class="keyword">sizeof</span>(out[count].<a class="code hl_variable" href="structnet__wifi__ap__t.html#abfccd5924571fcb9dc14436cab07cb9e">ssid</a>) - 1U] = <span class="charliteral">&#39;\0&#39;</span>;</div>
-<div class="line"><a id="l00155" name="l00155"></a><span class="lineno">  155</span>        out[count].<a class="code hl_variable" href="structnet__wifi__ap__t.html#add5c01e9856461c804ea3891e01d1632">rssi</a> = recs[i].rssi;</div>
-<div class="line"><a id="l00156" name="l00156"></a><span class="lineno">  156</span>        out[count].<a class="code hl_variable" href="structnet__wifi__ap__t.html#ad4f0dc49027ca1338231b70704f44f83">open</a> = (recs[i].authmode == WIFI_AUTH_OPEN);</div>
-<div class="line"><a id="l00157" name="l00157"></a><span class="lineno">  157</span>        count++;</div>
-<div class="line"><a id="l00158" name="l00158"></a><span class="lineno">  158</span>    }</div>
-<div class="line"><a id="l00159" name="l00159"></a><span class="lineno">  159</span> </div>
-<div class="line"><a id="l00160" name="l00160"></a><span class="lineno">  160</span>    free(recs);</div>
-<div class="line"><a id="l00161" name="l00161"></a><span class="lineno">  161</span>    <span class="keywordflow">return</span> count;</div>
-<div class="line"><a id="l00162" name="l00162"></a><span class="lineno">  162</span>}</div>
-</div>
+<div class="line"><a id="l00137" name="l00137"></a><span class="lineno">  137</span>    uint16_t num = 0U;</div>
+<div class="line"><a id="l00138" name="l00138"></a><span class="lineno">  138</span>    (void)esp_wifi_scan_get_ap_num(&amp;num);</div>
+<div class="line"><a id="l00139" name="l00139"></a><span class="lineno">  139</span>    <span class="keywordflow">if</span> (num == 0U) { <span class="keywordflow">return</span> 0U; }</div>
+<div class="line"><a id="l00140" name="l00140"></a><span class="lineno">  140</span> </div>
+<div class="line"><a id="l00141" name="l00141"></a><span class="lineno">  141</span>    wifi_ap_record_t *recs =</div>
+<div class="line"><a id="l00142" name="l00142"></a><span class="lineno">  142</span>        <span class="keyword">static_cast&lt;</span>wifi_ap_record_t *<span class="keyword">&gt;</span>(malloc(num * <span class="keyword">sizeof</span>(wifi_ap_record_t)));</div>
+<div class="line"><a id="l00143" name="l00143"></a><span class="lineno">  143</span>    <span class="keywordflow">if</span> (recs == NULL) { <span class="keywordflow">return</span> 0U; }</div>
+<div class="line"><a id="l00144" name="l00144"></a><span class="lineno">  144</span>    (void)esp_wifi_scan_get_ap_records(&amp;num, recs);</div>
+<div class="line"><a id="l00145" name="l00145"></a><span class="lineno">  145</span> </div>
+<div class="line"><a id="l00146" name="l00146"></a><span class="lineno">  146</span>    uint16_t count = 0U;</div>
+<div class="line"><a id="l00147" name="l00147"></a><span class="lineno">  147</span>    <span class="keywordflow">for</span> (uint16_t i = 0U; (i &lt; num) &amp;&amp; (count &lt; max); i++) {</div>
+<div class="line"><a id="l00148" name="l00148"></a><span class="lineno">  148</span>        <span class="keyword">const</span> <span class="keywordtype">char</span> *ssid = <span class="keyword">reinterpret_cast&lt;</span><span class="keyword">const </span><span class="keywordtype">char</span> *<span class="keyword">&gt;</span>(recs[i].ssid);</div>
+<div class="line"><a id="l00149" name="l00149"></a><span class="lineno">  149</span>        <span class="keywordflow">if</span> (ssid[0] == <span class="charliteral">&#39;\0&#39;</span>) { <span class="keywordflow">continue</span>; }          <span class="comment">/* hidden network */</span></div>
+<div class="line"><a id="l00150" name="l00150"></a><span class="lineno">  150</span> </div>
+<div class="line"><a id="l00151" name="l00151"></a><span class="lineno">  151</span>        <span class="keywordtype">bool</span> dup = <span class="keyword">false</span>;                            <span class="comment">/* one entry per SSID */</span></div>
+<div class="line"><a id="l00152" name="l00152"></a><span class="lineno">  152</span>        <span class="keywordflow">for</span> (uint16_t j = 0U; j &lt; count; j++) {</div>
+<div class="line"><a id="l00153" name="l00153"></a><span class="lineno">  153</span>            <span class="keywordflow">if</span> (strcmp(out[j].ssid, ssid) == 0) { dup = <span class="keyword">true</span>; <span class="keywordflow">break</span>; }</div>
+<div class="line"><a id="l00154" name="l00154"></a><span class="lineno">  154</span>        }</div>
+<div class="line"><a id="l00155" name="l00155"></a><span class="lineno">  155</span>        <span class="keywordflow">if</span> (dup) { <span class="keywordflow">continue</span>; }</div>
+<div class="line"><a id="l00156" name="l00156"></a><span class="lineno">  156</span> </div>
+<div class="line"><a id="l00157" name="l00157"></a><span class="lineno">  157</span>        (void)strncpy(out[count].ssid, ssid, <span class="keyword">sizeof</span>(out[count].ssid) - 1U);</div>
+<div class="line"><a id="l00158" name="l00158"></a><span class="lineno">  158</span>        out[count].<a class="code hl_variable" href="structnet__wifi__ap__t.html#abfccd5924571fcb9dc14436cab07cb9e">ssid</a>[<span class="keyword">sizeof</span>(out[count].<a class="code hl_variable" href="structnet__wifi__ap__t.html#abfccd5924571fcb9dc14436cab07cb9e">ssid</a>) - 1U] = <span class="charliteral">&#39;\0&#39;</span>;</div>
+<div class="line"><a id="l00159" name="l00159"></a><span class="lineno">  159</span>        out[count].<a class="code hl_variable" href="structnet__wifi__ap__t.html#add5c01e9856461c804ea3891e01d1632">rssi</a> = recs[i].rssi;</div>
+<div class="line"><a id="l00160" name="l00160"></a><span class="lineno">  160</span>        out[count].<a class="code hl_variable" href="structnet__wifi__ap__t.html#ad4f0dc49027ca1338231b70704f44f83">open</a> = (recs[i].authmode == WIFI_AUTH_OPEN);</div>
+<div class="line"><a id="l00161" name="l00161"></a><span class="lineno">  161</span>        count++;</div>
+<div class="line"><a id="l00162" name="l00162"></a><span class="lineno">  162</span>    }</div>
 <div class="line"><a id="l00163" name="l00163"></a><span class="lineno">  163</span> </div>
-<div class="foldopen" id="foldopen00164" data-start="{" data-end="}">
-<div class="line"><a id="l00164" name="l00164"></a><span class="lineno"><a class="line" href="net_8cpp.html#a85ab8d7927129c9f8c0cc0525eaa1b76">  164</a></span><span class="keywordtype">bool</span> <a class="code hl_function" href="net_8cpp.html#a85ab8d7927129c9f8c0cc0525eaa1b76">net_wifi_connect</a>(<span class="keyword">const</span> <span class="keywordtype">char</span> *ssid, <span class="keyword">const</span> <span class="keywordtype">char</span> *password)</div>
-<div class="line"><a id="l00165" name="l00165"></a><span class="lineno">  165</span>{</div>
-<div class="line"><a id="l00166" name="l00166"></a><span class="lineno">  166</span>    <a class="code hl_function" href="net_8cpp.html#aaf1ff99078677637758f3b20f1ed7a59">net_wifi_init</a>();</div>
+<div class="line"><a id="l00164" name="l00164"></a><span class="lineno">  164</span>    free(recs);</div>
+<div class="line"><a id="l00165" name="l00165"></a><span class="lineno">  165</span>    <span class="keywordflow">return</span> count;</div>
+<div class="line"><a id="l00166" name="l00166"></a><span class="lineno">  166</span>}</div>
+</div>
 <div class="line"><a id="l00167" name="l00167"></a><span class="lineno">  167</span> </div>
-<div class="line"><a id="l00168" name="l00168"></a><span class="lineno">  168</span>    xEventGroupClearBits(<a class="code hl_variable" href="net_8cpp.html#a6aaca350cca4b3d105d88a6f399cb381">s_wifi_event_group</a>, <a class="code hl_define" href="net_8cpp.html#ad552e7688532cbbecd3967538ced06ac">WIFI_CONNECTED_BIT</a> | <a class="code hl_define" href="net_8cpp.html#a7d013b55e50dfbda0904f5f933b63ec4">WIFI_FAIL_BIT</a>);</div>
-<div class="line"><a id="l00169" name="l00169"></a><span class="lineno">  169</span>    <a class="code hl_variable" href="net_8cpp.html#ae4da33fdcdaa6688ed25dab508ed5592">s_retry_num</a> = 0;</div>
-<div class="line"><a id="l00170" name="l00170"></a><span class="lineno">  170</span> </div>
-<div class="line"><a id="l00171" name="l00171"></a><span class="lineno">  171</span>    wifi_config_t wifi_cfg;</div>
-<div class="line"><a id="l00172" name="l00172"></a><span class="lineno">  172</span>    (void)memset(&amp;wifi_cfg, 0, <span class="keyword">sizeof</span>(wifi_cfg));</div>
-<div class="line"><a id="l00173" name="l00173"></a><span class="lineno">  173</span>    (void)strncpy(<span class="keyword">reinterpret_cast&lt;</span><span class="keywordtype">char</span> *<span class="keyword">&gt;</span>(wifi_cfg.sta.ssid),     ssid,     <span class="keyword">sizeof</span>(wifi_cfg.sta.ssid)     - 1U);</div>
-<div class="line"><a id="l00174" name="l00174"></a><span class="lineno">  174</span>    (void)strncpy(<span class="keyword">reinterpret_cast&lt;</span><span class="keywordtype">char</span> *<span class="keyword">&gt;</span>(wifi_cfg.sta.password), password, <span class="keyword">sizeof</span>(wifi_cfg.sta.password) - 1U);</div>
-<div class="line"><a id="l00175" name="l00175"></a><span class="lineno">  175</span>    <span class="comment">/* Open networks have an empty passphrase; otherwise require WPA2+. */</span></div>
-<div class="line"><a id="l00176" name="l00176"></a><span class="lineno">  176</span>    wifi_cfg.sta.threshold.authmode =</div>
-<div class="line"><a id="l00177" name="l00177"></a><span class="lineno">  177</span>        (password[0] == <span class="charliteral">&#39;\0&#39;</span>) ? WIFI_AUTH_OPEN : WIFI_AUTH_WPA2_PSK;</div>
-<div class="line"><a id="l00178" name="l00178"></a><span class="lineno">  178</span> </div>
-<div class="line"><a id="l00179" name="l00179"></a><span class="lineno">  179</span>    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &amp;wifi_cfg));</div>
-<div class="line"><a id="l00180" name="l00180"></a><span class="lineno">  180</span>    <span class="comment">/* The WiFi driver keeps its own copy — scrub the stack copy of the</span></div>
-<div class="line"><a id="l00181" name="l00181"></a><span class="lineno">  181</span><span class="comment">     * credentials immediately (CODING_RULES §1.4). */</span></div>
-<div class="line"><a id="l00182" name="l00182"></a><span class="lineno">  182</span>    CW_Utils::secure_wipe(<span class="keyword">reinterpret_cast&lt;</span>uint8_t *<span class="keyword">&gt;</span>(&amp;wifi_cfg),</div>
-<div class="line"><a id="l00183" name="l00183"></a><span class="lineno">  183</span>                          <span class="keyword">sizeof</span>(wifi_cfg));</div>
-<div class="line"><a id="l00184" name="l00184"></a><span class="lineno">  184</span> </div>
-<div class="line"><a id="l00185" name="l00185"></a><span class="lineno">  185</span>    (void)esp_wifi_disconnect();   <span class="comment">/* drop any current AP before (re)connecting */</span></div>
-<div class="line"><a id="l00186" name="l00186"></a><span class="lineno">  186</span>    (void)esp_wifi_connect();</div>
-<div class="line"><a id="l00187" name="l00187"></a><span class="lineno">  187</span> </div>
-<div class="line"><a id="l00188" name="l00188"></a><span class="lineno">  188</span>    ESP_LOGI(<a class="code hl_variable" href="eth__rpc_8cpp.html#a4ef5b5f197804a60836ab1e8907d8301">TAG</a>, <span class="stringliteral">&quot;Connecting to \&quot;%s\&quot;...&quot;</span>, ssid);</div>
-<div class="line"><a id="l00189" name="l00189"></a><span class="lineno">  189</span> </div>
-<div class="line"><a id="l00190" name="l00190"></a><span class="lineno">  190</span>    EventBits_t bits = xEventGroupWaitBits(<a class="code hl_variable" href="net_8cpp.html#a6aaca350cca4b3d105d88a6f399cb381">s_wifi_event_group</a>,</div>
-<div class="line"><a id="l00191" name="l00191"></a><span class="lineno">  191</span>                                           <a class="code hl_define" href="net_8cpp.html#ad552e7688532cbbecd3967538ced06ac">WIFI_CONNECTED_BIT</a> | <a class="code hl_define" href="net_8cpp.html#a7d013b55e50dfbda0904f5f933b63ec4">WIFI_FAIL_BIT</a>,</div>
-<div class="line"><a id="l00192" name="l00192"></a><span class="lineno">  192</span>                                           pdFALSE, pdFALSE,</div>
-<div class="line"><a id="l00193" name="l00193"></a><span class="lineno">  193</span>                                           pdMS_TO_TICKS(<a class="code hl_define" href="net_8cpp.html#a4735ad9aef99f8584afd945f39260954">WIFI_TIMEOUT_MS</a>));</div>
-<div class="line"><a id="l00194" name="l00194"></a><span class="lineno">  194</span> </div>
-<div class="line"><a id="l00195" name="l00195"></a><span class="lineno">  195</span>    <span class="keywordtype">bool</span> connected = ((bits &amp; <a class="code hl_define" href="net_8cpp.html#ad552e7688532cbbecd3967538ced06ac">WIFI_CONNECTED_BIT</a>) != 0U);</div>
-<div class="line"><a id="l00196" name="l00196"></a><span class="lineno">  196</span>    <span class="keywordflow">if</span> (connected) {</div>
-<div class="line"><a id="l00197" name="l00197"></a><span class="lineno">  197</span>        ESP_LOGI(<a class="code hl_variable" href="eth__rpc_8cpp.html#a4ef5b5f197804a60836ab1e8907d8301">TAG</a>, <span class="stringliteral">&quot;WiFi connected&quot;</span>);</div>
-<div class="line"><a id="l00198" name="l00198"></a><span class="lineno">  198</span>    } <span class="keywordflow">else</span> {</div>
-<div class="line"><a id="l00199" name="l00199"></a><span class="lineno">  199</span>        ESP_LOGE(<a class="code hl_variable" href="eth__rpc_8cpp.html#a4ef5b5f197804a60836ab1e8907d8301">TAG</a>, <span class="stringliteral">&quot;WiFi connect failed&quot;</span>);</div>
-<div class="line"><a id="l00200" name="l00200"></a><span class="lineno">  200</span>    }</div>
-<div class="line"><a id="l00201" name="l00201"></a><span class="lineno">  201</span>    <span class="keywordflow">return</span> connected;</div>
-<div class="line"><a id="l00202" name="l00202"></a><span class="lineno">  202</span>}</div>
+<div class="foldopen" id="foldopen00168" data-start="{" data-end="}">
+<div class="line"><a id="l00168" name="l00168"></a><span class="lineno"><a class="line" href="net_8cpp.html#a85ab8d7927129c9f8c0cc0525eaa1b76">  168</a></span><span class="keywordtype">bool</span> <a class="code hl_function" href="net_8cpp.html#a85ab8d7927129c9f8c0cc0525eaa1b76">net_wifi_connect</a>(<span class="keyword">const</span> <span class="keywordtype">char</span> *ssid, <span class="keyword">const</span> <span class="keywordtype">char</span> *password)</div>
+<div class="line"><a id="l00169" name="l00169"></a><span class="lineno">  169</span>{</div>
+<div class="line"><a id="l00170" name="l00170"></a><span class="lineno">  170</span>    <a class="code hl_function" href="net_8cpp.html#aaf1ff99078677637758f3b20f1ed7a59">net_wifi_init</a>();</div>
+<div class="line"><a id="l00171" name="l00171"></a><span class="lineno">  171</span> </div>
+<div class="line"><a id="l00172" name="l00172"></a><span class="lineno">  172</span>    xEventGroupClearBits(<a class="code hl_variable" href="net_8cpp.html#a6aaca350cca4b3d105d88a6f399cb381">s_wifi_event_group</a>, <a class="code hl_define" href="net_8cpp.html#ad552e7688532cbbecd3967538ced06ac">WIFI_CONNECTED_BIT</a> | <a class="code hl_define" href="net_8cpp.html#a7d013b55e50dfbda0904f5f933b63ec4">WIFI_FAIL_BIT</a>);</div>
+<div class="line"><a id="l00173" name="l00173"></a><span class="lineno">  173</span>    <a class="code hl_variable" href="net_8cpp.html#ae4da33fdcdaa6688ed25dab508ed5592">s_retry_num</a> = 0;</div>
+<div class="line"><a id="l00174" name="l00174"></a><span class="lineno">  174</span> </div>
+<div class="line"><a id="l00175" name="l00175"></a><span class="lineno">  175</span>    wifi_config_t wifi_cfg;</div>
+<div class="line"><a id="l00176" name="l00176"></a><span class="lineno">  176</span>    (void)memset(&amp;wifi_cfg, 0, <span class="keyword">sizeof</span>(wifi_cfg));</div>
+<div class="line"><a id="l00177" name="l00177"></a><span class="lineno">  177</span>    (void)strncpy(<span class="keyword">reinterpret_cast&lt;</span><span class="keywordtype">char</span> *<span class="keyword">&gt;</span>(wifi_cfg.sta.ssid),     ssid,     <span class="keyword">sizeof</span>(wifi_cfg.sta.ssid)     - 1U);</div>
+<div class="line"><a id="l00178" name="l00178"></a><span class="lineno">  178</span>    (void)strncpy(<span class="keyword">reinterpret_cast&lt;</span><span class="keywordtype">char</span> *<span class="keyword">&gt;</span>(wifi_cfg.sta.password), password, <span class="keyword">sizeof</span>(wifi_cfg.sta.password) - 1U);</div>
+<div class="line"><a id="l00179" name="l00179"></a><span class="lineno">  179</span>    <span class="comment">/* Open networks have an empty passphrase; otherwise require WPA2+. */</span></div>
+<div class="line"><a id="l00180" name="l00180"></a><span class="lineno">  180</span>    wifi_cfg.sta.threshold.authmode =</div>
+<div class="line"><a id="l00181" name="l00181"></a><span class="lineno">  181</span>        (password[0] == <span class="charliteral">&#39;\0&#39;</span>) ? WIFI_AUTH_OPEN : WIFI_AUTH_WPA2_PSK;</div>
+<div class="line"><a id="l00182" name="l00182"></a><span class="lineno">  182</span> </div>
+<div class="line"><a id="l00183" name="l00183"></a><span class="lineno">  183</span>    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &amp;wifi_cfg));</div>
+<div class="line"><a id="l00184" name="l00184"></a><span class="lineno">  184</span>    <span class="comment">/* The WiFi driver keeps its own copy — scrub the stack copy of the</span></div>
+<div class="line"><a id="l00185" name="l00185"></a><span class="lineno">  185</span><span class="comment">     * credentials immediately (CODING_RULES §1.4). */</span></div>
+<div class="line"><a id="l00186" name="l00186"></a><span class="lineno">  186</span>    CW_Utils::secure_wipe(<span class="keyword">reinterpret_cast&lt;</span>uint8_t *<span class="keyword">&gt;</span>(&amp;wifi_cfg),</div>
+<div class="line"><a id="l00187" name="l00187"></a><span class="lineno">  187</span>                          <span class="keyword">sizeof</span>(wifi_cfg));</div>
+<div class="line"><a id="l00188" name="l00188"></a><span class="lineno">  188</span> </div>
+<div class="line"><a id="l00189" name="l00189"></a><span class="lineno">  189</span>    (void)esp_wifi_disconnect();   <span class="comment">/* drop any current AP before (re)connecting */</span></div>
+<div class="line"><a id="l00190" name="l00190"></a><span class="lineno">  190</span>    (void)esp_wifi_connect();</div>
+<div class="line"><a id="l00191" name="l00191"></a><span class="lineno">  191</span> </div>
+<div class="line"><a id="l00192" name="l00192"></a><span class="lineno">  192</span>    ESP_LOGI(<a class="code hl_variable" href="eth__rpc_8cpp.html#a4ef5b5f197804a60836ab1e8907d8301">TAG</a>, <span class="stringliteral">&quot;Connecting to \&quot;%s\&quot;...&quot;</span>, ssid);</div>
+<div class="line"><a id="l00193" name="l00193"></a><span class="lineno">  193</span> </div>
+<div class="line"><a id="l00194" name="l00194"></a><span class="lineno">  194</span>    EventBits_t bits = xEventGroupWaitBits(<a class="code hl_variable" href="net_8cpp.html#a6aaca350cca4b3d105d88a6f399cb381">s_wifi_event_group</a>,</div>
+<div class="line"><a id="l00195" name="l00195"></a><span class="lineno">  195</span>                                           <a class="code hl_define" href="net_8cpp.html#ad552e7688532cbbecd3967538ced06ac">WIFI_CONNECTED_BIT</a> | <a class="code hl_define" href="net_8cpp.html#a7d013b55e50dfbda0904f5f933b63ec4">WIFI_FAIL_BIT</a>,</div>
+<div class="line"><a id="l00196" name="l00196"></a><span class="lineno">  196</span>                                           pdFALSE, pdFALSE,</div>
+<div class="line"><a id="l00197" name="l00197"></a><span class="lineno">  197</span>                                           pdMS_TO_TICKS(<a class="code hl_define" href="net_8cpp.html#a4735ad9aef99f8584afd945f39260954">WIFI_TIMEOUT_MS</a>));</div>
+<div class="line"><a id="l00198" name="l00198"></a><span class="lineno">  198</span> </div>
+<div class="line"><a id="l00199" name="l00199"></a><span class="lineno">  199</span>    <span class="keywordtype">bool</span> connected = ((bits &amp; <a class="code hl_define" href="net_8cpp.html#ad552e7688532cbbecd3967538ced06ac">WIFI_CONNECTED_BIT</a>) != 0U);</div>
+<div class="line"><a id="l00200" name="l00200"></a><span class="lineno">  200</span>    <span class="keywordflow">if</span> (connected) {</div>
+<div class="line"><a id="l00201" name="l00201"></a><span class="lineno">  201</span>        ESP_LOGI(<a class="code hl_variable" href="eth__rpc_8cpp.html#a4ef5b5f197804a60836ab1e8907d8301">TAG</a>, <span class="stringliteral">&quot;WiFi connected&quot;</span>);</div>
+<div class="line"><a id="l00202" name="l00202"></a><span class="lineno">  202</span>    } <span class="keywordflow">else</span> {</div>
+<div class="line"><a id="l00203" name="l00203"></a><span class="lineno">  203</span>        ESP_LOGE(<a class="code hl_variable" href="eth__rpc_8cpp.html#a4ef5b5f197804a60836ab1e8907d8301">TAG</a>, <span class="stringliteral">&quot;WiFi connect failed&quot;</span>);</div>
+<div class="line"><a id="l00204" name="l00204"></a><span class="lineno">  204</span>    }</div>
+<div class="line"><a id="l00205" name="l00205"></a><span class="lineno">  205</span>    <span class="keywordflow">return</span> connected;</div>
+<div class="line"><a id="l00206" name="l00206"></a><span class="lineno">  206</span>}</div>
 </div>
-<div class="line"><a id="l00203" name="l00203"></a><span class="lineno">  203</span> </div>
-<div class="foldopen" id="foldopen00204" data-start="{" data-end="}">
-<div class="line"><a id="l00204" name="l00204"></a><span class="lineno"><a class="line" href="net_8cpp.html#a6daea14ec02799a6d0a0f41da5226895">  204</a></span><span class="keywordtype">bool</span> <a class="code hl_function" href="net_8cpp.html#a6daea14ec02799a6d0a0f41da5226895">net_wifi_rssi</a>(int8_t *rssi_out)</div>
-<div class="line"><a id="l00205" name="l00205"></a><span class="lineno">  205</span>{</div>
-<div class="line"><a id="l00206" name="l00206"></a><span class="lineno">  206</span>    <span class="keywordflow">if</span> (rssi_out == NULL) { <span class="keywordflow">return</span> <span class="keyword">false</span>; }</div>
-<div class="line"><a id="l00207" name="l00207"></a><span class="lineno">  207</span>    wifi_ap_record_t ap;</div>
-<div class="line"><a id="l00208" name="l00208"></a><span class="lineno">  208</span>    <span class="keywordflow">if</span> (esp_wifi_sta_get_ap_info(&amp;ap) != ESP_OK) {</div>
-<div class="line"><a id="l00209" name="l00209"></a><span class="lineno">  209</span>        <span class="keywordflow">return</span> <span class="keyword">false</span>;   <span class="comment">/* not associated */</span></div>
-<div class="line"><a id="l00210" name="l00210"></a><span class="lineno">  210</span>    }</div>
-<div class="line"><a id="l00211" name="l00211"></a><span class="lineno">  211</span>    *rssi_out = ap.rssi;</div>
-<div class="line"><a id="l00212" name="l00212"></a><span class="lineno">  212</span>    <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
-<div class="line"><a id="l00213" name="l00213"></a><span class="lineno">  213</span>}</div>
+<div class="line"><a id="l00207" name="l00207"></a><span class="lineno">  207</span> </div>
+<div class="foldopen" id="foldopen00208" data-start="{" data-end="}">
+<div class="line"><a id="l00208" name="l00208"></a><span class="lineno"><a class="line" href="net_8cpp.html#a6daea14ec02799a6d0a0f41da5226895">  208</a></span><span class="keywordtype">bool</span> <a class="code hl_function" href="net_8cpp.html#a6daea14ec02799a6d0a0f41da5226895">net_wifi_rssi</a>(int8_t *rssi_out)</div>
+<div class="line"><a id="l00209" name="l00209"></a><span class="lineno">  209</span>{</div>
+<div class="line"><a id="l00210" name="l00210"></a><span class="lineno">  210</span>    <span class="keywordflow">if</span> (rssi_out == NULL) { <span class="keywordflow">return</span> <span class="keyword">false</span>; }</div>
+<div class="line"><a id="l00211" name="l00211"></a><span class="lineno">  211</span>    wifi_ap_record_t ap;</div>
+<div class="line"><a id="l00212" name="l00212"></a><span class="lineno">  212</span>    <span class="keywordflow">if</span> (esp_wifi_sta_get_ap_info(&amp;ap) != ESP_OK) {</div>
+<div class="line"><a id="l00213" name="l00213"></a><span class="lineno">  213</span>        <span class="keywordflow">return</span> <span class="keyword">false</span>;   <span class="comment">/* not associated */</span></div>
+<div class="line"><a id="l00214" name="l00214"></a><span class="lineno">  214</span>    }</div>
+<div class="line"><a id="l00215" name="l00215"></a><span class="lineno">  215</span>    *rssi_out = ap.rssi;</div>
+<div class="line"><a id="l00216" name="l00216"></a><span class="lineno">  216</span>    <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
+<div class="line"><a id="l00217" name="l00217"></a><span class="lineno">  217</span>}</div>
 </div>
-<div class="line"><a id="l00214" name="l00214"></a><span class="lineno">  214</span> </div>
-<div class="foldopen" id="foldopen00215" data-start="{" data-end="}">
-<div class="line"><a id="l00215" name="l00215"></a><span class="lineno"><a class="line" href="net_8cpp.html#a6183c17880c3cc5dcf982e66bafbaafe">  215</a></span><span class="keywordtype">bool</span> <a class="code hl_function" href="net_8cpp.html#a6183c17880c3cc5dcf982e66bafbaafe">net_time_sync</a>(uint32_t timeout_ms)</div>
-<div class="line"><a id="l00216" name="l00216"></a><span class="lineno">  216</span>{</div>
-<div class="line"><a id="l00217" name="l00217"></a><span class="lineno">  217</span>    <span class="comment">/* Several reliable servers — phone hotspots often slow or drop NTP (UDP</span></div>
-<div class="line"><a id="l00218" name="l00218"></a><span class="lineno">  218</span><span class="comment">     * 123) to pool.ntp.org, so fall back to Google / Cloudflare time. */</span></div>
-<div class="line"><a id="l00219" name="l00219"></a><span class="lineno">  219</span>    esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(3,</div>
-<div class="line"><a id="l00220" name="l00220"></a><span class="lineno">  220</span>        ESP_SNTP_SERVER_LIST(<span class="stringliteral">&quot;time.google.com&quot;</span>, <span class="stringliteral">&quot;pool.ntp.org&quot;</span>, <span class="stringliteral">&quot;time.cloudflare.com&quot;</span>));</div>
-<div class="line"><a id="l00221" name="l00221"></a><span class="lineno">  221</span>    esp_err_t err = esp_netif_sntp_init(&amp;config);</div>
-<div class="line"><a id="l00222" name="l00222"></a><span class="lineno">  222</span>    <span class="keywordflow">if</span> (err != ESP_OK) {</div>
-<div class="line"><a id="l00223" name="l00223"></a><span class="lineno">  223</span>        ESP_LOGE(<a class="code hl_variable" href="eth__rpc_8cpp.html#a4ef5b5f197804a60836ab1e8907d8301">TAG</a>, <span class="stringliteral">&quot;SNTP init: %s&quot;</span>, esp_err_to_name(err));</div>
-<div class="line"><a id="l00224" name="l00224"></a><span class="lineno">  224</span>        <span class="keywordflow">return</span> <span class="keyword">false</span>;</div>
-<div class="line"><a id="l00225" name="l00225"></a><span class="lineno">  225</span>    }</div>
-<div class="line"><a id="l00226" name="l00226"></a><span class="lineno">  226</span> </div>
-<div class="line"><a id="l00227" name="l00227"></a><span class="lineno">  227</span>    <span class="comment">/* Poll across the budget so a slow first response doesn&#39;t fail us. */</span></div>
-<div class="line"><a id="l00228" name="l00228"></a><span class="lineno">  228</span>    <span class="keyword">const</span> <span class="keywordtype">int</span>   attempts = 3;</div>
-<div class="line"><a id="l00229" name="l00229"></a><span class="lineno">  229</span>    uint32_t    per_wait = timeout_ms / <span class="keyword">static_cast&lt;</span>uint32_t<span class="keyword">&gt;</span>(attempts);</div>
-<div class="line"><a id="l00230" name="l00230"></a><span class="lineno">  230</span>    <span class="keywordflow">if</span> (per_wait &lt; 2000U) { per_wait = 2000U; }</div>
-<div class="line"><a id="l00231" name="l00231"></a><span class="lineno">  231</span>    <span class="keywordtype">bool</span> synced = <span class="keyword">false</span>;</div>
-<div class="line"><a id="l00232" name="l00232"></a><span class="lineno">  232</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; (i &lt; attempts) &amp;&amp; !synced; i++) {</div>
-<div class="line"><a id="l00233" name="l00233"></a><span class="lineno">  233</span>        <span class="keywordflow">if</span> (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(per_wait)) == ESP_OK) {</div>
-<div class="line"><a id="l00234" name="l00234"></a><span class="lineno">  234</span>            synced = <span class="keyword">true</span>;</div>
-<div class="line"><a id="l00235" name="l00235"></a><span class="lineno">  235</span>        } <span class="keywordflow">else</span> {</div>
-<div class="line"><a id="l00236" name="l00236"></a><span class="lineno">  236</span>            ESP_LOGW(<a class="code hl_variable" href="eth__rpc_8cpp.html#a4ef5b5f197804a60836ab1e8907d8301">TAG</a>, <span class="stringliteral">&quot;SNTP: no time yet (%d/%d)&quot;</span>, i + 1, attempts);</div>
-<div class="line"><a id="l00237" name="l00237"></a><span class="lineno">  237</span>        }</div>
-<div class="line"><a id="l00238" name="l00238"></a><span class="lineno">  238</span>    }</div>
-<div class="line"><a id="l00239" name="l00239"></a><span class="lineno">  239</span> </div>
-<div class="line"><a id="l00240" name="l00240"></a><span class="lineno">  240</span>    <span class="keywordflow">if</span> (!synced) {</div>
-<div class="line"><a id="l00241" name="l00241"></a><span class="lineno">  241</span>        ESP_LOGE(<a class="code hl_variable" href="eth__rpc_8cpp.html#a4ef5b5f197804a60836ab1e8907d8301">TAG</a>, <span class="stringliteral">&quot;SNTP sync timed out&quot;</span>);</div>
-<div class="line"><a id="l00242" name="l00242"></a><span class="lineno">  242</span>        esp_netif_sntp_deinit();</div>
-<div class="line"><a id="l00243" name="l00243"></a><span class="lineno">  243</span>        <span class="keywordflow">return</span> <span class="keyword">false</span>;</div>
-<div class="line"><a id="l00244" name="l00244"></a><span class="lineno">  244</span>    }</div>
-<div class="line"><a id="l00245" name="l00245"></a><span class="lineno">  245</span> </div>
-<div class="line"><a id="l00246" name="l00246"></a><span class="lineno">  246</span>    ESP_LOGI(<a class="code hl_variable" href="eth__rpc_8cpp.html#a4ef5b5f197804a60836ab1e8907d8301">TAG</a>, <span class="stringliteral">&quot;System time synced via SNTP&quot;</span>);</div>
-<div class="line"><a id="l00247" name="l00247"></a><span class="lineno">  247</span>    <span class="comment">/* Leave SNTP running for periodic background resyncs. */</span></div>
-<div class="line"><a id="l00248" name="l00248"></a><span class="lineno">  248</span>    <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
-<div class="line"><a id="l00249" name="l00249"></a><span class="lineno">  249</span>}</div>
+<div class="line"><a id="l00218" name="l00218"></a><span class="lineno">  218</span> </div>
+<div class="line"><a id="l00219" name="l00219"></a><span class="lineno">  219</span><span class="comment">/* __DATE__/__TIME__ are the build machine&#39;s LOCAL time but are read back here</span></div>
+<div class="line"><a id="l00220" name="l00220"></a><span class="lineno">  220</span><span class="comment"> * as if UTC, so the derived floor can sit up to ~14 h ahead of the real build</span></div>
+<div class="line"><a id="l00221" name="l00221"></a><span class="lineno">  221</span><span class="comment"> * instant. One day of slack absorbs every real-world TZ offset; it costs the</span></div>
+<div class="line"><a id="l00222" name="l00222"></a><span class="lineno">  222</span><span class="comment"> * attacker nothing, since reviving an expired certificate needs weeks of</span></div>
+<div class="line"><a id="l00223" name="l00223"></a><span class="lineno">  223</span><span class="comment"> * back-dating, not hours.</span></div>
+<div class="line"><a id="l00224" name="l00224"></a><span class="lineno">  224</span><span class="comment"> * ponytail: fixed slack, not a TZ database. */</span></div>
+<div class="line"><a id="l00225" name="l00225"></a><span class="lineno"><a class="line" href="net_8cpp.html#ad272ca04bfdb58036903285347595784">  225</a></span><span class="preprocessor">#define BUILD_FLOOR_SLACK_S  86400</span></div>
+<div class="line"><a id="l00226" name="l00226"></a><span class="lineno">  226</span></div>
+<div class="foldopen" id="foldopen00239" data-start="{" data-end="}">
+<div class="line"><a id="l00239" name="l00239"></a><span class="lineno"><a class="line" href="net_8cpp.html#ade0505eaf7b2477a44c3fba30f4c0400">  239</a></span><span class="keyword">static</span> int64_t <a class="code hl_function" href="net_8cpp.html#ade0505eaf7b2477a44c3fba30f4c0400">build_time_floor</a>(<span class="keywordtype">void</span>)</div>
+<div class="line"><a id="l00240" name="l00240"></a><span class="lineno">  240</span>{</div>
+<div class="line"><a id="l00241" name="l00241"></a><span class="lineno">  241</span>    <span class="keyword">const</span> esp_app_desc_t *desc = esp_app_get_description();</div>
+<div class="line"><a id="l00242" name="l00242"></a><span class="lineno">  242</span>    int64_t stamp = 0;</div>
+<div class="line"><a id="l00243" name="l00243"></a><span class="lineno">  243</span> </div>
+<div class="line"><a id="l00244" name="l00244"></a><span class="lineno">  244</span>    <span class="keywordflow">if</span> ((desc == NULL) ||</div>
+<div class="line"><a id="l00245" name="l00245"></a><span class="lineno">  245</span>        !<a class="code hl_function" href="civil__time_8cpp.html#a198de0b139b321f4690712c13cc260b4">civil_parse_build_stamp</a>(desc-&gt;date, desc-&gt;time, &amp;stamp)) {</div>
+<div class="line"><a id="l00246" name="l00246"></a><span class="lineno">  246</span>        ESP_LOGE(<a class="code hl_variable" href="eth__rpc_8cpp.html#a4ef5b5f197804a60836ab1e8907d8301">TAG</a>, <span class="stringliteral">&quot;build stamp unparseable - clock lower bound DISABLED&quot;</span>);</div>
+<div class="line"><a id="l00247" name="l00247"></a><span class="lineno">  247</span>        <span class="keywordflow">return</span> 0;</div>
+<div class="line"><a id="l00248" name="l00248"></a><span class="lineno">  248</span>    }</div>
+<div class="line"><a id="l00249" name="l00249"></a><span class="lineno">  249</span>    <span class="keywordflow">return</span> stamp - <a class="code hl_define" href="net_8cpp.html#ad272ca04bfdb58036903285347595784">BUILD_FLOOR_SLACK_S</a>;</div>
+<div class="line"><a id="l00250" name="l00250"></a><span class="lineno">  250</span>}</div>
 </div>
-<div class="ttc" id="aeth__rpc_8cpp_html_a4ef5b5f197804a60836ab1e8907d8301"><div class="ttname"><a href="eth__rpc_8cpp.html#a4ef5b5f197804a60836ab1e8907d8301">TAG</a></div><div class="ttdeci">static const char *const TAG</div><div class="ttdef"><b>Definition</b> <a href="eth__rpc_8cpp_source.html#l00034">eth_rpc.cpp:34</a></div></div>
-<div class="ttc" id="anet_8cpp_html_a4735ad9aef99f8584afd945f39260954"><div class="ttname"><a href="net_8cpp.html#a4735ad9aef99f8584afd945f39260954">WIFI_TIMEOUT_MS</a></div><div class="ttdeci">#define WIFI_TIMEOUT_MS</div><div class="ttdef"><b>Definition</b> <a href="#l00038">net.cpp:38</a></div></div>
-<div class="ttc" id="anet_8cpp_html_a5a67b39cd8bf0968ea4cb9a01dd62a5d"><div class="ttname"><a href="net_8cpp.html#a5a67b39cd8bf0968ea4cb9a01dd62a5d">s_wifi_inited</a></div><div class="ttdeci">static bool s_wifi_inited</div><div class="ttdef"><b>Definition</b> <a href="#l00046">net.cpp:46</a></div></div>
-<div class="ttc" id="anet_8cpp_html_a6183c17880c3cc5dcf982e66bafbaafe"><div class="ttname"><a href="net_8cpp.html#a6183c17880c3cc5dcf982e66bafbaafe">net_time_sync</a></div><div class="ttdeci">bool net_time_sync(uint32_t timeout_ms)</div><div class="ttdoc">Block until the system clock has been set via SNTP.</div><div class="ttdef"><b>Definition</b> <a href="#l00215">net.cpp:215</a></div></div>
-<div class="ttc" id="anet_8cpp_html_a6aaca350cca4b3d105d88a6f399cb381"><div class="ttname"><a href="net_8cpp.html#a6aaca350cca4b3d105d88a6f399cb381">s_wifi_event_group</a></div><div class="ttdeci">static EventGroupHandle_t s_wifi_event_group</div><div class="ttdef"><b>Definition</b> <a href="#l00044">net.cpp:44</a></div></div>
-<div class="ttc" id="anet_8cpp_html_a6daea14ec02799a6d0a0f41da5226895"><div class="ttname"><a href="net_8cpp.html#a6daea14ec02799a6d0a0f41da5226895">net_wifi_rssi</a></div><div class="ttdeci">bool net_wifi_rssi(int8_t *rssi_out)</div><div class="ttdoc">Read the RSSI of the currently associated access point.</div><div class="ttdef"><b>Definition</b> <a href="#l00204">net.cpp:204</a></div></div>
-<div class="ttc" id="anet_8cpp_html_a7d013b55e50dfbda0904f5f933b63ec4"><div class="ttname"><a href="net_8cpp.html#a7d013b55e50dfbda0904f5f933b63ec4">WIFI_FAIL_BIT</a></div><div class="ttdeci">#define WIFI_FAIL_BIT</div><div class="ttdef"><b>Definition</b> <a href="#l00036">net.cpp:36</a></div></div>
-<div class="ttc" id="anet_8cpp_html_a85ab8d7927129c9f8c0cc0525eaa1b76"><div class="ttname"><a href="net_8cpp.html#a85ab8d7927129c9f8c0cc0525eaa1b76">net_wifi_connect</a></div><div class="ttdeci">bool net_wifi_connect(const char *ssid, const char *password)</div><div class="ttdoc">Connect to a WiFi network and block until an IP is obtained (up to 30 s). May be called repeatedly to...</div><div class="ttdef"><b>Definition</b> <a href="#l00164">net.cpp:164</a></div></div>
-<div class="ttc" id="anet_8cpp_html_a867a6c53b986cda4b652192a14565753"><div class="ttname"><a href="net_8cpp.html#a867a6c53b986cda4b652192a14565753">net_wifi_scan</a></div><div class="ttdeci">uint16_t net_wifi_scan(net_wifi_ap_t *out, uint16_t max)</div><div class="ttdoc">Scan for nearby access points (blocking).</div><div class="ttdef"><b>Definition</b> <a href="#l00122">net.cpp:122</a></div></div>
-<div class="ttc" id="anet_8cpp_html_a9889f5062c963896a887cd62a23730bf"><div class="ttname"><a href="net_8cpp.html#a9889f5062c963896a887cd62a23730bf">WIFI_MAX_RETRY</a></div><div class="ttdeci">#define WIFI_MAX_RETRY</div><div class="ttdef"><b>Definition</b> <a href="#l00037">net.cpp:37</a></div></div>
-<div class="ttc" id="anet_8cpp_html_aaf1ff99078677637758f3b20f1ed7a59"><div class="ttname"><a href="net_8cpp.html#aaf1ff99078677637758f3b20f1ed7a59">net_wifi_init</a></div><div class="ttdeci">void net_wifi_init(void)</div><div class="ttdoc">Bring up the WiFi driver in station mode (idempotent).</div><div class="ttdef"><b>Definition</b> <a href="#l00096">net.cpp:96</a></div></div>
-<div class="ttc" id="anet_8cpp_html_ac31e38637f7a5e5c8ce4d033b0955fec"><div class="ttname"><a href="net_8cpp.html#ac31e38637f7a5e5c8ce4d033b0955fec">wifi_event_handler</a></div><div class="ttdeci">static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)</div><div class="ttdoc">WiFi/IP event handler driving the connect retry state machine.</div><div class="ttdef"><b>Definition</b> <a href="#l00063">net.cpp:63</a></div></div>
-<div class="ttc" id="anet_8cpp_html_ad552e7688532cbbecd3967538ced06ac"><div class="ttname"><a href="net_8cpp.html#ad552e7688532cbbecd3967538ced06ac">WIFI_CONNECTED_BIT</a></div><div class="ttdeci">#define WIFI_CONNECTED_BIT</div><div class="ttdef"><b>Definition</b> <a href="#l00035">net.cpp:35</a></div></div>
-<div class="ttc" id="anet_8cpp_html_ae4da33fdcdaa6688ed25dab508ed5592"><div class="ttname"><a href="net_8cpp.html#ae4da33fdcdaa6688ed25dab508ed5592">s_retry_num</a></div><div class="ttdeci">static int s_retry_num</div><div class="ttdef"><b>Definition</b> <a href="#l00045">net.cpp:45</a></div></div>
+<div class="line"><a id="l00251" name="l00251"></a><span class="lineno">  251</span> </div>
+<div class="foldopen" id="foldopen00252" data-start="{" data-end="}">
+<div class="line"><a id="l00252" name="l00252"></a><span class="lineno"><a class="line" href="net_8cpp.html#a6183c17880c3cc5dcf982e66bafbaafe">  252</a></span><span class="keywordtype">bool</span> <a class="code hl_function" href="net_8cpp.html#a6183c17880c3cc5dcf982e66bafbaafe">net_time_sync</a>(uint32_t timeout_ms)</div>
+<div class="line"><a id="l00253" name="l00253"></a><span class="lineno">  253</span>{</div>
+<div class="line"><a id="l00254" name="l00254"></a><span class="lineno">  254</span>    <span class="comment">/* Several reliable servers — phone hotspots often slow or drop NTP (UDP</span></div>
+<div class="line"><a id="l00255" name="l00255"></a><span class="lineno">  255</span><span class="comment">     * 123) to pool.ntp.org, so fall back to Google / Cloudflare time. */</span></div>
+<div class="line"><a id="l00256" name="l00256"></a><span class="lineno">  256</span>    esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(3,</div>
+<div class="line"><a id="l00257" name="l00257"></a><span class="lineno">  257</span>        ESP_SNTP_SERVER_LIST(<span class="stringliteral">&quot;time.google.com&quot;</span>, <span class="stringliteral">&quot;pool.ntp.org&quot;</span>, <span class="stringliteral">&quot;time.cloudflare.com&quot;</span>));</div>
+<div class="line"><a id="l00258" name="l00258"></a><span class="lineno">  258</span>    esp_err_t err = esp_netif_sntp_init(&amp;config);</div>
+<div class="line"><a id="l00259" name="l00259"></a><span class="lineno">  259</span>    <span class="keywordflow">if</span> (err != ESP_OK) {</div>
+<div class="line"><a id="l00260" name="l00260"></a><span class="lineno">  260</span>        ESP_LOGE(<a class="code hl_variable" href="eth__rpc_8cpp.html#a4ef5b5f197804a60836ab1e8907d8301">TAG</a>, <span class="stringliteral">&quot;SNTP init: %s&quot;</span>, esp_err_to_name(err));</div>
+<div class="line"><a id="l00261" name="l00261"></a><span class="lineno">  261</span>        <span class="keywordflow">return</span> <span class="keyword">false</span>;</div>
+<div class="line"><a id="l00262" name="l00262"></a><span class="lineno">  262</span>    }</div>
+<div class="line"><a id="l00263" name="l00263"></a><span class="lineno">  263</span> </div>
+<div class="line"><a id="l00264" name="l00264"></a><span class="lineno">  264</span>    <span class="comment">/* Poll across the budget so a slow first response doesn&#39;t fail us. */</span></div>
+<div class="line"><a id="l00265" name="l00265"></a><span class="lineno">  265</span>    <span class="keyword">const</span> <span class="keywordtype">int</span>   attempts = 3;</div>
+<div class="line"><a id="l00266" name="l00266"></a><span class="lineno">  266</span>    uint32_t    per_wait = timeout_ms / <span class="keyword">static_cast&lt;</span>uint32_t<span class="keyword">&gt;</span>(attempts);</div>
+<div class="line"><a id="l00267" name="l00267"></a><span class="lineno">  267</span>    <span class="keywordflow">if</span> (per_wait &lt; 2000U) { per_wait = 2000U; }</div>
+<div class="line"><a id="l00268" name="l00268"></a><span class="lineno">  268</span>    <span class="keywordtype">bool</span> synced = <span class="keyword">false</span>;</div>
+<div class="line"><a id="l00269" name="l00269"></a><span class="lineno">  269</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; (i &lt; attempts) &amp;&amp; !synced; i++) {</div>
+<div class="line"><a id="l00270" name="l00270"></a><span class="lineno">  270</span>        <span class="keywordflow">if</span> (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(per_wait)) == ESP_OK) {</div>
+<div class="line"><a id="l00271" name="l00271"></a><span class="lineno">  271</span>            synced = <span class="keyword">true</span>;</div>
+<div class="line"><a id="l00272" name="l00272"></a><span class="lineno">  272</span>        } <span class="keywordflow">else</span> {</div>
+<div class="line"><a id="l00273" name="l00273"></a><span class="lineno">  273</span>            ESP_LOGW(<a class="code hl_variable" href="eth__rpc_8cpp.html#a4ef5b5f197804a60836ab1e8907d8301">TAG</a>, <span class="stringliteral">&quot;SNTP: no time yet (%d/%d)&quot;</span>, i + 1, attempts);</div>
+<div class="line"><a id="l00274" name="l00274"></a><span class="lineno">  274</span>        }</div>
+<div class="line"><a id="l00275" name="l00275"></a><span class="lineno">  275</span>    }</div>
+<div class="line"><a id="l00276" name="l00276"></a><span class="lineno">  276</span> </div>
+<div class="line"><a id="l00277" name="l00277"></a><span class="lineno">  277</span>    <span class="keywordflow">if</span> (!synced) {</div>
+<div class="line"><a id="l00278" name="l00278"></a><span class="lineno">  278</span>        ESP_LOGE(<a class="code hl_variable" href="eth__rpc_8cpp.html#a4ef5b5f197804a60836ab1e8907d8301">TAG</a>, <span class="stringliteral">&quot;SNTP sync timed out&quot;</span>);</div>
+<div class="line"><a id="l00279" name="l00279"></a><span class="lineno">  279</span>        esp_netif_sntp_deinit();</div>
+<div class="line"><a id="l00280" name="l00280"></a><span class="lineno">  280</span>        <span class="keywordflow">return</span> <span class="keyword">false</span>;</div>
+<div class="line"><a id="l00281" name="l00281"></a><span class="lineno">  281</span>    }</div>
+<div class="line"><a id="l00282" name="l00282"></a><span class="lineno">  282</span> </div>
+<div class="line"><a id="l00283" name="l00283"></a><span class="lineno">  283</span>    <span class="comment">/* SNTP is unauthenticated (plain UDP/123), so anyone on the path can</span></div>
+<div class="line"><a id="l00284" name="l00284"></a><span class="lineno">  284</span><span class="comment">     * dictate the time. Reject a clock earlier than our own build: that is</span></div>
+<div class="line"><a id="l00285" name="l00285"></a><span class="lineno">  285</span><span class="comment">     * the direction an attacker needs to resurrect an expired certificate. */</span></div>
+<div class="line"><a id="l00286" name="l00286"></a><span class="lineno">  286</span>    <span class="keyword">const</span> int64_t floor_epoch = <a class="code hl_function" href="net_8cpp.html#ade0505eaf7b2477a44c3fba30f4c0400">build_time_floor</a>();</div>
+<div class="line"><a id="l00287" name="l00287"></a><span class="lineno">  287</span>    <span class="keyword">const</span> int64_t now_epoch   = <span class="keyword">static_cast&lt;</span>int64_t<span class="keyword">&gt;</span>(time(NULL));</div>
+<div class="line"><a id="l00288" name="l00288"></a><span class="lineno">  288</span>    <span class="keywordflow">if</span> (now_epoch &lt; floor_epoch) {</div>
+<div class="line"><a id="l00289" name="l00289"></a><span class="lineno">  289</span>        ESP_LOGE(<a class="code hl_variable" href="eth__rpc_8cpp.html#a4ef5b5f197804a60836ab1e8907d8301">TAG</a>, <span class="stringliteral">&quot;SNTP time %&quot;</span> PRId64 <span class="stringliteral">&quot; precedes firmware build floor %&quot;</span></div>
+<div class="line"><a id="l00290" name="l00290"></a><span class="lineno">  290</span>                      PRId64 <span class="stringliteral">&quot; - refusing (spoofed NTP?)&quot;</span>,</div>
+<div class="line"><a id="l00291" name="l00291"></a><span class="lineno">  291</span>                 now_epoch, floor_epoch);</div>
+<div class="line"><a id="l00292" name="l00292"></a><span class="lineno">  292</span>        esp_netif_sntp_deinit();</div>
+<div class="line"><a id="l00293" name="l00293"></a><span class="lineno">  293</span>        <span class="keywordflow">return</span> <span class="keyword">false</span>;</div>
+<div class="line"><a id="l00294" name="l00294"></a><span class="lineno">  294</span>    }</div>
+<div class="line"><a id="l00295" name="l00295"></a><span class="lineno">  295</span> </div>
+<div class="line"><a id="l00296" name="l00296"></a><span class="lineno">  296</span>    ESP_LOGI(<a class="code hl_variable" href="eth__rpc_8cpp.html#a4ef5b5f197804a60836ab1e8907d8301">TAG</a>, <span class="stringliteral">&quot;System time synced via SNTP (epoch %&quot;</span> PRId64 <span class="stringliteral">&quot;)&quot;</span>, now_epoch);</div>
+<div class="line"><a id="l00297" name="l00297"></a><span class="lineno">  297</span>    <span class="comment">/* Leave SNTP running for periodic background resyncs. */</span></div>
+<div class="line"><a id="l00298" name="l00298"></a><span class="lineno">  298</span>    <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
+<div class="line"><a id="l00299" name="l00299"></a><span class="lineno">  299</span>}</div>
+</div>
+<div class="ttc" id="acivil__time_8cpp_html_a198de0b139b321f4690712c13cc260b4"><div class="ttname"><a href="civil__time_8cpp.html#a198de0b139b321f4690712c13cc260b4">civil_parse_build_stamp</a></div><div class="ttdeci">bool civil_parse_build_stamp(const char *date, const char *time_str, int64_t *out)</div><div class="ttdoc">Parse the compiler&#39;s DATE / TIME pair into an epoch value.</div><div class="ttdef"><b>Definition</b> <a href="civil__time_8cpp_source.html#l00105">civil_time.cpp:105</a></div></div>
+<div class="ttc" id="acivil__time_8h_html"><div class="ttname"><a href="civil__time_8h.html">civil_time.h</a></div><div class="ttdoc">TZ-independent calendar arithmetic and date-string parsing.</div></div>
+<div class="ttc" id="aeth__rpc_8cpp_html_a4ef5b5f197804a60836ab1e8907d8301"><div class="ttname"><a href="eth__rpc_8cpp.html#a4ef5b5f197804a60836ab1e8907d8301">TAG</a></div><div class="ttdeci">static const char *const TAG</div><div class="ttdef"><b>Definition</b> <a href="eth__rpc_8cpp_source.html#l00036">eth_rpc.cpp:36</a></div></div>
+<div class="ttc" id="anet_8cpp_html_a4735ad9aef99f8584afd945f39260954"><div class="ttname"><a href="net_8cpp.html#a4735ad9aef99f8584afd945f39260954">WIFI_TIMEOUT_MS</a></div><div class="ttdeci">#define WIFI_TIMEOUT_MS</div><div class="ttdef"><b>Definition</b> <a href="#l00042">net.cpp:42</a></div></div>
+<div class="ttc" id="anet_8cpp_html_a5a67b39cd8bf0968ea4cb9a01dd62a5d"><div class="ttname"><a href="net_8cpp.html#a5a67b39cd8bf0968ea4cb9a01dd62a5d">s_wifi_inited</a></div><div class="ttdeci">static bool s_wifi_inited</div><div class="ttdef"><b>Definition</b> <a href="#l00050">net.cpp:50</a></div></div>
+<div class="ttc" id="anet_8cpp_html_a6183c17880c3cc5dcf982e66bafbaafe"><div class="ttname"><a href="net_8cpp.html#a6183c17880c3cc5dcf982e66bafbaafe">net_time_sync</a></div><div class="ttdeci">bool net_time_sync(uint32_t timeout_ms)</div><div class="ttdoc">Block until the system clock has been set via SNTP and sanity-checked.</div><div class="ttdef"><b>Definition</b> <a href="#l00252">net.cpp:252</a></div></div>
+<div class="ttc" id="anet_8cpp_html_a6aaca350cca4b3d105d88a6f399cb381"><div class="ttname"><a href="net_8cpp.html#a6aaca350cca4b3d105d88a6f399cb381">s_wifi_event_group</a></div><div class="ttdeci">static EventGroupHandle_t s_wifi_event_group</div><div class="ttdef"><b>Definition</b> <a href="#l00048">net.cpp:48</a></div></div>
+<div class="ttc" id="anet_8cpp_html_a6daea14ec02799a6d0a0f41da5226895"><div class="ttname"><a href="net_8cpp.html#a6daea14ec02799a6d0a0f41da5226895">net_wifi_rssi</a></div><div class="ttdeci">bool net_wifi_rssi(int8_t *rssi_out)</div><div class="ttdoc">Read the RSSI of the currently associated access point.</div><div class="ttdef"><b>Definition</b> <a href="#l00208">net.cpp:208</a></div></div>
+<div class="ttc" id="anet_8cpp_html_a7d013b55e50dfbda0904f5f933b63ec4"><div class="ttname"><a href="net_8cpp.html#a7d013b55e50dfbda0904f5f933b63ec4">WIFI_FAIL_BIT</a></div><div class="ttdeci">#define WIFI_FAIL_BIT</div><div class="ttdef"><b>Definition</b> <a href="#l00040">net.cpp:40</a></div></div>
+<div class="ttc" id="anet_8cpp_html_a85ab8d7927129c9f8c0cc0525eaa1b76"><div class="ttname"><a href="net_8cpp.html#a85ab8d7927129c9f8c0cc0525eaa1b76">net_wifi_connect</a></div><div class="ttdeci">bool net_wifi_connect(const char *ssid, const char *password)</div><div class="ttdoc">Connect to a WiFi network and block until an IP is obtained (up to 30 s). May be called repeatedly to...</div><div class="ttdef"><b>Definition</b> <a href="#l00168">net.cpp:168</a></div></div>
+<div class="ttc" id="anet_8cpp_html_a867a6c53b986cda4b652192a14565753"><div class="ttname"><a href="net_8cpp.html#a867a6c53b986cda4b652192a14565753">net_wifi_scan</a></div><div class="ttdeci">uint16_t net_wifi_scan(net_wifi_ap_t *out, uint16_t max)</div><div class="ttdoc">Scan for nearby access points (blocking).</div><div class="ttdef"><b>Definition</b> <a href="#l00126">net.cpp:126</a></div></div>
+<div class="ttc" id="anet_8cpp_html_a9889f5062c963896a887cd62a23730bf"><div class="ttname"><a href="net_8cpp.html#a9889f5062c963896a887cd62a23730bf">WIFI_MAX_RETRY</a></div><div class="ttdeci">#define WIFI_MAX_RETRY</div><div class="ttdef"><b>Definition</b> <a href="#l00041">net.cpp:41</a></div></div>
+<div class="ttc" id="anet_8cpp_html_aaf1ff99078677637758f3b20f1ed7a59"><div class="ttname"><a href="net_8cpp.html#aaf1ff99078677637758f3b20f1ed7a59">net_wifi_init</a></div><div class="ttdeci">void net_wifi_init(void)</div><div class="ttdoc">Bring up the WiFi driver in station mode (idempotent).</div><div class="ttdef"><b>Definition</b> <a href="#l00100">net.cpp:100</a></div></div>
+<div class="ttc" id="anet_8cpp_html_ac31e38637f7a5e5c8ce4d033b0955fec"><div class="ttname"><a href="net_8cpp.html#ac31e38637f7a5e5c8ce4d033b0955fec">wifi_event_handler</a></div><div class="ttdeci">static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)</div><div class="ttdoc">WiFi/IP event handler driving the connect retry state machine.</div><div class="ttdef"><b>Definition</b> <a href="#l00067">net.cpp:67</a></div></div>
+<div class="ttc" id="anet_8cpp_html_ad272ca04bfdb58036903285347595784"><div class="ttname"><a href="net_8cpp.html#ad272ca04bfdb58036903285347595784">BUILD_FLOOR_SLACK_S</a></div><div class="ttdeci">#define BUILD_FLOOR_SLACK_S</div><div class="ttdef"><b>Definition</b> <a href="#l00225">net.cpp:225</a></div></div>
+<div class="ttc" id="anet_8cpp_html_ad552e7688532cbbecd3967538ced06ac"><div class="ttname"><a href="net_8cpp.html#ad552e7688532cbbecd3967538ced06ac">WIFI_CONNECTED_BIT</a></div><div class="ttdeci">#define WIFI_CONNECTED_BIT</div><div class="ttdef"><b>Definition</b> <a href="#l00039">net.cpp:39</a></div></div>
+<div class="ttc" id="anet_8cpp_html_ade0505eaf7b2477a44c3fba30f4c0400"><div class="ttname"><a href="net_8cpp.html#ade0505eaf7b2477a44c3fba30f4c0400">build_time_floor</a></div><div class="ttdeci">static int64_t build_time_floor(void)</div><div class="ttdoc">Earliest system time this firmware will accept, as a Unix epoch.</div><div class="ttdef"><b>Definition</b> <a href="#l00239">net.cpp:239</a></div></div>
+<div class="ttc" id="anet_8cpp_html_ae4da33fdcdaa6688ed25dab508ed5592"><div class="ttname"><a href="net_8cpp.html#ae4da33fdcdaa6688ed25dab508ed5592">s_retry_num</a></div><div class="ttdeci">static int s_retry_num</div><div class="ttdef"><b>Definition</b> <a href="#l00049">net.cpp:49</a></div></div>
 <div class="ttc" id="anet_8h_html"><div class="ttname"><a href="net_8h.html">net.h</a></div><div class="ttdoc">Network bring-up: Wi-Fi station (init/scan/connect/RSSI) and SNTP time sync. No application-protocol ...</div></div>
 <div class="ttc" id="astructnet__wifi__ap__t_html"><div class="ttname"><a href="structnet__wifi__ap__t.html">net_wifi_ap_t</a></div><div class="ttdoc">A scanned access point (subset of fields the UI needs).</div><div class="ttdef"><b>Definition</b> <a href="net_8h_source.html#l00033">net.h:33</a></div></div>
 <div class="ttc" id="astructnet__wifi__ap__t_html_abfccd5924571fcb9dc14436cab07cb9e"><div class="ttname"><a href="structnet__wifi__ap__t.html#abfccd5924571fcb9dc14436cab07cb9e">net_wifi_ap_t::ssid</a></div><div class="ttdeci">char ssid[33]</div><div class="ttdef"><b>Definition</b> <a href="net_8h_source.html#l00034">net.h:34</a></div></div>

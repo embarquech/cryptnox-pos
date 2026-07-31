@@ -1,32 +1,38 @@
 <map id="main/eth_rpc.cpp" name="main/eth_rpc.cpp">
-<area shape="rect" id="Node000001" title="Ethereum JSON&#45;RPC client implementation (HTTPS). Network bring&#45;up (Wi&#45;Fi, SNTP) lives in net...." alt="" coords="577,5,712,31"/>
-<area shape="rect" id="Node000002" href="$eth__rpc_8h.html" title="Ethereum JSON&#45;RPC client over HTTPS (nonce / ecrecover parity / raw&#45;tx broadcast / receipt polling)...." alt="" coords="98,79,181,104"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="578,29,408,50,195,81,194,76,408,45,577,24"/>
-<area shape="rect" id="Node000006" href="$eth__json_8h.html" title="JSON&#45;RPC response parsing helpers — kept in their own unit (cJSON + CW_Utils only,..." alt="" coords="205,79,295,104"/>
-<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="578,33,309,81,308,76,577,28"/>
-<area shape="rect" id="Node000007" title=" " alt="" coords="319,79,389,104"/>
-<area shape="poly" id="edge7_Node000001_Node000007" title=" " alt="" coords="599,33,403,81,402,76,597,28"/>
-<area shape="rect" id="Node000008" title=" " alt="" coords="413,79,492,104"/>
-<area shape="poly" id="edge8_Node000001_Node000008" title=" " alt="" coords="615,33,498,76,496,71,613,28"/>
-<area shape="rect" id="Node000009" title=" " alt="" coords="516,79,587,104"/>
-<area shape="poly" id="edge9_Node000001_Node000009" title=" " alt="" coords="631,33,579,72,576,68,628,29"/>
-<area shape="rect" id="Node000010" title=" " alt="" coords="611,79,678,104"/>
-<area shape="poly" id="edge10_Node000001_Node000010" title=" " alt="" coords="647,31,647,65,642,65,642,31"/>
-<area shape="rect" id="Node000011" title=" " alt="" coords="703,79,789,104"/>
-<area shape="poly" id="edge11_Node000001_Node000011" title=" " alt="" coords="662,28,720,68,717,73,659,33"/>
-<area shape="rect" id="Node000012" title=" " alt="" coords="814,79,907,104"/>
-<area shape="poly" id="edge12_Node000001_Node000012" title=" " alt="" coords="680,28,814,72,812,77,679,33"/>
-<area shape="rect" id="Node000013" title=" " alt="" coords="932,79,1016,104"/>
-<area shape="poly" id="edge13_Node000001_Node000013" title=" " alt="" coords="698,28,919,75,918,81,697,33"/>
-<area shape="rect" id="Node000014" title=" " alt="" coords="1041,79,1174,104"/>
-<area shape="poly" id="edge14_Node000001_Node000014" title=" " alt="" coords="713,27,1028,75,1027,80,712,32"/>
-<area shape="rect" id="Node000015" title=" " alt="" coords="1199,79,1331,104"/>
-<area shape="poly" id="edge15_Node000001_Node000015" title=" " alt="" coords="713,23,1185,76,1185,81,712,29"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="5,152,76,177"/>
-<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="125,106,69,146,66,142,122,102"/>
-<area shape="rect" id="Node000004" title=" " alt="" coords="211,152,286,177"/>
-<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="158,102,221,142,218,147,155,106"/>
-<area shape="rect" id="Node000005" title=" " alt="" coords="101,152,183,177"/>
-<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="142,104,144,138,138,139,137,104"/>
-<area shape="poly" id="edge6_Node000006_Node000004" title=" " alt="" coords="252,104,252,139,246,138,247,104"/>
+<area shape="rect" id="Node000001" title="Ethereum JSON&#45;RPC client implementation (HTTPS). Network bring&#45;up (Wi&#45;Fi, SNTP) lives in net...." alt="" coords="607,5,742,31"/>
+<area shape="rect" id="Node000002" href="$eth__rpc_8h.html" title="Ethereum JSON&#45;RPC client over HTTPS (nonce / ecrecover parity / raw&#45;tx broadcast / receipt polling)...." alt="" coords="128,79,211,104"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="608,29,438,50,225,81,224,76,438,45,607,24"/>
+<area shape="rect" id="Node000006" href="$eth__json_8h.html" title="JSON&#45;RPC response parsing helpers — kept in their own unit (cJSON + CW_Utils only,..." alt="" coords="235,79,325,104"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="608,33,339,81,338,76,607,28"/>
+<area shape="rect" id="Node000007" href="$civil__time_8h.html" title="TZ&#45;independent calendar arithmetic and date&#45;string parsing." alt="" coords="5,79,104,104"/>
+<area shape="poly" id="edge7_Node000001_Node000007" title=" " alt="" coords="607,27,393,48,118,81,117,76,393,42,607,22"/>
+<area shape="rect" id="Node000008" title=" " alt="" coords="349,79,419,104"/>
+<area shape="poly" id="edge10_Node000001_Node000008" title=" " alt="" coords="629,33,433,81,432,76,627,28"/>
+<area shape="rect" id="Node000009" title=" " alt="" coords="443,79,522,104"/>
+<area shape="poly" id="edge11_Node000001_Node000009" title=" " alt="" coords="645,33,528,76,526,71,643,28"/>
+<area shape="rect" id="Node000010" title=" " alt="" coords="546,79,617,104"/>
+<area shape="poly" id="edge12_Node000001_Node000010" title=" " alt="" coords="661,33,609,72,606,68,658,29"/>
+<area shape="rect" id="Node000011" title=" " alt="" coords="641,79,708,104"/>
+<area shape="poly" id="edge13_Node000001_Node000011" title=" " alt="" coords="677,31,677,65,672,65,672,31"/>
+<area shape="rect" id="Node000012" title=" " alt="" coords="732,79,796,104"/>
+<area shape="poly" id="edge14_Node000001_Node000012" title=" " alt="" coords="691,29,740,68,737,72,687,33"/>
+<area shape="rect" id="Node000013" title=" " alt="" coords="821,79,907,104"/>
+<area shape="poly" id="edge15_Node000001_Node000013" title=" " alt="" coords="706,28,821,71,819,76,704,33"/>
+<area shape="rect" id="Node000014" title=" " alt="" coords="932,79,1025,104"/>
+<area shape="poly" id="edge16_Node000001_Node000014" title=" " alt="" coords="724,28,919,73,918,79,723,33"/>
+<area shape="rect" id="Node000015" title=" " alt="" coords="1050,79,1134,104"/>
+<area shape="poly" id="edge17_Node000001_Node000015" title=" " alt="" coords="743,27,1037,76,1036,81,742,32"/>
+<area shape="rect" id="Node000016" title=" " alt="" coords="1159,79,1292,104"/>
+<area shape="poly" id="edge18_Node000001_Node000016" title=" " alt="" coords="743,25,1145,76,1145,81,742,30"/>
+<area shape="rect" id="Node000017" title=" " alt="" coords="1317,79,1449,104"/>
+<area shape="poly" id="edge19_Node000001_Node000017" title=" " alt="" coords="743,22,985,43,1304,76,1303,81,985,48,742,27"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="130,152,201,177"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="171,104,169,139,164,138,166,104"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="233,152,308,177"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="187,102,244,142,241,146,184,106"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="20,152,103,177"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="153,106,92,147,89,142,151,102"/>
+<area shape="poly" id="edge6_Node000006_Node000004" title=" " alt="" coords="281,105,277,139,271,138,276,104"/>
+<area shape="poly" id="edge8_Node000007_Node000003" title=" " alt="" coords="74,102,137,142,134,147,71,106"/>
+<area shape="poly" id="edge9_Node000007_Node000005" title=" " alt="" coords="58,104,62,138,56,139,53,105"/>
 </map>

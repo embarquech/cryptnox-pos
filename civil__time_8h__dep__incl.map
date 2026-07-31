@@ -1,0 +1,9 @@
+<map id="main/civil_time.h" name="main/civil_time.h">
+<area shape="rect" id="Node000001" title="TZ&#45;independent calendar arithmetic and date&#45;string parsing." alt="" coords="180,5,315,31"/>
+<area shape="rect" id="Node000002" href="$civil__time_8cpp.html" title="TZ&#45;independent calendar arithmetic and date&#45;string parsing." alt="" coords="5,79,156,104"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="209,38,109,81,107,76,207,34"/>
+<area shape="rect" id="Node000003" href="$eth__rpc_8cpp.html" title="Ethereum JSON&#45;RPC client implementation (HTTPS). Network bring&#45;up (Wi&#45;Fi, SNTP) lives in net...." alt="" coords="180,79,315,104"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="250,44,250,79,245,79,245,44"/>
+<area shape="rect" id="Node000004" href="$net_8cpp.html" title="Wi&#45;Fi station bring&#45;up (init/scan/connect/RSSI) and SNTP time sync." alt="" coords="339,79,446,104"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="284,34,370,76,368,81,282,39"/>
+</map>
