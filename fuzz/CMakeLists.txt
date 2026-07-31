@@ -24,6 +24,12 @@ add_executable(fuzz_parse_address fuzz_parse_address.cpp)
 target_compile_options(fuzz_parse_address PRIVATE ${FUZZ_FLAGS})
 target_link_options(fuzz_parse_address    PRIVATE -fsanitize=fuzzer,address)
 
+# ── civil_time self-check (not a fuzzer: plain assert main()) ─────────
+# Self-contained (stdint/stdio/string only), so it needs no include paths.
+add_executable(test_civil_time test_civil_time.cpp)
+target_compile_options(test_civil_time PRIVATE -fsanitize=address -g -O1 -Wall)
+target_link_options(test_civil_time    PRIVATE -fsanitize=address)
+
 # ── Target 3: JSON-RPC response parser (needs cJSON + CW_Utils) ───────
 # cJSON ships with ESP-IDF; locate it via $IDF_PATH.
 if(DEFINED ENV{IDF_PATH})
