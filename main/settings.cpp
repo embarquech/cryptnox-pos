@@ -13,6 +13,13 @@
 #include <string.h>
 #include "nvs.h"
 #include "esp_log.h"
+#include "esp_random.h"
+
+#include "CW_Utils.h"   /* secure_wipe / secure_compare (CODING_RULES §1.4) */
+
+extern "C" {
+#include "keccak256.h"
+}
 
 #include "config.h"   /* MAX_FEE / MAX_PRIORITY_FEE — compile-time fee defaults */
 
@@ -25,6 +32,16 @@ static const char *const TAG = "settings";
 #define K_WIFI_PASS   "wifi_pass"
 #define K_MAX_FEE     "max_fee_gw"
 #define K_PRIO_FEE    "prio_fee_gw"
+#define K_ADMIN_SALT  "adm_salt"
+#define K_ADMIN_HASH  "adm_hash"
+#define K_ADMIN_FAILS "adm_fails"
+
+#define ADMIN_SALT_LEN    16U
+#define ADMIN_HASH_LEN    32U
+/* Longest code that goes into the digest. Deliberately NOT ui.cpp's
+ * ADMIN_CODE_MAX (9) — same name, different layer. Anything past this is
+ * silently dropped from the hash, so keep it comfortably above the UI's cap. */
+#define ADMIN_CODE_HASH_MAX  32U
 
 #define DEFAULT_BRIGHTNESS  80U
 
@@ -178,11 +195,131 @@ void settings_set_priority_fee_gwei(uint32_t gwei)
     fee_set(K_PRIO_FEE, gwei);
 }
 
+/**
+ * @brief Derive the stored digest: a single keccak256 over salt || code.
+ *
+ * Not stretched, on purpose. The digest lives in the flash-encrypted NVS, so
+ * reading it already means the encryption is defeated — and past that point no
+ * KDF cost saves a 4-digit code anyway. The salt is still there so the same code
+ * yields a different digest on every unit. Guessing at the panel is what the
+ * escalating lockout in ui.cpp is for.
+ */
+static void admin_derive(const char *code, const uint8_t *salt,
+                         uint8_t out[ADMIN_HASH_LEN])
+{
+    uint8_t buf[ADMIN_SALT_LEN + ADMIN_CODE_HASH_MAX];
+    const size_t clen = strnlen(code, ADMIN_CODE_HASH_MAX);
+
+    (void)memcpy(buf, salt, ADMIN_SALT_LEN);
+    (void)memcpy(buf + ADMIN_SALT_LEN, code, clen);
+    keccak256(buf, ADMIN_SALT_LEN + clen, out);
+    CW_Utils::secure_wipe(buf, sizeof(buf));
+}
+
+static void admin_set_fails(uint8_t n)
+{
+    nvs_handle_t h;
+    if (nvs_open(NS_SETTINGS, NVS_READWRITE, &h) == ESP_OK) {
+        (void)nvs_set_u8(h, K_ADMIN_FAILS, n);
+        (void)nvs_commit(h);
+        nvs_close(h);
+    }
+}
+
+bool settings_has_admin_code(void)
+{
+    bool present = false;
+    nvs_handle_t h;
+    if (nvs_open(NS_SETTINGS, NVS_READONLY, &h) == ESP_OK) {
+        size_t len = 0U;
+        present = (nvs_get_blob(h, K_ADMIN_HASH, NULL, &len) == ESP_OK) &&
+                  (len == ADMIN_HASH_LEN);
+        nvs_close(h);
+    }
+    return present;
+}
+
+bool settings_set_admin_code(const char *code)
+{
+    if (code == NULL) { return false; }
+
+    uint8_t salt[ADMIN_SALT_LEN];
+    esp_fill_random(salt, sizeof(salt));
+
+    uint8_t hash[ADMIN_HASH_LEN];
+    admin_derive(code, salt, hash);
+
+    /* Reported rather than swallowed: the menu — factory reset included — is
+     * unreachable without a stored code, so a silent write failure would leave
+     * a terminal only a USB erase can rescue. */
+    bool ok = false;
+    nvs_handle_t h;
+    if (nvs_open(NS_SETTINGS, NVS_READWRITE, &h) == ESP_OK) {
+        ok = (nvs_set_blob(h, K_ADMIN_SALT, salt, sizeof(salt)) == ESP_OK) &&
+             (nvs_set_blob(h, K_ADMIN_HASH, hash, sizeof(hash)) == ESP_OK) &&
+             (nvs_set_u8(h, K_ADMIN_FAILS, 0U) == ESP_OK) &&
+             (nvs_commit(h) == ESP_OK);
+        nvs_close(h);
+        ESP_LOGI(TAG, "admin code set: %s", ok ? "ok" : "FAILED");
+    } else {
+        ESP_LOGW(TAG, "admin code: nvs_open failed");
+    }
+    CW_Utils::secure_wipe(hash, sizeof(hash));
+    return ok;
+}
+
+bool settings_check_admin_code(const char *code)
+{
+    if (code == NULL) { return false; }
+
+    uint8_t salt[ADMIN_SALT_LEN];
+    uint8_t stored[ADMIN_HASH_LEN];
+    bool    have = false;
+
+    nvs_handle_t h;
+    if (nvs_open(NS_SETTINGS, NVS_READONLY, &h) == ESP_OK) {
+        size_t ls = sizeof(salt);
+        size_t lh = sizeof(stored);
+        have = (nvs_get_blob(h, K_ADMIN_SALT, salt, &ls) == ESP_OK) &&
+               (nvs_get_blob(h, K_ADMIN_HASH, stored, &lh) == ESP_OK) &&
+               (ls == ADMIN_SALT_LEN) && (lh == ADMIN_HASH_LEN);
+        nvs_close(h);
+    }
+    if (!have) { return false; }   /* no code stored — nothing to match */
+
+    uint8_t calc[ADMIN_HASH_LEN];
+    admin_derive(code, salt, calc);
+    const bool ok = CW_Utils::secure_compare(calc, stored, ADMIN_HASH_LEN);
+    CW_Utils::secure_wipe(calc, sizeof(calc));
+
+    if (ok) {
+        if (settings_admin_fail_count() != 0U) { admin_set_fails(0U); }
+    } else {
+        const uint8_t n = settings_admin_fail_count();
+        admin_set_fails((n < 255U) ? (uint8_t)(n + 1U) : 255U);
+        ESP_LOGW(TAG, "admin unlock failed (%u consecutive)", (unsigned)(n + 1U));
+    }
+    return ok;
+}
+
+uint8_t settings_admin_fail_count(void)
+{
+    uint8_t n = 0U;
+    nvs_handle_t h;
+    if (nvs_open(NS_SETTINGS, NVS_READONLY, &h) == ESP_OK) {
+        (void)nvs_get_u8(h, K_ADMIN_FAILS, &n);
+        nvs_close(h);
+    }
+    return n;
+}
+
 void settings_factory_reset(void)
 {
     nvs_handle_t h;
     if (nvs_open(NS_SETTINGS, NVS_READWRITE, &h) == ESP_OK) {
-        (void)nvs_erase_all(h);   /* drops brightness, auto flag, Wi-Fi creds */
+        /* Drops brightness, auto flag, Wi-Fi creds and the admin code — so a
+         * reset terminal comes back up into first-run setup for both. */
+        (void)nvs_erase_all(h);
         (void)nvs_commit(h);
         nvs_close(h);
         ESP_LOGW(TAG, "settings: factory reset");

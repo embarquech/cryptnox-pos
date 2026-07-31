@@ -429,6 +429,26 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
  * Blocks until a connection succeeds; the operator cannot leave setup without
  * one. config.h Wi-Fi credentials are intentionally not used (NVS only).
  */
+/**
+ * @brief Block until the UI reports @p want, discarding anything else.
+ *
+ * For the first-run steps, which are modal by design: nothing else the operator
+ * can tap matters until the step is done. The queue is flushed on the way out —
+ * a repeated tap would otherwise be read by the next stage, and ensure_wifi()
+ * treats an event it does not recognise as "rescan and reopen the picker",
+ * which would throw away a password half typed.
+ */
+static void wait_for_ui_event(ui_event_t want)
+{
+    ui_msg_t msg;
+    bool     got = false;
+    while (!got) {
+        if (xQueueReceive(s_ui_queue, &msg, portMAX_DELAY) != pdTRUE) { continue; }
+        got = (msg.event == want);
+    }
+    (void)xQueueReset(s_ui_queue);
+}
+
 static void ensure_wifi(void)
 {
     char ssid[33] = { 0 };
@@ -551,6 +571,27 @@ extern "C" void app_main(void)
     /* pin the RPC endpoint's certificate instead of the CA bundle. */
     eth_rpc_set_ca_cert(RPC_CA_CERT_PEM);
 #endif
+    /* ── First run: greet, then set up ────────────────────────── */
+    /* A missing admin code means a virgin or factory-reset terminal, since the
+     * reset erases it too. Greet before the setup steps start asking for a
+     * network and a code — it is the one moment we have the operator's attention
+     * and nothing to demand of them yet. */
+    const bool first_run = !settings_has_admin_code();
+    if (first_run) {
+        ui_show_welcome();
+        wait_for_ui_event(UI_EVENT_WELCOME_DONE);
+
+        /* The code comes BEFORE the network, and not for tidiness: the Wi-Fi
+         * picker carries a back arrow that the UI task honours on its own, which
+         * drops the operator on the amount screen — burger included — while main
+         * is still blocked here. With no code stored yet, that burger opened the
+         * settings freely. Creating the code first closes that window; the
+         * creation screen itself has no way out. */
+        ESP_LOGI(TAG, "no admin code - first-run setup");
+        ui_show_admin_set();
+        wait_for_ui_event(UI_EVENT_ADMIN_SET);
+    }
+
     net_wifi_init();
     /* Connect with saved creds, or run the first-run picker until connected
      * (config.h Wi-Fi is no longer used). */

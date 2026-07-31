@@ -42,6 +42,9 @@ typedef enum {
     UI_SCREEN_WIFI_CONNECTING, /**< "Connecting…" while main associates.   */
     UI_SCREEN_SETTINGS,    /**< Full-screen settings (tabs).               */
     UI_SCREEN_TX_STATUS,   /**< Card wait / signing / broadcast progress.  */
+    UI_SCREEN_ADMIN_SET,   /**< First-run creation of the admin code.      */
+    UI_SCREEN_ADMIN_UNLOCK,/**< Admin code demanded before the settings.   */
+    UI_SCREEN_WELCOME,     /**< Greeting opening first-run setup.          */
 } ui_screen_t;
 
 /** @brief Events emitted by the UI task towards the main task. */
@@ -53,6 +56,8 @@ typedef enum {
     UI_EVENT_WIFI_SCAN,         /**< User opened the Wi-Fi picker; main should scan. */
     UI_EVENT_WIFI_TRY,          /**< Wi-Fi creds entered; fetch via ui_take_wifi_creds. */
     UI_EVENT_TX_RETRY,          /**< New payment tapped after Done/Failed. */
+    UI_EVENT_ADMIN_SET,         /**< Admin code created and stored (first run). */
+    UI_EVENT_WELCOME_DONE,      /**< Start tapped on the welcome screen.   */
 } ui_event_t;
 
 /** @brief States shown on the transaction-status screen. */
@@ -140,6 +145,23 @@ void ui_set_addresses(const char *usdc_contract, const char *dest_addr);
 
 /** @brief Show a "Connecting to <ssid>…" screen while main associates. */
 void ui_show_wifi_connecting(const char *ssid);
+
+/**
+ * @brief Greet the operator at the start of first-run setup.
+ *
+ * Shown on a virgin or factory-reset terminal, before the Wi-Fi and admin-code
+ * steps. Emits @ref UI_EVENT_WELCOME_DONE when Start is tapped.
+ */
+void ui_show_welcome(void);
+
+/**
+ * @brief Run the first-run admin-code creation (enter, then confirm).
+ *
+ * Deliberately has no way out: everything behind the burger menu — Wi-Fi, fees,
+ * factory reset — sits behind this code, so the terminal must not become usable
+ * without one. Emits @ref UI_EVENT_ADMIN_SET once stored.
+ */
+void ui_show_admin_set(void);
 
 /**
  * @brief Fetch the selected SSID + entered password and wipe the UI's copy.
