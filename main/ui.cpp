@@ -243,6 +243,7 @@ static char          s_wifi_ssid[33] = {0};   /* selected network          */
 static char          s_wifi_pass[65] = {0};   /* entered passphrase (handoff) */
 static char          s_wifi_msg[64]  = {0};   /* "Scanning…" / "Connecting to <ssid>…" */
 static lv_obj_t     *s_wifi_pass_ta  = NULL;
+static lv_obj_t     *s_wifi_eye_lbl  = NULL;   /* glyph swapped on reveal/hide */
 
 /* Admin code (burger-menu lock). 4 digits on purpose: the threat is a customer
  * left alone with the terminal for a minute, which the escalating penalty below
@@ -284,7 +285,8 @@ static uint32_t  s_prio_gwei   = 0U;
 enum BtnAction {
     ACT_CONFIRM, ACT_CANCEL, ACT_SEND, ACT_NEW,
     ACT_SETTINGS, ACT_CLOSE, ACT_PIN_CANCEL,
-    ACT_WIFI, ACT_WIFI_CANCEL, ACT_ADMIN_CANCEL, ACT_WELCOME_OK,
+    ACT_WIFI, ACT_WIFI_CANCEL, ACT_WIFI_PASS_REVEAL,
+    ACT_ADMIN_CANCEL, ACT_WELCOME_OK,
     ACT_RESET, ACT_RESET_CONFIRM, ACT_RESET_CANCEL,
 };
 
@@ -429,6 +431,20 @@ static void btn_event_cb(lv_event_t *e) {
                                   sizeof(s_wifi_pass));
             request_screen(UI_SCREEN_AMOUNT);
             break;
+        case ACT_WIFI_PASS_REVEAL:
+            /* Toggled in place, never via request_screen() — rebuilding the
+             * screen would discard what the operator has typed. */
+            if (s_wifi_pass_ta != NULL) {
+                bool masked = lv_textarea_get_password_mode(s_wifi_pass_ta);
+                lv_textarea_set_password_mode(s_wifi_pass_ta, !masked);
+                if (s_wifi_eye_lbl != NULL) {
+                    /* Glyph shows what the next tap does. */
+                    lv_label_set_text(s_wifi_eye_lbl,
+                                      masked ? LV_SYMBOL_EYE_CLOSE
+                                             : LV_SYMBOL_EYE_OPEN);
+                }
+            }
+            break;
         case ACT_RESET:
             open_reset_confirm();            /* ask before wiping */
             break;
@@ -520,6 +536,7 @@ static void clear_screen(void) {
     s_amount_usdc  = NULL;
     s_pin_ta       = NULL;   /* deleted by lv_obj_clean — drop the dangling ref */
     s_wifi_pass_ta = NULL;
+    s_wifi_eye_lbl   = NULL;
     s_admin_ta       = NULL;
     s_admin_note_lbl = NULL;
     s_reset_btn    = NULL;
@@ -1069,6 +1086,9 @@ static void pin_kbd_cb(lv_event_t *e) {
 static lv_obj_t *make_code_field(uint32_t max_len, lv_coord_t y) {
     lv_obj_t *ta = lv_textarea_create(lv_scr_act());
     lv_textarea_set_password_mode(ta, true);
+    /* Echo each digit briefly so the operator can confirm the keypress, then
+     * mask — a third of LVGL's 1500 ms default, which leaks the whole code. */
+    lv_textarea_set_password_show_time(ta, 500);
     lv_textarea_set_one_line(ta, true);
     lv_textarea_set_max_length(ta, max_len);
     lv_textarea_set_text(ta, "");
@@ -1357,10 +1377,23 @@ static void build_wifi_pass(void) {
     lv_textarea_set_one_line(s_wifi_pass_ta, true);
     lv_textarea_set_text(s_wifi_pass_ta, "");
     lv_textarea_set_placeholder_text(s_wifi_pass_ta, "Password");
-    lv_obj_set_width(s_wifi_pass_ta, SCR_W - 24);
-    lv_obj_align(s_wifi_pass_ta, LV_ALIGN_TOP_MID, 0, 28);
+    /* Masked by default: this screen faces the customer. The eye beside it
+     * reveals on demand, for checking a long passphrase. */
+    lv_textarea_set_password_mode(s_wifi_pass_ta, true);
+    /* Echo each character briefly, then mask — long enough to catch a typo,
+     * a third of LVGL's 1500 ms default on a customer-facing screen. The eye
+     * stays the way to re-read the whole passphrase, on the merchant's terms. */
+    lv_textarea_set_password_show_time(s_wifi_pass_ta, 500);
+    lv_obj_set_width(s_wifi_pass_ta, SCR_W - 24 - MENU_BTN_W);
+    lv_obj_align(s_wifi_pass_ta, LV_ALIGN_TOP_LEFT, 12, 28);
     lv_obj_set_style_bg_color(s_wifi_pass_ta, COL_SURFACE, LV_PART_MAIN);
     lv_obj_set_style_text_color(s_wifi_pass_ta, COL_TEXT, LV_PART_MAIN);
+
+    /* make_icon_button() places itself top-left for the burger; move it beside
+     * the field. Keep the label handle so the glyph can be swapped in place. */
+    lv_obj_t *eye = make_icon_button(LV_SYMBOL_EYE_OPEN, ACT_WIFI_PASS_REVEAL);
+    lv_obj_align_to(eye, s_wifi_pass_ta, LV_ALIGN_OUT_RIGHT_MID, 6, 0);
+    s_wifi_eye_lbl = lv_obj_get_child(eye, 0);
 
     lv_obj_t *kb = lv_keyboard_create(lv_scr_act());
     lv_keyboard_set_textarea(kb, s_wifi_pass_ta);
