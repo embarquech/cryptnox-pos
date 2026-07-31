@@ -1247,7 +1247,16 @@ static void admin_submit(void) {
                 request_screen(UI_SCREEN_ADMIN_SET);   /* rebuild, confirm pass */
             }
         } else if (strcmp(code, s_admin_first) == 0) {
-            settings_set_admin_code(code);
+            if (!settings_set_admin_code(code)) {
+                /* Stay put and say so. Reporting success here would send main on
+                 * to Wi-Fi setup and leave a terminal whose menu — factory reset
+                 * included — no code can ever open. */
+                admin_set_note("Storage error - try again");
+                lv_textarea_set_text(s_admin_ta, "");
+                CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(code),
+                                      sizeof(code));
+                return;
+            }
             CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_admin_first),
                                   sizeof(s_admin_first));
             s_admin_confirming = false;
@@ -1270,7 +1279,12 @@ static void admin_submit(void) {
     } else {
         const uint32_t wait_s = admin_lock_remaining_s();
         char msg[sizeof(s_admin_note)];
-        if (wait_s > 0U) {
+        if (strlen(code) < ADMIN_CODE_MIN) {
+            /* Too short to be any stored code, so don't spend an attempt on it.
+             * Otherwise a few stray taps on OK push the counter into the penalty
+             * and the merchant waits a minute for a menu nobody attacked. */
+            admin_set_note("Enter your code");
+        } else if (wait_s > 0U) {
             (void)snprintf(msg, sizeof(msg), "Too many tries - wait %us",
                            static_cast<unsigned>(wait_s));
             admin_set_note(msg);

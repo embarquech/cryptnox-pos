@@ -63,12 +63,14 @@ bool settings_has_admin_code(void);
 /**
  * @brief Store a new admin code, with a fresh random salt.
  *
- * The code is never persisted — only a salted, stretched keccak256 digest of it.
- * Resets the failure counter.
+ * The code is never persisted — only a salted keccak256 digest of it,
+ * deliberately not stretched (see settings.cpp). Resets the failure counter.
  *
  * @param[in] code NUL-terminated code; the caller wipes its own copy.
+ * @return false if NVS refused the write — the caller must not treat setup as
+ *         done, since a terminal with no stored code can never open its menu.
  */
-void settings_set_admin_code(const char *code);
+bool settings_set_admin_code(const char *code);
 
 /**
  * @brief Check a candidate code, maintaining the failure counter.

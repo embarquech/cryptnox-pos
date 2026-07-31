@@ -38,7 +38,10 @@ static const char *const TAG = "settings";
 
 #define ADMIN_SALT_LEN    16U
 #define ADMIN_HASH_LEN    32U
-#define ADMIN_CODE_MAX    32U
+/* Longest code that goes into the digest. Deliberately NOT ui.cpp's
+ * ADMIN_CODE_MAX (9) — same name, different layer. Anything past this is
+ * silently dropped from the hash, so keep it comfortably above the UI's cap. */
+#define ADMIN_CODE_HASH_MAX  32U
 
 #define DEFAULT_BRIGHTNESS  80U
 
@@ -204,8 +207,8 @@ void settings_set_priority_fee_gwei(uint32_t gwei)
 static void admin_derive(const char *code, const uint8_t *salt,
                          uint8_t out[ADMIN_HASH_LEN])
 {
-    uint8_t buf[ADMIN_SALT_LEN + ADMIN_CODE_MAX];
-    const size_t clen = strnlen(code, ADMIN_CODE_MAX);
+    uint8_t buf[ADMIN_SALT_LEN + ADMIN_CODE_HASH_MAX];
+    const size_t clen = strnlen(code, ADMIN_CODE_HASH_MAX);
 
     (void)memcpy(buf, salt, ADMIN_SALT_LEN);
     (void)memcpy(buf + ADMIN_SALT_LEN, code, clen);
@@ -236,9 +239,9 @@ bool settings_has_admin_code(void)
     return present;
 }
 
-void settings_set_admin_code(const char *code)
+bool settings_set_admin_code(const char *code)
 {
-    if (code == NULL) { return; }
+    if (code == NULL) { return false; }
 
     uint8_t salt[ADMIN_SALT_LEN];
     esp_fill_random(salt, sizeof(salt));
@@ -246,18 +249,23 @@ void settings_set_admin_code(const char *code)
     uint8_t hash[ADMIN_HASH_LEN];
     admin_derive(code, salt, hash);
 
+    /* Reported rather than swallowed: the menu — factory reset included — is
+     * unreachable without a stored code, so a silent write failure would leave
+     * a terminal only a USB erase can rescue. */
+    bool ok = false;
     nvs_handle_t h;
     if (nvs_open(NS_SETTINGS, NVS_READWRITE, &h) == ESP_OK) {
-        (void)nvs_set_blob(h, K_ADMIN_SALT, salt, sizeof(salt));
-        (void)nvs_set_blob(h, K_ADMIN_HASH, hash, sizeof(hash));
-        (void)nvs_set_u8(h, K_ADMIN_FAILS, 0U);
-        (void)nvs_commit(h);
+        ok = (nvs_set_blob(h, K_ADMIN_SALT, salt, sizeof(salt)) == ESP_OK) &&
+             (nvs_set_blob(h, K_ADMIN_HASH, hash, sizeof(hash)) == ESP_OK) &&
+             (nvs_set_u8(h, K_ADMIN_FAILS, 0U) == ESP_OK) &&
+             (nvs_commit(h) == ESP_OK);
         nvs_close(h);
-        ESP_LOGI(TAG, "admin code set");
+        ESP_LOGI(TAG, "admin code set: %s", ok ? "ok" : "FAILED");
     } else {
         ESP_LOGW(TAG, "admin code: nvs_open failed");
     }
     CW_Utils::secure_wipe(hash, sizeof(hash));
+    return ok;
 }
 
 bool settings_check_admin_code(const char *code)
