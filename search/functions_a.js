@@ -1,7 +1,8 @@
 var searchData=
 [
-  ['make_5fbutton_0',['make_button',['../ui_8cpp.html#ac7ba359bf17281740d22b2c425151bec',1,'ui.cpp']]],
-  ['make_5fdivider_1',['make_divider',['../ui_8cpp.html#a54b05e5e1537413d5bcb27cc16c38769',1,'ui.cpp']]],
-  ['make_5ficon_5fbutton_2',['make_icon_button',['../ui_8cpp.html#a77d2a22c35d1f820a378f8f61dc3f4ac',1,'ui.cpp']]],
-  ['make_5flabel_3',['make_label',['../ui_8cpp.html#aa7e504784ddcaf95352bada60cf551ff',1,'ui.cpp']]]
+  ['net_5ftime_5fsync_0',['net_time_sync',['../net_8cpp.html#a6183c17880c3cc5dcf982e66bafbaafe',1,'net_time_sync(uint32_t timeout_ms):&#160;net.cpp'],['../net_8h.html#a6183c17880c3cc5dcf982e66bafbaafe',1,'net_time_sync(uint32_t timeout_ms):&#160;net.cpp']]],
+  ['net_5fwifi_5fconnect_1',['net_wifi_connect',['../net_8cpp.html#a85ab8d7927129c9f8c0cc0525eaa1b76',1,'net_wifi_connect(const char *ssid, const char *password):&#160;net.cpp'],['../net_8h.html#a85ab8d7927129c9f8c0cc0525eaa1b76',1,'net_wifi_connect(const char *ssid, const char *password):&#160;net.cpp']]],
+  ['net_5fwifi_5finit_2',['net_wifi_init',['../net_8cpp.html#aaf1ff99078677637758f3b20f1ed7a59',1,'net_wifi_init(void):&#160;net.cpp'],['../net_8h.html#aaf1ff99078677637758f3b20f1ed7a59',1,'net_wifi_init(void):&#160;net.cpp']]],
+  ['net_5fwifi_5frssi_3',['net_wifi_rssi',['../net_8cpp.html#a6daea14ec02799a6d0a0f41da5226895',1,'net_wifi_rssi(int8_t *rssi_out):&#160;net.cpp'],['../net_8h.html#a6daea14ec02799a6d0a0f41da5226895',1,'net_wifi_rssi(int8_t *rssi_out):&#160;net.cpp']]],
+  ['net_5fwifi_5fscan_4',['net_wifi_scan',['../net_8cpp.html#a867a6c53b986cda4b652192a14565753',1,'net_wifi_scan(net_wifi_ap_t *out, uint16_t max):&#160;net.cpp'],['../net_8h.html#a867a6c53b986cda4b652192a14565753',1,'net_wifi_scan(net_wifi_ap_t *out, uint16_t max):&#160;net.cpp']]]
 ];

@@ -144,10 +144,6 @@ Functions</h2></td></tr>
 <tr class="memdesc:a818ad1b9e12386084a6f3ac81b457206"><td class="mdescLeft">&#160;</td><td class="mdescRight">Backlight level in percent, or 80 if never set.  <br /></td></tr>
 <tr class="memitem:ad15919561c01cc19a22b19b34d30db5c" id="r_ad15919561c01cc19a22b19b34d30db5c"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#ad15919561c01cc19a22b19b34d30db5c">settings_set_brightness</a> (uint8_t pct)</td></tr>
 <tr class="memdesc:ad15919561c01cc19a22b19b34d30db5c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Persist the backlight level (0..100).  <br /></td></tr>
-<tr class="memitem:a58ba0c4477f0545cc05c83fc49400d8e" id="r_a58ba0c4477f0545cc05c83fc49400d8e"><td class="memItemLeft">bool&#160;</td><td class="memItemRight"><a class="el" href="#a58ba0c4477f0545cc05c83fc49400d8e">settings_get_auto_brightness</a> (void)</td></tr>
-<tr class="memdesc:a58ba0c4477f0545cc05c83fc49400d8e"><td class="mdescLeft">&#160;</td><td class="mdescRight">true if automatic (light-sensor) brightness is enabled (default false).  <br /></td></tr>
-<tr class="memitem:a147486c72fa01061f30fcd7847baee57" id="r_a147486c72fa01061f30fcd7847baee57"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#a147486c72fa01061f30fcd7847baee57">settings_set_auto_brightness</a> (bool on)</td></tr>
-<tr class="memdesc:a147486c72fa01061f30fcd7847baee57"><td class="mdescLeft">&#160;</td><td class="mdescRight">Persist the automatic-brightness flag.  <br /></td></tr>
 <tr class="memitem:a0ce88caf5e1f89361552c90b47ebc9be" id="r_a0ce88caf5e1f89361552c90b47ebc9be"><td class="memItemLeft">bool&#160;</td><td class="memItemRight"><a class="el" href="#a0ce88caf5e1f89361552c90b47ebc9be">settings_has_wifi</a> (void)</td></tr>
 <tr class="memdesc:a0ce88caf5e1f89361552c90b47ebc9be"><td class="mdescLeft">&#160;</td><td class="mdescRight">true if a Wi-Fi SSID has been stored.  <br /></td></tr>
 <tr class="memitem:a172f2aea1550fda41bb292fca261891b" id="r_a172f2aea1550fda41bb292fca261891b"><td class="memItemLeft">bool&#160;</td><td class="memItemRight"><a class="el" href="#a172f2aea1550fda41bb292fca261891b">settings_get_wifi</a> (char *ssid, size_t ssid_n, char *pass, size_t pass_n)</td></tr>
@@ -188,36 +184,11 @@ Functions</h2></td></tr>
 
 <p>Erase all stored settings (brightness, auto, Wi-Fi creds, fees). </p>
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00181">181</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00159">159</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="settings_8cpp_source.html#l00021">NS_SETTINGS</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00036">TAG</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l00366">btn_event_cb()</a>.</p>
-
-</div>
-</div>
-<a id="a58ba0c4477f0545cc05c83fc49400d8e" name="a58ba0c4477f0545cc05c83fc49400d8e"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a58ba0c4477f0545cc05c83fc49400d8e">&#9670;&#160;</a></span>settings_get_auto_brightness()</h2>
-
-<div class="memitem">
-<div class="memproto">
-      <table class="memname">
-        <tr>
-          <td class="memname">bool settings_get_auto_brightness </td>
-          <td>(</td>
-          <td class="paramtype">void</td>          <td class="paramname"><span class="paramname"><em></em></span></td><td>)</td>
-          <td></td>
-        </tr>
-      </table>
-</div><div class="memdoc">
-
-<p>true if automatic (light-sensor) brightness is enabled (default false). </p>
-
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00063">63</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
-
-<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00023">K_AUTO_BL</a>, and <a class="el" href="settings_8cpp_source.html#l00021">NS_SETTINGS</a>.</p>
-
-<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l01308">ui_task()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l00329">btn_event_cb()</a>.</p>
 
 </div>
 </div>
@@ -238,11 +209,11 @@ Functions</h2></td></tr>
 
 <p>Backlight level in percent, or 80 if never set. </p>
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00036">36</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00035">35</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00029">DEFAULT_BRIGHTNESS</a>, <a class="el" href="settings_8cpp_source.html#l00022">K_BRIGHTNESS</a>, and <a class="el" href="settings_8cpp_source.html#l00021">NS_SETTINGS</a>.</p>
+<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00028">DEFAULT_BRIGHTNESS</a>, <a class="el" href="settings_8cpp_source.html#l00022">K_BRIGHTNESS</a>, and <a class="el" href="settings_8cpp_source.html#l00021">NS_SETTINGS</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l01308">ui_task()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l01243">ui_task()</a>.</p>
 
 </div>
 </div>
@@ -264,11 +235,11 @@ Functions</h2></td></tr>
 <p>EIP-1559 max fee per gas, in Gwei. </p>
 <dl class="section return"><dt>Returns</dt><dd>the stored override, or the config.h compile-time default (MAX_FEE) if the user has never changed it. </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00161">161</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00139">139</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00033">DEFAULT_MAX_FEE_GWEI</a>, <a class="el" href="settings_8cpp_source.html#l00138">fee_get()</a>, and <a class="el" href="settings_8cpp_source.html#l00026">K_MAX_FEE</a>.</p>
+<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00032">DEFAULT_MAX_FEE_GWEI</a>, <a class="el" href="settings_8cpp_source.html#l00116">fee_get()</a>, and <a class="el" href="settings_8cpp_source.html#l00025">K_MAX_FEE</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l00646">build_settings()</a>, and <a class="el" href="main_8cpp_source.html#l00218">sign_and_broadcast()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l00593">build_settings()</a>, and <a class="el" href="main_8cpp_source.html#l00218">sign_and_broadcast()</a>.</p>
 
 </div>
 </div>
@@ -290,11 +261,11 @@ Functions</h2></td></tr>
 <p>EIP-1559 max priority fee (tip) per gas, in Gwei. </p>
 <dl class="section return"><dt>Returns</dt><dd>the stored override, or the config.h default (MAX_PRIORITY_FEE). </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00171">171</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00149">149</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00034">DEFAULT_PRIORITY_FEE_GWEI</a>, <a class="el" href="settings_8cpp_source.html#l00138">fee_get()</a>, and <a class="el" href="settings_8cpp_source.html#l00027">K_PRIO_FEE</a>.</p>
+<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00033">DEFAULT_PRIORITY_FEE_GWEI</a>, <a class="el" href="settings_8cpp_source.html#l00116">fee_get()</a>, and <a class="el" href="settings_8cpp_source.html#l00026">K_PRIO_FEE</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l00646">build_settings()</a>, and <a class="el" href="main_8cpp_source.html#l00218">sign_and_broadcast()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l00593">build_settings()</a>, and <a class="el" href="main_8cpp_source.html#l00218">sign_and_broadcast()</a>.</p>
 
 </div>
 </div>
@@ -339,11 +310,11 @@ Functions</h2></td></tr>
 </dl>
 <dl class="section return"><dt>Returns</dt><dd>true if both SSID and password were present, false otherwise (buffers are left NUL-terminated/empty on failure). </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00098">98</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00076">76</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00025">K_WIFI_PASS</a>, <a class="el" href="settings_8cpp_source.html#l00024">K_WIFI_SSID</a>, and <a class="el" href="settings_8cpp_source.html#l00021">NS_SETTINGS</a>.</p>
+<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00024">K_WIFI_PASS</a>, <a class="el" href="settings_8cpp_source.html#l00023">K_WIFI_SSID</a>, and <a class="el" href="settings_8cpp_source.html#l00021">NS_SETTINGS</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l00646">build_settings()</a>, and <a class="el" href="main_8cpp_source.html#l00432">ensure_wifi()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l00593">build_settings()</a>, and <a class="el" href="main_8cpp_source.html#l00432">ensure_wifi()</a>.</p>
 
 </div>
 </div>
@@ -364,34 +335,9 @@ Functions</h2></td></tr>
 
 <p>true if a Wi-Fi SSID has been stored. </p>
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00084">84</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00062">62</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00024">K_WIFI_SSID</a>, and <a class="el" href="settings_8cpp_source.html#l00021">NS_SETTINGS</a>.</p>
-
-</div>
-</div>
-<a id="a147486c72fa01061f30fcd7847baee57" name="a147486c72fa01061f30fcd7847baee57"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a147486c72fa01061f30fcd7847baee57">&#9670;&#160;</a></span>settings_set_auto_brightness()</h2>
-
-<div class="memitem">
-<div class="memproto">
-      <table class="memname">
-        <tr>
-          <td class="memname">void settings_set_auto_brightness </td>
-          <td>(</td>
-          <td class="paramtype">bool</td>          <td class="paramname"><span class="paramname"><em>on</em></span></td><td>)</td>
-          <td></td>
-        </tr>
-      </table>
-</div><div class="memdoc">
-
-<p>Persist the automatic-brightness flag. </p>
-
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00074">74</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
-
-<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00023">K_AUTO_BL</a>, and <a class="el" href="settings_8cpp_source.html#l00021">NS_SETTINGS</a>.</p>
-
-<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l00512">settings_persist()</a>.</p>
+<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00023">K_WIFI_SSID</a>, and <a class="el" href="settings_8cpp_source.html#l00021">NS_SETTINGS</a>.</p>
 
 </div>
 </div>
@@ -412,11 +358,11 @@ Functions</h2></td></tr>
 
 <p>Persist the backlight level (0..100). </p>
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00050">50</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00049">49</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="settings_8cpp_source.html#l00022">K_BRIGHTNESS</a>, <a class="el" href="settings_8cpp_source.html#l00021">NS_SETTINGS</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00036">TAG</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l00512">settings_persist()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l00475">settings_persist()</a>.</p>
 
 </div>
 </div>
@@ -437,11 +383,11 @@ Functions</h2></td></tr>
 
 <p>Persist the max fee per gas (Gwei). </p>
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00166">166</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00144">144</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00149">fee_set()</a>, and <a class="el" href="settings_8cpp_source.html#l00026">K_MAX_FEE</a>.</p>
+<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00127">fee_set()</a>, and <a class="el" href="settings_8cpp_source.html#l00025">K_MAX_FEE</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l00512">settings_persist()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l00475">settings_persist()</a>.</p>
 
 </div>
 </div>
@@ -462,11 +408,11 @@ Functions</h2></td></tr>
 
 <p>Persist the max priority fee per gas (Gwei). </p>
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00176">176</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00154">154</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00149">fee_set()</a>, and <a class="el" href="settings_8cpp_source.html#l00027">K_PRIO_FEE</a>.</p>
+<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00127">fee_set()</a>, and <a class="el" href="settings_8cpp_source.html#l00026">K_PRIO_FEE</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l00512">settings_persist()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="ui_8cpp_source.html#l00475">settings_persist()</a>.</p>
 
 </div>
 </div>
@@ -491,9 +437,9 @@ Functions</h2></td></tr>
 
 <p>Persist Wi-Fi credentials (plaintext — see README threat model). </p>
 
-<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00124">124</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="settings_8cpp_source.html#l00102">102</a> of file <a class="el" href="settings_8cpp_source.html">settings.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00025">K_WIFI_PASS</a>, <a class="el" href="settings_8cpp_source.html#l00024">K_WIFI_SSID</a>, <a class="el" href="settings_8cpp_source.html#l00021">NS_SETTINGS</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00036">TAG</a>.</p>
+<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00024">K_WIFI_PASS</a>, <a class="el" href="settings_8cpp_source.html#l00023">K_WIFI_SSID</a>, <a class="el" href="settings_8cpp_source.html#l00021">NS_SETTINGS</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00036">TAG</a>.</p>
 
 <p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00472">app_main()</a>, and <a class="el" href="main_8cpp_source.html#l00432">ensure_wifi()</a>.</p>
 

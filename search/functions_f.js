@@ -1,17 +1,9 @@
 var searchData=
 [
-  ['settings_5ffactory_5freset_0',['settings_factory_reset',['../settings_8cpp.html#ab6e8c2165049181e1c37d84624b3ba2a',1,'settings_factory_reset(void):&#160;settings.cpp'],['../settings_8h.html#ab6e8c2165049181e1c37d84624b3ba2a',1,'settings_factory_reset(void):&#160;settings.cpp']]],
-  ['settings_5fget_5fauto_5fbrightness_1',['settings_get_auto_brightness',['../settings_8cpp.html#a58ba0c4477f0545cc05c83fc49400d8e',1,'settings_get_auto_brightness(void):&#160;settings.cpp'],['../settings_8h.html#a58ba0c4477f0545cc05c83fc49400d8e',1,'settings_get_auto_brightness(void):&#160;settings.cpp']]],
-  ['settings_5fget_5fbrightness_2',['settings_get_brightness',['../settings_8cpp.html#a818ad1b9e12386084a6f3ac81b457206',1,'settings_get_brightness(void):&#160;settings.cpp'],['../settings_8h.html#a818ad1b9e12386084a6f3ac81b457206',1,'settings_get_brightness(void):&#160;settings.cpp']]],
-  ['settings_5fget_5fmax_5ffee_5fgwei_3',['settings_get_max_fee_gwei',['../settings_8cpp.html#ae5fa2fb8d5ff26e2ab997c4384ac6ad8',1,'settings_get_max_fee_gwei(void):&#160;settings.cpp'],['../settings_8h.html#ae5fa2fb8d5ff26e2ab997c4384ac6ad8',1,'settings_get_max_fee_gwei(void):&#160;settings.cpp']]],
-  ['settings_5fget_5fpriority_5ffee_5fgwei_4',['settings_get_priority_fee_gwei',['../settings_8cpp.html#a772911b2f26faae157630d855318f16c',1,'settings_get_priority_fee_gwei(void):&#160;settings.cpp'],['../settings_8h.html#a772911b2f26faae157630d855318f16c',1,'settings_get_priority_fee_gwei(void):&#160;settings.cpp']]],
-  ['settings_5fget_5fwifi_5',['settings_get_wifi',['../settings_8cpp.html#a172f2aea1550fda41bb292fca261891b',1,'settings_get_wifi(char *ssid, size_t ssid_n, char *pass, size_t pass_n):&#160;settings.cpp'],['../settings_8h.html#a172f2aea1550fda41bb292fca261891b',1,'settings_get_wifi(char *ssid, size_t ssid_n, char *pass, size_t pass_n):&#160;settings.cpp']]],
-  ['settings_5fhas_5fwifi_6',['settings_has_wifi',['../settings_8cpp.html#a0ce88caf5e1f89361552c90b47ebc9be',1,'settings_has_wifi(void):&#160;settings.cpp'],['../settings_8h.html#a0ce88caf5e1f89361552c90b47ebc9be',1,'settings_has_wifi(void):&#160;settings.cpp']]],
-  ['settings_5fpersist_7',['settings_persist',['../ui_8cpp.html#a4bdc45346640d9174b0bc85e78c5c4f7',1,'ui.cpp']]],
-  ['settings_5fset_5fauto_5fbrightness_8',['settings_set_auto_brightness',['../settings_8cpp.html#a147486c72fa01061f30fcd7847baee57',1,'settings_set_auto_brightness(bool on):&#160;settings.cpp'],['../settings_8h.html#a147486c72fa01061f30fcd7847baee57',1,'settings_set_auto_brightness(bool on):&#160;settings.cpp']]],
-  ['settings_5fset_5fbrightness_9',['settings_set_brightness',['../settings_8cpp.html#ad15919561c01cc19a22b19b34d30db5c',1,'settings_set_brightness(uint8_t pct):&#160;settings.cpp'],['../settings_8h.html#ad15919561c01cc19a22b19b34d30db5c',1,'settings_set_brightness(uint8_t pct):&#160;settings.cpp']]],
-  ['settings_5fset_5fmax_5ffee_5fgwei_10',['settings_set_max_fee_gwei',['../settings_8cpp.html#aaecda1d5547ba45e35949fe7d97f09f3',1,'settings_set_max_fee_gwei(uint32_t gwei):&#160;settings.cpp'],['../settings_8h.html#aaecda1d5547ba45e35949fe7d97f09f3',1,'settings_set_max_fee_gwei(uint32_t gwei):&#160;settings.cpp']]],
-  ['settings_5fset_5fpriority_5ffee_5fgwei_11',['settings_set_priority_fee_gwei',['../settings_8cpp.html#ad2d146407abd6d6e53d26fef4a056bf1',1,'settings_set_priority_fee_gwei(uint32_t gwei):&#160;settings.cpp'],['../settings_8h.html#ad2d146407abd6d6e53d26fef4a056bf1',1,'settings_set_priority_fee_gwei(uint32_t gwei):&#160;settings.cpp']]],
-  ['settings_5fset_5fwifi_12',['settings_set_wifi',['../settings_8cpp.html#a7e76308e770c39d46e1e1e4f9f123fd3',1,'settings_set_wifi(const char *ssid, const char *pass):&#160;settings.cpp'],['../settings_8h.html#a7e76308e770c39d46e1e1e4f9f123fd3',1,'settings_set_wifi(const char *ssid, const char *pass):&#160;settings.cpp']]],
-  ['sign_5fand_5fbroadcast_13',['sign_and_broadcast',['../main_8cpp.html#a3bf76a2039211bf46d73c58f44e6af0f',1,'main.cpp']]]
+  ['tab_5fchange_5fcb_0',['tab_change_cb',['../ui_8cpp.html#ab8244a81c9d1a867e271b5779b1ac42f',1,'ui.cpp']]],
+  ['tick_5fcb_1',['tick_cb',['../ui_8cpp.html#a751f8ad4aa554d77c3c377549c77a124',1,'ui.cpp']]],
+  ['touch_2',['touch',['../ui_8cpp.html#a0c6c4feef76bd778b03a8b61d5f0c683',1,'ui.cpp']]],
+  ['touch_5fto_5fscreen_3',['touch_to_screen',['../ui_8cpp.html#aab01775fc9ffa44e76cc540f9254c8a2',1,'ui.cpp']]],
+  ['touchspi_4',['touchSPI',['../ui_8cpp.html#a1c666ad400b7ccf0e17d8dff91ed8202',1,'ui.cpp']]],
+  ['tx_5famount_5frow_5',['tx_amount_row',['../ui_8cpp.html#a7459ce23656bf2f0e1a42bd6f6cc7994',1,'ui.cpp']]]
 ];

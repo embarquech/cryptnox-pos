@@ -1,8 +1,10 @@
 var searchData=
 [
-  ['pin_5fkbd_5fcb_0',['pin_kbd_cb',['../ui_8cpp.html#ae50f6f5be80985315f3775186403fbfd',1,'ui.cpp']]],
-  ['pin_5fsubmit_1',['pin_submit',['../ui_8cpp.html#a714db8296c391b9fa33639d213f16627',1,'ui.cpp']]],
-  ['pop_5fin_2',['pop_in',['../ui_8cpp.html#a6d39403458ca209045214a77ed02a00e',1,'ui.cpp']]],
-  ['print_3',['print',['../classNullLogger.html#adae2c532a60e5f56dabf9f5d23144e35',1,'NullLogger::print(const __FlashStringHelper *) override'],['../classNullLogger.html#acd6285522c63ad6004f2954ce9851c07',1,'NullLogger::print(const char *) override'],['../classNullLogger.html#a6ea03508b69217363de71ba204d5b0a8',1,'NullLogger::print(char) override'],['../classNullLogger.html#a88e6852579d240e830a8a37b2791c77e',1,'NullLogger::print(uint8_t, int) override'],['../classNullLogger.html#a72c799ea8a1e5d5fc9546bbb4ad74a2c',1,'NullLogger::print(uint16_t, int) override'],['../classNullLogger.html#a1b7bb5a0aecaa70c3a6abe24af5dde34',1,'NullLogger::print(uint32_t, int) override'],['../classNullLogger.html#ab5dc6dab521b8dda9a9367a78a745cae',1,'NullLogger::print(int, int) override']]],
-  ['println_4',['println',['../classNullLogger.html#a80303df1ff13612ced6e4755342fa1f9',1,'NullLogger::println() override'],['../classNullLogger.html#afc66eb2ee3ade980675489eadf3d675e',1,'NullLogger::println(const __FlashStringHelper *) override'],['../classNullLogger.html#a4e83db0cb3765897c19e7dad034334ae',1,'NullLogger::println(const char *) override'],['../classNullLogger.html#a137f9dd2f60e6ec9e2420c77385bf310',1,'NullLogger::println(char) override'],['../classNullLogger.html#a67804d1a65f0dc3a3a02b0385fb8773b',1,'NullLogger::println(uint8_t, int) override'],['../classNullLogger.html#a695db50b9026e0507ab83df248ac33db',1,'NullLogger::println(uint16_t, int) override'],['../classNullLogger.html#a335a1d92d7f02892fa89bfbd7241b2f5',1,'NullLogger::println(uint32_t, int) override'],['../classNullLogger.html#acb9cf8fbe8d672a740cb7158b3aa57ae',1,'NullLogger::println(int, int) override']]]
+  ['render_5frequested_5fscreen_0',['render_requested_screen',['../ui_8cpp.html#a7ceddeee1a4d9f31aac18b0630575c0b',1,'ui.cpp']]],
+  ['request_5fscreen_1',['request_screen',['../ui_8cpp.html#a56807b022eee6e8a311730e21225cc94',1,'ui.cpp']]],
+  ['rlp_5fbytes_2',['rlp_bytes',['../eth__rlp_8cpp.html#a0d5757837dee971c71afa095fcc7178d',1,'eth_rlp.cpp']]],
+  ['rlp_5fint256_3',['rlp_int256',['../eth__rlp_8cpp.html#a8c2049ed7c1126748b6c47824a946ba3',1,'eth_rlp.cpp']]],
+  ['rlp_5flist_5fheader_4',['rlp_list_header',['../eth__rlp_8cpp.html#afcd8883950916221b4559e7132abd776',1,'eth_rlp.cpp']]],
+  ['rlp_5fuint64_5',['rlp_uint64',['../eth__rlp_8cpp.html#a4e0ad18671fc6c0e8b04d56179e1fb99',1,'eth_rlp.cpp']]],
+  ['rot64_6',['rot64',['../keccak256_8cpp.html#a9085e44058b50bc6a267c71ec4c1e59c',1,'keccak256.cpp']]]
 ];
