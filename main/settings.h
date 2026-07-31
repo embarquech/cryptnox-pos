@@ -29,12 +29,6 @@ uint8_t settings_get_brightness(void);
 /** @brief Persist the backlight level (0..100). */
 void settings_set_brightness(uint8_t pct);
 
-/** @brief true if automatic (light-sensor) brightness is enabled (default false). */
-bool settings_get_auto_brightness(void);
-
-/** @brief Persist the automatic-brightness flag. */
-void settings_set_auto_brightness(bool on);
-
 /** @brief true if a Wi-Fi SSID has been stored. */
 bool settings_has_wifi(void);
 
