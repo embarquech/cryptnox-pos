@@ -20,7 +20,6 @@ static const char *const TAG = "settings";
 
 #define NS_SETTINGS   "settings"
 #define K_BRIGHTNESS  "bright"
-#define K_AUTO_BL     "auto_bl"
 #define K_WIFI_SSID   "wifi_ssid"
 #define K_WIFI_PASS   "wifi_pass"
 #define K_MAX_FEE     "max_fee_gw"
@@ -57,27 +56,6 @@ void settings_set_brightness(uint8_t pct)
         nvs_close(h);
     } else {
         ESP_LOGW(TAG, "brightness: nvs_open failed");
-    }
-}
-
-bool settings_get_auto_brightness(void)
-{
-    uint8_t val = 0U;
-    nvs_handle_t h;
-    if (nvs_open(NS_SETTINGS, NVS_READONLY, &h) == ESP_OK) {
-        (void)nvs_get_u8(h, K_AUTO_BL, &val);
-        nvs_close(h);
-    }
-    return (val != 0U);
-}
-
-void settings_set_auto_brightness(bool on)
-{
-    nvs_handle_t h;
-    if (nvs_open(NS_SETTINGS, NVS_READWRITE, &h) == ESP_OK) {
-        (void)nvs_set_u8(h, K_AUTO_BL, on ? 1U : 0U);
-        (void)nvs_commit(h);
-        nvs_close(h);
     }
 }
 
@@ -182,7 +160,9 @@ void settings_factory_reset(void)
 {
     nvs_handle_t h;
     if (nvs_open(NS_SETTINGS, NVS_READWRITE, &h) == ESP_OK) {
-        (void)nvs_erase_all(h);   /* drops brightness, auto flag, Wi-Fi creds */
+        /* Drops brightness and Wi-Fi creds — and the now-unused "auto_bl" key
+         * left behind on units provisioned before auto-brightness was removed. */
+        (void)nvs_erase_all(h);
         (void)nvs_commit(h);
         nvs_close(h);
         ESP_LOGW(TAG, "settings: factory reset");
