@@ -34,6 +34,7 @@ static const char *const TAG = "settings";
 #define K_ADMIN_SALT  "adm_salt"
 #define K_ADMIN_HASH  "adm_hash"
 #define K_ADMIN_FAILS "adm_fails"
+#define K_CHAIN       "chain"
 
 #define ADMIN_SALT_LEN    16U
 #define ADMIN_HASH_LEN    32U
@@ -48,6 +49,35 @@ static const char *const TAG = "settings";
 #define WEI_PER_GWEI               1000000000ULL
 #define DEFAULT_MAX_FEE_GWEI       (uint32_t)(MAX_FEE / WEI_PER_GWEI)
 #define DEFAULT_PRIORITY_FEE_GWEI  (uint32_t)(MAX_PRIORITY_FEE / WEI_PER_GWEI)
+
+pos_chain_t settings_get_chain(void)
+{
+    pos_chain_t chain = POS_CHAIN_ETH_SEPOLIA;
+    nvs_handle_t h;
+    if (nvs_open(NS_SETTINGS, NVS_READONLY, &h) == ESP_OK) {
+        uint8_t stored = 0U;
+        /* Unknown value = a downgrade or a corrupt cell; fall back to the
+         * default rather than charge on a chain no code path can handle. */
+        if ((nvs_get_u8(h, K_CHAIN, &stored) == ESP_OK) &&
+            (stored == (uint8_t)POS_CHAIN_TRON_NILE)) {
+            chain = POS_CHAIN_TRON_NILE;
+        }
+        nvs_close(h);
+    }
+    return chain;
+}
+
+void settings_set_chain(pos_chain_t chain)
+{
+    nvs_handle_t h;
+    if (nvs_open(NS_SETTINGS, NVS_READWRITE, &h) == ESP_OK) {
+        (void)nvs_set_u8(h, K_CHAIN, (uint8_t)chain);
+        (void)nvs_commit(h);
+        nvs_close(h);
+    } else {
+        ESP_LOGW(TAG, "chain: nvs_open failed");
+    }
+}
 
 uint8_t settings_get_brightness(void)
 {

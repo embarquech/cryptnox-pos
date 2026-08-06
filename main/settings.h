@@ -23,6 +23,18 @@
 extern "C" {
 #endif
 
+/** @brief Which chain (and therefore which asset) the terminal charges in. */
+typedef enum {
+    POS_CHAIN_ETH_SEPOLIA = 0,  /**< USDC on Ethereum Sepolia (the default). */
+    POS_CHAIN_TRON_NILE   = 1,  /**< Native TRX on the Tron Nile testnet.    */
+} pos_chain_t;
+
+/** @brief Selected chain, or @ref POS_CHAIN_ETH_SEPOLIA if never set. */
+pos_chain_t settings_get_chain(void);
+
+/** @brief Persist the selected chain. */
+void settings_set_chain(pos_chain_t chain);
+
 /** @brief Backlight level in percent, or 80 if never set. */
 uint8_t settings_get_brightness(void);
 

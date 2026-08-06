@@ -86,6 +86,25 @@
 #define ADDR_USDC         "<USDC_CONTRACT_ADDRESS_EIP55>"
 
 /* =========================
+ * Tron (Nile testnet)
+ * ========================= */
+/* Native TRX transfers, selectable at runtime from the settings menu.
+ * TronGrid's public Nile endpoint needs no API key for these calls. */
+#define TRON_URL          "https://nile.trongrid.io"
+
+/* --- Tron addresses (Nile testnet) ---------------------------------
+ * Base58 "T..." form, exactly as a Tron wallet shows it — paste it here, and
+ * the terminal displays this same string on the confirm screen. The device
+ * decodes it at boot (checksum verified, so a typo is refused rather than paid)
+ * and derives the "41"-prefixed hex the HTTP API wants.
+ *
+ * Only the recipient is configured. The sender is whatever card is presented:
+ * its m/44'/195'/0'/0/0 public key is read over the secure channel and turned
+ * into an address by CW_Tron, so swapping cards needs no rebuild. */
+#define TRON_ADDR_TO      "THQGuFzL87ZqhxkgqYEryRAd7gqFqL5rdc"
+
+
+/* =========================
  * Transaction Parameters
  * ========================= */
 #define CHAIN_ID_SEPOLIA  11155111

@@ -8,11 +8,12 @@ can never drift from the firmware and no build system is required.
 |--------------------|------------------------------------------------|
 | `test_eth_addr`    | `main/eth_addr.cpp` — hex parsing + EIP-55     |
 | `test_hardening`   | `main/hardening.h` — decision-integrity gate   |
+| `test_tron_tx`     | `main/tron_tx.cpp` — Tron varints, TransferContract check, envelope |
 
 Build & run from the repo root (any C++14 compiler):
 
 ```sh
-for t in test_eth_addr test_hardening; do
+for t in test_eth_addr test_hardening test_tron_tx; do
   g++ -std=c++14 -Wall -Imain -Icryptnox-sdk-esp32/cryptnox-sdk-cpp \
       tests/units/$t.cpp -o $t && ./$t || exit 1
 done

@@ -80,6 +80,7 @@ static XPT2046_Touchscreen touch(T_CS, T_IRQ);
 #define COL_SUCCESS  lv_color_hex(0x1E9E50)   /* green — "Sent"                */
 #define COL_DANGER   lv_color_hex(0xD63A3A)   /* red — failures / reset        */
 #define COL_BORDER   lv_color_hex(0xE0E0E0)   /* light grey — hairlines        */
+#define COL_TRON     lv_color_hex(0xE7392E)   /* Tron red — TRX asset badge    */
 
 /******************************************************************
  * 3b. Layout metrics — shared so every screen's header lines up
@@ -93,6 +94,8 @@ static XPT2046_Touchscreen touch(T_CS, T_IRQ);
 #define MENU_BTN_H      30
 #define MENU_BTN_X      4
 #define MENU_BTN_Y      6
+#define TAB_PAD         12     /* settings tab page padding           */
+#define TAB_W           (SCR_W - (2 * TAB_PAD))   /* usable tab width */
 
 /******************************************************************
  * 4. LVGL display + input plumbing
@@ -308,7 +311,8 @@ enum BtnAction {
     ACT_SETTINGS, ACT_CLOSE, ACT_PIN_CANCEL,
     ACT_WIFI, ACT_WIFI_CANCEL, ACT_WIFI_PASS_REVEAL,
     ACT_ADMIN_CANCEL, ACT_WELCOME_OK,
-    ACT_RESET, ACT_RESET_CONFIRM, ACT_RESET_CANCEL,
+    ACT_RESET, ACT_RESET_CONFIRM, ACT_MODAL_CLOSE,
+    ACT_CHAIN_PICK, ACT_CHAIN_ETH, ACT_CHAIN_TRON,
 };
 
 /* Firmware version shown on the splash and the About tab. */
@@ -317,10 +321,18 @@ enum BtnAction {
 /* Settings — defined in section 7 (uses the widget helpers). */
 static void settings_persist(void);
 static void open_reset_confirm(void);
-static void close_reset_confirm(void);
+static void open_chain_picker(void);
+static void close_modal(void);
 static void pop_in(lv_obj_t *obj);   /* defined in section 8 (animations) */
 static uint32_t admin_penalty_ms(uint8_t fails);   /* defined with the admin screens */
 static ui_screen_t s_settings_return = UI_SCREEN_AMOUNT;   /* screen to go back to */
+
+/* The chain is read straight from NVS wherever it is needed — the asset badge,
+ * the picker pill and main's signing path all ask the same question, so there is
+ * no UI-side copy to keep in sync. */
+static bool chain_is_tron(void) {
+    return settings_get_chain() == POS_CHAIN_TRON_NILE;
+}
 
 static void request_screen(ui_screen_t s) {
     s_req_screen   = s;
@@ -483,8 +495,20 @@ static void btn_event_cb(lv_event_t *e) {
             settings_factory_reset();
             esp_restart();
             break;
-        case ACT_RESET_CANCEL:
-            close_reset_confirm();
+        case ACT_MODAL_CLOSE:
+            close_modal();
+            break;
+        case ACT_CHAIN_PICK:
+            open_chain_picker();
+            break;
+        case ACT_CHAIN_ETH:
+        case ACT_CHAIN_TRON:
+            settings_set_chain((act == ACT_CHAIN_TRON) ? POS_CHAIN_TRON_NILE
+                                                      : POS_CHAIN_ETH_SEPOLIA);
+            close_modal();
+            /* Rebuild: the pill, the fee rows and the address captions all
+             * differ per chain. */
+            request_screen(UI_SCREEN_SETTINGS);
             break;
     }
 }
@@ -554,6 +578,82 @@ static void make_divider(lv_obj_t *parent, lv_coord_t y) {
     lv_obj_set_style_radius(d, 1, LV_PART_MAIN);
     lv_obj_set_style_pad_all(d, 0, LV_PART_MAIN);
     lv_obj_clear_flag(d, LV_OBJ_FLAG_SCROLLABLE);
+}
+
+/* Round 30px icon disc with a glyph — the coin mark in a pill's left slot. */
+static lv_obj_t *make_glyph_disc(lv_obj_t *parent, const char *sym,
+                                 lv_color_t bg) {
+    lv_obj_t *d = lv_obj_create(parent);
+    lv_obj_remove_style_all(d);
+    lv_obj_set_size(d, 30, 30);
+    lv_obj_set_style_bg_color(d, bg, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(d, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_clear_flag(d, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *l = lv_label_create(d);
+    lv_label_set_text(l, sym);
+    lv_obj_set_style_text_color(l, COL_BG, LV_PART_MAIN);
+    lv_obj_set_style_text_font(l, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_center(l);
+    return d;
+}
+
+/* Currency mark for the selected asset: the USDC bitmap, or a red T disc for
+ * TRX (a glyph, not another 4 KB image in flash). */
+static lv_obj_t *make_asset_badge(lv_obj_t *parent, bool tron) {
+    if (tron) {
+        return make_glyph_disc(parent, "T", COL_TRON);
+    }
+    lv_obj_t *img = lv_img_create(parent);
+    lv_img_set_src(img, &usdc_logo);
+    return img;
+}
+
+/* Selector row in the style of button_style.png: full-radius grey pill, round
+ * icon on the left, title over a dim subtitle, chevron on the right. The icon
+ * is left to the caller (asset badge or glyph disc):
+ *
+ *   lv_obj_t *p = make_pill(...);
+ *   lv_obj_align(make_asset_badge(p, tron), LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
+ *
+ * @p w is in pixels on purpose — lv_pct() cannot be measured for the subtitle. */
+#define PILL_H       52
+#define PILL_TEXT_X  50
+#define PILL_ICON_X  10
+
+static lv_obj_t *make_pill(lv_obj_t *parent, const char *title, const char *sub,
+                           lv_coord_t w, lv_coord_t y, BtnAction act) {
+    lv_obj_t *btn = lv_btn_create(parent);
+    lv_obj_set_size(btn, w, PILL_H);
+    lv_obj_align(btn, LV_ALIGN_TOP_MID, 0, y);
+    lv_obj_set_style_bg_color(btn, COL_SURFACE, LV_PART_MAIN);
+    lv_obj_set_style_bg_grad_dir(btn, LV_GRAD_DIR_NONE, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_radius(btn, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_border_width(btn, 0, LV_PART_MAIN);
+    lv_obj_set_style_shadow_width(btn, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(btn, 0, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(btn,
+                              lv_color_mix(lv_color_black(), COL_SURFACE, 20),
+                              LV_PART_MAIN | LV_STATE_PRESSED);
+    lv_obj_add_event_cb(btn, btn_event_cb, LV_EVENT_CLICKED,
+                        reinterpret_cast<void *>(static_cast<intptr_t>(act)));
+
+    if (sub != NULL) {
+        make_label(btn, title, COL_TEXT, &lv_font_montserrat_20,
+                   LV_ALIGN_TOP_LEFT, PILL_TEXT_X, 7);
+        lv_obj_t *sl = make_label(btn, sub, COL_DIM, &lv_font_montserrat_14,
+                                  LV_ALIGN_TOP_LEFT, PILL_TEXT_X, 30);
+        /* Elide by glyph width: an SSID can be 32 characters. */
+        lv_obj_set_width(sl, w - PILL_TEXT_X - 30);
+        lv_label_set_long_mode(sl, LV_LABEL_LONG_DOT);
+    } else {
+        make_label(btn, title, COL_TEXT, &lv_font_montserrat_20,
+                   LV_ALIGN_LEFT_MID, PILL_TEXT_X, 0);
+    }
+    make_label(btn, LV_SYMBOL_RIGHT, COL_DIM, &lv_font_montserrat_14,
+               LV_ALIGN_RIGHT_MID, -14, 0);
+    return btn;
 }
 
 static void clear_screen(void) {
@@ -725,7 +825,7 @@ static void build_settings(void) {
     for (int i = 0; i < 4; i++) {
         lv_obj_set_style_bg_color(pages[i], COL_BG, LV_PART_MAIN);   /* flat white */
         lv_obj_set_style_border_width(pages[i], 0, LV_PART_MAIN);
-        lv_obj_set_style_pad_all(pages[i], 12, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(pages[i], TAB_PAD, LV_PART_MAIN);
         lv_obj_clear_flag(pages[i], LV_OBJ_FLAG_SCROLLABLE);
     }
     /* About and Tx can overflow — let them scroll vertically with a scrollbar. */
@@ -762,13 +862,12 @@ static void build_settings(void) {
                                        cur_pass, sizeof(cur_pass));
     CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(cur_pass), sizeof(cur_pass));
 
-    make_label(t_wifi, "Current network", COL_DIM, &lv_font_montserrat_14,
-               LV_ALIGN_TOP_LEFT, 0, 0);
-    lv_obj_t *cur = make_label(t_wifi, have_wifi ? cur_ssid : "Not configured",
-                               COL_TEXT, &lv_font_montserrat_14,
-                               LV_ALIGN_TOP_LEFT, 0, 20);
-    lv_label_set_long_mode(cur, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(cur, 220);
+    /* The pill IS the scan button: name the current network, tap to change it. */
+    lv_obj_t *wpill = make_pill(t_wifi, "Wi-Fi",
+                                have_wifi ? cur_ssid : "Not configured",
+                                TAB_W, 0, ACT_WIFI);
+    lv_obj_align(make_glyph_disc(wpill, LV_SYMBOL_WIFI, COL_ACCENT),
+                 LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
 
     /* Link quality of the live association (snapshot at settings open),
      * as a caption/value pair like every other field. */
@@ -781,41 +880,54 @@ static void build_settings(void) {
         snprintf(sig, sizeof(sig), "%s (%d dBm)", qual,
                  static_cast<int>(rssi));
         make_label(t_wifi, "Signal", COL_DIM, &lv_font_montserrat_14,
-                   LV_ALIGN_TOP_LEFT, 0, 48);
+                   LV_ALIGN_TOP_LEFT, 0, 66);
         make_label(t_wifi, sig, COL_TEXT, &lv_font_montserrat_14,
-                   LV_ALIGN_TOP_LEFT, 0, 68);
+                   LV_ALIGN_TOP_LEFT, 0, 86);
     }
 
-    /* Right below the signal row (y68 + ~18px line + gap) — not pinned to the
-     * tab bottom, which left a void under the info block. */
-    make_button(t_wifi, LV_SYMBOL_WIFI " Scan networks", COL_ACCENT, COL_BG,
-                lv_pct(100), ACT_BTN_H, LV_ALIGN_TOP_MID, 0, 104, ACT_WIFI,
-                &lv_font_montserrat_20);
+    /* ── Transaction tab: asset/network picker, then where the funds go ── */
+    const bool tron = chain_is_tron();
+    lv_obj_t *npill = make_pill(t_tx, tron ? "TRX" : "USDC",
+                                tron ? "Tron Nile" : "Ethereum Sepolia",
+                                TAB_W, 0, ACT_CHAIN_PICK);
+    lv_obj_align(make_asset_badge(npill, tron), LV_ALIGN_LEFT_MID,
+                 PILL_ICON_X, 0);
 
-    /* ── Transaction tab: where the funds go (read-only) ── */
-    make_label(t_tx, "USDC contract", COL_DIM, &lv_font_montserrat_14,
-               LV_ALIGN_TOP_LEFT, 0, 0);
+    make_label(t_tx, tron ? "Asset" : "USDC contract", COL_DIM,
+               &lv_font_montserrat_14, LV_ALIGN_TOP_LEFT, 0, 64);
     lv_obj_t *a_usdc = make_label(t_tx, (s_addr_usdc != NULL) ? s_addr_usdc : "-",
                                   COL_TEXT, &lv_font_montserrat_14,
-                                  LV_ALIGN_TOP_LEFT, 0, 18);
+                                  LV_ALIGN_TOP_LEFT, 0, 82);
     lv_label_set_long_mode(a_usdc, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(a_usdc, 200);
 
     make_label(t_tx, "Send to", COL_DIM, &lv_font_montserrat_14,
-               LV_ALIGN_TOP_LEFT, 0, 64);
+               LV_ALIGN_TOP_LEFT, 0, 128);
     lv_obj_t *a_dest = make_label(t_tx, (s_addr_dest != NULL) ? s_addr_dest : "-",
                                   COL_TEXT, &lv_font_montserrat_14,
-                                  LV_ALIGN_TOP_LEFT, 0, 82);
+                                  LV_ALIGN_TOP_LEFT, 0, 146);
     lv_label_set_long_mode(a_dest, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(a_dest, 200);
 
-    /* Editable EIP-1559 gas fees (Gwei), defaulting to the config.h values. */
+    /* Load the fees whether or not the steppers are built — settings_persist()
+     * writes these back on Close, and zeroes would break the Ethereum path. */
     s_maxfee_gwei = settings_get_max_fee_gwei();
     s_prio_gwei   = settings_get_priority_fee_gwei();
     if (s_prio_gwei > s_maxfee_gwei) { s_prio_gwei = s_maxfee_gwei; }
-    s_maxfee_lbl  = build_fee_row(t_tx, "Max fee (Gwei)",      128, 0, 1);
-    s_prio_lbl    = build_fee_row(t_tx, "Priority fee (Gwei)", 196, 2, 3);
-    fee_update_labels();
+    if (tron) {
+        /* Tron pays for a transfer in bandwidth, not in a fee the operator
+         * sets — there is nothing to tune here. */
+        lv_obj_t *n = make_label(t_tx, "TRX transfers are paid in bandwidth - "
+                                       "no gas fee to set.",
+                                 COL_DIM, &lv_font_montserrat_14,
+                                 LV_ALIGN_TOP_LEFT, 0, 196);
+        lv_label_set_long_mode(n, LV_LABEL_LONG_WRAP);
+        lv_obj_set_width(n, 200);
+    } else {
+        s_maxfee_lbl = build_fee_row(t_tx, "Max fee (Gwei)",      192, 0, 1);
+        s_prio_lbl   = build_fee_row(t_tx, "Priority fee (Gwei)", 260, 2, 3);
+        fee_update_labels();
+    }
 
     /* ── About tab: small C logo, name, version, info ── */
     lv_obj_t *blogo = lv_img_create(t_about);
@@ -827,7 +939,8 @@ static void build_settings(void) {
     make_label(t_about, APP_VERSION, COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_MID, 0, 70);
     lv_obj_t *about = make_label(t_about,
-                                 "USDC payment terminal for Cryptnox cards\n\n"
+                                 "USDC (Sepolia) and TRX (Tron Nile)\n"
+                                 "payment terminal for Cryptnox cards\n\n"
                                  "Based on cryptnox-sdk-esp32 1.0.0\n"
                                  "(c) Cryptnox 2026 - Educational use only\n\n"
                                  "Licensed under LGPL-3.0-or-later\n\n"
@@ -848,51 +961,86 @@ static void build_settings(void) {
     s_reset_btn = make_button(lv_scr_act(), "Reset", COL_DANGER, COL_TEXT, 108, ACT_BTN_H,
                               LV_ALIGN_BOTTOM_LEFT, 10, ACT_BTN_Y, ACT_RESET,
                               &lv_font_montserrat_20);
+    /* Same full-radius pill shape as the selector rows above. */
+    lv_obj_set_style_radius(s_close_btn, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_radius(s_reset_btn, LV_RADIUS_CIRCLE, LV_PART_MAIN);
     lv_obj_add_flag(s_reset_btn, LV_OBJ_FLAG_HIDDEN);   /* shown only on About */
     lv_obj_add_event_cb(lv_tabview_get_tab_btns(tv), tab_change_cb,
                         LV_EVENT_VALUE_CHANGED, NULL);
 }
 
-/* Confirmation popup before a factory reset (floats above the settings modal). */
-static lv_obj_t *s_confirm = NULL;
+/* Modal overlays (factory-reset confirmation, network picker). One at a time:
+ * both are full-screen and both are opened from the settings page. */
+static lv_obj_t *s_modal = NULL;
 
-static void close_reset_confirm(void) {
-    if (s_confirm != NULL) {
-        lv_obj_del(s_confirm);
-        s_confirm = NULL;
+static void close_modal(void) {
+    if (s_modal != NULL) {
+        lv_obj_del(s_modal);
+        s_modal = NULL;
     }
 }
 
-static void open_reset_confirm(void) {
-    if (s_confirm != NULL) { return; }
+/* Dimmed overlay + centred card on the top layer, so it floats above the
+ * settings page. Returns the card for the caller to fill. */
+static lv_obj_t *open_modal(lv_coord_t w, lv_coord_t h) {
+    close_modal();
 
-    s_confirm = lv_obj_create(lv_layer_top());
-    lv_obj_remove_style_all(s_confirm);
-    lv_obj_set_size(s_confirm, SCR_W, SCR_H);
-    lv_obj_set_style_bg_color(s_confirm, lv_color_black(), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(s_confirm, LV_OPA_70, LV_PART_MAIN);
-    lv_obj_clear_flag(s_confirm, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(s_confirm, LV_OBJ_FLAG_CLICKABLE);
+    s_modal = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(s_modal);
+    lv_obj_set_size(s_modal, SCR_W, SCR_H);
+    lv_obj_set_style_bg_color(s_modal, lv_color_black(), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(s_modal, LV_OPA_70, LV_PART_MAIN);
+    lv_obj_clear_flag(s_modal, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_modal, LV_OBJ_FLAG_CLICKABLE);
 
-    lv_obj_t *card = lv_obj_create(s_confirm);
-    lv_obj_set_size(card, 224, 210);
+    lv_obj_t *card = lv_obj_create(s_modal);
+    lv_obj_set_size(card, w, h);
     lv_obj_center(card);
     lv_obj_set_style_bg_color(card, COL_SURFACE, LV_PART_MAIN);
     lv_obj_set_style_radius(card, 14, LV_PART_MAIN);
     lv_obj_set_style_border_width(card, 1, LV_PART_MAIN);
     lv_obj_set_style_border_color(card, COL_BORDER, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(card, 8, LV_PART_MAIN);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(card, LV_OBJ_FLAG_CLICKABLE);
+    return card;
+}
 
-    lv_obj_t *msg = make_label(card, "Erase all settings\n(Wi-Fi, brightness, fees)\nand reboot?",
+static void open_reset_confirm(void) {
+    lv_obj_t *card = open_modal(224, 210);
+
+    lv_obj_t *msg = make_label(card,
+                               "Erase all settings\n"
+                               "(Wi-Fi, brightness, fees)\n"
+                               "and reboot?",
                                COL_TEXT, &lv_font_montserrat_14,
                                LV_ALIGN_TOP_MID, 0, 12);
     lv_obj_set_style_text_align(msg, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
 
     make_button(card, "Erase", COL_DANGER, COL_TEXT, 196, 40,
-                LV_ALIGN_BOTTOM_MID, 0, -58, ACT_RESET_CONFIRM, &lv_font_montserrat_20);
+                LV_ALIGN_BOTTOM_MID, 0, -50, ACT_RESET_CONFIRM, &lv_font_montserrat_20);
     make_button(card, "Cancel", COL_SURFACE, COL_TEXT, 196, 40,
-                LV_ALIGN_BOTTOM_MID, 0, -10, ACT_RESET_CANCEL, &lv_font_montserrat_20);
+                LV_ALIGN_BOTTOM_MID, 0, -2, ACT_MODAL_CLOSE, &lv_font_montserrat_20);
+}
+
+/* The network "dropdown": one pill per chain, in the same style as the selector
+ * that opened it, so the choice looks like the thing being chosen. */
+static void open_chain_picker(void) {
+    lv_obj_t *card = open_modal(228, 214);
+
+    make_label(card, "Charge in", COL_DIM, &lv_font_montserrat_14,
+               LV_ALIGN_TOP_MID, 0, 4);
+
+    lv_obj_t *eth = make_pill(card, "USDC", "Ethereum Sepolia", 196, 28,
+                              ACT_CHAIN_ETH);
+    lv_obj_align(make_asset_badge(eth, false), LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
+
+    lv_obj_t *trx = make_pill(card, "TRX", "Tron Nile", 196, 86, ACT_CHAIN_TRON);
+    lv_obj_align(make_asset_badge(trx, true), LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
+
+    make_button(card, "Cancel", COL_SURFACE, COL_TEXT, 196, 40,
+                LV_ALIGN_BOTTOM_MID, 0, -2, ACT_MODAL_CLOSE,
+                &lv_font_montserrat_20);
 }
 
 /******************************************************************
@@ -1014,8 +1162,8 @@ static void build_amount(void) {
 
     s_amount_label = make_label(lv_scr_act(), "0.00", COL_TEXT,
                                 &lv_font_montserrat_28, LV_ALIGN_TOP_MID, 0, 22);
-    s_amount_usdc = lv_img_create(lv_scr_act());
-    lv_img_set_src(s_amount_usdc, &usdc_logo);   /* placed beside the amount below */
+    /* Placed beside the amount by amount_update_display(). */
+    s_amount_usdc = make_asset_badge(lv_scr_act(), chain_is_tron());
 
     /* Numeric keypad: digits, double-zero, backspace (cents entry). */
     static const char *amap[] = {
@@ -1061,8 +1209,7 @@ static void build_confirm(void) {
                LV_ALIGN_TOP_LEFT, 12, 54);
     lv_obj_t *amt = make_label(lv_scr_act(), buf, COL_TEXT, &lv_font_montserrat_28,
                                LV_ALIGN_TOP_LEFT, 12, 72);
-    lv_obj_t *cusdc = lv_img_create(lv_scr_act());
-    lv_img_set_src(cusdc, &usdc_logo);
+    lv_obj_t *cusdc = make_asset_badge(lv_scr_act(), chain_is_tron());
     lv_obj_align_to(cusdc, amt, LV_ALIGN_OUT_RIGHT_MID, 8, 0);
 
     make_label(lv_scr_act(), "To", COL_DIM, &lv_font_montserrat_14,
@@ -1074,8 +1221,8 @@ static void build_confirm(void) {
     lv_label_set_long_mode(addr, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(addr, 216);
 
-    make_label(lv_scr_act(), "USDC contract", COL_DIM, &lv_font_montserrat_14,
-               LV_ALIGN_TOP_LEFT, 12, 182);
+    make_label(lv_scr_act(), chain_is_tron() ? "Asset" : "USDC contract",
+               COL_DIM, &lv_font_montserrat_14, LV_ALIGN_TOP_LEFT, 12, 182);
     lv_obj_t *ctr = make_label(lv_scr_act(),
                                (s_addr_usdc != NULL) ? s_addr_usdc : "-",
                                COL_TEXT, &lv_font_montserrat_14,
@@ -1506,8 +1653,7 @@ static void pop_in(lv_obj_t *obj) {
 static void tx_amount_row(const char *amt, const lv_font_t *font, lv_coord_t y) {
     lv_obj_t *al = make_label(lv_scr_act(), amt, COL_TEXT, font,
                               LV_ALIGN_TOP_MID, -16, y);
-    lv_obj_t *u  = lv_img_create(lv_scr_act());
-    lv_img_set_src(u, &usdc_logo);
+    lv_obj_t *u  = make_asset_badge(lv_scr_act(), chain_is_tron());
     lv_obj_align_to(u, al, LV_ALIGN_OUT_RIGHT_MID, 8, 0);
 }
 
@@ -1653,6 +1799,10 @@ static void build_boot_error(void) {
 }
 
 static void render_requested_screen(void) {
+    /* A modal lives on the top layer, so it would survive the screen swap and
+     * sit there swallowing every touch. Nothing wants that. */
+    close_modal();
+
     switch (s_req_screen) {
         case UI_SCREEN_SPLASH:    build_splash();    break;
         case UI_SCREEN_AMOUNT:    build_amount();    break;

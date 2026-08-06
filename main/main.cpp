@@ -38,6 +38,7 @@
 #include "ESP32Logger.h"
 #include "ESP32Platform.h"
 #include "esp32_crypto_provider.h"
+#include "CW_Tron.h"
 #include "settings.h"
 
 /* Quiet CW_Logger — swallows the SDK's verbose connection/retry chatter that
@@ -69,6 +70,8 @@ extern "C" {
 #include "hardening.h"
 #include "eth_rlp.h"
 #include "eth_rpc.h"
+#include "tron_rpc.h"
+#include "tron_tx.h"
 #include "net.h"
 #include "ui.h"
 }
@@ -104,6 +107,55 @@ static const uint8_t TRANSFER_SELECTOR[4] = { 0xa9U, 0x05U, 0x9cU, 0xbbU };
 /* ── Unsigned and signed tx buffers (EIP-1559 type 2) ─────────── */
 #define TX_BUF_SIZE 300U
 
+/* ── Tron ──────────────────────────────────────────────────────
+ * The sender is not configured: the card's m/44'/195'/0'/0/0 public key is read
+ * over the secure channel at sign time and turned into an address by CW_Tron, so
+ * the terminal follows whichever card is presented. */
+
+/* BIP32 Ethereum derivation path: m/44'/60'/0'/0/0 */
+static const uint8_t ETH_DERIVE_PATH[20] = {
+    0x80U, 0x00U, 0x00U, 0x2CU,
+    0x80U, 0x00U, 0x00U, 0x3CU,
+    0x80U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U,
+    0x00U, 0x00U, 0x00U, 0x00U,
+};
+
+/**
+ * @brief Format a raw 21-byte Tron address as the "41..." hex the API wants.
+ *
+ * @param[in]  addr21 21-byte address (0x41 prefix included).
+ * @param[out] out    #TRON_ADDR_HEX_LEN chars + NUL.
+ * @param[in]  n      Capacity of @p out.
+ */
+static void tron_addr_to_hex(const uint8_t *addr21, char *out, size_t n)
+{
+    if (n < (TRON_ADDR_HEX_LEN + 1U)) { if (n > 0U) { out[0] = '\0'; } return; }
+    for (size_t i = 0U; i < CW_TRON_ADDRESS_BYTES; i++) {
+        (void)snprintf(&out[i * 2U], 3U, "%02x",
+                       static_cast<unsigned>(addr21[i]));
+    }
+}
+
+/** @brief true when the operator has switched the terminal to Tron. */
+static bool chain_is_tron(void) {
+    return settings_get_chain() == POS_CHAIN_TRON_NILE;
+}
+
+/**
+ * @brief Point the UI's address rows at the selected chain.
+ *
+ * Called on every entry to the confirm screen, not once at boot: the chain is
+ * switched from the settings menu while this task is parked on its queue.
+ */
+static void ui_refresh_addresses(void) {
+    if (chain_is_tron()) {
+        ui_set_addresses("Native TRX (no contract)", TRON_ADDR_TO);
+    } else {
+        ui_set_addresses("0x" ADDR_USDC, "0x" ADDR_TO);
+    }
+}
+
 /******************************************************************
  * 3. UI ↔ main task message queue
  ******************************************************************/
@@ -119,6 +171,15 @@ static QueueHandle_t s_ui_queue = NULL;
  * independent copies, reconciled before calldata encode and before signing so
  * a transient flip on the working copy can't redirect funds. */
 static pos_addr_t s_dest;
+
+/* Same treatment for the Tron recipient: it is a different address, so it needs
+ * its own dual store rather than borrowing the Ethereum one. */
+static pos_addr_t s_tron_dest;
+
+/** @brief The reconciled recipient for the chain currently selected. */
+static const pos_addr_t *active_dest(void) {
+    return chain_is_tron() ? &s_tron_dest : &s_dest;
+}
 
 /* Set from the UI task when the user taps Cancel during PLACE_CARD; checked
  * by the main task after sign_and_broadcast returns so we skip the FAILED
@@ -203,6 +264,62 @@ struct WipeGuard {
     WipeGuard &operator=(const WipeGuard &) = delete;
 };
 }  // namespace
+
+/**
+ * @brief Wait for a card and open a secure channel, cancellable from the UI.
+ *
+ * Manual connect loop with cancel checks between PN532 polls — replaces
+ * wallet.connect() so a Cancel from the user aborts within one PN532 timeout.
+ * Drives the "Tap your card" / "Processing" screens itself.
+ *
+ * @param[in]  wallet    Initialised wallet instance.
+ * @param[in]  transport PN532 transport, polled directly.
+ * @param[out] session   Open secure session on success.
+ * @return true with @p session open; false on user cancel or after 60 s —
+ *         the two are told apart by @ref s_user_cancelled.
+ */
+static bool card_connect(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
+                         CW_SecureSession &session)
+{
+    if (!s_user_cancelled) {
+        ui_show_tx_status(UI_TX_STATE_PLACE_CARD, "Hold card to reader");
+    }
+
+    /* Start from a clean reader state: a previous attempt that ended with the
+     * card ripped away mid-exchange can leave a stale target selected, which
+     * would make every InListPassiveTarget below time out. */
+    transport.resetReader();
+
+    /* Give the user up to 60 s to present the card. */
+    const int64_t card_wait_us = 60LL * 1000000LL;
+    const int64_t start_us     = esp_timer_get_time();
+    while (true) {
+        if (s_user_cancelled) {
+            return false;
+        }
+        if ((esp_timer_get_time() - start_us) > card_wait_us) {
+            return false;   /* timed out waiting for the card */
+        }
+        if (transport.inListPassiveTarget()) {
+            /* Card tapped — show immediate feedback while the secure channel
+             * comes up. */
+            ui_show_tx_status(UI_TX_STATE_PROCESSING, NULL);
+            vTaskDelay(pdMS_TO_TICKS(200));
+            if (wallet.establishSecureChannel(session)) {
+                return true;
+            }
+            /* Card pulled away (or channel failed) — the PN532 still holds the
+             * now-dead target selected, which makes every following
+             * InListPassiveTarget time out. Release it so the reader can see
+             * the card again, then back to the tap prompt. */
+            transport.resetReader();
+            if (!s_user_cancelled) {
+                ui_show_tx_status(UI_TX_STATE_PLACE_CARD, "Hold card to reader");
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(200));
+    }
+}
 
 /**
  * @brief Sign a USDC transfer on the card and broadcast it via JSON-RPC.
@@ -290,54 +407,11 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
     WipeGuard g_unsigned(unsigned_tx, sizeof(unsigned_tx));
     WipeGuard g_hash(hash, sizeof(hash));
 
-    if (!s_user_cancelled) {
-        ui_show_tx_status(UI_TX_STATE_PLACE_CARD, "Hold card to reader");
-    }
-
-    /* Start from a clean reader state: a previous attempt that ended with the
-     * card ripped away mid-exchange can leave a stale target selected, which
-     * would make every InListPassiveTarget below time out. */
-    transport.resetReader();
-
-    /* Manual connect loop with cancel checks between PN532 polls — replaces
-     * wallet.connect() so a Cancel from the user aborts within one PN532
-     * timeout. Give the user up to 60 s to present the card. */
-    const int64_t card_wait_us = 60LL * 1000000LL;   /* 60 seconds */
-    const int64_t start_us     = esp_timer_get_time();
     CW_SecureSession session;
-    bool connected = false;
-    while (!connected) {
-        if (s_user_cancelled) {
-            return false;
+    if (!card_connect(wallet, transport, session)) {
+        if (!s_user_cancelled) {
+            (void)snprintf(err_out, err_max, "Card not found");
         }
-        if ((esp_timer_get_time() - start_us) > card_wait_us) {
-            break;   /* timed out waiting for the card */
-        }
-        if (transport.inListPassiveTarget()) {
-            /* Card tapped — show immediate feedback while the secure channel
-             * comes up. */
-            ui_show_tx_status(UI_TX_STATE_PROCESSING, NULL);
-            vTaskDelay(pdMS_TO_TICKS(200));
-            if (wallet.establishSecureChannel(session)) {
-                connected = true;
-                break;
-            }
-            /* Card pulled away (or channel failed) — the PN532 still holds the
-             * now-dead target selected, which makes every following
-             * InListPassiveTarget time out. Release it so the reader can see
-             * the card again, then back to the tap prompt. */
-            transport.resetReader();
-            if (!s_user_cancelled) {
-                ui_show_tx_status(UI_TX_STATE_PLACE_CARD, "Hold card to reader");
-            }
-        }
-        vTaskDelay(pdMS_TO_TICKS(200));
-    }
-    if (s_user_cancelled) {
-        return false;
-    }
-    if (!connected) {
-        (void)snprintf(err_out, err_max, "Card not found");
         return false;
     }
 
@@ -345,23 +419,14 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
         ui_show_tx_status(UI_TX_STATE_SIGNING, NULL);
     }
 
-    /* BIP32 Ethereum derivation path: m/44'/60'/0'/0/0 */
-    static const uint8_t eth_path[20] = {
-        0x80U, 0x00U, 0x00U, 0x2CU,
-        0x80U, 0x00U, 0x00U, 0x3CU,
-        0x80U, 0x00U, 0x00U, 0x00U,
-        0x00U, 0x00U, 0x00U, 0x00U,
-        0x00U, 0x00U, 0x00U, 0x00U,
-    };
-
     CW_SignRequest req(session,
                        CW_SIGN_DERIVE_K1,
                        CW_SIGN_SIG_ECDSA_LOW_S,
                        CW_SIGN_WITH_PIN);
     req.hash             = hash;
     req.hashLength       = static_cast<uint8_t>(CW_HASH_SIZE);
-    req.derivePath       = eth_path;
-    req.derivePathLength = static_cast<uint8_t>(sizeof(eth_path));
+    req.derivePath       = ETH_DERIVE_PATH;
+    req.derivePathLength = static_cast<uint8_t>(sizeof(ETH_DERIVE_PATH));
 
     /* Re-reconcile amount + recipient right before signing — this is the last
      * point before the card produces an irreversible signature over the
@@ -437,6 +502,186 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
     }
 
     return true;
+}
+
+/**
+ * @brief Sign a native TRX transfer on the card and broadcast it to Tron.
+ *
+ * Same shape as @ref sign_and_broadcast, but Tron has no RLP and no local
+ * nonce: the full node serialises the transaction and we sign its txID. What
+ * the node returns is therefore verified before the card ever sees the hash
+ * (see tron_rpc.h), and the recipient handed to the node is derived from the
+ * dual-stored @p to right after the reconcile, never from a config literal.
+ *
+ * @param[in]  wallet       Initialised wallet instance.
+ * @param[in]  transport    PN532 transport (cancellable connect loop).
+ * @param[in]  amount       Dual-stored amount; minor units are sun (1e-6 TRX).
+ * @param[in]  to           Dual-stored recipient (20-byte key hash).
+ * @param[in]  pin          Operator-entered card PIN (scrubbed after signing).
+ * @param[in]  pin_chars    Number of PIN characters in @p pin.
+ * @param[out] txid_out     Transaction id hex on success (>= 65 bytes).
+ * @param[in]  txid_max     Capacity of @p txid_out.
+ * @param[out] err_out      Short UI-facing error message on failure.
+ * @param[in]  err_max      Capacity of @p err_out.
+ * @return true on successful broadcast; false on failure or user cancel.
+ */
+static bool sign_and_broadcast_tron(CryptnoxWallet &wallet,
+                                     Pn532NfcTransport &transport,
+                                     CW_CryptoProvider &crypto,
+                                     const pos_amount_t *amount,
+                                     const pos_addr_t *to,
+                                     const char *pin, size_t pin_chars,
+                                     char *txid_out, size_t txid_max,
+                                     char *err_out, size_t err_max)
+{
+    if (!IS_TRUE32(amount_consistent(amount)) ||
+        !IS_TRUE32(address_consistent(to))) {
+        pos_handle_anomaly("pre-create reconcile (tron)");
+        (void)snprintf(err_out, err_max, "Integrity check failed");
+        return false;
+    }
+    const uint64_t amount_sun = amount->amount_minor;   /* both 6 decimals */
+
+    /* Recipient in Tron form, built from the reconciled copy. */
+    uint8_t to21[CW_TRON_ADDRESS_BYTES];
+    to21[0] = CW_TRON_ADDRESS_PREFIX;
+    (void)CW_Utils::safe_memcpy(&to21[1], sizeof(to21) - 1U,
+                                to->addr, ETH_ADDR_LEN);
+    char to_hex[TRON_ADDR_HEX_LEN + 1U];
+    tron_addr_to_hex(to21, to_hex, sizeof(to_hex));
+
+    /* The card comes before the RPC on this path: Tron will not serialise a
+     * transfer without the sender, and the sender is whoever tapped. */
+    CW_SecureSession session;
+    if (!card_connect(wallet, transport, session)) {
+        if (!s_user_cancelled) {
+            (void)snprintf(err_out, err_max, "Card not found");
+        }
+        return false;
+    }
+
+    if (!s_user_cancelled) {
+        ui_show_tx_status(UI_TX_STATE_SIGNING, NULL);
+    }
+
+    /* Read this card's Tron account. The export needs the PIN verified for the
+     * session first; the same PIN then rides along with the SIGN APDU. */
+    char    owner_hex[TRON_ADDR_HEX_LEN + 1] = { 0 };
+    char    owner_b58[CW_TRON_ADDRESS_STR_SIZE] = { 0 };
+    uint8_t pubkey[64];
+    uint8_t owner21[CW_TRON_ADDRESS_BYTES];
+    WipeGuard g_pub(pubkey, sizeof(pubkey));
+    if (!wallet.verifyPin(session,
+                          reinterpret_cast<const uint8_t *>(pin),
+                          static_cast<uint8_t>(pin_chars))) {
+        wallet.disconnect(session);
+        (void)snprintf(err_out, err_max, "Wrong PIN");
+        return false;
+    }
+    if (!wallet.getPublicKey(session, CW_TRON_DERIVE_PATH,
+                             CW_TRON_PATH_LENGTH, pubkey) ||
+        !CW_Tron::addressBytesFromPublicKey(pubkey, owner21) ||
+        !CW_Tron::encodeAddress(owner21, crypto,
+                                owner_b58, sizeof(owner_b58))) {
+        wallet.disconnect(session);
+        (void)snprintf(err_out, err_max, "Cannot read card address");
+        return false;
+    }
+    tron_addr_to_hex(owner21, owner_hex, sizeof(owner_hex));
+    ESP_LOGI(TAG, "Tron sender (this card): %s", owner_b58);
+
+    tron_tx_ctx_t tx;
+    if (!tron_rpc_create_transfer(owner_hex, to_hex, amount_sun, &tx)) {
+        wallet.disconnect(session);
+        /* Most often an account with no TRX: Tron will not build a transfer from
+         * an address it has never seen funded. */
+        (void)snprintf(err_out, err_max, "No TRX on %.12s...", owner_b58);
+        return false;
+    }
+
+    CW_SignRequest req(session,
+                       CW_SIGN_DERIVE_K1,
+                       CW_SIGN_SIG_ECDSA_LOW_S,
+                       CW_SIGN_WITH_PIN);
+    req.hash             = tx.txid;
+    req.hashLength       = static_cast<uint8_t>(sizeof(tx.txid));
+    req.derivePath       = CW_TRON_DERIVE_PATH;
+    req.derivePathLength = CW_TRON_PATH_LENGTH;
+
+    /* Last reconcile before the card produces an irreversible signature. */
+    if (!IS_TRUE32(amount_consistent(amount)) ||
+        !IS_TRUE32(address_consistent(to))) {
+        pos_handle_anomaly("pre-sign reconcile (tron)");
+        (void)snprintf(err_out, err_max, "Integrity check failed");
+        return false;
+    }
+
+    const size_t copy_len = (pin_chars < CW_MAX_PIN_LENGTH) ? pin_chars
+                                                            : CW_MAX_PIN_LENGTH;
+    (void)CW_Utils::safe_memcpy(req.pin, sizeof(req.pin),
+                                reinterpret_cast<const uint8_t *>(pin),
+                                copy_len);
+
+    CW_SignResult result = wallet.sign(req);
+    WipeGuard g_sig(result.signature, sizeof(result.signature));
+    wallet.disconnect(session);
+    CW_Utils::secure_wipe(req.pin, sizeof(req.pin));
+
+    if (result.errorCode != CW_OK) {
+        (void)snprintf(err_out, err_max, "Sign error 0x%02X",
+                       static_cast<unsigned int>(result.errorCode));
+        return false;
+    }
+
+    const uint8_t *sig_r = result.signature + CW_SIG_R_OFFSET;
+    const uint8_t *sig_s = result.signature + CW_SIG_S_OFFSET;
+
+    if (!s_user_cancelled) {
+        ui_show_tx_status(UI_TX_STATE_SENDING, NULL);
+    }
+
+    /* Tron wants r || s || recovery id, and nothing on the card or in the API
+     * tells us the id — so try 0 and fall back to 1, the same way the SDK's
+     * TronSigning example does. A wrong id recovers to some other account, the
+     * node answers SIGERROR and nothing is committed, so the retry is safe. The
+     * two attempts carry identical raw_data, hence the identical txID: only one
+     * transaction can ever exist. */
+    uint8_t sig[65];
+    WipeGuard g_sig65(sig, sizeof(sig));
+    (void)CW_Utils::safe_memcpy(sig, sizeof(sig), sig_r, 32U);
+    (void)CW_Utils::safe_memcpy(sig + 32U, sizeof(sig) - 32U, sig_s, 32U);
+
+    /* last cancel check right before the irreversible broadcast. */
+    if (s_user_cancelled) {
+        return false;
+    }
+
+    bool sent = false;
+    for (uint8_t v = 0U; (v < 2U) && !sent; v++) {
+        sig[64] = v;
+        sent = tron_rpc_broadcast(&tx, sig);
+        if (!sent) {
+            ESP_LOGW(TAG, "broadcast rejected with v=%u", static_cast<unsigned>(v));
+        }
+    }
+    if (!sent) {
+        (void)snprintf(err_out, err_max, "Broadcast failed");
+        return false;
+    }
+
+    (void)snprintf(txid_out, txid_max, "%s", tx.txid_hex);
+    return true;
+}
+
+/** @brief Map a Tron receipt onto the Ethereum verdicts the UI flow uses. */
+static eth_rpc_receipt_result_t tron_receipt_as_eth(tron_receipt_t r)
+{
+    switch (r) {
+        case TRON_RECEIPT_SUCCESS: return ETH_RPC_RECEIPT_SUCCESS;
+        case TRON_RECEIPT_FAILED:  return ETH_RPC_RECEIPT_REVERTED;
+        case TRON_RECEIPT_PENDING: return ETH_RPC_RECEIPT_PENDING;
+        default:                   return ETH_RPC_RECEIPT_RPC_ERROR;
+    }
 }
 
 /******************************************************************
@@ -639,7 +884,7 @@ extern "C" void app_main(void)
     /* ── UI: splash visible while the rest boots ───────── */
     s_ui_queue = xQueueCreate(8, sizeof(ui_msg_t));
     ui_init(ui_event_dispatch);
-    ui_set_addresses("0x" ADDR_USDC, "0x" ADDR_TO);
+    ui_refresh_addresses();
     /* No ui_show_splash() here — ui_init() already selects it, and asking twice
      * races the UI task into rebuilding the screen and replaying the logo. */
 
@@ -707,6 +952,25 @@ extern "C" void app_main(void)
     NullLogger logger;
     (void)logger.begin(115200UL);
     ESP32CryptoProvider cryptoProvider;
+
+    /* Tron recipient: base58check-decoded by the SDK, which validates the
+     * checksum — so a mistyped address in config.h fails the boot instead of
+     * sending TRX to a stranger. Decoded twice into the dual store (§7.1), each
+     * pass independent, exactly as ADDR_TO is parsed twice above. */
+    uint8_t tron_to21[CW_TRON_ADDRESS_BYTES];
+    uint8_t tron_to21_echo[CW_TRON_ADDRESS_BYTES];
+    if (!CW_Tron::decodeAddress(TRON_ADDR_TO, cryptoProvider, tron_to21) ||
+        !CW_Tron::decodeAddress(TRON_ADDR_TO, cryptoProvider, tron_to21_echo)) {
+        ESP_LOGE(TAG, "Bad TRON_ADDR_TO in config");
+        ui_show_tx_status(UI_TX_STATE_FAILED, "Bad TRON_ADDR_TO in config");
+        return;
+    }
+    (void)CW_Utils::safe_memcpy(s_tron_dest.addr, sizeof(s_tron_dest.addr),
+                                &tron_to21[1], ETH_ADDR_LEN);
+    (void)CW_Utils::safe_memcpy(s_tron_dest.addr_echo,
+                                sizeof(s_tron_dest.addr_echo),
+                                &tron_to21_echo[1], ETH_ADDR_LEN);
+    ESP_LOGI(TAG, "Tron recipient: %s", TRON_ADDR_TO);
     Pn532NfcTransport   nfcTransport(&nfc, logger);
     ESP32Platform       platform;
     CryptnoxWallet      wallet(nfcTransport, logger, cryptoProvider, platform);
@@ -719,6 +983,7 @@ extern "C" void app_main(void)
 
     /* ── WiFi + RPC ────────────────────────────────────────────── */
     eth_rpc_init(RPC_URL, "0x" ADDR_FROM);
+    tron_rpc_init(TRON_URL);
 #if defined(RPC_PROJECT_ID) && defined(RPC_API_SECRET)
     eth_rpc_set_auth(RPC_PROJECT_ID, RPC_API_SECRET);
 #endif
@@ -815,13 +1080,16 @@ extern "C" void app_main(void)
                 /* Reconcile amount + recipient before they are shown to the
                  * customer — displayed value must equal what gets signed. */
                 if (!IS_TRUE32(amount_consistent(&pending_amount)) ||
-                    !IS_TRUE32(address_consistent(&s_dest))) {
+                    !IS_TRUE32(address_consistent(active_dest()))) {
                     pos_handle_anomaly("pre-display reconcile");
                     ui_show_tx_status(UI_TX_STATE_FAILED, "Integrity check failed");
                     pos_amount_set(&pending_amount, 0U);
                     break;
                 }
-                ui_show_confirm(pending_amount.amount_minor, "0x" ADDR_TO);
+                ui_refresh_addresses();
+                ui_show_confirm(pending_amount.amount_minor,
+                                chain_is_tron() ? TRON_ADDR_TO
+                                                : "0x" ADDR_TO);
                 break;
 
             case UI_EVENT_CONFIRM_CANCEL:
@@ -842,7 +1110,17 @@ extern "C" void app_main(void)
                 s_user_cancelled = false;
                 char tx_hash[68] = { 0 };
                 char err_msg[64] = { 0 };
-                bool ok = sign_and_broadcast(wallet, nfcTransport,
+                /* Read the chain once per payment: the operator can switch it
+                 * between sales, but never mid-sale. */
+                const bool tron = chain_is_tron();
+                bool ok = tron
+                    ? sign_and_broadcast_tron(wallet, nfcTransport,
+                                              cryptoProvider,
+                                              &pending_amount, &s_tron_dest,
+                                              pin, pin_chars,
+                                              tx_hash, sizeof(tx_hash),
+                                              err_msg, sizeof(err_msg))
+                    : sign_and_broadcast(wallet, nfcTransport,
                                               &pending_amount, &s_dest,
                                               pin, pin_chars,
                                               tx_hash, sizeof(tx_hash),
@@ -865,7 +1143,9 @@ extern "C" void app_main(void)
                     const int64_t deadline =
                         esp_timer_get_time() + 120LL * 1000000LL;  /* 120 s */
                     while (esp_timer_get_time() < deadline) {
-                        rc = eth_rpc_get_tx_receipt(tx_hash);
+                        rc = tron
+                             ? tron_receipt_as_eth(tron_rpc_get_receipt(tx_hash))
+                             : eth_rpc_get_tx_receipt(tx_hash);
                         if ((rc == ETH_RPC_RECEIPT_SUCCESS) ||
                             (rc == ETH_RPC_RECEIPT_REVERTED)) {
                             break;
@@ -880,7 +1160,7 @@ extern "C" void app_main(void)
                                                 ? POS_VERDICT_APPROVED
                                                 : POS_VERDICT_DECLINED;
                     bool32 decision =
-                        run_payment_decision(&decided, &s_dest, verdict);
+                        run_payment_decision(&decided, active_dest(), verdict);
                     if (rc == ETH_RPC_RECEIPT_SUCCESS && IS_TRUE32(decision)) {
                         ESP_LOGI(TAG, "Tx confirmed on-chain");
                         ui_show_tx_status(UI_TX_STATE_DONE, tx_hash);
