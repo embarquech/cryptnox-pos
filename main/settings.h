@@ -27,6 +27,12 @@ extern "C" {
 typedef enum {
     POS_CHAIN_ETH_SEPOLIA = 0,  /**< USDC on Ethereum Sepolia (the default). */
     POS_CHAIN_TRON_NILE   = 1,  /**< Native TRX on the Tron Nile testnet.    */
+    POS_CHAIN_TRON_USDT   = 2,  /**< USDT (TRC-20) on Tron Nile.             */
+    /* No USDC on Tron: Circle stopped minting it in Feb 2024 and closed
+     * redemptions a year later, so there is no mainnet asset to graduate to.
+     * The TRC-20 code path is generic — re-add an enumerator here and a
+     * trc20_asset_t in main.cpp if another token is ever wanted. */
+    POS_CHAIN__COUNT            /**< Sentinel — keep last, not a selection.  */
 } pos_chain_t;
 
 /** @brief Selected chain, or @ref POS_CHAIN_ETH_SEPOLIA if never set. */

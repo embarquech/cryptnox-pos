@@ -17,7 +17,11 @@
  *   TransferContract.owner_address : field 1, bytes  -> 0x0a, len 0x15 (21)
  *   TransferContract.to_address    : field 2, bytes  -> 0x12, len 0x15 (21)
  *   TransferContract.amount        : field 3, varint -> 0x18
+ *   TriggerSmartContract.owner_address    : field 1, bytes -> 0x0a, len 0x15
+ *   TriggerSmartContract.contract_address : field 2, bytes -> 0x12, len 0x15
+ *   TriggerSmartContract.data             : field 4, bytes -> 0x22, len 0x44 (68)
  *   Transaction.raw_data           : field 1, bytes  -> 0x0a
+ *   Transaction.raw_data.fee_limit : field 18, varint -> 0x90 0x01
  *   Transaction.signature          : field 2, bytes  -> 0x12, len 0x41 (65)
  */
 
@@ -120,6 +124,86 @@ bool tron_tx_contract_ok(const char *raw_data_hex, const char *owner_hex,
     if ((k <= 0) || (static_cast<size_t>(k) >= sizeof(want))) { return false; }
 
     return hex_contains(raw_data_hex, want);
+}
+
+size_t tron_trc20_param_hex(const char *to_hex, uint64_t amount,
+                            char *out, size_t out_size)
+{
+    if (!addr_hex_ok(to_hex) || (out == NULL) ||
+        (out_size < (TRON_TRC20_PARAM_HEX_LEN + 1U))) {
+        return 0U;
+    }
+
+    size_t p = 0U;
+    /* word 1 — address: 12 zero bytes, then the key hash without its "41". */
+    for (size_t i = 0U; i < 24U; i++, p++) { out[p] = '0'; }
+    for (size_t i = 2U; i < TRON_ADDR_HEX_LEN; i++, p++) {
+        out[p] = lower_ascii(to_hex[i]);
+    }
+    /* word 2 — amount: 24 zero bytes, then the 64-bit value big-endian. */
+    for (size_t i = 0U; i < 48U; i++, p++) { out[p] = '0'; }
+    for (int sh = 60; sh >= 0; sh -= 4, p++) {
+        out[p] = nibble_hex(static_cast<unsigned>((amount >> sh) & 0x0FULL));
+    }
+
+    out[p] = '\0';
+    return p;
+}
+
+bool tron_tx_trc20_ok(const char *raw_data_hex, const char *owner_hex,
+                      const char *contract_hex, const char *to_hex,
+                      uint64_t amount, uint64_t fee_limit_sun)
+{
+    if ((raw_data_hex == NULL) || (hex_strlen(raw_data_hex) == 0U)) {
+        return false;
+    }
+    if (!addr_hex_ok(owner_hex) || !addr_hex_ok(contract_hex) ||
+        !addr_hex_ok(to_hex)) {
+        return false;
+    }
+    /* A zero-token transfer is not a payment, and an uncapped call is not one
+     * the operator agreed to. Neither gets signed. */
+    if ((amount == 0U) || (fee_limit_sun == 0U)) { return false; }
+
+    char param[TRON_TRC20_PARAM_HEX_LEN + 1U];
+    if (tron_trc20_param_hex(to_hex, amount, param, sizeof(param)) == 0U) {
+        return false;
+    }
+
+    char want[4U + TRON_ADDR_HEX_LEN + 4U + TRON_ADDR_HEX_LEN + 4U +
+              sizeof(TRON_TRC20_SELECTOR) + sizeof(param) + 8U];
+    int k = snprintf(want, sizeof(want), "0a15%s1215%s2244" TRON_TRC20_SELECTOR "%s",
+                     owner_hex, contract_hex, param);
+    if ((k <= 0) || (static_cast<size_t>(k) >= sizeof(want))) { return false; }
+
+    if (!hex_contains(raw_data_hex, want)) {
+        /* call_value is proto3-default 0 and therefore normally omitted, but a
+         * node that emits it explicitly ("1800") is serialising the same
+         * contract — accept that shape rather than decline a valid payment. */
+        char want_cv[sizeof(want) + 4U];
+        k = snprintf(want_cv, sizeof(want_cv),
+                     "0a15%s1215%s18002244" TRON_TRC20_SELECTOR "%s",
+                     owner_hex, contract_hex, param);
+        if ((k <= 0) || (static_cast<size_t>(k) >= sizeof(want_cv))) {
+            return false;
+        }
+        if (!hex_contains(raw_data_hex, want_cv)) { return false; }
+    }
+
+    /* ponytail: substring match, so a hostile fee_limit plus a coincidental
+     * "9001<our varint>" elsewhere in raw_data would slip through (~2^-32).
+     * Parse the protobuf field-by-field if that ever stops being acceptable. */
+    char fee_varint[24];
+    if (tron_varint_hex(fee_limit_sun, fee_varint, sizeof(fee_varint)) == 0U) {
+        return false;
+    }
+    char fee_want[4U + sizeof(fee_varint)];
+    k = snprintf(fee_want, sizeof(fee_want), "9001%s", fee_varint);
+    if ((k <= 0) || (static_cast<size_t>(k) >= sizeof(fee_want))) {
+        return false;
+    }
+
+    return hex_contains(raw_data_hex, fee_want);
 }
 
 size_t tron_tx_envelope_hex(const char *raw_data_hex, const char *sig_hex,

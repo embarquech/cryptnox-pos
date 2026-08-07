@@ -59,8 +59,8 @@ pos_chain_t settings_get_chain(void)
         /* Unknown value = a downgrade or a corrupt cell; fall back to the
          * default rather than charge on a chain no code path can handle. */
         if ((nvs_get_u8(h, K_CHAIN, &stored) == ESP_OK) &&
-            (stored == (uint8_t)POS_CHAIN_TRON_NILE)) {
-            chain = POS_CHAIN_TRON_NILE;
+            (stored < (uint8_t)POS_CHAIN__COUNT)) {
+            chain = (pos_chain_t)stored;
         }
         nvs_close(h);
     }

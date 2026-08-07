@@ -5,8 +5,9 @@
 
 /*
  * test_tron_tx.cpp — host unit test for the Tron hex helpers: protobuf varints,
- * the TransferContract integrity check (the thing standing between a hostile
- * full node and a redirected payment) and the signed-Transaction envelope.
+ * the TransferContract and TriggerSmartContract integrity checks (the things
+ * standing between a hostile full node and a redirected payment — or, for
+ * TRC-20, a payment in the wrong token) and the signed-Transaction envelope.
  *
  * Single translation unit: it #includes the production source directly, the
  * same pattern as the other tests here. Build & run from the repo root:
@@ -90,6 +91,73 @@ int main(void)
     assert(tron_tx_contract_ok(NILE_RAW, NILE_OWNER, NILE_TO, 1500000U));
     assert(!tron_tx_contract_ok(NILE_RAW, NILE_OWNER, NILE_TO, 1500000U + 1U));
     printf("contract check ... OK\n");
+
+    /* ── TRC-20: the ABI parameter block ── */
+#define TOKEN "41eca9bc828a3005b9a3b909f2cc5c2a54794de05f"
+    /* transfer(DEST, 1.5 tokens): address word (0x41 prefix dropped, left-
+     * padded) then the amount word. 1500000 = 0x16e360. */
+    static const char *const PARAM_OK =
+        "000000000000000000000000" "cadddf4677544d0eb25e4f87cd978aa5de23ebc6"
+        "000000000000000000000000000000000000000000000000" "000000000016e360";
+    char param[TRON_TRC20_PARAM_HEX_LEN + 1];
+    assert(tron_trc20_param_hex(DEST, 1500000U, param, sizeof(param)) ==
+           TRON_TRC20_PARAM_HEX_LEN);
+    assert(strcmp(param, PARAM_OK) == 0);
+    /* Upper-case in, lower-case out: the node echoes what we send, and the
+     * integrity check compares against this same string. */
+    assert(tron_trc20_param_hex("41CADDDF4677544D0EB25E4F87CD978AA5DE23EBC6",
+                                1500000U, param, sizeof(param)) ==
+           TRON_TRC20_PARAM_HEX_LEN);
+    assert(strcmp(param, PARAM_OK) == 0);
+    assert(tron_trc20_param_hex("41short", 1U, param, sizeof(param)) == 0U);
+    assert(tron_trc20_param_hex(NULL, 1U, param, sizeof(param)) == 0U);
+    char param_small[TRON_TRC20_PARAM_HEX_LEN];   /* one short of the NUL */
+    assert(tron_trc20_param_hex(DEST, 1U, param_small, sizeof(param_small)) == 0U);
+    printf("trc20 param hex ... OK\n");
+
+    /* ── TRC-20: the TriggerSmartContract integrity check ──
+     * fee_limit 100 TRX = 100000000 sun -> varint 80 c2 d7 2f, under tag 9001. */
+#define FEE_LIMIT 100000000ULL
+    static const char *const TRC20_RAW =
+        "0a021f5e2208c011d0fa8e1ebf4d408093ad8afd335aae01081f12a9010a31747970"
+        "652e676f6f676c65617069732e636f6d2f70726f746f636f6c2e5472696767657253"
+        "6d617274436f6e747261637412740a15" OWNER "1215" TOKEN "2244a9059cbb"
+        "000000000000000000000000" "cadddf4677544d0eb25e4f87cd978aa5de23ebc6"
+        "000000000000000000000000000000000000000000000000" "000000000016e360"
+        "7091c4a98afd33900180c2d72f";
+
+    assert(tron_tx_trc20_ok(TRC20_RAW, OWNER, TOKEN, DEST, 1500000U, FEE_LIMIT));
+    /* Every one of these is a payment the terminal must decline. */
+    assert(!tron_tx_trc20_ok(TRC20_RAW, OWNER, TOKEN, DEST, 1500001U, FEE_LIMIT));
+    assert(!tron_tx_trc20_ok(TRC20_RAW, OWNER, TOKEN, OWNER, 1500000U, FEE_LIMIT));
+    assert(!tron_tx_trc20_ok(TRC20_RAW, DEST, TOKEN, DEST, 1500000U, FEE_LIMIT));
+    /* Wrong contract = wrong asset: the node swapped in another token. */
+    assert(!tron_tx_trc20_ok(TRC20_RAW, OWNER,
+                             "41eca9bc828a3005b9a3b909f2cc5c2a54794de05e",
+                             DEST, 1500000U, FEE_LIMIT));
+    /* A fee cap the operator never agreed to. */
+    assert(!tron_tx_trc20_ok(TRC20_RAW, OWNER, TOKEN, DEST, 1500000U,
+                             FEE_LIMIT * 2U));
+    assert(!tron_tx_trc20_ok(TRC20_RAW, OWNER, TOKEN, DEST, 1500000U, 0U));
+    assert(!tron_tx_trc20_ok(TRC20_RAW, OWNER, TOKEN, DEST, 0U, FEE_LIMIT));
+    /* A TRX TransferContract must not pass as a token transfer, or vice versa. */
+    assert(!tron_tx_trc20_ok(RAW_OK, OWNER, TOKEN, DEST, 1500000U, FEE_LIMIT));
+    assert(!tron_tx_contract_ok(TRC20_RAW, OWNER, DEST, 1500000U));
+    assert(!tron_tx_trc20_ok(NULL, OWNER, TOKEN, DEST, 1500000U, FEE_LIMIT));
+    assert(!tron_tx_trc20_ok("not hex!", OWNER, TOKEN, DEST, 1500000U, FEE_LIMIT));
+    assert(tron_tx_trc20_ok(TRC20_RAW, OWNER,
+                            "41ECA9BC828A3005B9A3B909F2CC5C2A54794DE05F",
+                            DEST, 1500000U, FEE_LIMIT));
+
+    /* Some nodes serialise the proto3-default call_value explicitly ("1800");
+     * that is the same contract and must still be accepted. */
+    static const char *const TRC20_RAW_CV =
+        "0a021f5e5aae01081f12a9010a15" OWNER "1215" TOKEN "18002244a9059cbb"
+        "000000000000000000000000" "cadddf4677544d0eb25e4f87cd978aa5de23ebc6"
+        "000000000000000000000000000000000000000000000000" "000000000016e360"
+        "900180c2d72f";
+    assert(tron_tx_trc20_ok(TRC20_RAW_CV, OWNER, TOKEN, DEST, 1500000U, FEE_LIMIT));
+    printf("trc20 contract check ... OK\n");
 
     /* ── envelope: Transaction { 1: raw_data, 2: signature } ── */
     static const char sig[TRON_SIG_HEX_LEN + 1] =

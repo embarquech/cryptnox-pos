@@ -88,8 +88,8 @@
 /* =========================
  * Tron (Nile testnet)
  * ========================= */
-/* Native TRX transfers, selectable at runtime from the settings menu.
- * TronGrid's public Nile endpoint needs no API key for these calls. */
+/* Native TRX and TRC-20 (USDT / USDC) transfers, selectable at runtime from the
+ * settings menu. TronGrid's public Nile endpoint needs no API key for these. */
 #define TRON_URL          "https://nile.trongrid.io"
 
 /* --- Tron addresses (Nile testnet) ---------------------------------
@@ -102,6 +102,28 @@
  * its m/44'/195'/0'/0/0 public key is read over the secure channel and turned
  * into an address by CW_Tron, so swapping cards needs no rebuild. */
 #define TRON_ADDR_TO      "THQGuFzL87ZqhxkgqYEryRAd7gqFqL5rdc"
+
+/* --- TRC-20 token contract (Nile testnet) ---------------------------
+ * Base58 "T..." form again. Confirm the current Nile deployment on
+ * https://nile.tronscan.org before trusting this — testnet token contracts get
+ * redeployed, and a stale address decodes fine while paying the wrong asset.
+ * The contract below answered symbol "USDT" / decimals 6 on 2026-08-07; the
+ * amount keypad assumes 6 decimals, so re-check that too if you change it.
+ *
+ * Checksum-decoded at boot. Unlike TRON_ADDR_TO this is NOT fatal: a bad value
+ * only disables the asset in the picker, so a terminal that charges in TRX or
+ * on Sepolia still boots.
+ *
+ * There is deliberately no USDC-on-Tron entry — Circle stopped minting it in
+ * February 2024 and closed redemptions in February 2025. */
+#define TRON_ADDR_USDT    "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf"
+
+/* Ceiling, in sun, on the TRX a TRC-20 call may burn when the card's account
+ * has no energy staked. A transfer to an address that has never held the token
+ * is the expensive case (~130k energy). This is signed into the transaction and
+ * re-checked against the node's serialisation, so it is a real cap, not a hint.
+ * 100 TRX is the usual wallet default. */
+#define TRON_TRC20_FEE_LIMIT_SUN  100000000ULL
 
 
 /* =========================

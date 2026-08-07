@@ -78,6 +78,16 @@ extern "C" {
 
 #include "config.h"
 
+/* Tron TRC-20 support post-dates the first config.h files in the field. An
+ * empty contract fails its base58 decode at boot, which disables that asset
+ * rather than breaking the build of a config that predates it. */
+#ifndef TRON_ADDR_USDT
+#define TRON_ADDR_USDT  ""
+#endif
+#ifndef TRON_TRC20_FEE_LIMIT_SUN
+#define TRON_TRC20_FEE_LIMIT_SUN  100000000ULL
+#endif
+
 /******************************************************************
  * 2. Configuration guards and constants
  ******************************************************************/
@@ -139,7 +149,51 @@ static void tron_addr_to_hex(const uint8_t *addr21, char *out, size_t n)
 
 /** @brief true when the operator has switched the terminal to Tron. */
 static bool chain_is_tron(void) {
-    return settings_get_chain() == POS_CHAIN_TRON_NILE;
+    return settings_get_chain() != POS_CHAIN_ETH_SEPOLIA;
+}
+
+/**
+ * @brief A TRC-20 token the terminal can charge in.
+ *
+ * The contract address decides *which* asset moves, so it gets the same
+ * dual-store treatment as the recipient (§3.2/§7.1) rather than being read out
+ * of config.h at signing time.
+ */
+typedef struct {
+    const char *b58;    /**< as configured — also what the confirm screen shows */
+    pos_addr_t  addr;   /**< dual-stored 20-byte key hash (no 0x41 prefix)      */
+    bool        ok;     /**< false until decoded: refuse to charge in it        */
+} trc20_asset_t;
+
+static trc20_asset_t s_trc20_usdt = { TRON_ADDR_USDT, {}, false };
+
+/**
+ * @brief Decode a token's configured base58 contract into its dual store.
+ *
+ * Base58check-decoded twice by the SDK, which verifies the checksum — so a
+ * mistyped contract is refused here rather than charged against the wrong
+ * asset, exactly as the recipient is handled.
+ *
+ * @return false if the address does not decode; the token stays unusable.
+ */
+static bool trc20_load(trc20_asset_t *a, CW_CryptoProvider &crypto) {
+    uint8_t c21[CW_TRON_ADDRESS_BYTES];
+    uint8_t c21_echo[CW_TRON_ADDRESS_BYTES];
+    if (!CW_Tron::decodeAddress(a->b58, crypto, c21) ||
+        !CW_Tron::decodeAddress(a->b58, crypto, c21_echo)) {
+        return false;
+    }
+    (void)CW_Utils::safe_memcpy(a->addr.addr, sizeof(a->addr.addr),
+                                &c21[1], ETH_ADDR_LEN);
+    (void)CW_Utils::safe_memcpy(a->addr.addr_echo, sizeof(a->addr.addr_echo),
+                                &c21_echo[1], ETH_ADDR_LEN);
+    a->ok = true;
+    return true;
+}
+
+/** @brief The selected TRC-20 token, or NULL for native TRX / Ethereum. */
+static trc20_asset_t *active_trc20(void) {
+    return (settings_get_chain() == POS_CHAIN_TRON_USDT) ? &s_trc20_usdt : NULL;
 }
 
 /**
@@ -149,7 +203,10 @@ static bool chain_is_tron(void) {
  * switched from the settings menu while this task is parked on its queue.
  */
 static void ui_refresh_addresses(void) {
-    if (chain_is_tron()) {
+    const trc20_asset_t *token = active_trc20();
+    if (token != NULL) {
+        ui_set_addresses(token->b58, TRON_ADDR_TO);
+    } else if (chain_is_tron()) {
         ui_set_addresses("Native TRX (no contract)", TRON_ADDR_TO);
     } else {
         ui_set_addresses("0x" ADDR_USDC, "0x" ADDR_TO);
@@ -505,7 +562,7 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
 }
 
 /**
- * @brief Sign a native TRX transfer on the card and broadcast it to Tron.
+ * @brief Sign a Tron transfer on the card and broadcast it — TRX or TRC-20.
  *
  * Same shape as @ref sign_and_broadcast, but Tron has no RLP and no local
  * nonce: the full node serialises the transaction and we sign its txID. What
@@ -513,10 +570,16 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
  * (see tron_rpc.h), and the recipient handed to the node is derived from the
  * dual-stored @p to right after the reconcile, never from a config literal.
  *
+ * TRX and TRC-20 differ only in which transaction the node is asked to build;
+ * card handling, the reconciles and the broadcast are identical, so they share
+ * one function rather than a near-copy that could drift on the security checks.
+ *
  * @param[in]  wallet       Initialised wallet instance.
  * @param[in]  transport    PN532 transport (cancellable connect loop).
- * @param[in]  amount       Dual-stored amount; minor units are sun (1e-6 TRX).
+ * @param[in]  amount       Dual-stored amount, 6 decimals — sun for TRX, token
+ *                          base units for TRC-20.
  * @param[in]  to           Dual-stored recipient (20-byte key hash).
+ * @param[in]  token        Token to charge in, or NULL for native TRX.
  * @param[in]  pin          Operator-entered card PIN (scrubbed after signing).
  * @param[in]  pin_chars    Number of PIN characters in @p pin.
  * @param[out] txid_out     Transaction id hex on success (>= 65 bytes).
@@ -530,14 +593,20 @@ static bool sign_and_broadcast_tron(CryptnoxWallet &wallet,
                                      CW_CryptoProvider &crypto,
                                      const pos_amount_t *amount,
                                      const pos_addr_t *to,
+                                     const trc20_asset_t *token,
                                      const char *pin, size_t pin_chars,
                                      char *txid_out, size_t txid_max,
                                      char *err_out, size_t err_max)
 {
     if (!IS_TRUE32(amount_consistent(amount)) ||
-        !IS_TRUE32(address_consistent(to))) {
+        !IS_TRUE32(address_consistent(to)) ||
+        ((token != NULL) && !IS_TRUE32(address_consistent(&token->addr)))) {
         pos_handle_anomaly("pre-create reconcile (tron)");
         (void)snprintf(err_out, err_max, "Integrity check failed");
+        return false;
+    }
+    if ((token != NULL) && !token->ok) {
+        (void)snprintf(err_out, err_max, "Token contract not configured");
         return false;
     }
     const uint64_t amount_sun = amount->amount_minor;   /* both 6 decimals */
@@ -549,6 +618,17 @@ static bool sign_and_broadcast_tron(CryptnoxWallet &wallet,
                                 to->addr, ETH_ADDR_LEN);
     char to_hex[TRON_ADDR_HEX_LEN + 1U];
     tron_addr_to_hex(to21, to_hex, sizeof(to_hex));
+
+    /* Same for the token contract — the node is told which contract to call,
+     * so that address has to come from the reconciled store too. */
+    char token_hex[TRON_ADDR_HEX_LEN + 1U] = { 0 };
+    if (token != NULL) {
+        uint8_t c21[CW_TRON_ADDRESS_BYTES];
+        c21[0] = CW_TRON_ADDRESS_PREFIX;
+        (void)CW_Utils::safe_memcpy(&c21[1], sizeof(c21) - 1U,
+                                    token->addr.addr, ETH_ADDR_LEN);
+        tron_addr_to_hex(c21, token_hex, sizeof(token_hex));
+    }
 
     /* The card comes before the RPC on this path: Tron will not serialise a
      * transfer without the sender, and the sender is whoever tapped. */
@@ -591,11 +671,18 @@ static bool sign_and_broadcast_tron(CryptnoxWallet &wallet,
     ESP_LOGI(TAG, "Tron sender (this card): %s", owner_b58);
 
     tron_tx_ctx_t tx;
-    if (!tron_rpc_create_transfer(owner_hex, to_hex, amount_sun, &tx)) {
+    const bool built = (token == NULL)
+        ? tron_rpc_create_transfer(owner_hex, to_hex, amount_sun, &tx)
+        : tron_rpc_create_trc20_transfer(owner_hex, token_hex, to_hex,
+                                         amount_sun, TRON_TRC20_FEE_LIMIT_SUN,
+                                         &tx);
+    if (!built) {
         wallet.disconnect(session);
-        /* Most often an account with no TRX: Tron will not build a transfer from
-         * an address it has never seen funded. */
-        (void)snprintf(err_out, err_max, "No TRX on %.12s...", owner_b58);
+        /* Most often an account the chain has never seen funded: Tron will not
+         * build a transfer from it, and a TRC-20 call additionally needs TRX
+         * for the energy the transfer burns. */
+        (void)snprintf(err_out, err_max, "No %s on %.12s...",
+                       (token == NULL) ? "TRX" : "funds/TRX", owner_b58);
         return false;
     }
 
@@ -610,7 +697,8 @@ static bool sign_and_broadcast_tron(CryptnoxWallet &wallet,
 
     /* Last reconcile before the card produces an irreversible signature. */
     if (!IS_TRUE32(amount_consistent(amount)) ||
-        !IS_TRUE32(address_consistent(to))) {
+        !IS_TRUE32(address_consistent(to)) ||
+        ((token != NULL) && !IS_TRUE32(address_consistent(&token->addr)))) {
         pos_handle_anomaly("pre-sign reconcile (tron)");
         (void)snprintf(err_out, err_max, "Integrity check failed");
         return false;
@@ -971,6 +1059,13 @@ extern "C" void app_main(void)
                                 sizeof(s_tron_dest.addr_echo),
                                 &tron_to21_echo[1], ETH_ADDR_LEN);
     ESP_LOGI(TAG, "Tron recipient: %s", TRON_ADDR_TO);
+
+    /* TRC-20 contract, decoded the same way. Non-fatal on purpose: an operator
+     * who never charges in tokens leaves the placeholder in config.h, and the
+     * terminal must still boot — the asset is simply refused if selected. */
+    if (!trc20_load(&s_trc20_usdt, cryptoProvider)) {
+        ESP_LOGW(TAG, "TRON_ADDR_USDT not usable - USDT on Tron disabled");
+    }
     Pn532NfcTransport   nfcTransport(&nfc, logger);
     ESP32Platform       platform;
     CryptnoxWallet      wallet(nfcTransport, logger, cryptoProvider, platform);
@@ -1075,12 +1170,24 @@ extern "C" void app_main(void)
         }
 
         switch (msg.event) {
-            case UI_EVENT_AMOUNT_CONFIRMED:
+            case UI_EVENT_AMOUNT_CONFIRMED: {
                 pos_amount_set(&pending_amount, msg.payload);
-                /* Reconcile amount + recipient before they are shown to the
-                 * customer — displayed value must equal what gets signed. */
+                const trc20_asset_t *tok = active_trc20();
+                /* Say so here rather than after the customer has tapped a card:
+                 * a placeholder contract means this asset was never set up. */
+                if ((tok != NULL) && !tok->ok) {
+                    ui_show_tx_status(UI_TX_STATE_FAILED,
+                                      "Token contract not configured");
+                    pos_amount_set(&pending_amount, 0U);
+                    break;
+                }
+                /* Reconcile amount + recipient (+ token contract) before they
+                 * are shown to the customer — displayed value must equal what
+                 * gets signed. */
                 if (!IS_TRUE32(amount_consistent(&pending_amount)) ||
-                    !IS_TRUE32(address_consistent(active_dest()))) {
+                    !IS_TRUE32(address_consistent(active_dest())) ||
+                    ((tok != NULL) &&
+                     !IS_TRUE32(address_consistent(&tok->addr)))) {
                     pos_handle_anomaly("pre-display reconcile");
                     ui_show_tx_status(UI_TX_STATE_FAILED, "Integrity check failed");
                     pos_amount_set(&pending_amount, 0U);
@@ -1091,6 +1198,7 @@ extern "C" void app_main(void)
                                 chain_is_tron() ? TRON_ADDR_TO
                                                 : "0x" ADDR_TO);
                 break;
+            }
 
             case UI_EVENT_CONFIRM_CANCEL:
                 ui_show_amount_entry();
@@ -1117,6 +1225,7 @@ extern "C" void app_main(void)
                     ? sign_and_broadcast_tron(wallet, nfcTransport,
                                               cryptoProvider,
                                               &pending_amount, &s_tron_dest,
+                                              active_trc20(),
                                               pin, pin_chars,
                                               tx_hash, sizeof(tx_hash),
                                               err_msg, sizeof(err_msg))

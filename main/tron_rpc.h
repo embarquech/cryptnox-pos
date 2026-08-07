@@ -28,8 +28,11 @@
 extern "C" {
 #endif
 
-/** @brief Hex capacity for a raw_data protobuf (a transfer needs ~280). */
-#define TRON_RAW_HEX_MAX  512U
+/** @brief Hex capacity for a raw_data protobuf.
+ *
+ * A TRX transfer needs ~280; a TRC-20 TriggerSmartContract carries a longer
+ * type_url plus 68 bytes of calldata and lands near ~400. */
+#define TRON_RAW_HEX_MAX  768U
 
 /** @brief A created-and-verified transfer, ready to sign and broadcast. */
 typedef struct {
@@ -68,6 +71,33 @@ void tron_rpc_init(const char *base_url);
  */
 bool tron_rpc_create_transfer(const char *owner_hex, const char *to_hex,
                               uint64_t amount_sun, tron_tx_ctx_t *out);
+
+/**
+ * @brief Create a TRC-20 @c transfer (USDT, USDC, …) and verify what the node
+ *        serialised for us.
+ *
+ * Same trust model as @ref tron_rpc_create_transfer, with one more thing to get
+ * wrong: the token contract. A node free to choose it could have the card sign
+ * a transfer of a worthless token — or of a different one entirely — so the
+ * contract address is pinned by the check just like the recipient is, and so is
+ * the fee limit (see @ref tron_tx_trc20_ok).
+ *
+ * @param[in]  owner_hex     Sender address, "41"-prefixed 42-char hex.
+ * @param[in]  contract_hex  Token contract address, same form.
+ * @param[in]  to_hex        Recipient address, same form.
+ * @param[in]  amount        Amount in token base units; must be non-zero.
+ * @param[in]  fee_limit_sun Max TRX (in sun) the call may burn; must be
+ *                           non-zero, or a failed call has no cap at all.
+ * @param[out] out           Filled on success; contents undefined on failure.
+ * @return true only if the node answered AND txID == sha256(raw_data) AND
+ *         raw_data carries exactly the requested transfer under the requested
+ *         fee limit.
+ */
+bool tron_rpc_create_trc20_transfer(const char *owner_hex,
+                                    const char *contract_hex,
+                                    const char *to_hex, uint64_t amount,
+                                    uint64_t fee_limit_sun,
+                                    tron_tx_ctx_t *out);
 
 /**
  * @brief Broadcast a created transfer with its 65-byte signature.

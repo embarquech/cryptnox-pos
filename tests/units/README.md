@@ -8,7 +8,7 @@ can never drift from the firmware and no build system is required.
 |--------------------|------------------------------------------------|
 | `test_eth_addr`    | `main/eth_addr.cpp` — hex parsing + EIP-55     |
 | `test_hardening`   | `main/hardening.h` — decision-integrity gate   |
-| `test_tron_tx`     | `main/tron_tx.cpp` — Tron varints, TransferContract check, envelope |
+| `test_tron_tx`     | `main/tron_tx.cpp` — Tron varints, TransferContract + TRC-20 checks, envelope |
 
 Build & run from the repo root (any C++14 compiler):
 

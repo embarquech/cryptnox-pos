@@ -31,8 +31,9 @@
 
 static const char *const TAG = "tron_rpc";
 
-/* Responses echo the whole transaction; a transfer needs ~1 KB. */
-#define RESP_BUF_SIZE   2048U
+/* Responses echo the whole transaction, raw_data expanded as JSON; a TRX
+ * transfer needs ~1 KB and a TriggerSmartContract roughly twice that. */
+#define RESP_BUF_SIZE   3072U
 #define RESP_LOG_MAX    120
 
 /* raw_data is at most TRON_RAW_HEX_MAX/2 bytes. */
@@ -107,6 +108,67 @@ static bool tron_post(const char *path, const char *body,
     return https_post_json(url, body, resp, resp_size, NULL, NULL, NULL);
 }
 
+/**
+ * @brief Take a node-built transaction object apart into a @ref tron_tx_ctx_t.
+ *
+ * Shared by both create paths. Proves txID == sha256(raw_data): without it the
+ * node could hand us the hash of an unrelated transaction and get it
+ * blind-signed by the card, and no amount of checking raw_data would notice,
+ * since the signature covers the hash and not the bytes.
+ *
+ * The caller still has to check that raw_data pays what it asked for — that
+ * check differs per contract type, and it runs on @c out->raw_hex once this
+ * has established that raw_data is the thing being signed.
+ *
+ * @param[in]  txobj cJSON object carrying @c txID and @c raw_data_hex.
+ * @param[out] out   Filled on success.
+ * @return true if the object is well-formed and internally consistent.
+ */
+static bool tx_ctx_from_json(const cJSON *txobj, tron_tx_ctx_t *out)
+{
+    const cJSON *txid = cJSON_GetObjectItemCaseSensitive(txobj, "txID");
+    const cJSON *raw  = cJSON_GetObjectItemCaseSensitive(txobj, "raw_data_hex");
+    if (!cJSON_IsString(txid) || (txid->valuestring == NULL) ||
+        !cJSON_IsString(raw)  || (raw->valuestring == NULL)) {
+        return false;
+    }
+    if (strlen(txid->valuestring) != 64U) {
+        ESP_LOGE(TAG, "create: txID length %u",
+                 (unsigned)strlen(txid->valuestring));
+        return false;
+    }
+    if (strlen(raw->valuestring) >= TRON_RAW_HEX_MAX) {
+        ESP_LOGE(TAG, "create: raw_data too long (%u)",
+                 (unsigned)strlen(raw->valuestring));
+        return false;
+    }
+
+    uint8_t raw_bytes[RAW_BYTES_MAX];
+    size_t  raw_len = hex_to_bytes(raw->valuestring, raw_bytes,
+                                   sizeof(raw_bytes));
+    if (raw_len == 0U) {
+        ESP_LOGE(TAG, "create: raw_data not hex");
+        return false;
+    }
+
+    uint8_t digest[32];
+    if (mbedtls_sha256(raw_bytes, raw_len, digest, 0) != 0) {
+        ESP_LOGE(TAG, "create: sha256 failed");
+        return false;
+    }
+    char digest_hex[65];
+    bytes_to_hex(digest, sizeof(digest), digest_hex);
+    if (strcasecmp(digest_hex, txid->valuestring) != 0) {
+        ESP_LOGE(TAG, "create: txID is not sha256(raw_data) - refusing");
+        return false;
+    }
+
+    (void)memcpy(out->txid, digest, sizeof(out->txid));
+    (void)snprintf(out->txid_hex, sizeof(out->txid_hex), "%s", digest_hex);
+    (void)snprintf(out->raw_hex, sizeof(out->raw_hex), "%s", raw->valuestring);
+    return true;
+}
+
 /******************************************************************
  * 3. Public API
  ******************************************************************/
@@ -136,75 +198,85 @@ bool tron_rpc_create_transfer(const char *owner_hex, const char *to_hex,
         return false;
     }
 
-    bool   ok   = false;
     cJSON *root = cJSON_Parse(resp);
     if (root == NULL) {
         ESP_LOGE(TAG, "create: not JSON: %.*s", RESP_LOG_MAX, resp);
         return false;
     }
 
-    const cJSON *txid = cJSON_GetObjectItemCaseSensitive(root, "txID");
-    const cJSON *raw  = cJSON_GetObjectItemCaseSensitive(root, "raw_data_hex");
-    if (!cJSON_IsString(txid) || (txid->valuestring == NULL) ||
-        !cJSON_IsString(raw)  || (raw->valuestring == NULL)) {
-        /* Tron reports bad parameters as {"Error":"..."} with HTTP 200. */
-        ESP_LOGE(TAG, "create: no txID/raw_data_hex in: %.*s",
-                 RESP_LOG_MAX, resp);
-        goto done;
-    }
-    if (strlen(txid->valuestring) != 64U) {
-        ESP_LOGE(TAG, "create: txID length %u", (unsigned)strlen(txid->valuestring));
-        goto done;
-    }
-    if (strlen(raw->valuestring) >= TRON_RAW_HEX_MAX) {
-        ESP_LOGE(TAG, "create: raw_data too long (%u)",
-                 (unsigned)strlen(raw->valuestring));
-        goto done;
-    }
-
-    /* The node is a trust boundary — check what it serialised before the card
-     * signs anything (see tron_tx.h). Contract first: cheapest and the one that
-     * catches a redirected payment. */
-    if (!tron_tx_contract_ok(raw->valuestring, owner_hex, to_hex, amount_sun)) {
+    /* Tron reports bad parameters as {"Error":"..."} with HTTP 200. */
+    bool ok = tx_ctx_from_json(root, out);
+    if (!ok) {
+        ESP_LOGE(TAG, "create: unusable answer: %.*s", RESP_LOG_MAX, resp);
+    } else if (!tron_tx_contract_ok(out->raw_hex, owner_hex, to_hex,
+                                    amount_sun)) {
+        /* The node is a trust boundary — see tron_tx.h. */
         ESP_LOGE(TAG, "create: raw_data does not match the requested transfer");
-        goto done;
-    }
-
-    {
-        uint8_t raw_bytes[RAW_BYTES_MAX];
-        size_t  raw_len = hex_to_bytes(raw->valuestring, raw_bytes,
-                                       sizeof(raw_bytes));
-        if (raw_len == 0U) {
-            ESP_LOGE(TAG, "create: raw_data not hex");
-            goto done;
-        }
-
-        /* txID must be sha256(raw_data). Without this the node could hand us
-         * the hash of an unrelated transaction and get it blind-signed by the
-         * card — the raw_data check above would not notice, since the signature
-         * covers the hash, not the bytes. */
-        uint8_t digest[32];
-        if (mbedtls_sha256(raw_bytes, raw_len, digest, 0) != 0) {
-            ESP_LOGE(TAG, "create: sha256 failed");
-            goto done;
-        }
-        char digest_hex[65];
-        bytes_to_hex(digest, sizeof(digest), digest_hex);
-        if (strcasecmp(digest_hex, txid->valuestring) != 0) {
-            ESP_LOGE(TAG, "create: txID is not sha256(raw_data) - refusing");
-            goto done;
-        }
-
-        (void)memcpy(out->txid, digest, sizeof(out->txid));
-        (void)snprintf(out->txid_hex, sizeof(out->txid_hex), "%s", digest_hex);
-        (void)snprintf(out->raw_hex, sizeof(out->raw_hex), "%s",
-                       raw->valuestring);
-        ok = true;
+        ok = false;
+    } else {
         ESP_LOGI(TAG, "Tron tx %s (%" PRIu64 " sun)", out->txid_hex,
                  amount_sun);
     }
 
-done:
+    cJSON_Delete(root);
+    return ok;
+}
+
+bool tron_rpc_create_trc20_transfer(const char *owner_hex,
+                                    const char *contract_hex,
+                                    const char *to_hex, uint64_t amount,
+                                    uint64_t fee_limit_sun,
+                                    tron_tx_ctx_t *out)
+{
+    if ((owner_hex == NULL) || (contract_hex == NULL) || (to_hex == NULL) ||
+        (out == NULL) || (amount == 0U) || (fee_limit_sun == 0U)) {
+        return false;
+    }
+
+    /* Build the calldata arguments ourselves rather than let the node infer
+     * them: these same bytes are what tron_tx_trc20_ok looks for afterwards. */
+    char param[TRON_TRC20_PARAM_HEX_LEN + 1U];
+    if (tron_trc20_param_hex(to_hex, amount, param, sizeof(param)) == 0U) {
+        ESP_LOGE(TAG, "trc20: bad recipient");
+        return false;
+    }
+
+    char body[512];
+    int k = snprintf(body, sizeof(body),
+                     "{\"owner_address\":\"%s\",\"contract_address\":\"%s\","
+                     "\"function_selector\":\"transfer(address,uint256)\","
+                     "\"parameter\":\"%s\",\"call_value\":0,"
+                     "\"fee_limit\":%" PRIu64 "}",
+                     owner_hex, contract_hex, param, fee_limit_sun);
+    if ((k <= 0) || (static_cast<size_t>(k) >= sizeof(body))) { return false; }
+
+    char resp[RESP_BUF_SIZE];
+    if (!tron_post("/wallet/triggersmartcontract", body, resp, sizeof(resp))) {
+        return false;
+    }
+
+    cJSON *root = cJSON_Parse(resp);
+    if (root == NULL) {
+        ESP_LOGE(TAG, "trc20: not JSON: %.*s", RESP_LOG_MAX, resp);
+        return false;
+    }
+
+    /* Unlike createtransaction, this one nests the transaction one level down;
+     * a rejected call ({"result":{"code":"CONTRACT_VALIDATE_ERROR",...}})
+     * simply has no "transaction" member. */
+    const cJSON *txobj = cJSON_GetObjectItemCaseSensitive(root, "transaction");
+    bool ok = cJSON_IsObject(txobj) && tx_ctx_from_json(txobj, out);
+    if (!ok) {
+        ESP_LOGE(TAG, "trc20: unusable answer: %.*s", RESP_LOG_MAX, resp);
+    } else if (!tron_tx_trc20_ok(out->raw_hex, owner_hex, contract_hex, to_hex,
+                                 amount, fee_limit_sun)) {
+        ESP_LOGE(TAG, "trc20: raw_data does not match the requested transfer");
+        ok = false;
+    } else {
+        ESP_LOGI(TAG, "Tron TRC-20 tx %s (%" PRIu64 " units of %s)",
+                 out->txid_hex, amount, contract_hex);
+    }
+
     cJSON_Delete(root);
     return ok;
 }
@@ -275,8 +347,19 @@ tron_receipt_t tron_rpc_get_receipt(const char *txid_hex)
     tron_receipt_t verdict = TRON_RECEIPT_PENDING;
     const cJSON *result = cJSON_GetObjectItemCaseSensitive(root, "result");
     const cJSON *block  = cJSON_GetObjectItemCaseSensitive(root, "blockNumber");
+    /* A TRC-20 call that ran out of energy or reverted is mined but did not
+     * move any tokens; receipt.result carries that verdict (OUT_OF_ENERGY,
+     * REVERT, ...) and only "SUCCESS" means the operator got paid. */
+    const cJSON *rcpt   = cJSON_GetObjectItemCaseSensitive(root, "receipt");
+    const cJSON *rres   = cJSON_IsObject(rcpt)
+                          ? cJSON_GetObjectItemCaseSensitive(rcpt, "result")
+                          : NULL;
     if (cJSON_IsString(result) && (result->valuestring != NULL) &&
         (strcmp(result->valuestring, "FAILED") == 0)) {
+        verdict = TRON_RECEIPT_FAILED;
+    } else if (cJSON_IsString(rres) && (rres->valuestring != NULL) &&
+               (strcmp(rres->valuestring, "SUCCESS") != 0)) {
+        ESP_LOGE(TAG, "receipt: contract result %s", rres->valuestring);
         verdict = TRON_RECEIPT_FAILED;
     } else if (cJSON_IsNumber(block)) {
         verdict = TRON_RECEIPT_SUCCESS;
