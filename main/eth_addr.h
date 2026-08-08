@@ -34,6 +34,24 @@ extern "C" {
  */
 bool eth_addr_parse(const char *hex, uint8_t out[20]);
 
+/**
+ * @brief Verify an address carries a valid EIP-55 mixed-case checksum.
+ *
+ * The capitalisation of an Ethereum address is a checksum over the address
+ * itself: keccak256 of the lowercase hex, one nibble per character, upper-case
+ * where that nibble is >= 8. It is the only typo detection the format offers,
+ * and it catches roughly every realistic single-character slip.
+ *
+ * An all-lowercase address is @b rejected, not waved through: it carries no
+ * checksum at all, and a caller asking this question wants the check, not a
+ * best-effort. Callers that must accept unchecksummed input should say so by
+ * using @ref eth_addr_parse alone.
+ *
+ * @param[in] hex Address string, with or without the @c 0x prefix.
+ * @return true only for exactly 40 hex characters whose case matches the digest.
+ */
+bool eth_addr_eip55_ok(const char *hex);
+
 #ifdef __cplusplus
 }
 #endif

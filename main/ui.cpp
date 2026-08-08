@@ -34,6 +34,8 @@
 #include "usdc_logo.h"
 #include "card_img.h"
 #include "settings.h"
+#include "recip_store.h"
+#include "config.h"      /* ADDR_USDC — the contract shown on the Tx tab */
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -285,10 +287,6 @@ static bool          s_welcome_sent     = false;   /* Start already reported */
 static uint32_t      s_admin_lock_start = 0;
 static uint32_t      s_admin_lock_ms    = 0;
 
-/* Destination info shown on the settings "Tx" tab (set by main, static). */
-static const char *s_addr_usdc = NULL;
-static const char *s_addr_dest = NULL;
-
 /* Settings bottom-bar buttons (Reset shares the line with Close on About). */
 static lv_obj_t *s_reset_btn = NULL;
 static lv_obj_t *s_close_btn = NULL;
@@ -309,6 +307,10 @@ enum BtnAction {
     ACT_WIFI, ACT_WIFI_CANCEL, ACT_WIFI_PASS_REVEAL,
     ACT_ADMIN_CANCEL, ACT_WELCOME_OK,
     ACT_RESET, ACT_RESET_CONFIRM, ACT_RESET_CANCEL,
+    /* Keep last: one action per network/contract pair, ACT_RECIP_EDIT + pair.
+     * A pill cannot carry a payload beyond its action, and folding the index in
+     * beats a static that the callback would have to trust. */
+    ACT_RECIP_EDIT,
 };
 
 /* Firmware version shown on the splash and the About tab. */
@@ -321,6 +323,20 @@ static void close_reset_confirm(void);
 static void pop_in(lv_obj_t *obj);   /* defined in section 8 (animations) */
 static uint32_t admin_penalty_ms(uint8_t fails);   /* defined with the admin screens */
 static ui_screen_t s_settings_return = UI_SCREEN_AMOUNT;   /* screen to go back to */
+
+/* Which settings tab to come back to. Saving a recipient rebuilds the whole
+ * settings page, and a fresh tabview starts on tab 0 — without this the
+ * operator would be dumped on "Screen" every time they edited an address. */
+#define SETTINGS_TAB_COUNT  4
+#define TAB_TX              2
+#define TAB_ABOUT           3
+static uint16_t s_settings_tab = 0U;
+
+/* Recipient editor state: which pair is being edited, its field, and the live
+ * validation line under it. */
+static recip_pair_t s_recip_pair     = RECIP_PAIR_ETH_USDC;
+static lv_obj_t    *s_recip_ta       = NULL;
+static lv_obj_t    *s_recip_note_lbl = NULL;
 
 static void request_screen(ui_screen_t s) {
     s_req_screen   = s;
@@ -384,11 +400,27 @@ static void btn_event_cb(lv_event_t *e) {
     BtnAction act = static_cast<BtnAction>(
         reinterpret_cast<intptr_t>(lv_event_get_user_data(e)));
 
+    /* One action per pair, folded into the enum (see ACT_RECIP_EDIT). Handled
+     * before the switch so the range check is in one place. */
+    if ((act >= ACT_RECIP_EDIT) &&
+        (act < (BtnAction)(ACT_RECIP_EDIT + RECIP_PAIR__COUNT))) {
+        s_recip_pair = (recip_pair_t)(act - ACT_RECIP_EDIT);
+        request_screen(UI_SCREEN_RECIP_EDIT);
+        return;
+    }
+
     switch (act) {
         case ACT_CONFIRM:
             if (s_cb != NULL && s_amount_units > 0ULL) {
                 s_cb(UI_EVENT_AMOUNT_CONFIRMED, s_amount_units);
             }
+            break;
+        case ACT_RECIP_EDIT:
+            /* ACT_RECIP_EDIT+pair is intercepted above; reaching it here means
+             * pair 0 with RECIP_PAIR__COUNT somehow 0. Go back, do not fall
+             * through to whatever the compiler picks. */
+            s_settings_tab = TAB_TX;
+            request_screen(UI_SCREEN_SETTINGS);
             break;
         case ACT_CANCEL:
             if (s_cb != NULL) { s_cb(UI_EVENT_CONFIRM_CANCEL, 0); }
@@ -408,6 +440,7 @@ static void btn_event_cb(lv_event_t *e) {
             break;
         case ACT_SETTINGS:
             s_settings_return = s_req_screen;   /* remember where we came from */
+            s_settings_tab    = 0U;             /* a fresh open starts on Screen */
             /* One lock for the whole menu: Wi-Fi, fee caps and the factory reset
              * are all merchant operations, and the reset in particular must not
              * be one tap away from a customer left alone with the terminal.
@@ -573,6 +606,8 @@ static void clear_screen(void) {
     s_close_btn    = NULL;
     s_maxfee_lbl   = NULL;
     s_prio_lbl     = NULL;
+    s_recip_ta       = NULL;
+    s_recip_note_lbl = NULL;
 }
 
 /******************************************************************
@@ -596,10 +631,11 @@ static void brightness_event_cb(lv_event_t *e) {
     }
 }
 
-/* Show the Reset button (and shrink Close) only on the About tab. */
-static void tab_change_cb(lv_event_t *e) {
-    lv_obj_t *tabbar = lv_event_get_target(e);
-    bool about = (lv_btnmatrix_get_selected_btn(tabbar) == 3U);   /* About is tab 3 */
+/* Show the Reset button (and shrink Close) only on the About tab. Driven by the
+ * tab index rather than by an event, so the rebuild path can call it directly
+ * instead of faking a tab change. */
+static void settings_bottom_bar(uint16_t tab) {
+    const bool about = (tab == TAB_ABOUT);
     if (s_reset_btn != NULL) {
         if (about) { lv_obj_clear_flag(s_reset_btn, LV_OBJ_FLAG_HIDDEN); }
         else       { lv_obj_add_flag(s_reset_btn, LV_OBJ_FLAG_HIDDEN); }
@@ -613,6 +649,17 @@ static void tab_change_cb(lv_event_t *e) {
             lv_obj_align(s_close_btn, LV_ALIGN_BOTTOM_MID, 0, ACT_BTN_Y);
         }
     }
+}
+
+static void tab_change_cb(lv_event_t *e) {
+    lv_obj_t *tabbar = lv_event_get_target(e);
+    /* Only a real press names a button; anything else reports
+     * LV_BTNMATRIX_BTN_NONE (0xFFFF), and recording that would send the next
+     * lv_tabview_set_act() out of range — where it clamps to the last tab. */
+    uint16_t sel = lv_btnmatrix_get_selected_btn(tabbar);
+    if (sel >= SETTINGS_TAB_COUNT) { return; }
+    s_settings_tab = sel;
+    settings_bottom_bar(sel);
 }
 
 /* Gas-fee stepper bounds (Gwei). */
@@ -795,26 +842,53 @@ static void build_settings(void) {
     /* ── Transaction tab: where the funds go (read-only) ── */
     make_label(t_tx, "USDC contract", COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_LEFT, 0, 0);
-    lv_obj_t *a_usdc = make_label(t_tx, (s_addr_usdc != NULL) ? s_addr_usdc : "-",
+    lv_obj_t *a_usdc = make_label(t_tx, "0x" ADDR_USDC,
                                   COL_TEXT, &lv_font_montserrat_14,
                                   LV_ALIGN_TOP_LEFT, 0, 18);
     lv_label_set_long_mode(a_usdc, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(a_usdc, 200);
 
-    make_label(t_tx, "Send to", COL_DIM, &lv_font_montserrat_14,
-               LV_ALIGN_TOP_LEFT, 0, 64);
-    lv_obj_t *a_dest = make_label(t_tx, (s_addr_dest != NULL) ? s_addr_dest : "-",
-                                  COL_TEXT, &lv_font_montserrat_14,
-                                  LV_ALIGN_TOP_LEFT, 0, 82);
-    lv_label_set_long_mode(a_dest, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(a_dest, 200);
+    /* One editable recipient per network/contract pair. Tapping a row opens the
+     * keyboard; the address itself is shown in full (wrapped, not elided) —
+     * this is the field the operator has to be able to check character by
+     * character, so eliding it would defeat the point of showing it. */
+    lv_coord_t y = 64;
+    for (int i = 0; i < RECIP_PAIR__COUNT; i++) {
+        const recip_pair_t p = (recip_pair_t)i;
+        char recip[RECIP_ADDR_MAX] = { 0 };
+        const bool have = recip_current(p, recip, sizeof(recip));
+
+        char cap[64];
+        snprintf(cap, sizeof(cap), "Send to - %s", recip_pair_label(p));
+        make_label(t_tx, cap, COL_DIM, &lv_font_montserrat_14,
+                   LV_ALIGN_TOP_LEFT, 0, y);
+
+        lv_obj_t *a_dest = make_label(t_tx, have ? recip : "Not set",
+                                      have ? COL_TEXT : COL_DANGER,
+                                      &lv_font_montserrat_14,
+                                      LV_ALIGN_TOP_LEFT, 0, y + 18);
+        lv_label_set_long_mode(a_dest, LV_LABEL_LONG_WRAP);
+        lv_obj_set_width(a_dest, 200);
+
+        /* Says where the value came from: a terminal still on its compile-time
+         * literal has not been provisioned, and the operator should know. */
+        make_label(t_tx, recip_is_provisioned(p) ? "provisioned"
+                                                 : "from firmware default",
+                   COL_DIM, &lv_font_montserrat_14, LV_ALIGN_TOP_LEFT, 0, y + 54);
+
+        make_button(t_tx, "Change recipient", COL_ACCENT, COL_BG,
+                    lv_pct(100), ACT_BTN_H, LV_ALIGN_TOP_MID, 0, y + 76,
+                    (BtnAction)(ACT_RECIP_EDIT + i), &lv_font_montserrat_20);
+        y = (lv_coord_t)(y + 134);
+    }
 
     /* Editable EIP-1559 gas fees (Gwei), defaulting to the config.h values. */
     s_maxfee_gwei = settings_get_max_fee_gwei();
     s_prio_gwei   = settings_get_priority_fee_gwei();
     if (s_prio_gwei > s_maxfee_gwei) { s_prio_gwei = s_maxfee_gwei; }
-    s_maxfee_lbl  = build_fee_row(t_tx, "Max fee (Gwei)",      128, 0, 1);
-    s_prio_lbl    = build_fee_row(t_tx, "Priority fee (Gwei)", 196, 2, 3);
+    s_maxfee_lbl  = build_fee_row(t_tx, "Max fee (Gwei)",      y, 0, 1);
+    s_prio_lbl    = build_fee_row(t_tx, "Priority fee (Gwei)",
+                                  (lv_coord_t)(y + 68), 2, 3);
     fee_update_labels();
 
     /* ── About tab: small C logo, name, version, info ── */
@@ -848,9 +922,15 @@ static void build_settings(void) {
     s_reset_btn = make_button(lv_scr_act(), "Reset", COL_DANGER, COL_TEXT, 108, ACT_BTN_H,
                               LV_ALIGN_BOTTOM_LEFT, 10, ACT_BTN_Y, ACT_RESET,
                               &lv_font_montserrat_20);
-    lv_obj_add_flag(s_reset_btn, LV_OBJ_FLAG_HIDDEN);   /* shown only on About */
     lv_obj_add_event_cb(lv_tabview_get_tab_btns(tv), tab_change_cb,
                         LV_EVENT_VALUE_CHANGED, NULL);
+
+    /* Land on the tab we left, not on tab 0. LV_ANIM_OFF: this is a rebuild of
+     * a page the operator is already looking at, so a slide would read as a
+     * navigation that did not happen. */
+    if (s_settings_tab >= SETTINGS_TAB_COUNT) { s_settings_tab = 0U; }
+    lv_tabview_set_act(tv, s_settings_tab, LV_ANIM_OFF);
+    settings_bottom_bar(s_settings_tab);
 }
 
 /* Confirmation popup before a factory reset (floats above the settings modal). */
@@ -1077,7 +1157,7 @@ static void build_confirm(void) {
     make_label(lv_scr_act(), "USDC contract", COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_LEFT, 12, 182);
     lv_obj_t *ctr = make_label(lv_scr_act(),
-                               (s_addr_usdc != NULL) ? s_addr_usdc : "-",
+                               "0x" ADDR_USDC,
                                COL_TEXT, &lv_font_montserrat_14,
                                LV_ALIGN_TOP_LEFT, 12, 200);
     lv_label_set_long_mode(ctr, LV_LABEL_LONG_WRAP);
@@ -1456,6 +1536,146 @@ static void build_wifi_pass(void) {
     lv_obj_add_event_cb(kb, wifi_pass_kb_cb, LV_EVENT_ALL, NULL);
 }
 
+/* ── Recipient provisioning ───────────────────────────────────────
+ * The one screen on the terminal that can redirect money, so it says out loud
+ * what it will and will not accept, and it refuses rather than guesses. */
+
+/** Repaint the line under the field: whether what is typed would be accepted. */
+static void recip_note_update(void) {
+    if ((s_recip_ta == NULL) || (s_recip_note_lbl == NULL)) { return; }
+    const char *txt = lv_textarea_get_text(s_recip_ta);
+    if ((txt == NULL) || (txt[0] == '\0')) {
+        lv_label_set_text(s_recip_note_lbl, "Paste or type the full address");
+        lv_obj_set_style_text_color(s_recip_note_lbl, COL_DIM, LV_PART_MAIN);
+        return;
+    }
+    /* Name the specific fault. A 42-character address goes in one mis-hit key
+     * at a time, and "not valid" leaves the operator re-typing the whole thing
+     * to find the character the keyboard got wrong. The verdict itself still
+     * comes from recip_validate — these checks only explain it. */
+    const size_t n  = strlen(txt);
+    const bool   ok = RECIP_IS_OK(recip_validate(s_recip_pair, txt));
+    char msg[64];
+
+    if (ok) {
+        (void)snprintf(msg, sizeof(msg), LV_SYMBOL_OK " Checksum valid");
+    } else if ((n < 2U) || (txt[0] != '0') ||
+               ((txt[1] != 'x') && (txt[1] != 'X'))) {
+        (void)snprintf(msg, sizeof(msg), "Must start with 0x");
+    } else if (n != 42U) {
+        (void)snprintf(msg, sizeof(msg), "Need 42 characters - have %u",
+                       (unsigned)n);
+    } else {
+        size_t bad = 0U;
+        for (size_t i = 2U; i < 42U; i++) {
+            const char c = txt[i];
+            if (!(((c >= '0') && (c <= '9')) || ((c >= 'a') && (c <= 'f')) ||
+                  ((c >= 'A') && (c <= 'F')))) {
+                bad = i + 1U;
+                break;
+            }
+        }
+        if (bad != 0U) {
+            (void)snprintf(msg, sizeof(msg), "Character %u ('%c') is not hex",
+                           (unsigned)bad, txt[bad - 1U]);
+        } else {
+            (void)snprintf(msg, sizeof(msg),
+                           "Checksum fails - check upper/lower case");
+        }
+    }
+    lv_label_set_text(s_recip_note_lbl, msg);
+    lv_obj_set_style_text_color(s_recip_note_lbl, ok ? COL_SUCCESS : COL_DANGER,
+                                LV_PART_MAIN);
+}
+
+static void recip_ta_cb(lv_event_t *e) {
+    (void)e;
+    /* The field is multi-line so all 42 characters stay on screen; the
+     * keyboard's newline key would otherwise smuggle a '\n' into the address.
+     * Re-setting the text re-enters here once, with nothing left to strip. */
+    const char *txt = lv_textarea_get_text(s_recip_ta);
+    if ((txt != NULL) && (strchr(txt, '\n') != NULL)) {
+        char clean[RECIP_ADDR_MAX * 2U] = { 0 };
+        size_t j = 0U;
+        for (size_t i = 0U; (txt[i] != '\0') && (j < sizeof(clean) - 1U); i++) {
+            if (txt[i] != '\n') { clean[j++] = txt[i]; }
+        }
+        lv_textarea_set_text(s_recip_ta, clean);
+        return;
+    }
+    recip_note_update();
+}
+
+static void recip_kb_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_CANCEL) {
+        s_settings_tab = TAB_TX;
+        request_screen(UI_SCREEN_SETTINGS);
+        return;
+    }
+    if (code != LV_EVENT_READY) { return; }
+
+    const char *txt = (s_recip_ta != NULL) ? lv_textarea_get_text(s_recip_ta)
+                                           : NULL;
+    /* Fail closed and stay put: a rejected address must not look saved, and
+     * must not silently leave the previous one in place without saying so. */
+    if ((txt == NULL) || !RECIP_IS_OK(recip_provision(s_recip_pair, txt))) {
+        if (s_recip_note_lbl != NULL) {
+            lv_label_set_text(s_recip_note_lbl, "Rejected - nothing was saved");
+            lv_obj_set_style_text_color(s_recip_note_lbl, COL_DANGER,
+                                        LV_PART_MAIN);
+        }
+        return;
+    }
+    s_settings_tab = TAB_TX;
+    request_screen(UI_SCREEN_SETTINGS);
+}
+
+static void build_recip_edit(void) {
+    clear_screen();
+    s_recip_note_lbl = NULL;
+
+    make_label(lv_scr_act(), recip_pair_label(s_recip_pair), COL_TEXT,
+               &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0, 4);
+
+    /* The current value goes on a read-only line, not into the field: an
+     * address is exactly max_length long, so prefilling leaves a full textarea
+     * that silently drops every keypress. Still shown, in the same font the new
+     * one is checked in. Never masked — the whole job here is verifying it. */
+    char cur[RECIP_ADDR_MAX] = { 0 };
+    lv_obj_t *now = make_label(lv_scr_act(),
+                               recip_current(s_recip_pair, cur, sizeof(cur))
+                                   ? cur : "Not set",
+                               COL_DIM, &lv_font_montserrat_14,
+                               LV_ALIGN_TOP_LEFT, 12, 22);
+    lv_label_set_long_mode(now, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(now, SCR_W - 24);
+
+    /* Wrapped, not one-line: a scrolling field hides the characters already
+     * typed, which is where a mis-hit key goes unnoticed until it is rejected. */
+    s_recip_ta = lv_textarea_create(lv_scr_act());
+    lv_textarea_set_max_length(s_recip_ta, RECIP_ADDR_MAX - 1U);
+    lv_textarea_set_placeholder_text(s_recip_ta, "0x...");
+    lv_textarea_set_text(s_recip_ta, "");
+    lv_obj_set_width(s_recip_ta, SCR_W - 24);
+    lv_obj_set_height(s_recip_ta, 52);
+    lv_obj_align(s_recip_ta, LV_ALIGN_TOP_LEFT, 12, 56);
+    lv_obj_set_style_bg_color(s_recip_ta, COL_SURFACE, LV_PART_MAIN);
+    lv_obj_set_style_text_color(s_recip_ta, COL_TEXT, LV_PART_MAIN);
+    lv_obj_add_event_cb(s_recip_ta, recip_ta_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
+    s_recip_note_lbl = make_label(lv_scr_act(), "", COL_DIM,
+                                  &lv_font_montserrat_14,
+                                  LV_ALIGN_TOP_LEFT, 12, 112);
+    lv_label_set_long_mode(s_recip_note_lbl, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(s_recip_note_lbl, SCR_W - 24);
+    recip_note_update();
+
+    lv_obj_t *kb = lv_keyboard_create(lv_scr_act());
+    lv_keyboard_set_textarea(kb, s_recip_ta);
+    lv_obj_add_event_cb(kb, recip_kb_cb, LV_EVENT_ALL, NULL);
+}
+
 static void build_wifi_connecting(void) {
     clear_screen();
     build_header("Wi-Fi");
@@ -1667,6 +1887,7 @@ static void render_requested_screen(void) {
         case UI_SCREEN_ADMIN_SET:    build_admin_set();    break;
         case UI_SCREEN_ADMIN_UNLOCK: build_admin_unlock(); break;
         case UI_SCREEN_WELCOME:      build_welcome();      break;
+        case UI_SCREEN_RECIP_EDIT:   build_recip_edit();   break;
     }
 
     /* Guard the freshly built screen against a tap carried over from the
@@ -1826,11 +2047,6 @@ extern "C" void ui_show_wifi_list(const net_wifi_ap_t *aps, uint16_t n,
         s_wifi_note[0] = '\0';
     }
     request_screen(UI_SCREEN_WIFI_LIST);
-}
-
-extern "C" void ui_set_addresses(const char *usdc_contract, const char *dest_addr) {
-    s_addr_usdc = usdc_contract;
-    s_addr_dest = dest_addr;
 }
 
 extern "C" void ui_show_wifi_connecting(const char *ssid) {

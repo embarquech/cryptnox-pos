@@ -46,6 +46,7 @@ typedef enum {
     UI_SCREEN_ADMIN_SET,   /**< First-run creation of the admin code.      */
     UI_SCREEN_ADMIN_UNLOCK,/**< Admin code demanded before the settings.   */
     UI_SCREEN_WELCOME,     /**< Greeting opening first-run setup.          */
+    UI_SCREEN_RECIP_EDIT,  /**< Keyboard to provision a recipient address. */
 } ui_screen_t;
 
 /** @brief Events emitted by the UI task towards the main task. */
@@ -160,12 +161,6 @@ void ui_show_wifi_list(const net_wifi_ap_t *aps, uint16_t n, const char *note);
  *                   name, say); copied internally, may be NULL.
  */
 void ui_show_boot_error(ui_boot_err_t kind, const char *detail);
-
-/**
- * @brief Provide the USDC contract and destination addresses for the
- *        settings "Tx" tab (pointers stored as-is; pass static/literal).
- */
-void ui_set_addresses(const char *usdc_contract, const char *dest_addr);
 
 /**
  * @brief Show a "Connecting to <ssid>…" screen while main associates.
