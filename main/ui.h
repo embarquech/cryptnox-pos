@@ -46,6 +46,7 @@ typedef enum {
     UI_SCREEN_ADMIN_SET,   /**< First-run creation of the admin code.      */
     UI_SCREEN_ADMIN_UNLOCK,/**< Admin code demanded before the settings.   */
     UI_SCREEN_WELCOME,     /**< Greeting opening first-run setup.          */
+    UI_SCREEN_PROV,        /**< QR + AP credentials for phone-based setup. */
 } ui_screen_t;
 
 /** @brief Events emitted by the UI task towards the main task. */
@@ -59,6 +60,11 @@ typedef enum {
     UI_EVENT_TX_RETRY,          /**< New payment tapped after Done/Failed. */
     UI_EVENT_ADMIN_SET,         /**< Admin code created and stored (first run). */
     UI_EVENT_WELCOME_DONE,      /**< Start tapped on the welcome screen.   */
+    UI_EVENT_PROV_LOCAL,        /**< "Use this screen" on the setup-QR screen. */
+    UI_EVENT_PROV_SKIP,         /**< Setup step declined; keep the default. */
+    UI_EVENT_ADDR_PROPOSED,     /**< Payout address submitted from the phone;
+                                     needs accepting on the panel.        */
+    UI_EVENT_ADDR_SET,          /**< Payout address accepted and stored.  */
 } ui_event_t;
 
 /** @brief States shown on the transaction-status screen. */
@@ -215,6 +221,40 @@ void ui_show_admin_set(void);
  * @return length of the SSID (0 if none available).
  */
 size_t ui_take_wifi_creds(char *ssid, size_t ssid_n, char *pass, size_t pass_n);
+
+/**
+ * @brief Load credentials into the same handoff buffers the picker fills.
+ *
+ * Lets the setup page hand Wi-Fi credentials to main through the existing
+ * @ref UI_EVENT_WIFI_TRY path, so a form submission and a screen tap reach the
+ * connect-and-verify loop identically. The caller emits the event afterwards.
+ *
+ * @param[in] ssid Network name.
+ * @param[in] pass Passphrase; the caller wipes its own copy.
+ */
+void ui_stage_wifi_creds(const char *ssid, const char *pass);
+
+/**
+ * @brief Show the phone-setup screen: QR code, AP name and passphrase.
+ *
+ * The same screen at every setup step, captioned with whichever one is current,
+ * and always offering the on-device route as well — the panel is slow to type on
+ * but it always works.
+ *
+ * @param[in] step The prov_step_t the portal is serving. Typed as int to keep
+ *                 this header free of provision.h, which includes this one.
+ */
+void ui_show_prov(int step);
+
+/**
+ * @brief Raise the modal that asks the operator to accept a proposed payout
+ *        address, reading the pending proposal from provision.h.
+ *
+ * Call after @ref UI_EVENT_ADDR_PROPOSED. Accepting emits
+ * @ref UI_EVENT_ADDR_SET; rejecting emits nothing and drops the proposal, so a
+ * caller waiting on the step stays where it is and can be offered another.
+ */
+void ui_show_addr_confirm(void);
 
 #ifdef __cplusplus
 }

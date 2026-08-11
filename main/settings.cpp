@@ -10,6 +10,7 @@
 
 #include "settings.h"
 
+#include <stdio.h>    /* snprintf — payout address normalisation */
 #include <string.h>
 #include "nvs.h"
 #include "esp_log.h"
@@ -35,6 +36,11 @@ static const char *const TAG = "settings";
 #define K_ADMIN_HASH  "adm_hash"
 #define K_ADMIN_FAILS "adm_fails"
 #define K_CHAIN       "chain"
+/* Payout addresses, each stored twice — see settings_get_payout. */
+#define K_PAY_ETH     "pay_eth"
+#define K_PAY_ETH2    "pay_eth_e"
+#define K_PAY_TRX     "pay_trx"
+#define K_PAY_TRX2    "pay_trx_e"
 
 #define ADMIN_SALT_LEN    16U
 #define ADMIN_HASH_LEN    32U
@@ -321,12 +327,93 @@ uint8_t settings_admin_fail_count(void)
     return n;
 }
 
+/* Payout addresses. Two keys per network — the value and an echo copy — read
+ * back and compared, so a torn write or a flipped bit in NVS cannot silently
+ * redirect a payment. See the settings.h contract for why the compile-time
+ * address does not need this and a stored one does. */
+bool settings_get_payout(bool tron, char *out, size_t n)
+{
+    if ((out == NULL) || (n == 0U)) { return false; }
+    out[0] = '\0';
+
+    const char *const k_val  = tron ? K_PAY_TRX  : K_PAY_ETH;
+    const char *const k_echo = tron ? K_PAY_TRX2 : K_PAY_ETH2;
+
+    char val[SETTINGS_PAYOUT_MAX]  = { 0 };
+    char echo[SETTINGS_PAYOUT_MAX] = { 0 };
+    bool stored = false;
+
+    nvs_handle_t h;
+    if (nvs_open(NS_SETTINGS, NVS_READONLY, &h) == ESP_OK) {
+        size_t lv = sizeof(val);
+        size_t le = sizeof(echo);
+        stored = (nvs_get_str(h, k_val, val, &lv) == ESP_OK) &&
+                 (nvs_get_str(h, k_echo, echo, &le) == ESP_OK);
+        nvs_close(h);
+    }
+
+    /* secure_compare, not strcmp: this decides where money goes, so the
+     * comparison must not leak on length or short-circuit on the first byte. */
+    if (stored && !CW_Utils::secure_compare(reinterpret_cast<const uint8_t *>(val),
+                                            reinterpret_cast<const uint8_t *>(echo),
+                                            sizeof(val))) {
+        ESP_LOGE(TAG, "payout(%s): stored copies disagree - using config.h",
+                 tron ? "tron" : "eth");
+        stored = false;
+    }
+
+    /* Ethereum addresses are handed out "0x"-prefixed so every caller can parse
+     * them directly; config.h stores them bare, the setup form accepts either. */
+    if (stored) {
+        (void)snprintf(out, n, "%s", val);
+    } else if (tron) {
+        (void)snprintf(out, n, "%s", TRON_ADDR_TO);
+    } else {
+        (void)snprintf(out, n, "0x%s", ADDR_TO);
+    }
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(val), sizeof(val));
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(echo), sizeof(echo));
+    return stored;
+}
+
+bool settings_set_payout(bool tron, const char *addr)
+{
+    if ((addr == NULL) || (addr[0] == '\0')) { return false; }
+    if (strlen(addr) >= SETTINGS_PAYOUT_MAX) { return false; }
+
+    /* Normalise to the form settings_get_payout hands back, so the echo
+     * comparison compares like with like on the next boot. */
+    char norm[SETTINGS_PAYOUT_MAX];
+    if (tron) {
+        (void)snprintf(norm, sizeof(norm), "%s", addr);
+    } else {
+        const bool prefixed = (addr[0] == '0') && ((addr[1] == 'x') || (addr[1] == 'X'));
+        (void)snprintf(norm, sizeof(norm), "0x%s", prefixed ? (addr + 2) : addr);
+    }
+
+    bool         ok = false;
+    nvs_handle_t h;
+    if (nvs_open(NS_SETTINGS, NVS_READWRITE, &h) == ESP_OK) {
+        ok = (nvs_set_str(h, tron ? K_PAY_TRX  : K_PAY_ETH,  norm) == ESP_OK) &&
+             (nvs_set_str(h, tron ? K_PAY_TRX2 : K_PAY_ETH2, norm) == ESP_OK) &&
+             (nvs_commit(h) == ESP_OK);
+        nvs_close(h);
+    }
+    if (ok) {
+        ESP_LOGW(TAG, "payout(%s) set to %s", tron ? "tron" : "eth", norm);
+    } else {
+        ESP_LOGE(TAG, "payout(%s): NVS write failed", tron ? "tron" : "eth");
+    }
+    return ok;
+}
+
 void settings_factory_reset(void)
 {
     nvs_handle_t h;
     if (nvs_open(NS_SETTINGS, NVS_READWRITE, &h) == ESP_OK) {
-        /* Drops brightness, Wi-Fi creds and the admin code, so a reset terminal
-         * comes back up into first-run setup for both — plus the now-unused
+        /* Drops brightness, Wi-Fi creds, the admin code and any operator-set
+         * payout address, so a reset terminal comes back up into first-run setup
+         * and pays out to the config.h recipient again — plus the now-unused
          * "auto_bl" key left on units provisioned before auto-brightness went. */
         (void)nvs_erase_all(h);
         (void)nvs_commit(h);

@@ -129,6 +129,48 @@ void net_wifi_init(void)
     s_wifi_inited = true;
 }
 
+/* SoftAP netif, created on first net_ap_start() and then kept: destroying and
+ * recreating it across setup steps buys nothing and esp_netif teardown while
+ * lwIP still holds sockets is a known way to crash. */
+static esp_netif_t *s_ap_netif = NULL;
+
+bool net_ap_start(const char *ssid, const char *pass)
+{
+    if ((ssid == NULL) || (pass == NULL) || (strlen(pass) < 8U)) { return false; }
+    net_wifi_init();   /* idempotent — also guarantees esp_wifi_start() has run */
+
+    if (s_ap_netif == NULL) {
+        s_ap_netif = esp_netif_create_default_wifi_ap();
+        if (s_ap_netif == NULL) { return false; }
+    }
+
+    wifi_config_t cfg;
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(&cfg), sizeof(cfg));
+    (void)snprintf(reinterpret_cast<char *>(cfg.ap.ssid), sizeof(cfg.ap.ssid),
+                   "%s", ssid);
+    cfg.ap.ssid_len = static_cast<uint8_t>(strlen(reinterpret_cast<char *>(cfg.ap.ssid)));
+    (void)snprintf(reinterpret_cast<char *>(cfg.ap.password),
+                   sizeof(cfg.ap.password), "%s", pass);
+    cfg.ap.authmode = WIFI_AUTH_WPA2_PSK;
+    cfg.ap.channel  = 1;
+    /* Two: the operator's phone, plus one spare so a stale lease cannot lock
+     * setup out. Not more — every association is someone who can reach the
+     * setup forms, and the passphrase is the only thing in their way. */
+    cfg.ap.max_connection = 2;
+
+    if (esp_wifi_set_mode(WIFI_MODE_APSTA) != ESP_OK)          { return false; }
+    if (esp_wifi_set_config(WIFI_IF_AP, &cfg) != ESP_OK)       { return false; }
+    ESP_LOGI(TAG, "SoftAP '%s' up on 192.168.4.1", ssid);
+    return true;
+}
+
+void net_ap_stop(void)
+{
+    if (s_ap_netif == NULL) { return; }
+    (void)esp_wifi_set_mode(WIFI_MODE_STA);
+    ESP_LOGI(TAG, "SoftAP down");
+}
+
 uint16_t net_wifi_scan(net_wifi_ap_t *out, uint16_t max)
 {
     net_wifi_init();

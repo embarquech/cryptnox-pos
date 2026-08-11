@@ -40,6 +40,7 @@
 #include "esp32_crypto_provider.h"
 #include "CW_Tron.h"
 #include "settings.h"
+#include "provision.h"   /* phone-based first-run setup (SoftAP + portal) */
 
 /* Quiet CW_Logger — swallows the SDK's verbose connection/retry chatter that
  * was showing up as 'a a a...' on the UART. Keep ESP_LOGI for our own logs. */
@@ -196,6 +197,15 @@ static trc20_asset_t *active_trc20(void) {
     return (settings_get_chain() == POS_CHAIN_TRON_USDT) ? &s_trc20_usdt : NULL;
 }
 
+/* The recipient strings the dual stores are built from: whatever the operator set
+ * through the setup page, or the config.h address when they never set one.
+ * Resolved once at boot — a payout address changed during setup takes effect
+ * through a restart, so it goes through this same path rather than a second one
+ * that would have to re-validate everything this one already validates. The
+ * Ethereum string is "0x"-prefixed, ready for eth_addr_parse. */
+static char s_payout_eth[SETTINGS_PAYOUT_MAX]  = "";
+static char s_payout_tron[SETTINGS_PAYOUT_MAX] = "";
+
 /**
  * @brief Point the UI's address rows at the selected chain.
  *
@@ -205,11 +215,11 @@ static trc20_asset_t *active_trc20(void) {
 static void ui_refresh_addresses(void) {
     const trc20_asset_t *token = active_trc20();
     if (token != NULL) {
-        ui_set_addresses(token->b58, TRON_ADDR_TO);
+        ui_set_addresses(token->b58, s_payout_tron);
     } else if (chain_is_tron()) {
-        ui_set_addresses("Native TRX (no contract)", TRON_ADDR_TO);
+        ui_set_addresses("Native TRX (no contract)", s_payout_tron);
     } else {
-        ui_set_addresses("0x" ADDR_USDC, "0x" ADDR_TO);
+        ui_set_addresses("0x" ADDR_USDC, s_payout_eth);
     }
 }
 
@@ -232,6 +242,10 @@ static pos_addr_t s_dest;
 /* Same treatment for the Tron recipient: it is a different address, so it needs
  * its own dual store rather than borrowing the Ethereum one. */
 static pos_addr_t s_tron_dest;
+
+/* Whether the phone-setup portal came up, so the setup steps know whether there
+ * is a QR screen to offer before falling back to the panel. */
+static bool s_portal_up = false;
 
 /** @brief The reconciled recipient for the chain currently selected. */
 static const pos_addr_t *active_dest(void) {
@@ -843,6 +857,32 @@ static void wait_for_ui_event(ui_event_t want)
 }
 
 /**
+ * @brief Block until one of @p want arrives, and say which.
+ *
+ * The setup steps can each be answered from the phone or from the panel, and the
+ * main task does not care which — it waits for the answer or for the operator
+ * choosing to type it here instead. Same flush-on-exit rule as
+ * @ref wait_for_ui_event, and for the same reason.
+ *
+ * @param[in] want Events to accept.
+ * @param[in] n    How many.
+ * @return the event that arrived.
+ */
+static ui_event_t wait_for_one_of(const ui_event_t *want, size_t n)
+{
+    ui_msg_t msg;
+    while (true) {
+        if (xQueueReceive(s_ui_queue, &msg, portMAX_DELAY) != pdTRUE) { continue; }
+        for (size_t i = 0; i < n; i++) {
+            if (msg.event == want[i]) {
+                (void)xQueueReset(s_ui_queue);
+                return msg.event;
+            }
+        }
+    }
+}
+
+/**
  * @brief Bring up Wi-Fi: retry the saved credentials, then run the network
  *        picker (scan → list → keyboard → connect) until connected.
  *
@@ -881,10 +921,18 @@ static bool ensure_wifi(bool try_saved, const char *note)
         note = "Could not join the saved network";
     }
 
-    /* No usable saved network — forced interactive setup. */
+    /* No usable saved network — forced interactive setup. Offer the phone first
+     * when the portal is up: a venue passphrase is miserable to type on this
+     * panel. "Use this screen instead" arrives as UI_EVENT_PROV_LOCAL, which the
+     * loop below treats like any unrecognised event — rescan, show the list. */
     net_wifi_ap_t aps[16];
-    uint16_t n = net_wifi_scan(aps, 16);
-    ui_show_wifi_list(aps, n, note);
+    uint16_t n = 0U;
+    if (s_portal_up) {
+        ui_show_prov(PROV_STEP_WIFI);
+    } else {
+        n = net_wifi_scan(aps, 16);
+        ui_show_wifi_list(aps, n, note);
+    }
 
     ui_msg_t msg;
     while (true) {
@@ -976,25 +1024,37 @@ extern "C" void app_main(void)
     /* No ui_show_splash() here — ui_init() already selects it, and asking twice
      * races the UI task into rebuilding the screen and replaying the logo. */
 
-    /* Parse ADDR_TO twice into the dual store (§7.1). Also runs the EIP-55
-     * checksum on ADDR_TO once at boot — a mistyped recipient is caught here,
-     * before any payment. */
-    if (!eth_addr_parse("0x" ADDR_TO, s_dest.addr) ||
-        !eth_addr_parse("0x" ADDR_TO, s_dest.addr_echo)) {
+    /* Resolve the Ethereum recipient: operator-set if there is one, config.h
+     * otherwise. A stored address gets a probe parse first, and a failure falls
+     * back to the compile-time value rather than refusing the boot — the setup
+     * page can only check an address structurally, and a terminal stuck on an
+     * error screen is worse than one paying out to its configured default and
+     * saying so. A bad config.h address is still fatal, as it always was: that
+     * one is the integrator's own doing and there is nothing to fall back to. */
+    if (settings_get_payout(false, s_payout_eth, sizeof(s_payout_eth)) &&
+        !eth_addr_parse(s_payout_eth, s_dest.addr)) {
+        ESP_LOGE(TAG, "stored Ethereum payout address rejected - using config.h");
+        (void)snprintf(s_payout_eth, sizeof(s_payout_eth), "0x%s", ADDR_TO);
+    }
+
+    /* Parse the recipient twice into the dual store (§7.1). Also runs the EIP-55
+     * checksum once at boot — a mistyped recipient is caught here, before any
+     * payment. */
+    if (!eth_addr_parse(s_payout_eth, s_dest.addr) ||
+        !eth_addr_parse(s_payout_eth, s_dest.addr_echo)) {
         ESP_LOGE(TAG, "Bad ADDR_TO in config");
         ui_show_tx_status(UI_TX_STATE_FAILED, "Bad ADDR_TO in config");
         return;
     }
-    /* Warn if ADDR_TO carries no EIP-55 checksum (no upper-case hex letter) —
-     * the boot-time typo check above is a no-op on an all-lowercase address.
-     * Manual scan, not strpbrk: ADDR_TO is a literal, so strpbrk(...)==NULL
-     * folds to a provably-false pointer compare (-Werror=address). */
+    /* Warn if the recipient carries no EIP-55 checksum (no upper-case hex
+     * letter) — the boot-time typo check above is a no-op on an all-lowercase
+     * address. Skip the "0x" so the 'x' is never read as hex. */
     bool addr_checksummed = false;
-    for (const char *pc = ADDR_TO; *pc != '\0'; ++pc) {
+    for (const char *pc = s_payout_eth + 2; *pc != '\0'; ++pc) {
         if ((*pc >= 'A') && (*pc <= 'F')) { addr_checksummed = true; break; }
     }
     if (!addr_checksummed) {
-        ESP_LOGW(TAG, "ADDR_TO is all-lowercase: no EIP-55 checksum verified");
+        ESP_LOGW(TAG, "recipient is all-lowercase: no EIP-55 checksum verified");
     }
 
     /* ── PN532 NFC reader ──────────────────────────────────────── */
@@ -1047,8 +1107,17 @@ extern "C" void app_main(void)
      * pass independent, exactly as ADDR_TO is parsed twice above. */
     uint8_t tron_to21[CW_TRON_ADDRESS_BYTES];
     uint8_t tron_to21_echo[CW_TRON_ADDRESS_BYTES];
-    if (!CW_Tron::decodeAddress(TRON_ADDR_TO, cryptoProvider, tron_to21) ||
-        !CW_Tron::decodeAddress(TRON_ADDR_TO, cryptoProvider, tron_to21_echo)) {
+    /* Same fallback as the Ethereum recipient above, and this is where the
+     * authoritative base58check on a stored Tron address happens: the setup page
+     * only checks its length, prefix and alphabet, because the decoder needs a
+     * crypto provider and that lives here. */
+    if (settings_get_payout(true, s_payout_tron, sizeof(s_payout_tron)) &&
+        !CW_Tron::decodeAddress(s_payout_tron, cryptoProvider, tron_to21)) {
+        ESP_LOGE(TAG, "stored Tron payout address rejected - using config.h");
+        (void)snprintf(s_payout_tron, sizeof(s_payout_tron), "%s", TRON_ADDR_TO);
+    }
+    if (!CW_Tron::decodeAddress(s_payout_tron, cryptoProvider, tron_to21) ||
+        !CW_Tron::decodeAddress(s_payout_tron, cryptoProvider, tron_to21_echo)) {
         ESP_LOGE(TAG, "Bad TRON_ADDR_TO in config");
         ui_show_tx_status(UI_TX_STATE_FAILED, "Bad TRON_ADDR_TO in config");
         return;
@@ -1096,6 +1165,15 @@ extern "C" void app_main(void)
         ui_show_welcome();
         wait_for_ui_event(UI_EVENT_WELCOME_DONE);
 
+        /* Raise the setup portal for the whole of first run. It runs beside the
+         * panel rather than instead of it: every step below can be answered from
+         * a phone or typed here, and prov_start() reports submissions through the
+         * same callback the UI task uses, so main cannot tell them apart. */
+        s_portal_up = prov_start(ui_event_dispatch);
+        if (!s_portal_up) {
+            ESP_LOGW(TAG, "setup portal unavailable - panel-only setup");
+        }
+
         /* The code comes BEFORE the network, and not for tidiness: the Wi-Fi
          * picker carries a back arrow that the UI task honours on its own, which
          * drops the operator on the amount screen — burger included — while main
@@ -1103,8 +1181,19 @@ extern "C" void app_main(void)
          * settings freely. Creating the code first closes that window; the
          * creation screen itself has no way out. */
         ESP_LOGI(TAG, "no admin code - first-run setup");
-        ui_show_admin_set();
-        wait_for_ui_event(UI_EVENT_ADMIN_SET);
+        bool on_panel = true;
+        if (s_portal_up) {
+            static const ui_event_t want[] = { UI_EVENT_ADMIN_SET,
+                                               UI_EVENT_PROV_LOCAL };
+            prov_set_step(PROV_STEP_ADMIN);
+            ui_show_prov(PROV_STEP_ADMIN);
+            on_panel = (wait_for_one_of(want, 2) == UI_EVENT_PROV_LOCAL);
+        }
+        if (on_panel) {
+            ui_show_admin_set();
+            wait_for_ui_event(UI_EVENT_ADMIN_SET);
+        }
+        if (s_portal_up) { prov_set_step(PROV_STEP_WIFI); }
     }
 
     ui_set_boot_status("Starting network");
@@ -1132,6 +1221,56 @@ extern "C" void app_main(void)
         /* Force the picker: retrying the same network loops straight back here. */
         try_saved = false;
         net_note  = NOTE_NO_TIME;
+    }
+
+    /* ── First run, last step: where the takings go ────────────── */
+    /* Optional, unlike the two before it: config.h already carries a recipient,
+     * so declining leaves a terminal that works. Offered on the phone only — the
+     * whole point is not typing 42 characters on this panel — but ACCEPTED only
+     * here, on the screen in the operator's hands. The portal can propose an
+     * address; the modal is what stores one.
+     *
+     * A stored address takes effect through a restart. The recipient was parsed
+     * into its dual store hundreds of lines above, and rebuilding that in place
+     * would mean a second path into the money code that has to re-validate
+     * everything the boot path already validates. A reboot costs three seconds
+     * during setup and reuses the checks verbatim. */
+    if (first_run && s_portal_up) {
+        prov_set_step(PROV_STEP_ADDR);
+        ui_show_prov(PROV_STEP_ADDR);
+
+        static const ui_event_t want[] = { UI_EVENT_PROV_SKIP,
+                                           UI_EVENT_ADDR_PROPOSED,
+                                           UI_EVENT_ADDR_SET };
+        bool restart = false;
+        bool done    = false;
+        while (!done) {
+            switch (wait_for_one_of(want, 3)) {
+                case UI_EVENT_ADDR_PROPOSED:
+                    /* Rejecting emits nothing, so the loop simply waits again and
+                     * the operator can be offered another address. */
+                    ui_show_addr_confirm();
+                    break;
+                case UI_EVENT_ADDR_SET:
+                    restart = true;
+                    done    = true;
+                    break;
+                default:
+                    done = true;
+                    break;
+            }
+        }
+        prov_stop();
+        s_portal_up = false;
+        if (restart) {
+            ESP_LOGW(TAG, "payout address stored - restarting to apply it");
+            ui_set_boot_status("Applying settings");
+            vTaskDelay(pdMS_TO_TICKS(600));   /* let the screen land */
+            esp_restart();
+        }
+    } else if (s_portal_up) {
+        prov_stop();
+        s_portal_up = false;
     }
 
     /* One RPC round-trip at boot, for two reasons at once: it proves the

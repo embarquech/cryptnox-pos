@@ -68,6 +68,24 @@ uint16_t net_wifi_scan(net_wifi_ap_t *out, uint16_t max);
 bool net_wifi_connect(const char *ssid, const char *password);
 
 /**
+ * @brief Raise a WPA2 SoftAP beside the station, for phone-based setup.
+ *
+ * Switches the radio to APSTA so provisioning survives a station connect. One
+ * radio, one channel: when the station later associates, the SoftAP is dragged
+ * onto the station's channel and any joined phone is dropped. That is expected —
+ * the setup page warns before it submits Wi-Fi credentials, and the device
+ * screen, not the phone, reports the outcome.
+ *
+ * @param[in] ssid AP SSID.
+ * @param[in] pass WPA2 passphrase; must be at least 8 characters.
+ * @return true once the AP interface is configured and up.
+ */
+bool net_ap_start(const char *ssid, const char *pass);
+
+/** @brief Drop the SoftAP and return the radio to station-only. */
+void net_ap_stop(void);
+
+/**
  * @brief Read the RSSI of the currently associated access point.
  *
  * @param[out] rssi_out Signal strength in dBm (closer to 0 = stronger);

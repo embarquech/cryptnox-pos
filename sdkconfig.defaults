@@ -87,3 +87,6 @@ CONFIG_LV_FONT_DEFAULT_MONTSERRAT_14=y
 # by TFT_eSPI, whose touch support requires sharing the display bus. The
 # build-time "TOUCH_CS pin not defined" warning is expected; do not enable
 # CONFIG_ENABLE_TOUCH, it would fight the XPT2046 driver over GPIO 33.
+
+# QR code on the phone-setup screen (provision.cpp).
+CONFIG_LV_USE_QRCODE=y

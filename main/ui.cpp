@@ -34,6 +34,7 @@
 #include "chain_icons.h"
 #include "card_img.h"
 #include "settings.h"
+#include "provision.h"   /* QR payload + the pending payout-address handshake */
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -274,6 +275,12 @@ static char          s_boot_step[40]     = {0};
 static lv_obj_t     *s_boot_step_lbl     = NULL;
 static volatile bool s_boot_step_dirty   = false;
 
+/* Phone setup (UI_SCREEN_PROV). The step is an int, not a prov_step_t, for the
+ * same reason ui_show_prov takes one — provision.h includes ui.h. Both are
+ * written by the main task and read by the UI task, like the splash line above. */
+static volatile int  s_prov_step         = 0;
+static volatile bool s_addr_modal_dirty  = false;
+
 /* Startup fault (UI_SCREEN_BOOT_ERROR). */
 static ui_boot_err_t s_boot_err            = UI_BOOT_ERR_NFC;
 static char          s_boot_detail[64]     = {0};
@@ -320,6 +327,7 @@ enum BtnAction {
     ACT_SETTINGS, ACT_CLOSE, ACT_PIN_CANCEL,
     ACT_WIFI, ACT_WIFI_CANCEL, ACT_WIFI_PASS_REVEAL,
     ACT_ADMIN_CANCEL, ACT_WELCOME_OK,
+    ACT_PROV_LOCAL, ACT_PROV_SKIP, ACT_ADDR_OK, ACT_ADDR_NO,
     ACT_RESET, ACT_RESET_CONFIRM, ACT_MODAL_CLOSE,
     /* Asset selector (amount screen): network first, then the coin on it. */
     ACT_NET_PICK, ACT_NET_ETH, ACT_NET_TRON,
@@ -529,6 +537,20 @@ static void btn_event_cb(lv_event_t *e) {
             esp_restart();
             break;
         case ACT_MODAL_CLOSE:
+            close_modal();
+            break;
+        case ACT_PROV_LOCAL:
+            if (s_cb != NULL) { s_cb(UI_EVENT_PROV_LOCAL, 0); }
+            break;
+        case ACT_PROV_SKIP:
+            if (s_cb != NULL) { s_cb(UI_EVENT_PROV_SKIP, 0); }
+            break;
+        case ACT_ADDR_OK:
+        case ACT_ADDR_NO:
+            /* The panel is the only place a payout address can be accepted; the
+             * phone that proposed it only got as far as this modal. Commit (or
+             * drop) before closing, so the address cannot outlive the card. */
+            (void)prov_addr_commit(act == ACT_ADDR_OK);
             close_modal();
             break;
         case ACT_NET_PICK:
@@ -1334,6 +1356,114 @@ static void build_welcome(void) {
                       ACT_WELCOME_OK, &lv_font_montserrat_20);
 }
 
+/* Phone setup: the same screen at every step, captioned with the current one.
+ *
+ * One QR code, not two. It carries "WIFI:T:WPA;S:...;P:...;;", which both iOS
+ * and Android cameras join a network from directly — and the captive portal then
+ * opens the form by itself, so there is never a URL to scan or type. The SSID
+ * and passphrase are printed underneath for the camera that will not play along.
+ *
+ * 240x320 leaves room for a 116 px code (29 modules at 4 px) plus two lines of
+ * credentials and the on-device escape hatch, which every step keeps: the panel
+ * is slow to type on but it never depends on someone's phone. */
+static void build_prov(void) {
+    clear_screen();
+    lv_obj_set_style_bg_color(lv_scr_act(), lv_color_white(), LV_PART_MAIN);
+
+    /* The title names the step, and it is the biggest thing on the screen. An
+     * earlier cut put "Set up from your phone" here for every step and moved
+     * only a line of 14px grey caption between them — which made a step
+     * advancing indistinguishable from nothing happening, since the QR code and
+     * the credentials below are identical throughout. */
+    const char *step  = "";
+    const char *title = "";
+    switch (static_cast<prov_step_t>(s_prov_step)) {
+        case PROV_STEP_ADMIN: step = "Step 1 of 3"; title = "Admin code";     break;
+        case PROV_STEP_WIFI:  step = "Step 2 of 3"; title = "Wi-Fi network";  break;
+        case PROV_STEP_ADDR:  step = "Step 3 of 3"; title = "Payout address"; break;
+        default:              step = "Setup";       title = "Nothing to set"; break;
+    }
+
+    make_label(lv_scr_act(), step, COL_DIM, &lv_font_montserrat_14,
+               LV_ALIGN_TOP_MID, 0, 6);
+    make_label(lv_scr_act(), title, COL_TEXT, &lv_font_montserrat_20,
+               LV_ALIGN_TOP_MID, 0, 22);
+    make_label(lv_scr_act(), "Scan to continue on your phone", COL_DIM,
+               &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0, 46);
+
+    lv_obj_t *qr = lv_qrcode_create(lv_scr_act(), 116, COL_TEXT, COL_BG);
+    if (qr != NULL) {
+        const char *payload = prov_qr_payload();
+        (void)lv_qrcode_update(qr, payload, strlen(payload));
+        lv_obj_align(qr, LV_ALIGN_TOP_MID, 0, 66);
+        /* White quiet zone: a code drawn hard against a coloured edge is a code
+         * half the scanners in the world will not see. */
+        lv_obj_set_style_border_color(qr, COL_BG, LV_PART_MAIN);
+        lv_obj_set_style_border_width(qr, 4, LV_PART_MAIN);
+    }
+
+    char line[64];
+    (void)snprintf(line, sizeof(line), "%s", prov_ap_ssid());
+    make_label(lv_scr_act(), line, COL_TEXT, &lv_font_montserrat_14,
+               LV_ALIGN_TOP_MID, 0, 194);
+    (void)snprintf(line, sizeof(line), "Pass  %s", prov_ap_pass());
+    make_label(lv_scr_act(), line, COL_DIM, &lv_font_montserrat_14,
+               LV_ALIGN_TOP_MID, 0, 212);
+
+    /* The addresses step is the only optional one — config.h already carries a
+     * recipient, so declining leaves a working terminal. The other two steps
+     * must be answered somewhere, hence "use this screen" rather than "skip". */
+    const bool optional = (static_cast<prov_step_t>(s_prov_step) == PROV_STEP_ADDR);
+    (void)make_button(lv_scr_act(), optional ? "Keep current address"
+                                            : "Use this screen instead",
+                      COL_ACCENT, COL_BG, SCR_W - 24, ACT_BTN_H,
+                      LV_ALIGN_BOTTOM_MID, 0, -10,
+                      optional ? ACT_PROV_SKIP : ACT_PROV_LOCAL,
+                      &lv_font_montserrat_20);
+}
+
+/* A payout address proposed from the phone, shown for acceptance here. The
+ * modal is the security boundary, not decoration: HTTP over the setup AP can
+ * propose an address, only the panel in the operator's hands can store one.
+ *
+ * The address is drawn wrapped at 14 px rather than elided — the operator is
+ * being asked to compare it against their own records character by character,
+ * so every character has to be on the screen. */
+static void build_addr_confirm(void) {
+    char label[16] = "";
+    char addr[SETTINGS_PAYOUT_MAX] = "";
+    if (!prov_addr_pending(label, sizeof(label), addr, sizeof(addr))) { return; }
+
+    lv_obj_t *card = open_modal(228, 268);
+
+    make_label(card, "Set payout address?", COL_TEXT, &lv_font_montserrat_20,
+               LV_ALIGN_TOP_MID, 0, 2);
+    make_label(card, label, COL_DIM, &lv_font_montserrat_14,
+               LV_ALIGN_TOP_MID, 0, 28);
+
+    lv_obj_t *a = make_label(card, addr, COL_TEXT, &lv_font_montserrat_14,
+                             LV_ALIGN_TOP_LEFT, 4, 50);
+    lv_obj_set_width(a, 204);
+    lv_label_set_long_mode(a, LV_LABEL_LONG_WRAP);
+
+    lv_obj_t *warn = make_label(card,
+                                "Takings will be sent here. Check it against "
+                                "your own records before accepting.",
+                                COL_DIM, &lv_font_montserrat_14,
+                                LV_ALIGN_TOP_LEFT, 4, 118);
+    lv_obj_set_width(warn, 204);
+    lv_label_set_long_mode(warn, LV_LABEL_LONG_WRAP);
+
+    /* Reject is the wide, plainly-labelled one and Accept is the deliberate tap:
+     * the safe answer to "a stranger's address appeared on my terminal" is no. */
+    (void)make_button(card, "Accept", COL_ACCENT, COL_BG, 206, 40,
+                      LV_ALIGN_BOTTOM_MID, 0, -46, ACT_ADDR_OK,
+                      &lv_font_montserrat_20);
+    (void)make_button(card, "Reject", COL_SURFACE, COL_TEXT, 206, 40,
+                      LV_ALIGN_BOTTOM_MID, 0, -2, ACT_ADDR_NO,
+                      &lv_font_montserrat_20);
+}
+
 static void build_splash(void) {
     clear_screen();
     /* The logo is black-on-white; put the whole splash on white so it blends. */
@@ -2039,6 +2169,7 @@ static void render_requested_screen(void) {
         case UI_SCREEN_ADMIN_SET:    build_admin_set();    break;
         case UI_SCREEN_ADMIN_UNLOCK: build_admin_unlock(); break;
         case UI_SCREEN_WELCOME:      build_welcome();      break;
+        case UI_SCREEN_PROV:         build_prov();         break;
     }
 
     /* Guard the freshly built screen against a tap carried over from the
@@ -2131,6 +2262,13 @@ static void ui_task(void *arg) {
             if ((s_req_screen == UI_SCREEN_SPLASH) && (s_boot_step_lbl != NULL)) {
                 lv_label_set_text(s_boot_step_lbl, s_boot_step);
             }
+        }
+        /* A payout address proposed from the setup page. Built here, on the UI
+         * task, and after the screen render above — a modal raised straight from
+         * the main task would be touching LVGL from two tasks at once. */
+        if (s_addr_modal_dirty) {
+            s_addr_modal_dirty = false;
+            build_addr_confirm();
         }
         lv_timer_handler();
 
@@ -2252,6 +2390,22 @@ extern "C" size_t ui_take_wifi_creds(char *ssid, size_t ssid_n,
     /* Wipe the UI's copy of the passphrase. */
     CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_wifi_pass), sizeof(s_wifi_pass));
     return strlen(ssid);
+}
+
+extern "C" void ui_stage_wifi_creds(const char *ssid, const char *pass) {
+    strncpy(s_wifi_ssid, (ssid != NULL) ? ssid : "", sizeof(s_wifi_ssid) - 1U);
+    s_wifi_ssid[sizeof(s_wifi_ssid) - 1U] = '\0';
+    strncpy(s_wifi_pass, (pass != NULL) ? pass : "", sizeof(s_wifi_pass) - 1U);
+    s_wifi_pass[sizeof(s_wifi_pass) - 1U] = '\0';
+}
+
+extern "C" void ui_show_prov(int step) {
+    s_prov_step = step;
+    request_screen(UI_SCREEN_PROV);
+}
+
+extern "C" void ui_show_addr_confirm(void) {
+    s_addr_modal_dirty = true;
 }
 
 extern "C" void ui_show_tx_status(ui_tx_state_t state, const char *info) {
