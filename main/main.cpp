@@ -69,6 +69,7 @@ extern "C" {
 #include "eth_rlp.h"
 #include "eth_rpc.h"
 #include "net.h"
+#include "recip_store.h"
 #include "ui.h"
 }
 
@@ -148,26 +149,25 @@ static void ui_event_dispatch(ui_event_t event, uint64_t payload) {
  * selector(4) | zeroes(12) | to(20) | zeroes(24) | amount_be(8)
  * @endcode
  *
- * @param[out] out    68-byte output buffer; contents are undefined on failure.
- * @param[in]  to_hex Recipient address as hex (with or without @c 0x prefix).
+ * @param[out] out    68-byte output buffer.
+ * @param[in]  to20   Recipient, already decoded and verified by recip_store —
+ *                    this function does not parse, so there is nothing here
+ *                    that could accept an address the checks rejected.
  * @param[in]  amount Transfer amount in USDC base units (6 decimals).
- * @return true on success, false if @p to_hex fails address validation.
  */
-static bool build_usdc_calldata(uint8_t out[68], const char *to_hex, uint64_t amount)
+static void build_usdc_calldata(uint8_t out[68],
+                                const uint8_t to20[RECIP_ADDR_BYTES],
+                                uint64_t amount)
 {
     (void)memset(out, 0, 68U);
     (void)CW_Utils::safe_memcpy(out, 68U, TRANSFER_SELECTOR, 4U);
-    uint8_t addr[20];
-    if (!eth_addr_parse(to_hex, addr)) {
-        return false;
-    }
-    (void)CW_Utils::safe_memcpy(out + 4U + 12U, 68U - (4U + 12U), addr, 20U);
+    (void)CW_Utils::safe_memcpy(out + 4U + 12U, 68U - (4U + 12U),
+                                to20, RECIP_ADDR_BYTES);
 
     size_t j;
     for (j = 0U; j < 8U; j++) {
         out[67U - j] = static_cast<uint8_t>((amount >> (8U * j)) & 0xFFU);
     }
-    return true;
 }
 
 /******************************************************************
@@ -219,15 +219,16 @@ struct WipeGuard {
 static bool sign_and_broadcast(CryptnoxWallet &wallet,
                                 Pn532NfcTransport &transport,
                                 uint64_t amount_units,
+                                const uint8_t to20[RECIP_ADDR_BYTES],
                                 const char *pin, size_t pin_chars,
                                 char *tx_hash_out, size_t tx_hash_max,
                                 char *err_out, size_t err_max)
 {
+    /* The recipient arrives already decoded, out of the second of the two NVS
+     * reads (recip_store.h). Nothing here re-derives it from a config literal:
+     * that would quietly bypass everything the store just verified. */
     uint8_t calldata[68];
-    if (!build_usdc_calldata(calldata, "0x" ADDR_TO, amount_units)) {
-        (void)snprintf(err_out, err_max, "Bad ADDR_TO in config");
-        return false;
-    }
+    build_usdc_calldata(calldata, to20, amount_units);
 
     uint64_t nonce = 0U;
     if (!eth_rpc_get_nonce(&nonce)) {
@@ -607,10 +608,14 @@ extern "C" void app_main(void)
     }
     ESP_ERROR_CHECK(nvs_ret);
 
+    /* Recipients before the UI: the settings tab reads them the moment it is
+     * built, and an un-provisioned pair has to fall back to the config literal
+     * here rather than show "Not set" on a terminal that works fine. */
+    recip_store_init();
+
     /* ── UI: splash visible while the rest boots ───────── */
     s_ui_queue = xQueueCreate(8, sizeof(ui_msg_t));
     ui_init(ui_event_dispatch);
-    ui_set_addresses("0x" ADDR_USDC, "0x" ADDR_TO);
     /* No ui_show_splash() here — ui_init() already selects it, and asking twice
      * races the UI task into rebuilding the screen and replaying the logo. */
 
@@ -753,6 +758,14 @@ extern "C" void app_main(void)
     uint64_t pending_amount = 0U;
     ui_msg_t msg;
 
+    /* The recipient in flight, plus the step counter that proves it went
+     * through display and confirm before it reached signing. Scoped to one
+     * payment: reset on every new amount, so nothing survives into the next. */
+    char           pending_recip[RECIP_ADDR_MAX] = { 0 };
+    recip_steps_t  recip_steps;
+    recip_steps_reset(&recip_steps);
+    const recip_pair_t pair = RECIP_PAIR_ETH_USDC;
+
     while (true) {
         if (xQueueReceive(s_ui_queue, &msg, portMAX_DELAY) != pdTRUE) {
             continue;
@@ -761,7 +774,20 @@ extern "C" void app_main(void)
         switch (msg.event) {
             case UI_EVENT_AMOUNT_CONFIRMED:
                 pending_amount = msg.payload;
-                ui_show_confirm(pending_amount, "0x" ADDR_TO);
+                /* First of the two reads. Start a fresh step sequence: whatever
+                 * a previous, abandoned payment left behind must not count
+                 * towards this one's gates. */
+                recip_steps_reset(&recip_steps);
+                if (!RECIP_IS_OK(recip_read_display(pair, pending_recip,
+                                                    sizeof(pending_recip),
+                                                    &recip_steps))) {
+                    ESP_LOGE(TAG, "recipient failed verification before display");
+                    ui_show_tx_status(UI_TX_STATE_FAILED,
+                                      "Recipient check failed - see settings");
+                    pending_amount = 0U;
+                    break;
+                }
+                ui_show_confirm(pending_amount, pending_recip);
                 break;
 
             case UI_EVENT_CONFIRM_CANCEL:
@@ -782,14 +808,35 @@ extern "C" void app_main(void)
                 s_user_cancelled = false;
                 char tx_hash[68] = { 0 };
                 char err_msg[64] = { 0 };
-                bool ok = sign_and_broadcast(wallet, nfcTransport, pending_amount,
-                                              pin, pin_chars,
-                                              tx_hash, sizeof(tx_hash),
-                                              err_msg, sizeof(err_msg));
+
+                /* The PIN keypad is the confirmation: the customer has now seen
+                 * the address and the operator has committed to it. Then the
+                 * second read — a different NVS key, at a later moment — which
+                 * also re-decodes and cross-checks the step counter. */
+                uint8_t to20[RECIP_ADDR_BYTES];
+                bool ok = RECIP_IS_OK(recip_checkpoint(pair, RECIP_STEP_CONFIRM,
+                                                       &recip_steps)) &&
+                          RECIP_IS_OK(recip_read_signing(pair, pending_recip,
+                                                         to20, &recip_steps));
+                if (!ok) {
+                    /* Fail closed: no arbitration between the two copies, no
+                     * retry with the other one. */
+                    ESP_LOGE(TAG, "recipient failed verification before signing");
+                    (void)snprintf(err_msg, sizeof(err_msg),
+                                   "Recipient check failed");
+                } else {
+                    ok = sign_and_broadcast(wallet, nfcTransport, pending_amount,
+                                            to20, pin, pin_chars,
+                                            tx_hash, sizeof(tx_hash),
+                                            err_msg, sizeof(err_msg));
+                }
+                CW_Utils::secure_wipe(to20, sizeof(to20));
                 /* scrub our copy of the PIN as soon as signing is done. */
                 CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(pin), sizeof(pin));
 
                 pending_amount = 0U;  /* next sign requires fresh New Payment flow */
+                recip_steps_reset(&recip_steps);
+                (void)memset(pending_recip, 0, sizeof(pending_recip));
                 if (s_user_cancelled) {
                     /* Cancel during PLACE_CARD — UI already on amount entry. */
                 } else if (ok) {
