@@ -129,6 +129,7 @@ ICONS = [
     ("icon_usdc", COIN, lambda: usdc(COIN)),
     ("icon_tron", COIN, lambda: tron(COIN)),
     ("icon_usdt", COIN, lambda: usdt(COIN)),
+    ("icon_eth",  COIN, lambda: eth(COIN)),
     ("chip_tron", CHIP, lambda: tron(CHIP, ring=True, facets=False, k=0.60)),
     ("chip_eth",  CHIP, lambda: eth(CHIP, ring=True, k=0.62)),
 ]

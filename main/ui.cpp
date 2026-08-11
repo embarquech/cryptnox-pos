@@ -96,6 +96,14 @@ static XPT2046_Touchscreen touch(T_CS, T_IRQ);
 #define MENU_BTN_H      30
 #define MENU_BTN_X      4
 #define MENU_BTN_Y      6
+/* Asset selector — its own row above the amount. Sized off the 36px badge it
+ * carries: 8 pad + 36 badge + 12 gap + 10 arrow + 10 pad = 76 wide, and 3px of
+ * air above and below the badge = 42 tall. (BADGE_SZ is defined with the icon
+ * helpers, further down — kept numeric here so the metrics read as one block.) */
+#define ASSET_BTN_W     76
+#define ASSET_BTN_H     42
+#define ASSET_BTN_Y     4      /* own row, level with the burger       */
+#define ASSET_BTN_PAD   8      /* badge inset from the left edge       */
 #define TAB_PAD         12     /* settings tab page padding           */
 #define TAB_W           (SCR_W - (2 * TAB_PAD))   /* usable tab width */
 
@@ -236,7 +244,6 @@ static char          s_tx_info[64] = "";
 
 /* Amount entry — keypad input string (e.g. "12.50") and its display label. */
 static lv_obj_t *s_amount_label = NULL;
-static lv_obj_t *s_amount_usdc  = NULL;   /* USDC badge, kept beside the amount */
 static uint64_t  s_amount_cents = 0;      /* amount entered, in cents          */
 
 /* PIN entry — the textarea (password mode) is the live input; s_pin is the
@@ -314,7 +321,9 @@ enum BtnAction {
     ACT_WIFI, ACT_WIFI_CANCEL, ACT_WIFI_PASS_REVEAL,
     ACT_ADMIN_CANCEL, ACT_WELCOME_OK,
     ACT_RESET, ACT_RESET_CONFIRM, ACT_MODAL_CLOSE,
-    ACT_CHAIN_PICK, ACT_CHAIN_ETH, ACT_CHAIN_TRON, ACT_CHAIN_TRON_USDT,
+    /* Asset selector (amount screen): network first, then the coin on it. */
+    ACT_NET_PICK, ACT_NET_ETH, ACT_NET_TRON,
+    ACT_CHAIN_ETH, ACT_CHAIN_TRON, ACT_CHAIN_TRON_USDT,
 };
 
 /* Firmware version shown on the splash and the About tab. */
@@ -323,21 +332,15 @@ enum BtnAction {
 /* Settings — defined in section 7 (uses the widget helpers). */
 static void settings_persist(void);
 static void open_reset_confirm(void);
-static void open_chain_picker(void);
+static void open_network_picker(void);
+static void open_coin_picker(bool tron);
 static void close_modal(void);
 static void pop_in(lv_obj_t *obj);   /* defined in section 8 (animations) */
 static uint32_t admin_penalty_ms(uint8_t fails);   /* defined with the admin screens */
 static ui_screen_t s_settings_return = UI_SCREEN_AMOUNT;   /* screen to go back to */
 
-/* Which settings tab to open on. Picking a chain rebuilds the whole settings
- * page (captions and fee rows differ per chain), and a fresh tabview starts on
- * tab 0 — which dumped the operator back on "Screen" every time they chose an
- * asset. Tracked here so the rebuild lands where they were. Reset to 0 when the
- * page is opened from the burger menu, not when it is rebuilt in place. */
 #define SETTINGS_TAB_COUNT  4
-#define TAB_TX              2
 #define TAB_ABOUT           3
-static uint16_t s_settings_tab = 0U;
 
 /* The chain is read straight from NVS wherever it is needed — the asset badge,
  * the picker pill and main's signing path all ask the same question, so there is
@@ -355,13 +358,9 @@ static const char *asset_name(void) {
     }
 }
 
-/** Where that asset lives — the selector's subtitle. */
+/** Which network that asset lives on — the selector's subtitle. */
 static const char *asset_network(void) {
-    switch (settings_get_chain()) {
-        case POS_CHAIN_TRON_NILE: return "Tron Nile";
-        case POS_CHAIN_TRON_USDT: return "Tron Nile TRC-20";
-        default:                  return "Ethereum Sepolia";
-    }
+    return chain_is_tron() ? "Tron Nile" : "Ethereum Sepolia";
 }
 
 /** Caption for the address row above "Send to": TRX has no contract to show. */
@@ -401,11 +400,6 @@ static void amount_update_display(void) {
              s_amount_cents / 100ULL, s_amount_cents % 100ULL);
     if (s_amount_label != NULL) {
         lv_label_set_text(s_amount_label, buf);
-        /* Keep the USDC badge glued to the right of the (variable-width) amount. */
-        if (s_amount_usdc != NULL) {
-            lv_obj_align_to(s_amount_usdc, s_amount_label,
-                            LV_ALIGN_OUT_RIGHT_MID, 8, 0);
-        }
     }
     s_amount_units = s_amount_cents * 10000ULL;   /* cents -> 6-decimal base units */
 }
@@ -459,7 +453,6 @@ static void btn_event_cb(lv_event_t *e) {
             break;
         case ACT_SETTINGS:
             s_settings_return = s_req_screen;   /* remember where we came from */
-            s_settings_tab    = 0U;             /* a fresh open starts on Screen */
             /* One lock for the whole menu: Wi-Fi, fee caps and the factory reset
              * are all merchant operations, and the reset in particular must not
              * be one tap away from a customer left alone with the terminal.
@@ -538,8 +531,13 @@ static void btn_event_cb(lv_event_t *e) {
         case ACT_MODAL_CLOSE:
             close_modal();
             break;
-        case ACT_CHAIN_PICK:
-            open_chain_picker();
+        case ACT_NET_PICK:
+            open_network_picker();
+            break;
+        case ACT_NET_ETH:
+        case ACT_NET_TRON:
+            /* Step 2: which coin on the network just picked. */
+            open_coin_picker(act == ACT_NET_TRON);
             break;
         case ACT_CHAIN_ETH:
         case ACT_CHAIN_TRON:
@@ -549,10 +547,10 @@ static void btn_event_cb(lv_event_t *e) {
                 (act == ACT_CHAIN_TRON_USDT) ? POS_CHAIN_TRON_USDT
                                              : POS_CHAIN_ETH_SEPOLIA);
             close_modal();
-            /* Rebuild: the pill, the fee rows and the address captions all
-             * differ per chain. Come back on Tx, where the selector lives. */
-            s_settings_tab = TAB_TX;
-            request_screen(UI_SCREEN_SETTINGS);
+            /* Rebuild the amount screen: the selector pill and the badge beside
+             * the amount both name the chain. The entered amount is kept — it
+             * lives in s_amount_cents, not in the widgets. */
+            request_screen(UI_SCREEN_AMOUNT);
             break;
     }
 }
@@ -649,35 +647,84 @@ static lv_obj_t *make_glyph_disc(lv_obj_t *parent, const char *sym,
     return d;
 }
 
-/* Asset mark with a network chip on its bottom-right corner, the way wallets
- * badge a token with the chain it lives on — so "USDC" (Sepolia) and a TRC-20
- * are told apart by the icon and not only by the subtitle.
+/* Coin mark, optionally with a network chip on its bottom-right corner, the way
+ * wallets badge a token with the chain it lives on — so "USDC" (Sepolia) and a
+ * TRC-20 are told apart by the icon and not only by the subtitle.
  *
  * All four marks are real logos (tools/gen_chain_icons.py draws the TRON
  * triangle, the Tether stem and the Ethereum octahedron; Circle artwork is
  * Circle artwork). The chips carry their white ring in the bitmap.
  *
- * Returns a BADGE_SZ box the caller positions; both children ride along, which
- * matters on the amount screen where the badge is re-aligned as digits change. */
-static lv_obj_t *make_asset_badge(lv_obj_t *parent, pos_chain_t chain) {
+ * @p chip may be NULL — a bare network mark needs no chip of itself, and the
+ * box then shrinks to COIN_SZ so the mark sits centred wherever it is aligned
+ * instead of riding high-left in a box kept wide for a chip that is not there.
+ *
+ * Returns the box for the caller to position; the children ride along. */
+static lv_obj_t *make_icon_box(lv_obj_t *parent, const lv_img_dsc_t *coin_src,
+                               const lv_img_dsc_t *chip_src) {
     lv_obj_t *box = lv_obj_create(parent);
     lv_obj_remove_style_all(box);
-    lv_obj_set_size(box, BADGE_SZ, BADGE_SZ);
+    lv_obj_set_size(box, (chip_src != NULL) ? BADGE_SZ : COIN_SZ,
+                         (chip_src != NULL) ? BADGE_SZ : COIN_SZ);
     lv_obj_clear_flag(box, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_clear_flag(box, LV_OBJ_FLAG_CLICKABLE);
 
-    const lv_img_dsc_t *coin_src = (chain == POS_CHAIN_TRON_NILE) ? &icon_tron
-                                 : (chain == POS_CHAIN_TRON_USDT) ? &icon_usdt
-                                                                  : &icon_usdc;
     lv_obj_t *coin = lv_img_create(box);
     lv_img_set_src(coin, coin_src);
     lv_obj_align(coin, LV_ALIGN_TOP_LEFT, 0, 0);
 
-    lv_obj_t *chip = lv_img_create(box);
-    lv_img_set_src(chip, (chain == POS_CHAIN_ETH_SEPOLIA) ? &chip_eth
-                                                          : &chip_tron);
-    lv_obj_align(chip, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
+    if (chip_src != NULL) {
+        lv_obj_t *chip = lv_img_create(box);
+        lv_img_set_src(chip, chip_src);
+        lv_obj_align(chip, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
+    }
     return box;
+}
+
+/* The selected asset. A native coin IS its network, so it carries no chip —
+ * the chip only says "this token lives over there", which is meaningless
+ * stacked on the network's own logo. */
+static lv_obj_t *make_asset_badge(lv_obj_t *parent, pos_chain_t chain) {
+    switch (chain) {
+        case POS_CHAIN_TRON_NILE: return make_icon_box(parent, &icon_tron, NULL);
+        case POS_CHAIN_TRON_USDT: return make_icon_box(parent, &icon_usdt, &chip_tron);
+        default:                  return make_icon_box(parent, &icon_usdc, &chip_eth);
+    }
+}
+
+/* The asset selector itself: the badge above turned into a tappable pill, on its
+ * own row centred above the amount. Deliberately wordless — the ticker is
+ * spelled out on the picker it opens and on the confirm screen, and a compact
+ * mark leaves the amount the biggest thing on the screen.
+ *
+ * Mark hard left, arrow hard right. Both badge boxes draw their mark at their
+ * own top-left, so left-aligning the box puts the mark at the same x whether or
+ * not it carries a network chip — no measuring needed, which is the point: the
+ * box has no width to measure until LVGL runs a layout pass, and asking anyway
+ * put the icon on the wrong side of the button. */
+static lv_obj_t *make_asset_button(void) {
+    /* make_button carries the fill/press/border/event wiring; this one is an
+     * icon row, so its label is pushed right to serve as the arrow. */
+    lv_obj_t *btn = make_button(lv_scr_act(), LV_SYMBOL_RIGHT, COL_SURFACE,
+                                COL_TEXT, ASSET_BTN_W, ASSET_BTN_H,
+                                LV_ALIGN_TOP_MID, 0, ASSET_BTN_Y, ACT_NET_PICK,
+                                &lv_font_montserrat_14);
+    lv_obj_set_style_radius(btn, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    /* Zero the theme's button padding first, exactly as make_pill does. Child
+     * aligns are relative to the CONTENT area, so the default ~12px inset shoved
+     * the badge inward until it sat on top of the arrow — and the badge is added
+     * last, so it wins the draw order and the arrow simply vanished. */
+    lv_obj_set_style_pad_all(btn, 0, LV_PART_MAIN);
+    lv_obj_align(lv_obj_get_child(btn, 0), LV_ALIGN_RIGHT_MID, -10, 0);
+    lv_obj_align(make_asset_badge(btn, settings_get_chain()),
+                 LV_ALIGN_LEFT_MID, ASSET_BTN_PAD, 0);
+    return btn;
+}
+
+/* The bare network mark, for the network picker's own rows — no coin is chosen
+ * at that step, so there is nothing to badge it with. */
+static lv_obj_t *make_net_badge(lv_obj_t *parent, bool tron) {
+    return make_icon_box(parent, tron ? &icon_tron : &icon_eth, NULL);
 }
 
 /* Selector row in the style of button_style.png: full-radius grey pill, round
@@ -747,7 +794,6 @@ static void clear_screen(void) {
     lv_obj_set_style_bg_color(scr, COL_BG, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, LV_PART_MAIN);
     s_amount_label = NULL;
-    s_amount_usdc  = NULL;
     s_pin_ta       = NULL;   /* deleted by lv_obj_clean — drop the dangling ref */
     s_wifi_pass_ta = NULL;
     s_wifi_eye_lbl   = NULL;
@@ -804,12 +850,9 @@ static void settings_bottom_bar(uint16_t tab) {
 static void tab_change_cb(lv_event_t *e) {
     lv_obj_t *tabbar = lv_event_get_target(e);
     /* Only a real press names a button; anything else reports
-     * LV_BTNMATRIX_BTN_NONE (0xFFFF). Recording that would send the next
-     * lv_tabview_set_act() out of range, and it clamps to the LAST tab — which
-     * is how choosing an asset used to land the operator on About. */
+     * LV_BTNMATRIX_BTN_NONE (0xFFFF), which must not be mistaken for a tab. */
     uint16_t sel = lv_btnmatrix_get_selected_btn(tabbar);
     if (sel >= SETTINGS_TAB_COUNT) { return; }
-    s_settings_tab = sel;
     settings_bottom_bar(sel);
 }
 
@@ -983,26 +1026,30 @@ static void build_settings(void) {
                    LV_ALIGN_TOP_LEFT, 0, 86);
     }
 
-    /* ── Transaction tab: asset/network picker, then where the funds go ── */
+    /* ── Transaction tab: what the terminal will call, and where the funds go.
+     * Read-only — the asset is chosen on the amount screen, where the operator
+     * needs it, not two taps deep behind the admin code. ── */
     const bool tron = chain_is_tron();
-    lv_obj_t *npill = make_pill(t_tx, asset_name(), asset_network(),
-                                TAB_W, 0, ACT_CHAIN_PICK);
-    lv_obj_align(make_asset_badge(npill, settings_get_chain()),
-                 LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
+    char net_line[48];
+    snprintf(net_line, sizeof(net_line), "%s on %s", asset_name(), asset_network());
+    make_label(t_tx, "Charging in", COL_DIM, &lv_font_montserrat_14,
+               LV_ALIGN_TOP_LEFT, 0, 0);
+    make_label(t_tx, net_line, COL_TEXT, &lv_font_montserrat_14,
+               LV_ALIGN_TOP_LEFT, 0, 18);
 
     make_label(t_tx, asset_caption(), COL_DIM,
-               &lv_font_montserrat_14, LV_ALIGN_TOP_LEFT, 0, 64);
+               &lv_font_montserrat_14, LV_ALIGN_TOP_LEFT, 0, 48);
     lv_obj_t *a_usdc = make_label(t_tx, (s_addr_usdc != NULL) ? s_addr_usdc : "-",
                                   COL_TEXT, &lv_font_montserrat_14,
-                                  LV_ALIGN_TOP_LEFT, 0, 82);
+                                  LV_ALIGN_TOP_LEFT, 0, 66);
     lv_label_set_long_mode(a_usdc, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(a_usdc, 200);
 
     make_label(t_tx, "Send to", COL_DIM, &lv_font_montserrat_14,
-               LV_ALIGN_TOP_LEFT, 0, 128);
+               LV_ALIGN_TOP_LEFT, 0, 112);
     lv_obj_t *a_dest = make_label(t_tx, (s_addr_dest != NULL) ? s_addr_dest : "-",
                                   COL_TEXT, &lv_font_montserrat_14,
-                                  LV_ALIGN_TOP_LEFT, 0, 146);
+                                  LV_ALIGN_TOP_LEFT, 0, 130);
     lv_label_set_long_mode(a_dest, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(a_dest, 200);
 
@@ -1022,12 +1069,12 @@ static void build_settings(void) {
                                  : "Token transfers burn the card's energy, "
                                    "capped in config.h - no gas fee to set.",
                                  COL_DIM, &lv_font_montserrat_14,
-                                 LV_ALIGN_TOP_LEFT, 0, 196);
+                                 LV_ALIGN_TOP_LEFT, 0, 180);
         lv_label_set_long_mode(n, LV_LABEL_LONG_WRAP);
         lv_obj_set_width(n, 200);
     } else {
-        s_maxfee_lbl = build_fee_row(t_tx, "Max fee (Gwei)",      192, 0, 1);
-        s_prio_lbl   = build_fee_row(t_tx, "Priority fee (Gwei)", 260, 2, 3);
+        s_maxfee_lbl = build_fee_row(t_tx, "Max fee (Gwei)",      176, 0, 1);
+        s_prio_lbl   = build_fee_row(t_tx, "Priority fee (Gwei)", 244, 2, 3);
         fee_update_labels();
     }
 
@@ -1070,12 +1117,7 @@ static void build_settings(void) {
     lv_obj_add_event_cb(lv_tabview_get_tab_btns(tv), tab_change_cb,
                         LV_EVENT_VALUE_CHANGED, NULL);
 
-    /* Land on the tab we left, not on tab 0. LV_ANIM_OFF: this is a rebuild of
-     * a page the operator is already looking at, so a slide would read as a
-     * navigation that did not happen. */
-    if (s_settings_tab >= SETTINGS_TAB_COUNT) { s_settings_tab = 0U; }
-    lv_tabview_set_act(tv, s_settings_tab, LV_ANIM_OFF);
-    settings_bottom_bar(s_settings_tab);
+    settings_bottom_bar(0U);   /* a fresh page always opens on Screen */
 }
 
 /* Modal overlays (factory-reset confirmation, network picker). One at a time:
@@ -1132,39 +1174,88 @@ static void open_reset_confirm(void) {
                 LV_ALIGN_BOTTOM_MID, 0, -2, ACT_MODAL_CLOSE, &lv_font_montserrat_20);
 }
 
-/* The network "dropdown": one pill per chain, in the same style as the selector
- * that opened it, so the choice looks like the thing being chosen. */
-static void open_chain_picker(void) {
-    /* Three rows plus a Cancel. The card is 228 wide (212 inside the 8px pad)
-     * so the pills run to 206 — wide enough that "Tron Nile TRC-20" is drawn in
-     * full rather than dot-elided. A fourth asset still fits; a fifth means
-     * scrolling the card, not shrinking the touch targets. */
-    lv_obj_t *card = open_modal(228, 246);
+/* Asset selection, in two steps: the network, then the coin on it. Two modals
+ * rather than one flat list of chains — a chain is a (network, coin) pair, and
+ * merging them made "USDT Tron Nile TRC-20" a single row the operator had to
+ * parse. Each card is styled like the selector that opened it, so the choice
+ * looks like the thing being chosen.
+ *
+ * The card is 228 wide (212 inside the 8px pad), so the pills run to 206. */
+#define PICK_W  206
 
-    make_label(card, "Charge in", COL_DIM, &lv_font_montserrat_14,
+/** Step 1 — the network. */
+static void open_network_picker(void) {
+    lv_obj_t *card = open_modal(228, 194);
+
+    make_label(card, "Network", COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_MID, 0, 2);
 
     static const struct {
         const char *name;
-        const char *net;
-        pos_chain_t chain;
+        const char *sub;
+        bool        tron;   /* which network mark to draw */
         BtnAction   act;
-    } CHOICES[] = {
-        { "USDC", "Ethereum Sepolia", POS_CHAIN_ETH_SEPOLIA, ACT_CHAIN_ETH       },
-        { "TRX",  "Tron Nile",        POS_CHAIN_TRON_NILE,   ACT_CHAIN_TRON      },
-        { "USDT", "Tron Nile TRC-20", POS_CHAIN_TRON_USDT,   ACT_CHAIN_TRON_USDT },
+    } NETS[] = {
+        { "Ethereum", "Sepolia testnet", false, ACT_NET_ETH  },
+        { "Tron",     "Nile testnet",    true,  ACT_NET_TRON },
     };
 
-    for (size_t i = 0; i < (sizeof(CHOICES) / sizeof(CHOICES[0])); i++) {
+    for (size_t i = 0; i < (sizeof(NETS) / sizeof(NETS[0])); i++) {
         lv_coord_t y = static_cast<lv_coord_t>(22 + (i * (PILL_H + 2)));
-        lv_obj_t  *p = make_pill(card, CHOICES[i].name, CHOICES[i].net,
-                                 206, y, CHOICES[i].act, true /* leaf */);
-        lv_obj_align(make_asset_badge(p, CHOICES[i].chain),
+        lv_obj_t  *p = make_pill(card, NETS[i].name, NETS[i].sub,
+                                 PICK_W, y, NETS[i].act);
+        lv_obj_align(make_net_badge(p, NETS[i].tron),
                      LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
     }
 
-    make_button(card, "Cancel", COL_SURFACE, COL_TEXT, 206, 40,
+    make_button(card, "Cancel", COL_SURFACE, COL_TEXT, PICK_W, 40,
                 LV_ALIGN_BOTTOM_MID, 0, -2, ACT_MODAL_CLOSE,
+                &lv_font_montserrat_20);
+}
+
+/** Step 2 — the coin on the network chosen in step 1. */
+static void open_coin_picker(bool tron) {
+    static const struct {
+        const char *name;
+        const char *sub;
+        pos_chain_t chain;
+        BtnAction   act;
+    } ETH_COINS[] = {
+        { "USDC", "ERC-20", POS_CHAIN_ETH_SEPOLIA, ACT_CHAIN_ETH },
+    };
+    static const struct {
+        const char *name;
+        const char *sub;
+        pos_chain_t chain;
+        BtnAction   act;
+    } TRON_COINS[] = {
+        { "TRX",  "Native coin", POS_CHAIN_TRON_NILE, ACT_CHAIN_TRON      },
+        { "USDT", "TRC-20",      POS_CHAIN_TRON_USDT, ACT_CHAIN_TRON_USDT },
+    };
+    const size_t n = tron ? (sizeof(TRON_COINS) / sizeof(TRON_COINS[0]))
+                          : (sizeof(ETH_COINS)  / sizeof(ETH_COINS[0]));
+
+    /* Card grows with the row count: header + rows + the Back button. */
+    lv_obj_t *card = open_modal(228,
+        static_cast<lv_coord_t>(86 + (n * (PILL_H + 2))));
+
+    make_label(card, tron ? "Coin on Tron" : "Coin on Ethereum", COL_DIM,
+               &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0, 2);
+
+    for (size_t i = 0; i < n; i++) {
+        const char *name  = tron ? TRON_COINS[i].name  : ETH_COINS[i].name;
+        const char *sub   = tron ? TRON_COINS[i].sub   : ETH_COINS[i].sub;
+        pos_chain_t chain = tron ? TRON_COINS[i].chain : ETH_COINS[i].chain;
+        BtnAction   act   = tron ? TRON_COINS[i].act   : ETH_COINS[i].act;
+
+        lv_coord_t y = static_cast<lv_coord_t>(22 + (i * (PILL_H + 2)));
+        lv_obj_t  *p = make_pill(card, name, sub, PICK_W, y, act, true /* leaf */);
+        lv_obj_align(make_asset_badge(p, chain), LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
+    }
+
+    /* Back, not Cancel: step 2 of two, so the way out is step 1. */
+    make_button(card, "Back", COL_SURFACE, COL_TEXT, PICK_W, 40,
+                LV_ALIGN_BOTTOM_MID, 0, -2, ACT_NET_PICK,
                 &lv_font_montserrat_20);
 }
 
@@ -1285,10 +1376,16 @@ static void build_amount(void) {
      * the burger (settings) top-left. */
     add_menu_button();
 
+    /* Stacked, both centred: selector row (4..46), then the amount (50..88),
+     * then the keypad. The amount stays dead centre whatever its width, because
+     * nothing is glued to its side any more — no sideways drift as digits land.
+     *
+     * The 320px column is fully spoken for: keypad 90..266 and the Charge button
+     * 266..312 below it, so the selector's row is paid for out of the keypad's
+     * height (196 -> 176, keys 44 tall — still a comfortable target). */
+    make_asset_button();
     s_amount_label = make_label(lv_scr_act(), "0.00", COL_TEXT,
-                                &lv_font_montserrat_28, LV_ALIGN_TOP_MID, 0, 22);
-    /* Placed beside the amount by amount_update_display(). */
-    s_amount_usdc = make_asset_badge(lv_scr_act(), settings_get_chain());
+                                &lv_font_montserrat_28, LV_ALIGN_TOP_MID, 0, 50);
 
     /* Numeric keypad: digits, double-zero, backspace (cents entry). */
     static const char *amap[] = {
@@ -1299,8 +1396,8 @@ static void build_amount(void) {
     };
     lv_obj_t *kb = lv_btnmatrix_create(lv_scr_act());
     lv_btnmatrix_set_map(kb, amap);
-    lv_obj_set_size(kb, 232, 196);
-    lv_obj_align(kb, LV_ALIGN_TOP_MID, 0, 70);
+    lv_obj_set_size(kb, 232, 176);
+    lv_obj_align(kb, LV_ALIGN_TOP_MID, 0, 90);
     lv_obj_set_style_bg_opa(kb, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(kb, 0, LV_PART_MAIN);
     /* Minimal keypad: no key boxes — black glyphs on white, grey flash on press. */
