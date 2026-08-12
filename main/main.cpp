@@ -41,6 +41,7 @@
 #include "CW_Tron.h"
 #include "settings.h"
 #include "provision.h"   /* phone-based first-run setup (SoftAP + portal) */
+#include "ota.h"         /* browser-mediated firmware update + rollback confirm */
 
 /* Quiet CW_Logger — swallows the SDK's verbose connection/retry chatter that
  * was showing up as 'a a a...' on the UART. Keep ESP_LOGI for our own logs. */
@@ -1296,6 +1297,14 @@ extern "C" void app_main(void)
 
     ESP_LOGI(TAG, "Ready");
 
+    /* Everything a terminal needs is now proven to work on this image: the
+     * panel, the card reader, the wallet layer, the uplink and one authenticated
+     * RPC round-trip. That is the bar for keeping a firmware update — before
+     * this line, any reset would have sent the bootloader back to the previous
+     * slot, which is exactly what should happen to a build that cannot get
+     * here. See ota.h. */
+    ota_mark_valid();
+
     /* ── Main interaction loop ────────────────────────────────── */
     ui_show_amount_entry();
 
@@ -1434,6 +1443,16 @@ extern "C" void app_main(void)
 
             case UI_EVENT_TX_RETRY:
                 ui_show_amount_entry();
+                break;
+
+            case UI_EVENT_OTA_STAGED:
+                /* A browser has uploaded firmware and the terminal has verified
+                 * it; nothing boots until it is accepted on the panel. Routed
+                 * through this queue rather than raised from the HTTP task, which
+                 * also settles the mid-payment case for free: a payment occupies
+                 * this loop, so the offer waits its turn behind it instead of
+                 * appearing over a customer's transaction. */
+                ui_show_ota_confirm();
                 break;
 
             case UI_EVENT_WIFI_SCAN: {

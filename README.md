@@ -273,13 +273,17 @@ python tools/secure_flash.py --package    # -> dist/cryptnox_pos-encrypted-full.
 - **`Card not found`** → confirm the PN532 switches are set for I²C, the SDA/SCL wires match GPIO 27/22, and the card is well centred on the antenna.
 - **`ecrecover did not match either parity`** → `ADDR_FROM` in `config.h` does not correspond to the card's `m/44'/60'/0'/0/0` derived key. Verify the seed and the path.
 - **WiFi connect fails** → only WPA2 is supported; check SSID/password.
-- **App partition full** → the project uses a custom 3 MB app partition (`partitions.csv`) on a 4 MB flash. Drop unused LVGL fonts (`CONFIG_LV_FONT_MONTSERRAT_*`) in `sdkconfig.defaults` if you need more headroom.
+- **App partition full** → the project uses two 1.94 MB OTA app slots (`partitions.csv`) on a 4 MB flash, so the budget is half what a single-slot table would give. Drop unused LVGL fonts (`CONFIG_LV_FONT_MONTSERRAT_*`) in `sdkconfig.defaults` if you need more headroom.
+- **`Update` says the terminal has no second firmware slot** → that unit was flashed with the old single-app partition table. The table itself is never rewritten by an update, so it needs one reflash over USB first. See [docs/ota.md](docs/ota.md).
 
 ---
 
 ## Documentation
 
 The generated documentation for this project is available [here](https://embarquech.github.io/cryptnox-pos/).
+
+- [Firmware updates over Wi-Fi](docs/ota.md) — the browser-mediated OTA path, publishing a release, and the signing key you must not ship without. Test plan: [docs/ota-testing.md](docs/ota-testing.md).
+- [Testing the phone-setup portal](docs/testing-provisioning.md) — first-run SoftAP + captive portal.
 
 ---
 

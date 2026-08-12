@@ -271,5 +271,6 @@ firmware does — it is currently covered by inspection only.
 - **Portal RAM headroom.** `httpd` plus LVGL plus TLS on an ESP32 is tight;
   nothing here measures free heap with the AP up.
 - **The `esp_restart()` path under a payment.** The address step runs before the
-  NFC reader starts, so it cannot collide today. It would if the portal were ever
-  offered from the settings menu.
+  NFC reader starts, so the *portal* cannot collide today. The firmware-update
+  window can — it is offered from the settings menu and it reboots on purpose.
+  Covered in [`docs/ota-testing.md`](ota-testing.md) §6.1.

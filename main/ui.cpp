@@ -35,6 +35,7 @@
 #include "card_img.h"
 #include "settings.h"
 #include "provision.h"   /* QR payload + the pending payout-address handshake */
+#include "ota.h"         /* running version + the update window and its handshake */
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -280,6 +281,9 @@ static volatile bool s_boot_step_dirty   = false;
  * written by the main task and read by the UI task, like the splash line above. */
 static volatile int  s_prov_step         = 0;
 static volatile bool s_addr_modal_dirty  = false;
+/* Firmware uploaded from a browser and waiting to be accepted here. Same
+ * handoff as the address modal above: the HTTP task never touches LVGL. */
+static volatile bool s_ota_modal_dirty   = false;
 
 /* Startup fault (UI_SCREEN_BOOT_ERROR). */
 static ui_boot_err_t s_boot_err            = UI_BOOT_ERR_NFC;
@@ -332,16 +336,16 @@ enum BtnAction {
     /* Asset selector (amount screen): network first, then the coin on it. */
     ACT_NET_PICK, ACT_NET_ETH, ACT_NET_TRON,
     ACT_CHAIN_ETH, ACT_CHAIN_TRON, ACT_CHAIN_TRON_USDT,
+    /* Firmware update: open the window, close it, resolve an uploaded image. */
+    ACT_UPDATE, ACT_UPDATE_CLOSE, ACT_OTA_OK, ACT_OTA_NO,
 };
-
-/* Firmware version shown on the splash and the About tab. */
-#define APP_VERSION "v1.0"
 
 /* Settings — defined in section 7 (uses the widget helpers). */
 static void settings_persist(void);
 static void open_reset_confirm(void);
 static void open_network_picker(void);
 static void open_coin_picker(bool tron);
+static void open_update_window(void);
 static void close_modal(void);
 static void pop_in(lv_obj_t *obj);   /* defined in section 8 (animations) */
 static uint32_t admin_penalty_ms(uint8_t fails);   /* defined with the admin screens */
@@ -552,6 +556,28 @@ static void btn_event_cb(lv_event_t *e) {
              * drop) before closing, so the address cannot outlive the card. */
             (void)prov_addr_commit(act == ACT_ADDR_OK);
             close_modal();
+            break;
+        case ACT_UPDATE:
+            open_update_window();
+            break;
+        case ACT_UPDATE_CLOSE:
+            /* Closing the card closes the window: the upload endpoint should not
+             * outlive the operator standing in front of the terminal. */
+            ota_stop();
+            close_modal();
+            break;
+        case ACT_OTA_OK:
+        case ACT_OTA_NO:
+            /* The panel is the only place firmware can be installed; the browser
+             * that uploaded it only got as far as this modal. Install does not
+             * return — it reboots into the new slot. */
+            close_modal();
+            if (!ota_commit(act == ACT_OTA_OK)) {
+                /* Declined, or the boot partition would not take. Either way the
+                 * running firmware stays; the window is closed regardless so a
+                 * refused image cannot simply be re-uploaded unattended. */
+                ota_stop();
+            }
             break;
         case ACT_NET_PICK:
             open_network_picker();
@@ -1107,8 +1133,21 @@ static void build_settings(void) {
 
     make_label(t_about, "cryptnox-pos", COL_TEXT, &lv_font_montserrat_20,
                LV_ALIGN_TOP_MID, 0, 42);
-    make_label(t_about, APP_VERSION, COL_DIM, &lv_font_montserrat_14,
+    /* Straight out of the running image's header rather than a #define, so that
+     * after an update this reads as the firmware that is actually executing. */
+    make_label(t_about, ota_running_version(), COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_MID, 0, 70);
+
+    /* The update row. Tapping it opens a web page on the venue network, so it
+     * belongs behind the admin code with the rest of the settings. */
+    /* Subtitle kept short deliberately: make_pill caps it at
+     * TAB_W - PILL_TEXT_X - PILL_TEXT_PAD_R = 140 px and dot-elides the rest,
+     * and a row whose own label is cut off reads as a bug. */
+    lv_obj_t *upill = make_pill(t_about, "Update", "From a browser",
+                                TAB_W, 94, ACT_UPDATE);
+    lv_obj_align(make_glyph_disc(upill, LV_SYMBOL_DOWNLOAD, COL_ACCENT, COIN_SZ),
+                 LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
+
     lv_obj_t *about = make_label(t_about,
                                  "USDC (Sepolia), TRX and USDT\n"
                                  "TRC-20 (Tron Nile) terminal\n"
@@ -1120,7 +1159,7 @@ static void build_settings(void) {
                                  "LVGL (MIT), TFT_eSPI (FreeBSD/MIT),\n"
                                  "XPT2046_Touchscreen (MIT)",
                                  COL_DIM, &lv_font_montserrat_14,
-                                 LV_ALIGN_TOP_MID, 0, 94);
+                                 LV_ALIGN_TOP_MID, 0, 156);
     lv_label_set_long_mode(about, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(about, 210);
     lv_obj_set_style_text_align(about, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
@@ -1146,11 +1185,20 @@ static void build_settings(void) {
  * both are full-screen and both are opened from the settings page. */
 static lv_obj_t *s_modal = NULL;
 
+/* Whether the modal on screen belongs to the firmware update. The update window
+ * shuts itself down after OTA_WINDOW_MIN whether or not anybody is watching, and
+ * a card left behind after that would wedge the terminal: these overlays swallow
+ * every touch, so a terminal nobody came back to could not take a payment again
+ * until it was power-cycled. The UI task uses this to clear the card when the
+ * window closes underneath it. */
+static bool s_ota_modal = false;
+
 static void close_modal(void) {
     if (s_modal != NULL) {
         lv_obj_del(s_modal);
         s_modal = NULL;
     }
+    s_ota_modal = false;
 }
 
 /* Dimmed overlay + centred card on the top layer, so it floats above the
@@ -1194,6 +1242,155 @@ static void open_reset_confirm(void) {
                 LV_ALIGN_BOTTOM_MID, 0, -50, ACT_RESET_CONFIRM, &lv_font_montserrat_20);
     make_button(card, "Cancel", COL_SURFACE, COL_TEXT, 196, 40,
                 LV_ALIGN_BOTTOM_MID, 0, -2, ACT_MODAL_CLOSE, &lv_font_montserrat_20);
+}
+
+/**
+ * Open the update window and show the operator where to point a browser.
+ *
+ * The address is the only way anyone can find this page — it is served on the
+ * venue network, on a device with no name to look up — so it gets the biggest
+ * type on the card.
+ */
+/* Card geometry for the two update modals. 228 wide leaves 212 inside the 8 px
+ * pad; wrapped text gets 200 so it clears the rounded corners.
+ *
+ * Neither card has a hand-measured layout, because the version, the running
+ * version and the address are all substituted at runtime and none of them has a
+ * known length: blocks stack with lv_obj_align_to(), then ota_fit_card() grows
+ * the card to whatever height the text turned out to need. Sized by eye, these
+ * fitted on the strings they were written with and put text under the buttons on
+ * the next ones. */
+#define OTA_CARD_W   228
+#define OTA_TEXT_W   200
+#define OTA_GAP      8
+#define OTA_CARD_PAD 8   /* open_modal()'s pad_all */
+
+/** Wrapped, centred body text stacked under @p above (or the card top). */
+static lv_obj_t *ota_text(lv_obj_t *card, lv_obj_t *above, const char *txt,
+                          lv_color_t col, const lv_font_t *font) {
+    lv_obj_t *l = make_label(card, txt, col, font, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_set_width(l, OTA_TEXT_W);
+    lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    if (above == NULL) {
+        lv_obj_align(l, LV_ALIGN_TOP_MID, 0, 4);
+    } else {
+        /* align_to() reads the base's current coordinates, and a label that has
+         * just been given a width has not been laid out yet — without this the
+         * wrapped height is still the pre-wrap one and every block below stacks
+         * against a stale bottom edge. */
+        lv_obj_update_layout(card);
+        lv_obj_align_to(l, above, LV_ALIGN_OUT_BOTTOM_MID, 0, OTA_GAP);
+    }
+    return l;
+}
+
+/**
+ * Resize the card to the text it ended up with, leaving room for the buttons.
+ *
+ * @p buttons_h is how far the button block reaches up from the content bottom —
+ * 42 for one 40 px button at -2, 86 for two. Clamped to the screen, so a
+ * pathological string elides off the bottom rather than drawing a card taller
+ * than the panel.
+ */
+static void ota_fit_card(lv_obj_t *card, lv_obj_t *last, lv_coord_t buttons_h) {
+    lv_obj_update_layout(card);
+    lv_coord_t need = lv_obj_get_y(last) + lv_obj_get_height(last)
+                      + OTA_GAP + buttons_h + (2 * OTA_CARD_PAD);
+    if (need > (SCR_H - 16)) { need = SCR_H - 16; }
+    lv_obj_set_height(card, need);
+    lv_obj_center(card);
+}
+
+static void open_update_window(void) {
+    /* Started here, on the UI task, the same way this screen already calls
+     * settings_factory_reset() and prov_addr_commit() directly. The event
+     * callback is handed over so an upload can come back to the panel. */
+    const bool up = ota_start(s_cb);
+
+    if (!up) {
+        lv_obj_t *card = open_modal(OTA_CARD_W, 200);
+        lv_obj_t *m = ota_text(card, NULL,
+                 "The terminal has to be on a Wi-Fi network before a browser "
+                 "can update it.\n\nSet one up in the Wi-Fi tab first.",
+                 COL_TEXT, &lv_font_montserrat_14);
+        ota_fit_card(card, m, 42);
+        make_button(card, "Close", COL_SURFACE, COL_TEXT, OTA_TEXT_W, 40,
+                    LV_ALIGN_BOTTOM_MID, 0, -2, ACT_MODAL_CLOSE,
+                    &lv_font_montserrat_20);
+        return;
+    }
+
+    lv_obj_t *card = open_modal(OTA_CARD_W, 236);
+
+    lv_obj_t *cap = ota_text(card, NULL, "On this Wi-Fi, open",
+                             COL_DIM, &lv_font_montserrat_14);
+
+    /* The address without its scheme: "http://192.168.1.40/" does not fit one
+     * line at 20 pt, and wrapping it would split the number across two lines.
+     * A browser sends a bare IPv4 literal to http:// on its own. */
+    lv_obj_t *ip = ota_text(card, cap, ota_ip(), COL_TEXT,
+                            &lv_font_montserrat_20);
+
+    char note[96];
+    snprintf(note, sizeof(note),
+             "It will ask for the admin code.\n\n"
+             "Closes by itself in %u min.", ota_window_left_min());
+    lv_obj_t *n = ota_text(card, ip, note, COL_DIM, &lv_font_montserrat_14);
+    ota_fit_card(card, n, 42);
+
+    make_button(card, "Done", COL_SURFACE, COL_TEXT, OTA_TEXT_W, 40,
+                LV_ALIGN_BOTTOM_MID, 0, -2, ACT_UPDATE_CLOSE,
+                &lv_font_montserrat_20);
+
+    s_ota_modal = true;   /* set last: open_modal() cleared it */
+}
+
+/**
+ * Accept or refuse firmware that the update page has uploaded.
+ *
+ * The upload has already been verified — SHA-256, and the signature on a signed
+ * build — so this is not asking whether the image is genuine. It is asking
+ * whether the person holding the terminal wants this version on it, which is a
+ * different question and the one a browser cannot answer. A version that goes
+ * backwards is called out: the image is properly signed either way, and
+ * returning a terminal to firmware with a known fault is a plausible thing for
+ * somebody to be talked into.
+ */
+static void build_ota_confirm(void) {
+    char version[40] = "?";
+    bool older = false;
+    if (!ota_staged(version, sizeof(version), &older)) { return; }
+
+    lv_obj_t *card = open_modal(OTA_CARD_W, 252);
+
+    /* The downgrade warning is the caption, not an extra paragraph in the body:
+     * one red line above the version says it, and the body stays the same length
+     * either way — which is what keeps this card a fixed height. */
+    lv_obj_t *cap = ota_text(card, NULL,
+                             older ? "This is an OLDER version" : "New firmware",
+                             older ? COL_DANGER : COL_DIM,
+                             &lv_font_montserrat_14);
+    /* 28 pt fits about twelve characters on one line. A version longer than that
+     * is a `git describe` string rather than a release tag, and wrapping it at
+     * this size costs two more lines than the card can spare — so step down. */
+    lv_obj_t *ver = ota_text(card, cap, version, COL_TEXT,
+                             (strlen(version) > 12U) ? &lv_font_montserrat_20
+                                                     : &lv_font_montserrat_28);
+
+    char body[128];
+    snprintf(body, sizeof(body),
+             "Running %s.\n\nThe terminal restarts now. Not during a payment.",
+             ota_running_version());
+    lv_obj_t *m = ota_text(card, ver, body, COL_DIM, &lv_font_montserrat_14);
+    ota_fit_card(card, m, 86);
+
+    make_button(card, "Install", COL_ACCENT, COL_BG, OTA_TEXT_W, 40,
+                LV_ALIGN_BOTTOM_MID, 0, -46, ACT_OTA_OK, &lv_font_montserrat_20);
+    make_button(card, "Discard", COL_SURFACE, COL_TEXT, OTA_TEXT_W, 40,
+                LV_ALIGN_BOTTOM_MID, 0, -2, ACT_OTA_NO, &lv_font_montserrat_20);
+
+    s_ota_modal = true;
 }
 
 /* Asset selection, in two steps: the network, then the coin on it. Two modals
@@ -2270,6 +2467,17 @@ static void ui_task(void *arg) {
             s_addr_modal_dirty = false;
             build_addr_confirm();
         }
+        /* Same handoff for firmware uploaded from the update page — it replaces
+         * the "browser at this address" card the operator is looking at. */
+        if (s_ota_modal_dirty) {
+            s_ota_modal_dirty = false;
+            build_ota_confirm();
+        }
+        /* The update window can close on its own timer, from a task that must not
+         * touch LVGL. Retiring its card is this task's job. */
+        if (s_ota_modal && !ota_is_running()) {
+            close_modal();
+        }
         lv_timer_handler();
 
         vTaskDelay(pdMS_TO_TICKS(5));
@@ -2406,6 +2614,10 @@ extern "C" void ui_show_prov(int step) {
 
 extern "C" void ui_show_addr_confirm(void) {
     s_addr_modal_dirty = true;
+}
+
+extern "C" void ui_show_ota_confirm(void) {
+    s_ota_modal_dirty = true;
 }
 
 extern "C" void ui_show_tx_status(ui_tx_state_t state, const char *info) {

@@ -65,6 +65,8 @@ typedef enum {
     UI_EVENT_ADDR_PROPOSED,     /**< Payout address submitted from the phone;
                                      needs accepting on the panel.        */
     UI_EVENT_ADDR_SET,          /**< Payout address accepted and stored.  */
+    UI_EVENT_OTA_STAGED,        /**< Firmware uploaded and verified; needs
+                                     accepting on the panel before it boots. */
 } ui_event_t;
 
 /** @brief States shown on the transaction-status screen. */
@@ -255,6 +257,17 @@ void ui_show_prov(int step);
  * caller waiting on the step stays where it is and can be offered another.
  */
 void ui_show_addr_confirm(void);
+
+/**
+ * @brief Raise the modal that asks the operator to accept a firmware image the
+ *        update page has uploaded, reading it from ota.h.
+ *
+ * Call after @ref UI_EVENT_OTA_STAGED. Accepting reboots into the new firmware
+ * and does not return; declining discards the staging and leaves the running
+ * firmware alone. The panel is the only place either can happen — an upload on
+ * its own changes nothing about what boots.
+ */
+void ui_show_ota_confirm(void);
 
 #ifdef __cplusplus
 }

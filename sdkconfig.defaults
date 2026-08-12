@@ -31,7 +31,7 @@ CONFIG_LWIP_SNTP_MAX_SERVERS=3
 # doesn't fall back to the generic one (silences the boot-time warning)
 CONFIG_SPI_FLASH_SUPPORT_BOYA_CHIP=y
 
-# CYD has 4 MB flash — custom 3 MB app partition
+# CYD has 4 MB flash — custom table with two 1.94 MB OTA app slots
 CONFIG_ESPTOOLPY_FLASHSIZE_2MB=n
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
@@ -39,6 +39,14 @@ CONFIG_PARTITION_TABLE_SINGLE_APP=n
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 CONFIG_PARTITION_TABLE_FILENAME="partitions.csv"
+
+# Roll back an update that does not survive its own first boot. The bootloader
+# marks a freshly-booted slot PENDING_VERIFY; ota_mark_valid() (main/ota.cpp)
+# clears that only once the panel, the NFC reader and the RPC uplink have all
+# come up. A panic, a watchdog reset or a failed bring-up before that point
+# means the next boot returns to the slot that was working. Without this, one
+# bad build bricks a terminal that is no longer on a bench.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 
 # Arduino-as-component — auto-start setup()/loop() is NOT used; we call from app_main
 CONFIG_AUTOSTART_ARDUINO=n
