@@ -36,7 +36,12 @@ static inline int form_hexval(char c)
  * @param[in]  key  Field name to find.
  * @param[out] out  Decoded value; always NUL-terminated, empty if not found.
  * @param[in]  n    Capacity of @p out, including the NUL.
- * @return number of bytes written to @p out.
+ * @return number of bytes WRITTEN, which is not necessarily @c strlen(out): a
+ *         submitted "%00" decodes to a real NUL byte, so "12%003456" writes 9
+ *         bytes of which C sees 2. Validate with @c strlen, and never treat this
+ *         return value as the length of a string — a length check that passes on
+ *         9 while the value in play is "12" is exactly the confusion an attacker
+ *         submitting escapes is looking for.
  */
 static inline size_t form_field(const char *body, const char *key,
                                char *out, size_t n)

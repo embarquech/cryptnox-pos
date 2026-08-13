@@ -57,6 +57,10 @@ static const char *const TAG = "prov";
  * code will not scan, and those four are where that goes wrong. */
 static const char AP_PASS_ALPHABET[] = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 
+/* Own namespace, so the AP passphrase is not swept up by anything that erases
+ * settings for other reasons. settings_factory_reset() erases this one BY NAME —
+ * grep "prov" in settings.cpp before renaming it, or a factory reset will
+ * silently start handing the next operator the last one's AP passphrase. */
 #define NS_PROV       "prov"
 #define K_AP_PASS     "ap_pass"
 
@@ -437,12 +441,15 @@ static esp_err_t wifi_post(httpd_req_t *req)
 
     char ssid[33] = { 0 };
     char pass[65] = { 0 };
-    const size_t sl = form_field(body, "ssid", ssid, sizeof(ssid));
+    (void)form_field(body, "ssid", ssid, sizeof(ssid));
     (void)form_field(body, "pass", pass, sizeof(pass));
     CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(body), sizeof(body));
 
+    /* strlen, not what form_field returned: "ssid=%00" writes one byte and leaves
+     * a string C reads as empty, which would otherwise be staged as a network
+     * name and sent to esp_wifi_connect. See form_parse.h. */
     esp_err_t rc;
-    if (sl == 0U) {
+    if (strlen(ssid) == 0U) {
         rc = reply_bad(req, "A network name is required.");
     } else {
         /* Staged into the UI's own handoff buffers and reported as the ordinary

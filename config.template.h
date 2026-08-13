@@ -89,8 +89,21 @@
  * Tron (Nile testnet)
  * ========================= */
 /* Native TRX and TRC-20 (USDT / USDC) transfers, selectable at runtime from the
- * settings menu. TronGrid's public Nile endpoint needs no API key for these. */
+ * amount screen. TronGrid's public Nile endpoint needs no API key for these. */
 #define TRON_URL          "https://nile.trongrid.io"
+
+/* Optional, and worth setting in production: pin the Tron endpoint's certificate
+ * (leaf or its issuing CA, PEM) so the connection is validated against that alone
+ * instead of the ~150-CA Mozilla bundle. Same form as RPC_CA_CERT_PEM above.
+ *
+ * Leaving it unset is not a hole — a Tron terminal signs a txID the node builds,
+ * so the node is treated as hostile regardless and every transaction it returns
+ * is re-derived and compared before the card sees it. Pinning just means an
+ * attacker has to defeat that check AND TLS.
+ *
+ * #define TRON_CA_CERT_PEM  "-----BEGIN CERTIFICATE-----\n...\n" \
+ *                           "-----END CERTIFICATE-----\n"
+ */
 
 /* --- Tron addresses (Nile testnet) ---------------------------------
  * Base58 "T..." form, exactly as a Tron wallet shows it — paste it here, and

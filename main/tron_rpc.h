@@ -59,6 +59,23 @@ typedef enum {
 void tron_rpc_init(const char *base_url);
 
 /**
+ * @brief Optional: pin the Tron endpoint's TLS certificate.
+ *
+ * The sibling of @c eth_rpc_set_ca_cert, and for the same reason: unset, the
+ * connection is validated against the whole Mozilla CA bundle, so any one of
+ * ~150 CAs can stand in for the node. That is survivable here — @ref
+ * tron_tx_contract_ok re-derives the bytes a transfer must contain, so a node
+ * (or anything impersonating one) cannot redirect a payment — but it is the
+ * difference between one check standing between an attacker and the funds and
+ * two. Pin it in production.
+ *
+ * Pointer stored as-is (must outlive every call). NULL keeps the CA bundle.
+ *
+ * @param[in] ca_pem NUL-terminated PEM certificate, or NULL for the bundle.
+ */
+void tron_rpc_set_ca_cert(const char *ca_pem);
+
+/**
  * @brief Create a TRX transfer and verify what the node serialised for us.
  *
  * @param[in]  owner_hex  Sender address, "41"-prefixed 42-char hex.

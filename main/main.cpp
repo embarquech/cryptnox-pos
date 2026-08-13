@@ -767,8 +767,33 @@ static bool sign_and_broadcast_tron(CryptnoxWallet &wallet,
             ESP_LOGW(TAG, "broadcast rejected with v=%u", static_cast<unsigned>(v));
         }
     }
+
+    /* "Refused" and "we never heard back" are not the same thing, and only the
+     * chain can tell them apart. A v=0 broadcast that landed but whose response
+     * was lost leaves this loop with sent == false, and the v=1 retry is then
+     * refused as a duplicate — so reporting a bare failure here would tell a
+     * merchant a payment did not happen while it settles behind their back.
+     *
+     * Tron block time is ~3 s. Ask the chain about our txID before writing the
+     * sale off: anything other than "no such transaction" means it is out there,
+     * and the caller's own 120 s receipt poll is the right place to settle what
+     * it did. The txID is fixed by raw_data, so both attempts carried the same
+     * one and there is nothing ambiguous to look up. */
     if (!sent) {
-        (void)snprintf(err_out, err_max, "Broadcast failed");
+        vTaskDelay(pdMS_TO_TICKS(4000));
+        const tron_receipt_t r = tron_rpc_get_receipt(tx.txid_hex);
+        if ((r == TRON_RECEIPT_SUCCESS) || (r == TRON_RECEIPT_FAILED)) {
+            ESP_LOGW(TAG, "broadcast reported failure but %s is on-chain - "
+                          "letting the receipt poll decide", tx.txid_hex);
+            sent = true;
+        }
+    }
+
+    if (!sent) {
+        /* Genuinely not on the chain as far as the node can tell. Say that it is
+         * unconfirmed rather than that it failed — the operator's next move is to
+         * check the address, not to assume nothing happened. */
+        (void)snprintf(err_out, err_max, "Not broadcast - unconfirmed");
         return false;
     }
 
@@ -1128,7 +1153,9 @@ extern "C" void app_main(void)
     (void)CW_Utils::safe_memcpy(s_tron_dest.addr_echo,
                                 sizeof(s_tron_dest.addr_echo),
                                 &tron_to21_echo[1], ETH_ADDR_LEN);
-    ESP_LOGI(TAG, "Tron recipient: %s", TRON_ADDR_TO);
+    /* The resolved address, not the literal — an operator reading the boot log to
+     * find out where takings go must see the one that is actually in use. */
+    ESP_LOGI(TAG, "Tron recipient: %s", s_payout_tron);
 
     /* TRC-20 contract, decoded the same way. Non-fatal on purpose: an operator
      * who never charges in tokens leaves the placeholder in config.h, and the
@@ -1155,6 +1182,13 @@ extern "C" void app_main(void)
 #ifdef RPC_CA_CERT_PEM
     /* pin the RPC endpoint's certificate instead of the CA bundle. */
     eth_rpc_set_ca_cert(RPC_CA_CERT_PEM);
+#endif
+#ifdef TRON_CA_CERT_PEM
+    /* Same for the Tron endpoint. Optional because the node is not trusted on
+     * this path either way — every transaction it serialises is re-derived and
+     * compared before the card sees the hash (tron_tx.h) — but pinning means an
+     * attacker has to beat both that check and TLS rather than just the one. */
+    tron_rpc_set_ca_cert(TRON_CA_CERT_PEM);
 #endif
     /* ── First run: greet, then set up ────────────────────────── */
     /* A missing admin code means a virgin or factory-reset terminal, since the
@@ -1342,9 +1376,15 @@ extern "C" void app_main(void)
                     break;
                 }
                 ui_refresh_addresses();
+                /* The resolved recipient, NOT the config.h literal: on a
+                 * terminal provisioned through the setup page those differ, and
+                 * this row is the one the operator is told to check an address
+                 * against. Showing a payout address the transaction does not use
+                 * would make the review screen worse than no review screen —
+                 * s_payout_* is the string s_dest / s_tron_dest were parsed
+                 * from, so what is displayed is what gets signed. */
                 ui_show_confirm(pending_amount.amount_minor,
-                                chain_is_tron() ? TRON_ADDR_TO
-                                                : "0x" ADDR_TO);
+                                chain_is_tron() ? s_payout_tron : s_payout_eth);
                 break;
             }
 

@@ -63,6 +63,19 @@ int main(void)
     /* An escape truncated by the field separator stops at the separator. */
     assert(strcmp(ff("s=ab%2&t=1", "s"), "ab") == 0);
 
+    /* ── An embedded NUL: bytes written != string length ───────── */
+    /* "%00" is a legal escape and decodes to a real NUL, so the return value and
+     * strlen() disagree from that point on. Pinned because the callers in
+     * provision.cpp must validate with strlen: a caller trusting the return value
+     * would see a 4-digit admin code in "1%002345" or a non-empty SSID in "%00".
+     * The value in play is what C reads, which is the shorter one. */
+    char nul[16];
+    assert(form_field("s=12%003456", "s", nul, sizeof(nul)) == 7U);
+    assert(strlen(nul) == 2U);
+    assert(strcmp(nul, "12") == 0);
+    assert(form_field("s=%00", "s", nul, sizeof(nul)) == 1U);
+    assert(strlen(nul) == 0U);
+
     /* ── Field boundaries ──────────────────────────────────────── */
     /* A decoded '&' must not be mistaken for a separator, and a real one must. */
     assert(strcmp(ff("s=x%26y&t=z", "s"), "x&y") == 0);

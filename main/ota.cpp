@@ -126,16 +126,69 @@ static bool url_from_sta(void)
     return true;
 }
 
+/**
+ * @brief Wait owed before another admin-code guess is even looked at.
+ *
+ * The panel imposes an escalating wait on wrong codes (ui.cpp, admin_penalty_ms)
+ * and this endpoint has to impose the same one, or it is simply the faster way in
+ * — settings_check_admin_code() counts failures but does not sleep, so without
+ * this a 4-digit code is ten thousand HTTP requests on a venue LAN. Same shape as
+ * the panel's: three free tries, then doubling, capped at 60 s. Deliberately not
+ * shared code — the panel counts down on screen and this one just refuses — but
+ * the numbers have to stay in step, so change them together.
+ */
+static unsigned admin_penalty_s(uint8_t fails)
+{
+    if (fails < 3U) { return 0U; }
+    unsigned shift = static_cast<unsigned>(fails) - 3U;
+    if (shift > 6U) { shift = 6U; }
+    const unsigned secs = 1U << shift;
+    return (secs > 60U) ? 60U : secs;
+}
+
+/* When the penalty earned by the failure count started running. Kept in RAM, so
+ * it does not need a trustworthy clock — esp_timer is monotonic since boot and an
+ * attacker on the network cannot move it, which is exactly why the panel keeps
+ * its own wait in RAM too. A reboot to clear it costs more than it buys: the
+ * failure count itself is in NVS, so the penalty is re-earned immediately. */
+static int64_t s_auth_penalty_until_us = 0;
+
 /** @brief Whether the request carries the admin code. Wipes its own copy. */
 static bool authed(httpd_req_t *req)
 {
+    if (esp_timer_get_time() < s_auth_penalty_until_us) {
+        ESP_LOGW(TAG, "upload rejected: still inside the wrong-code wait");
+        return false;
+    }
+
     char code[ADMIN_CODE_MAX] = { 0 };
     const esp_err_t rc = httpd_req_get_hdr_value_str(req, "X-Admin-Code",
                                                      code, sizeof(code));
     const bool ok = (rc == ESP_OK) && settings_check_admin_code(code);
     CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(code), sizeof(code));
-    if (!ok) { ESP_LOGW(TAG, "upload rejected: bad or missing admin code"); }
+
+    if (!ok) {
+        /* settings_check_admin_code() has already incremented the stored count
+         * (and reset it to 0 on success), so this reads the post-attempt value. */
+        const unsigned wait_s = admin_penalty_s(settings_admin_fail_count());
+        if (wait_s > 0U) {
+            s_auth_penalty_until_us = esp_timer_get_time() +
+                                      ((int64_t)wait_s * 1000000LL);
+        }
+        ESP_LOGW(TAG, "upload rejected: bad or missing admin code (next try in "
+                      "%u s)", wait_s);
+    } else {
+        s_auth_penalty_until_us = 0;
+    }
     return ok;
+}
+
+/** @brief Seconds left on the wrong-code wait, 0 if a guess is allowed now. */
+static unsigned auth_wait_left_s(void)
+{
+    const int64_t left = s_auth_penalty_until_us - esp_timer_get_time();
+    if (left <= 0) { return 0U; }
+    return static_cast<unsigned>((left + 999999LL) / 1000000LL);
 }
 
 /** @brief Send a plain-text status line; the page shows it verbatim. */
@@ -341,6 +394,17 @@ static esp_err_t ota_post(httpd_req_t *req)
                      "The update window has closed. Reopen it on the terminal.");
     }
     if (!authed(req)) {
+        const unsigned wait_s = auth_wait_left_s();
+        if (wait_s > 0U) {
+            /* 429, not 401: the code may well be right, it is the guessing rate
+             * that is being refused. Says how long so an operator who fat-
+             * fingered it waits rather than assuming the terminal is broken. */
+            char msg[96];
+            (void)snprintf(msg, sizeof(msg),
+                           "Too many wrong admin codes. Try again in %u s.",
+                           wait_s);
+            return reply(req, "429 Too Many Requests", msg);
+        }
         return reply(req, "401 Unauthorized", "Wrong admin code.");
     }
     if (s_receiving) {

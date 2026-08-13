@@ -420,4 +420,18 @@ void settings_factory_reset(void)
         nvs_close(h);
         ESP_LOGW(TAG, "settings: factory reset");
     }
+
+    /* provision.cpp keeps the SoftAP passphrase in its own namespace, and a reset
+     * puts the terminal straight back into the setup that raises that AP. Left
+     * behind, the passphrase from the last setup — photographed off the panel by
+     * whoever was there, along with its QR code — would still open the AP that
+     * takes the new admin code. Erased here rather than in provision.cpp: this is
+     * the function that means "forget the operator", and the passphrase is part
+     * of what a new one must not inherit. A fresh one is generated on demand. */
+    if (nvs_open("prov", NVS_READWRITE, &h) == ESP_OK) {
+        (void)nvs_erase_all(h);
+        (void)nvs_commit(h);
+        nvs_close(h);
+        ESP_LOGW(TAG, "settings: setup AP passphrase cleared");
+    }
 }

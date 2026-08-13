@@ -53,14 +53,31 @@ static size_t hex_strlen(const char *s)
     return n;
 }
 
-/** @brief Case-insensitive substring search (no strcasestr in newlib). */
+/**
+ * @brief Case-insensitive substring search, BYTE-ALIGNED (no strcasestr in
+ *        newlib).
+ *
+ * The step is 2, not 1, and that is the security property rather than an
+ * optimisation. @p hay is the hex encoding of a byte string, so a real protobuf
+ * field can only ever begin at an even character offset. Searching odd offsets
+ * too let a hostile node hide the byte run we look for one nibble out of
+ * alignment — inside a memo, or any field whose contents it chooses — while the
+ * contract that actually executes paid somebody else. Both strings still hash to
+ * a consistent txID, so nothing downstream would have caught it.
+ *
+ * Callers must therefore only ever pass an even-length @p needle (every needle
+ * built below is whole bytes) over an even-length @p hay.
+ */
 static bool hex_contains(const char *hay, const char *needle)
 {
     const size_t nl = strlen(needle);
     const size_t hl = strlen(hay);
     if ((nl == 0U) || (hl < nl)) { return false; }
+    /* Odd on either side means somebody built a needle that is not whole bytes,
+     * or handed us hex that is not a byte string. Neither is matchable. */
+    if (((nl % 2U) != 0U) || ((hl % 2U) != 0U)) { return false; }
 
-    for (size_t i = 0U; i + nl <= hl; i++) {
+    for (size_t i = 0U; i + nl <= hl; i += 2U) {
         size_t j = 0U;
         while ((j < nl) && (lower_ascii(hay[i + j]) == lower_ascii(needle[j]))) {
             j++;
@@ -68,6 +85,20 @@ static bool hex_contains(const char *hay, const char *needle)
         if (j == nl) { return true; }
     }
     return false;
+}
+
+/**
+ * @brief true if @p raw is usable raw_data hex: all hex, non-empty, whole bytes.
+ *
+ * The even-length part is not pedantry. Every check below locates whole bytes at
+ * byte boundaries (see @ref hex_contains), and an odd-length string has no byte
+ * boundaries to speak of — so it is refused here rather than searched.
+ */
+static bool raw_hex_ok(const char *raw)
+{
+    if (raw == NULL) { return false; }
+    const size_t n = hex_strlen(raw);
+    return (n != 0U) && ((n % 2U) == 0U);
 }
 
 /** @brief true if @p addr is a "41"-prefixed 21-byte Tron address in hex. */
@@ -104,9 +135,7 @@ size_t tron_varint_hex(uint64_t v, char *out, size_t out_size)
 bool tron_tx_contract_ok(const char *raw_data_hex, const char *owner_hex,
                          const char *to_hex, uint64_t amount_sun)
 {
-    if ((raw_data_hex == NULL) || (hex_strlen(raw_data_hex) == 0U)) {
-        return false;
-    }
+    if (!raw_hex_ok(raw_data_hex)) { return false; }
     if (!addr_hex_ok(owner_hex) || !addr_hex_ok(to_hex)) { return false; }
     /* A zero-amount transfer is not a payment; reject rather than sign it. */
     if (amount_sun == 0U) { return false; }
@@ -154,9 +183,7 @@ bool tron_tx_trc20_ok(const char *raw_data_hex, const char *owner_hex,
                       const char *contract_hex, const char *to_hex,
                       uint64_t amount, uint64_t fee_limit_sun)
 {
-    if ((raw_data_hex == NULL) || (hex_strlen(raw_data_hex) == 0U)) {
-        return false;
-    }
+    if (!raw_hex_ok(raw_data_hex)) { return false; }
     if (!addr_hex_ok(owner_hex) || !addr_hex_ok(contract_hex) ||
         !addr_hex_ok(to_hex)) {
         return false;
@@ -190,9 +217,13 @@ bool tron_tx_trc20_ok(const char *raw_data_hex, const char *owner_hex,
         if (!hex_contains(raw_data_hex, want_cv)) { return false; }
     }
 
-    /* ponytail: substring match, so a hostile fee_limit plus a coincidental
-     * "9001<our varint>" elsewhere in raw_data would slip through (~2^-32).
-     * Parse the protobuf field-by-field if that ever stops being acceptable. */
+    /* ponytail: byte-aligned substring match, so two things remain possible that
+     * a real parser would catch — a hostile fee_limit plus a coincidental
+     * "9001<our varint>" on a byte boundary elsewhere in raw_data (~2^-32), and
+     * a second `contract` entry alongside ours, since the field repeats. Neither
+     * is reachable without a node that is already lying to us AND getting the
+     * chain to accept a multi-contract transaction. Parse the protobuf
+     * field-by-field if either ever stops being acceptable. */
     char fee_varint[24];
     if (tron_varint_hex(fee_limit_sun, fee_varint, sizeof(fee_varint)) == 0U) {
         return false;
@@ -209,7 +240,8 @@ bool tron_tx_trc20_ok(const char *raw_data_hex, const char *owner_hex,
 size_t tron_tx_envelope_hex(const char *raw_data_hex, const char *sig_hex,
                             char *out, size_t out_size)
 {
-    if ((raw_data_hex == NULL) || (sig_hex == NULL) || (out == NULL)) {
+    if ((raw_data_hex == NULL) || (sig_hex == NULL) || (out == NULL) ||
+        (out_size == 0U)) {
         return 0U;
     }
 

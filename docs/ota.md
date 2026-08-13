@@ -38,6 +38,26 @@ AP has no route to the internet, and which interface a phone uses for a given
 request while a captive network is joined is not something to build on. Use the
 file picker.
 
+### What plain HTTP costs, and what it does not
+
+The **firmware** does not need the transport to be trustworthy — it is verified
+against a signing key compiled into the running image (see below), so a modified
+upload is rejected whatever the network did to it.
+
+The **admin code** does. It travels in an `X-Admin-Code` request header in the
+clear, so anyone able to read the terminal's traffic can read the code. On a
+WPA2-PSK venue network that includes every other device holding the same
+passphrase, not just an attacker who has broken in. What the code protects is the
+settings menu and the factory reset, so treat opening an update window on a shared
+network as disclosing it, and plan on changing it afterwards if that matters. It
+buys an attacker no firmware of their own choosing, and no install without
+somebody accepting one on the panel.
+
+Guessing it over the network is throttled, not free: wrong codes earn the same
+escalating wait the panel imposes (`authed()` in `main/ota.cpp` — three free
+tries, then doubling to 60 s), because a counter without a delay would make this
+endpoint the fastest way to brute-force a 4-digit code.
+
 ## Operating it
 
 1. Settings → About → **Update**. The panel shows the address to open, e.g.

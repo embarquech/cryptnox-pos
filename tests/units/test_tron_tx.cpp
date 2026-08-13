@@ -90,6 +90,23 @@ int main(void)
         "41e552f6487585c2b58bc2c9bb4492bc1f17132cd0";
     assert(tron_tx_contract_ok(NILE_RAW, NILE_OWNER, NILE_TO, 1500000U));
     assert(!tron_tx_contract_ok(NILE_RAW, NILE_OWNER, NILE_TO, 1500000U + 1U));
+
+    /* The expected byte run must be found on a BYTE boundary and nowhere else.
+     * raw_data below really pays THIEF, and carries the run we look for shifted
+     * one nibble along — inside a field whose contents a node chooses freely. It
+     * is even-length overall, so it hex-decodes fine and its txID is a consistent
+     * sha256 of those bytes: this check is the only thing standing between a
+     * hostile node and a signature over somebody else's payment. */
+#define THIEF "41deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+    static const char *const RAW_SHIFTED =
+        "0a15" OWNER "1215" THIEF "18e0c65b"     /* what actually executes */
+        "5a"                                     /* filler tag + odd padding */
+        "f0a15" OWNER "1215" DEST "18e0c65b" "0";/* our run, one nibble out */
+    assert(strlen(RAW_SHIFTED) % 2U == 0U);      /* decodes as bytes */
+    assert(!tron_tx_contract_ok(RAW_SHIFTED, OWNER, DEST, 1500000U));
+    /* Odd-length hex is not a byte string and cannot be checked at all. */
+    assert(!tron_tx_contract_ok("0a15" OWNER "1215" DEST "18e0c65b" "0",
+                               OWNER, DEST, 1500000U));
     printf("contract check ... OK\n");
 
     /* ── TRC-20: the ABI parameter block ── */

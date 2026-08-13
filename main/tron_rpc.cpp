@@ -40,6 +40,7 @@ static const char *const TAG = "tron_rpc";
 #define RAW_BYTES_MAX   (TRON_RAW_HEX_MAX / 2U)
 
 static const char *s_base_url = NULL;
+static const char *s_ca_cert  = NULL;   /* pinned cert; NULL = CA bundle */
 
 /******************************************************************
  * 2. Local helpers
@@ -104,8 +105,10 @@ static bool tron_post(const char *path, const char *body,
     int k = snprintf(url, sizeof(url), "%s%s", s_base_url, path);
     if ((k <= 0) || (static_cast<size_t>(k) >= sizeof(url))) { return false; }
 
-    /* No auth, no pinned cert: TronGrid's public testnet endpoint. */
-    return https_post_json(url, body, resp, resp_size, NULL, NULL, NULL);
+    /* No auth — TronGrid's public endpoint needs none for these calls. The cert
+     * is pinned only if the integrator supplied one; unpinned falls back to the
+     * CA bundle, and tron_tx_contract_ok is what makes that survivable. */
+    return https_post_json(url, body, resp, resp_size, NULL, NULL, s_ca_cert);
 }
 
 /**
@@ -176,6 +179,11 @@ static bool tx_ctx_from_json(const cJSON *txobj, tron_tx_ctx_t *out)
 void tron_rpc_init(const char *base_url)
 {
     s_base_url = base_url;
+}
+
+void tron_rpc_set_ca_cert(const char *ca_pem)
+{
+    s_ca_cert = ca_pem;
 }
 
 bool tron_rpc_create_transfer(const char *owner_hex, const char *to_hex,
