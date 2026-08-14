@@ -5,7 +5,7 @@ The terminal never connects to GitHub. A browser does, and carries the bytes:
 ```
  browser ──HTTPS──> raw.githubusercontent.com/…/firmware.json   version, url, notes
  browser ──HTTPS──> …/cryptnox_pos.bin                          the image itself
- browser ──HTTP───> http://<terminal>/api/ota                   streamed to flash
+ browser ──HTTPS──> https://<terminal>/api/ota                  streamed to flash
  panel:   operator accepts the version → reboot into the other slot
 ```
 
@@ -14,17 +14,14 @@ terminal that phones a third party for updates tells that third party how many
 units exist, roughly where they are and what each one runs. Nobody needs a
 register of deployed payment terminals, least of all one kept by somebody else.
 
-Implementation is `main/ota.cpp`; the reasoning lives in `main/ota.h`.
+Firmware slots and image verification are `main/ota.cpp`, and the reasoning lives
+in `main/ota.h`. The page, the endpoint and the authorisation belong to the config
+portal — see **[config-portal.md](config-portal.md)**, which is also where the
+addresses and contracts are set. Firmware is one section of one page.
 
 ## Why the flow has this shape
 
-The update page is served *by the terminal* over plain HTTP. That is forced, not
-chosen: a page served over HTTPS cannot POST to an `http://` address — mixed
-content, blocked in every browser — so hosting the page on a website and pushing
-from there does not work. The other direction is allowed, which is the one
-needed: an HTTP page may `fetch()` an HTTPS URL.
-
-So the browser needs the internet **and** the terminal at the same time:
+The browser needs the internet **and** the terminal at the same time:
 
 * **On the venue network** (the normal case). The terminal is already joined to
   it; put the laptop or phone on the same network and both are reachable. The
@@ -38,33 +35,31 @@ AP has no route to the internet, and which interface a phone uses for a given
 request while a captive network is joined is not something to build on. Use the
 file picker.
 
-### What plain HTTP costs, and what it does not
+### What the transport is worth, and what it is not
 
 The **firmware** does not need the transport to be trustworthy — it is verified
 against a signing key compiled into the running image (see below), so a modified
 upload is rejected whatever the network did to it.
 
-The **admin code** does. It travels in an `X-Admin-Code` request header in the
-clear, so anyone able to read the terminal's traffic can read the code. On a
-WPA2-PSK venue network that includes every other device holding the same
-passphrase, not just an attacker who has broken in. What the code protects is the
-settings menu and the factory reset, so treat opening an update window on a shared
-network as disclosing it, and plan on changing it afterwards if that matters. It
-buys an attacker no firmware of their own choosing, and no install without
-somebody accepting one on the panel.
+The **admin code** is not on the network at all. It is typed on the terminal's own
+screen to authorise the browser, and the browser then carries a random session
+token; there is no code field in the page and no `X-Admin-Code` header any more.
+See the authorisation section of [config-portal.md](config-portal.md).
 
-Guessing it over the network is throttled, not free: wrong codes earn the same
-escalating wait the panel imposes (`authed()` in `main/ota.cpp` — three free
-tries, then doubling to 60 s), because a counter without a delay would make this
-endpoint the fastest way to brute-force a 4-digit code.
+The page is served over HTTPS with the terminal's own self-signed certificate, so
+the browser warns once. That is worth having for the session token and the
+addresses on the page, and it is not what keeps a stranger's firmware off the
+device — the signature is.
 
 ## Operating it
 
-1. Settings → About → **Update**. The panel shows the address to open, e.g.
-   `http://192.168.1.34/`, and starts a **15-minute** window
-   (`OTA_WINDOW_MIN`). Tapping **Done** closes it immediately.
-2. Open that address. Enter the terminal's admin code, then either **Check for
-   updates** (needs internet in *that browser*) or pick a `.bin` file.
+1. Settings → About → **Update** (or Wi-Fi → **Configure**; same page). The panel
+   shows a QR code and the address, e.g. `https://192.168.1.34/`, and starts a
+   **15-minute** window (`PROV_WINDOW_MIN`). Tapping **Done** closes it
+   immediately.
+2. Open it and accept the certificate warning. The panel asks for the admin code;
+   enter it there. Then either **Check for updates** (needs internet in *that
+   browser*) or pick a `.bin` file.
 3. The terminal verifies the image and asks on its own screen. Nothing reboots
    until somebody accepts it there — the same rule payout addresses follow: a
    browser may propose, only the panel may accept. A version that goes
@@ -76,9 +71,9 @@ endpoint the fastest way to brute-force a 4-digit code.
 
 ## Publishing a release
 
-`OTA_MANIFEST_URL` in `main/ota.cpp` points at a JSON file. Host it — and the
+`OTA_MANIFEST_URL` in `main/provision.cpp` points at a JSON file. Host it — and the
 `.bin` — somewhere that sends `Access-Control-Allow-Origin: *`, or the browser
-will refuse to hand the response to a page served from `http://<terminal>/`:
+will refuse to hand the response to a page served from `https://<terminal>/`:
 
 | Host | CORS | Notes |
 |---|---|---|
@@ -111,9 +106,11 @@ running. `sdkconfig.defaults.release` turns that on
 (`CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT`), and `esp_ota_end()` refuses
 anything that fails it — before the staged slot can ever become bootable.
 
-Without it, `POST /api/ota` is one admin code away from replacing the firmware on
-a device that signs cryptocurrency transactions. The admin code and the
-15-minute window are not a substitute: both cross a venue LAN in clear text.
+Without it, `POST /api/ota` is one authorised browser session away from replacing
+the firmware on a device that signs cryptocurrency transactions. The session token,
+the 15-minute window and the on-screen accept are not a substitute — they make it
+harder to reach, not impossible, and none of them can tell a genuine image from a
+convincing one.
 
 No eFuses are burned and nothing is irreversible — this is Secure Boot V2's
 signature scheme used for *update verification only*, not hardware secure boot.
@@ -143,13 +140,16 @@ serial reflash before any of this applies to them.
 
 ## Endpoints
 
+Firmware uses two of the portal's; the full list is in
+[config-portal.md](config-portal.md).
+
 | | |
 |---|---|
-| `GET /` | the update page (HTML + JS, one string in `ota.cpp`) |
-| `GET /api/info` | `{"version","slot","staged","window_min"}` |
-| `POST /api/ota` | image body, `X-Admin-Code` header, streamed to the idle slot |
+| `GET /api/state` | includes `version`, so the page can compare against a manifest |
+| `POST /api/ota` | image body, `X-Prov-Token` header, streamed to the idle slot |
 
 Same-origin, so no CORS headers are needed on the device side and no preflight
-happens. The page cannot hash the download itself — `crypto.subtle` is
-unavailable on a non-secure origin like `http://192.168.1.34` — which is fine:
-the image carries its own SHA-256 and `esp_ota_end()` is what checks it.
+happens. The page does not hash the download itself even though HTTPS now makes
+`crypto.subtle` available — there would be no point: the image carries its own
+SHA-256 and `esp_ota_end()` is what checks it, along with the signature, on the
+device that has to trust the result.

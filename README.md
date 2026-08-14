@@ -142,14 +142,29 @@ and fill in:
 | `RPC_PROJECT_ID` / `RPC_API_SECRET` | Optional — only when using Infura (HTTP Basic Auth); leave undefined for PublicNode |
 | `RPC_CA_CERT_PEM` | Optional — pin the RPC endpoint's TLS certificate; trusts only that cert instead of the full CA bundle. Undefined = Mozilla bundle |
 | `ADDR_FROM` | Ethereum address of the **card** (`m/44'/60'/0'/0/0`) — used to fetch the nonce and validate the ecrecover parity |
-| `ADDR_TO` | Destination address for every transfer. **Use the EIP-55 mixed-case checksum form** — the firmware verifies the checksum at boot and refuses to start on a mismatch. All-lowercase is accepted but bypasses that typo protection (and warns at boot) |
-| `ADDR_USDC` | USDC ERC-20 contract address on the target chain (Sepolia testnet by default). Same EIP-55 rule as `ADDR_TO` |
+| `ADDR_TO` | **Fallback** destination address, used until an operator sets one on the device. **Use the EIP-55 mixed-case checksum form** — the firmware verifies the checksum at boot and refuses to start on a mismatch. All-lowercase is accepted but bypasses that typo protection (and warns at boot) |
+| `ADDR_USDC` | **Fallback** USDC ERC-20 contract address on the target chain (Sepolia testnet by default). Same EIP-55 rule as `ADDR_TO` |
 | `CHAIN_ID_SEPOLIA`, `MAX_PRIORITY_FEE`, `MAX_FEE`, `GAS_LIMIT_ERC20` | Chain ID and EIP-1559 gas parameters (the fees are first-boot defaults, editable at run time in the settings) |
 
 **Not in `config.h`** — set on the device, never baked into the firmware:
-- **Wi-Fi** — provisioned at first boot via the touchscreen network picker (stored in NVS).
+- **Wi-Fi** — chosen during setup from a list the terminal scans, in a browser (stored in NVS).
+- **Payout addresses and token contracts** — set during setup, either typed in a
+  browser or read off the operator's own Cryptnox card, and accepted on the panel.
+  The `config.h` values above are only the fallback; an asset with no address of its
+  own is **not offered** on the amount screen.
 - **Card PIN** — entered on the touchscreen keypad at sign time, scrubbed from RAM right after.
 - **Transfer amount** — chosen on the keypad per transaction.
+
+Setup itself is a browser flow — see [docs/config-portal.md](docs/config-portal.md):
+
+```
+ admin code    panel     the one secret that never touches a network
+ QR code       panel     camera joins the terminal's AP; the page opens itself
+ authorise     both      the browser asks, the panel takes the code
+ addresses     browser   typed, or read off a Cryptnox card
+ Wi-Fi         browser   picked from the terminal's own scan
+ Finish        panel     restarts, which applies everything
+```
 
 ---
 
@@ -282,8 +297,8 @@ python tools/secure_flash.py --package    # -> dist/cryptnox_pos-encrypted-full.
 
 The generated documentation for this project is available [here](https://embarquech.github.io/cryptnox-pos/).
 
+- [The config portal](docs/config-portal.md) — the setup wizard and the HTTPS admin page: why the admin code is only ever typed on the panel, why the wizard is HTTP and the admin page is not, and the endpoint list. Test plan: [docs/testing-provisioning.md](docs/testing-provisioning.md).
 - [Firmware updates over Wi-Fi](docs/ota.md) — the browser-mediated OTA path, publishing a release, and the signing key you must not ship without. Test plan: [docs/ota-testing.md](docs/ota-testing.md).
-- [Testing the phone-setup portal](docs/testing-provisioning.md) — first-run SoftAP + captive portal.
 
 ---
 

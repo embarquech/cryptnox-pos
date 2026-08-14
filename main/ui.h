@@ -47,6 +47,7 @@ typedef enum {
     UI_SCREEN_ADMIN_UNLOCK,/**< Admin code demanded before the settings.   */
     UI_SCREEN_WELCOME,     /**< Greeting opening first-run setup.          */
     UI_SCREEN_PROV,        /**< QR + AP credentials for phone-based setup. */
+    UI_SCREEN_CARD_WAIT,   /**< "Tap your card" while an address is read.  */
 } ui_screen_t;
 
 /** @brief Events emitted by the UI task towards the main task. */
@@ -60,11 +61,22 @@ typedef enum {
     UI_EVENT_TX_RETRY,          /**< New payment tapped after Done/Failed. */
     UI_EVENT_ADMIN_SET,         /**< Admin code created and stored (first run). */
     UI_EVENT_WELCOME_DONE,      /**< Start tapped on the welcome screen.   */
-    UI_EVENT_PROV_LOCAL,        /**< "Use this screen" on the setup-QR screen. */
-    UI_EVENT_PROV_SKIP,         /**< Setup step declined; keep the default. */
-    UI_EVENT_ADDR_PROPOSED,     /**< Payout address submitted from the phone;
-                                     needs accepting on the panel.        */
-    UI_EVENT_ADDR_SET,          /**< Payout address accepted and stored.  */
+    UI_EVENT_PROV_AUTH,         /**< A browser asked to be authorised; the admin
+                                     code has to be taken on the panel.   */
+    UI_EVENT_PROV_VALUE,        /**< A payout address or token contract was
+                                     proposed; needs accepting on the panel. */
+    UI_EVENT_PROV_VALUE_SET,    /**< That value was accepted and stored.  */
+    UI_EVENT_PROV_VALUE_NO,     /**< That value was rejected on the panel. Its own
+                                     event so a caller holding a second value to
+                                     offer is not left waiting on an accept that
+                                     will never come.                     */
+    UI_EVENT_PROV_CARD,         /**< The page asked the terminal to read the
+                                     payout addresses off a Cryptnox card. */
+    UI_EVENT_PROV_SCAN,         /**< The page asked for a fresh Wi-Fi scan. */
+    UI_EVENT_PROV_NEXT,         /**< Continue tapped in the browser wizard. */
+    UI_EVENT_PROV_FINISH,       /**< Finish tapped on the panel's last screen. */
+    UI_EVENT_CARD_PIN,          /**< PIN entered for a card *read*, not a
+                                     payment; fetch via ui_take_pin.      */
     UI_EVENT_OTA_STAGED,        /**< Firmware uploaded and verified; needs
                                      accepting on the panel before it boots. */
 } ui_event_t;
@@ -170,10 +182,11 @@ void ui_show_wifi_list(const net_wifi_ap_t *aps, uint16_t n, const char *note);
 void ui_show_boot_error(ui_boot_err_t kind, const char *detail);
 
 /**
- * @brief Provide the USDC contract and destination addresses for the
- *        settings "Tx" tab (pointers stored as-is; pass static/literal).
+ * @brief Provide the token contract and destination addresses for the confirm
+ *        screen and the settings "Tx" tab (pointers stored as-is; pass
+ *        static/literal storage that outlives the call).
  */
-void ui_set_addresses(const char *usdc_contract, const char *dest_addr);
+void ui_set_addresses(const char *token_contract, const char *dest_addr);
 
 /**
  * @brief Show a "Connecting to <ssid>…" screen while main associates.
@@ -237,11 +250,12 @@ size_t ui_take_wifi_creds(char *ssid, size_t ssid_n, char *pass, size_t pass_n);
 void ui_stage_wifi_creds(const char *ssid, const char *pass);
 
 /**
- * @brief Show the phone-setup screen: QR code, AP name and passphrase.
+ * @brief Show the setup screen: QR code, AP name and passphrase.
  *
- * The same screen at every setup step, captioned with whichever one is current,
- * and always offering the on-device route as well — the panel is slow to type on
- * but it always works.
+ * The same screen at every wizard step, captioned with whichever one is current.
+ * There is deliberately no "use this screen instead" escape any more: the whole
+ * wizard past the admin code happens in the browser, so the panel's job here is to
+ * carry the QR code and to report progress.
  *
  * @param[in] step The prov_step_t the portal is serving. Typed as int to keep
  *                 this header free of provision.h, which includes this one.
@@ -249,14 +263,42 @@ void ui_stage_wifi_creds(const char *ssid, const char *pass);
 void ui_show_prov(int step);
 
 /**
- * @brief Raise the modal that asks the operator to accept a proposed payout
- *        address, reading the pending proposal from provision.h.
+ * @brief Raise the modal that asks the operator to accept a value a browser
+ *        proposed, reading the pending proposal from provision.h.
  *
- * Call after @ref UI_EVENT_ADDR_PROPOSED. Accepting emits
- * @ref UI_EVENT_ADDR_SET; rejecting emits nothing and drops the proposal, so a
- * caller waiting on the step stays where it is and can be offered another.
+ * Call after @ref UI_EVENT_PROV_VALUE. Accepting emits
+ * @ref UI_EVENT_PROV_VALUE_SET; rejecting emits nothing and drops the proposal, so
+ * a caller waiting on the step stays where it is and can be offered another.
  */
-void ui_show_addr_confirm(void);
+void ui_show_prov_confirm(void);
+
+/**
+ * @brief Demand the admin code so a browser can be authorised.
+ *
+ * Same screen as the settings unlock, but a correct code calls
+ * prov_auth_resolve(true) instead of opening the menu, and backing out refuses the
+ * request rather than silently leaving the browser waiting.
+ */
+void ui_show_prov_auth(void);
+
+/**
+ * @brief Ask for the card PIN before reading an address off a Cryptnox card.
+ *
+ * The card will not export a public key without a verified PIN, so deriving a
+ * payout address needs one exactly as signing does. Emits @ref UI_EVENT_CARD_PIN,
+ * or @ref UI_EVENT_CONFIRM_CANCEL if the operator backs out.
+ */
+void ui_show_card_pin(void);
+
+/**
+ * @brief "Hold your card to the reader" while the address is read.
+ *
+ * Its own screen rather than the transaction one: nothing is being paid here, and
+ * the tx screen's wording and its Cancel semantics both belong to a sale.
+ *
+ * @param[in] note Optional line under the prompt, copied internally.
+ */
+void ui_show_card_wait(const char *note);
 
 /**
  * @brief Raise the modal that asks the operator to accept a firmware image the

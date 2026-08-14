@@ -17,9 +17,9 @@
 /* =========================
  * WiFi
  * ========================= */
-/* Wi-Fi is NOT set here. It is provisioned on the device at first boot (the
- * touchscreen network picker) and stored in NVS — no SSID/password is baked
- * into the firmware. */
+/* Wi-Fi is NOT set here. It is chosen on the device during setup — from a browser,
+ * out of a list the terminal scans for itself — and stored in NVS. No SSID or
+ * password is baked into the firmware. See docs/config-portal.md. */
 
 /* =========================
  * Ethereum / RPC
@@ -73,14 +73,25 @@
 /* Sender address — the card's m/44'/60'/0'/0/0 key, lowercase hex, no 0x */
 #define ADDR_FROM         "<SENDER_ADDRESS>"
 
-/* Recipient address — destination of every transfer (no 0x).
- * MUST be in EIP-55 mixed-case checksum form: the firmware verifies the
- * checksum at boot and refuses to start on a mismatch, catching the most
- * probable typo of the recipient. An all-lowercase address is accepted but
- * bypasses that typo protection (and logs a warning at boot). */
+/* FALLBACK recipient address — where transfers go until an operator sets one on
+ * the device (no 0x). Setup asks for the real one and stores it in NVS, either
+ * typed in a browser or read off the operator's Cryptnox card; this value is what
+ * a terminal pays to before that happens, so it is worth being a real address of
+ * yours rather than a placeholder.
+ *
+ * MUST be in EIP-55 mixed-case checksum form: the firmware verifies the checksum
+ * at boot and refuses to start on a mismatch, catching the most probable typo of
+ * the recipient. An all-lowercase address is accepted but bypasses that typo
+ * protection (and logs a warning at boot).
+ *
+ * Note that an asset whose payout address was never *stored* is not offered on the
+ * amount screen at all — the fallback keeps a configured terminal working, it does
+ * not make an unconfigured one sell things. See docs/config-portal.md. */
 #define ADDR_TO           "<RECIPIENT_ADDRESS_EIP55>"
 
-/* USDC contract address (Sepolia testnet, no 0x).
+/* FALLBACK USDC ERC-20 contract address (Sepolia testnet, no 0x). Also settable
+ * from the config page, with the same dual-store and on-screen accept as the
+ * recipient — the contract decides which asset moves.
  * Same rule as ADDR_TO — use the EIP-55 mixed-case form for boot-time
  * checksum verification. */
 #define ADDR_USDC         "<USDC_CONTRACT_ADDRESS_EIP55>"
@@ -106,10 +117,11 @@
  */
 
 /* --- Tron addresses (Nile testnet) ---------------------------------
- * Base58 "T..." form, exactly as a Tron wallet shows it — paste it here, and
- * the terminal displays this same string on the confirm screen. The device
- * decodes it at boot (checksum verified, so a typo is refused rather than paid)
- * and derives the "41"-prefixed hex the HTTP API wants.
+ * FALLBACK recipient, in base58 "T..." form, exactly as a Tron wallet shows it —
+ * same story as ADDR_TO above: setup stores the real one in NVS and this is what a
+ * terminal pays to until it does. The device decodes whichever is in use at boot
+ * (checksum verified, so a typo is refused rather than paid) and derives the
+ * "41"-prefixed hex the HTTP API wants.
  *
  * Only the recipient is configured. The sender is whatever card is presented:
  * its m/44'/195'/0'/0/0 public key is read over the secure channel and turned
@@ -117,7 +129,8 @@
 #define TRON_ADDR_TO      "THQGuFzL87ZqhxkgqYEryRAd7gqFqL5rdc"
 
 /* --- TRC-20 token contract (Nile testnet) ---------------------------
- * Base58 "T..." form again. Confirm the current Nile deployment on
+ * FALLBACK again — settable from the config page. Base58 "T..." form. Confirm the
+ * current Nile deployment on
  * https://nile.tronscan.org before trusting this — testnet token contracts get
  * redeployed, and a stale address decodes fine while paying the wrong asset.
  * The contract below answered symbol "USDT" / decimals 6 on 2026-08-07; the

@@ -307,6 +307,16 @@ static bool          s_welcome_sent     = false;   /* Start already reported */
  * but never resets the escalation. */
 static uint32_t      s_admin_lock_start = 0;
 static uint32_t      s_admin_lock_ms    = 0;
+/* What a correct code on the unlock screen is for. The escalating penalty, the
+ * note band and the keypad are identical either way — only the thing the code
+ * opens differs, so one screen serves both rather than a near-copy that could
+ * drift on the lockout. */
+static bool          s_admin_for_portal = false;
+
+/* Whether the PIN keypad is collecting a card PIN for a *read* (deriving a payout
+ * address) rather than for a payment. Same reason as above: the card refuses to
+ * export a public key without a verified PIN, so the screen is the same one. */
+static bool          s_pin_for_card     = false;
 
 /* Destination info shown on the settings "Tx" tab (set by main, static). */
 static const char *s_addr_usdc = NULL;
@@ -331,13 +341,14 @@ enum BtnAction {
     ACT_SETTINGS, ACT_CLOSE, ACT_PIN_CANCEL,
     ACT_WIFI, ACT_WIFI_CANCEL, ACT_WIFI_PASS_REVEAL,
     ACT_ADMIN_CANCEL, ACT_WELCOME_OK,
-    ACT_PROV_LOCAL, ACT_PROV_SKIP, ACT_ADDR_OK, ACT_ADDR_NO,
+    /* Config portal: accept/reject a proposed value, finish the wizard. */
+    ACT_PROV_OK, ACT_PROV_NO, ACT_PROV_FINISH,
     ACT_RESET, ACT_RESET_CONFIRM, ACT_MODAL_CLOSE,
-    /* Asset selector (amount screen): network first, then the coin on it. */
+    /* Asset selector (amount screen and the Tx tab): network, then the coin. */
     ACT_NET_PICK, ACT_NET_ETH, ACT_NET_TRON,
     ACT_CHAIN_ETH, ACT_CHAIN_TRON, ACT_CHAIN_TRON_USDT,
-    /* Firmware update: open the window, close it, resolve an uploaded image. */
-    ACT_UPDATE, ACT_UPDATE_CLOSE, ACT_OTA_OK, ACT_OTA_NO,
+    /* The admin web page: open it (QR to scan), close it, resolve an upload. */
+    ACT_PORTAL, ACT_PORTAL_CLOSE, ACT_OTA_OK, ACT_OTA_NO,
 };
 
 /* Settings — defined in section 7 (uses the widget helpers). */
@@ -345,7 +356,7 @@ static void settings_persist(void);
 static void open_reset_confirm(void);
 static void open_network_picker(void);
 static void open_coin_picker(bool tron);
-static void open_update_window(void);
+static void open_portal_window(void);
 static void close_modal(void);
 static void pop_in(lv_obj_t *obj);   /* defined in section 8 (animations) */
 static uint32_t admin_penalty_ms(uint8_t fails);   /* defined with the admin screens */
@@ -452,13 +463,23 @@ static void btn_event_cb(lv_event_t *e) {
             break;
         case ACT_SEND:
             /* The PIN is no longer hard-coded: collect it on the keypad screen
-             * before signing. */
+             * before signing. Cleared explicitly, so a card read abandoned by any
+             * route cannot leave the payment keypad reporting the wrong event. */
+            s_pin_for_card = false;
             request_screen(UI_SCREEN_PIN);
             break;
         case ACT_PIN_CANCEL:
             CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_pin), sizeof(s_pin));
             s_pin_len = 0;
-            request_screen(UI_SCREEN_CONFIRM);
+            if (s_pin_for_card) {
+                /* Reported so the waiting main task stops waiting; the card read
+                 * has no confirm screen to fall back to. */
+                s_pin_for_card = false;
+                if (s_cb != NULL) { s_cb(UI_EVENT_CONFIRM_CANCEL, 0); }
+                request_screen(UI_SCREEN_PROV);
+            } else {
+                request_screen(UI_SCREEN_CONFIRM);
+            }
             break;
         case ACT_NEW:
             if (s_cb != NULL) { s_cb(UI_EVENT_TX_RETRY, 0); }
@@ -476,6 +497,7 @@ static void btn_event_cb(lv_event_t *e) {
              * the amount screen while main was still waiting. */
             if (!settings_has_admin_code()) { break; }
             s_admin_confirming = false;
+            s_admin_for_portal = false;
             s_admin_note[0]    = '\0';
             /* Re-arm the wait from the persisted attempt count. The wait itself
              * has to live in RAM — persisting a deadline would need a trustworthy
@@ -500,7 +522,17 @@ static void btn_event_cb(lv_event_t *e) {
         case ACT_ADMIN_CANCEL:
             CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_admin_first),
                                   sizeof(s_admin_first));
-            request_screen(UI_SCREEN_AMOUNT);
+            if (s_admin_for_portal) {
+                /* Refuse the browser rather than leave it polling "waiting for the
+                 * admin code" for as long as the page stays open. Back to the QR
+                 * screen, which is where the wizard was. */
+                prov_auth_resolve(false);
+                s_admin_for_portal = false;
+                request_screen((prov_mode() == PROV_MODE_WIZARD)
+                               ? UI_SCREEN_PROV : UI_SCREEN_AMOUNT);
+            } else {
+                request_screen(UI_SCREEN_AMOUNT);
+            }
             break;
         case ACT_CLOSE:
             settings_persist();
@@ -543,27 +575,25 @@ static void btn_event_cb(lv_event_t *e) {
         case ACT_MODAL_CLOSE:
             close_modal();
             break;
-        case ACT_PROV_LOCAL:
-            if (s_cb != NULL) { s_cb(UI_EVENT_PROV_LOCAL, 0); }
-            break;
-        case ACT_PROV_SKIP:
-            if (s_cb != NULL) { s_cb(UI_EVENT_PROV_SKIP, 0); }
-            break;
-        case ACT_ADDR_OK:
-        case ACT_ADDR_NO:
-            /* The panel is the only place a payout address can be accepted; the
-             * phone that proposed it only got as far as this modal. Commit (or
-             * drop) before closing, so the address cannot outlive the card. */
-            (void)prov_addr_commit(act == ACT_ADDR_OK);
+        case ACT_PROV_OK:
+        case ACT_PROV_NO:
+            /* The panel is the only place a payout address or a token contract can
+             * be accepted; the browser that proposed one only got as far as this
+             * modal. Commit (or drop) before closing, so it cannot outlive the
+             * card. */
+            (void)prov_pending_commit(act == ACT_PROV_OK);
             close_modal();
             break;
-        case ACT_UPDATE:
-            open_update_window();
+        case ACT_PROV_FINISH:
+            if (s_cb != NULL) { s_cb(UI_EVENT_PROV_FINISH, 0); }
             break;
-        case ACT_UPDATE_CLOSE:
-            /* Closing the card closes the window: the upload endpoint should not
+        case ACT_PORTAL:
+            open_portal_window();
+            break;
+        case ACT_PORTAL_CLOSE:
+            /* Closing the card closes the page: a config endpoint should not
              * outlive the operator standing in front of the terminal. */
-            ota_stop();
+            prov_stop();
             close_modal();
             break;
         case ACT_OTA_OK:
@@ -574,9 +604,9 @@ static void btn_event_cb(lv_event_t *e) {
             close_modal();
             if (!ota_commit(act == ACT_OTA_OK)) {
                 /* Declined, or the boot partition would not take. Either way the
-                 * running firmware stays; the window is closed regardless so a
+                 * running firmware stays; the page is closed regardless so a
                  * refused image cannot simply be re-uploaded unattended. */
-                ota_stop();
+                prov_stop();
             }
             break;
         case ACT_NET_PICK:
@@ -1074,32 +1104,55 @@ static void build_settings(void) {
                    LV_ALIGN_TOP_LEFT, 0, 86);
     }
 
-    /* ── Transaction tab: what the terminal will call, and where the funds go.
-     * Read-only — the asset is chosen on the amount screen, where the operator
-     * needs it, not two taps deep behind the admin code. ── */
+    /* Everything else lives in a browser, and this is the row that gets you
+     * there: it raises the config page and shows a QR code to scan. Same row on
+     * the About tab, because "update the firmware" and "change the addresses" are
+     * two things on one page and an operator should reach it from either. */
+    lv_obj_t *cpill = make_pill(t_wifi, "Configure", "Scan to open in a browser",
+                                TAB_W, 116, ACT_PORTAL);
+    lv_obj_align(make_glyph_disc(cpill, LV_SYMBOL_SETTINGS, COL_ACCENT, COIN_SZ),
+                 LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
+
+    /* ── Transaction tab: which asset, what it will call, and where the funds go.
+     * The asset can be switched from here as well as from the amount screen: the
+     * operator needs it there during a shift, and an administrator setting the
+     * terminal up expects to find it with the other transaction settings. ── */
     const bool tron = chain_is_tron();
     char net_line[48];
     snprintf(net_line, sizeof(net_line), "%s on %s", asset_name(), asset_network());
-    make_label(t_tx, "Charging in", COL_DIM, &lv_font_montserrat_14,
-               LV_ALIGN_TOP_LEFT, 0, 0);
-    make_label(t_tx, net_line, COL_TEXT, &lv_font_montserrat_14,
-               LV_ALIGN_TOP_LEFT, 0, 18);
+    lv_obj_t *apill = make_pill(t_tx, "Asset", net_line, TAB_W, 0, ACT_NET_PICK);
+    lv_obj_align(make_asset_badge(apill, settings_get_chain()),
+                 LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
 
     make_label(t_tx, asset_caption(), COL_DIM,
-               &lv_font_montserrat_14, LV_ALIGN_TOP_LEFT, 0, 48);
+               &lv_font_montserrat_14, LV_ALIGN_TOP_LEFT, 0, 62);
     lv_obj_t *a_usdc = make_label(t_tx, (s_addr_usdc != NULL) ? s_addr_usdc : "-",
                                   COL_TEXT, &lv_font_montserrat_14,
-                                  LV_ALIGN_TOP_LEFT, 0, 66);
+                                  LV_ALIGN_TOP_LEFT, 0, 80);
     lv_label_set_long_mode(a_usdc, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(a_usdc, 200);
 
     make_label(t_tx, "Send to", COL_DIM, &lv_font_montserrat_14,
-               LV_ALIGN_TOP_LEFT, 0, 112);
+               LV_ALIGN_TOP_LEFT, 0, 126);
     lv_obj_t *a_dest = make_label(t_tx, (s_addr_dest != NULL) ? s_addr_dest : "-",
                                   COL_TEXT, &lv_font_montserrat_14,
-                                  LV_ALIGN_TOP_LEFT, 0, 130);
+                                  LV_ALIGN_TOP_LEFT, 0, 144);
     lv_label_set_long_mode(a_dest, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(a_dest, 200);
+
+    /* Say out loud when the recipient is the compile-time one rather than an
+     * address somebody chose. This is the row an operator checks to answer "where
+     * does my money go", and "the default" is a different answer from "mine". */
+    if (!settings_has_payout(tron)) {
+        lv_obj_t *w = make_label(t_tx, "Not configured - using the built-in "
+                                       "default. Set it from the Configure page.",
+                                 COL_DANGER, &lv_font_montserrat_14,
+                                 LV_ALIGN_TOP_LEFT, 0, 0);
+        lv_obj_set_width(w, 200);
+        lv_label_set_long_mode(w, LV_LABEL_LONG_WRAP);
+        lv_obj_update_layout(a_dest);
+        lv_obj_align_to(w, a_dest, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 4);
+    }
 
     /* Load the fees whether or not the steppers are built — settings_persist()
      * writes these back on Close, and zeroes would break the Ethereum path. */
@@ -1117,12 +1170,14 @@ static void build_settings(void) {
                                  : "Token transfers burn the card's energy, "
                                    "capped in config.h - no gas fee to set.",
                                  COL_DIM, &lv_font_montserrat_14,
-                                 LV_ALIGN_TOP_LEFT, 0, 180);
+                                 LV_ALIGN_TOP_LEFT, 0, 200);
         lv_label_set_long_mode(n, LV_LABEL_LONG_WRAP);
         lv_obj_set_width(n, 200);
     } else {
-        s_maxfee_lbl = build_fee_row(t_tx, "Max fee (Gwei)",      176, 0, 1);
-        s_prio_lbl   = build_fee_row(t_tx, "Priority fee (Gwei)", 244, 2, 3);
+        /* Pushed down by the asset row added above; the tab scrolls, so the only
+         * thing these offsets have to do is not overlap. */
+        s_maxfee_lbl = build_fee_row(t_tx, "Max fee (Gwei)",      196, 0, 1);
+        s_prio_lbl   = build_fee_row(t_tx, "Priority fee (Gwei)", 264, 2, 3);
         fee_update_labels();
     }
 
@@ -1138,13 +1193,15 @@ static void build_settings(void) {
     make_label(t_about, ota_running_version(), COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_MID, 0, 70);
 
-    /* The update row. Tapping it opens a web page on the venue network, so it
-     * belongs behind the admin code with the rest of the settings. */
+    /* The update row. Tapping it opens the config page on the venue network and
+     * shows a QR code to scan, so it belongs behind the admin code with the rest
+     * of the settings. Same action as the Configure row on the Wi-Fi tab — one
+     * page, reachable from wherever the operator went looking for it. */
     /* Subtitle kept short deliberately: make_pill caps it at
      * TAB_W - PILL_TEXT_X - PILL_TEXT_PAD_R = 140 px and dot-elides the rest,
      * and a row whose own label is cut off reads as a bug. */
     lv_obj_t *upill = make_pill(t_about, "Update", "From a browser",
-                                TAB_W, 94, ACT_UPDATE);
+                                TAB_W, 94, ACT_PORTAL);
     lv_obj_align(make_glyph_disc(upill, LV_SYMBOL_DOWNLOAD, COL_ACCENT, COIN_SZ),
                  LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
 
@@ -1185,20 +1242,20 @@ static void build_settings(void) {
  * both are full-screen and both are opened from the settings page. */
 static lv_obj_t *s_modal = NULL;
 
-/* Whether the modal on screen belongs to the firmware update. The update window
- * shuts itself down after OTA_WINDOW_MIN whether or not anybody is watching, and
- * a card left behind after that would wedge the terminal: these overlays swallow
- * every touch, so a terminal nobody came back to could not take a payment again
- * until it was power-cycled. The UI task uses this to clear the card when the
- * window closes underneath it. */
-static bool s_ota_modal = false;
+/* Whether the modal on screen belongs to the config portal. The admin page shuts
+ * itself down after PROV_WINDOW_MIN whether or not anybody is watching, and a card
+ * left behind after that would wedge the terminal: these overlays swallow every
+ * touch, so a terminal nobody came back to could not take a payment again until it
+ * was power-cycled. The UI task uses this to clear the card when the window closes
+ * underneath it. */
+static bool s_portal_modal = false;
 
 static void close_modal(void) {
     if (s_modal != NULL) {
         lv_obj_del(s_modal);
         s_modal = NULL;
     }
-    s_ota_modal = false;
+    s_portal_modal = false;
 }
 
 /* Dimmed overlay + centred card on the top layer, so it floats above the
@@ -1245,11 +1302,13 @@ static void open_reset_confirm(void) {
 }
 
 /**
- * Open the update window and show the operator where to point a browser.
+ * Open the config page and show the operator how to reach it.
  *
- * The address is the only way anyone can find this page — it is served on the
- * venue network, on a device with no name to look up — so it gets the biggest
- * type on the card.
+ * A QR code, not a typed address: the page is served on the venue network on a
+ * device with no name to look up, so the address is the only way anyone can find
+ * it — and reading a dotted quad off a 2.8" panel into a phone is the step that
+ * goes wrong. The URL is printed underneath for the camera that will not play
+ * along, and because a laptop has no camera to point.
  */
 /* Card geometry for the two update modals. 228 wide leaves 212 inside the 8 px
  * pad; wrapped text gets 200 so it clears the rounded corners.
@@ -1302,17 +1361,20 @@ static void ota_fit_card(lv_obj_t *card, lv_obj_t *last, lv_coord_t buttons_h) {
     lv_obj_center(card);
 }
 
-static void open_update_window(void) {
+static void open_portal_window(void) {
     /* Started here, on the UI task, the same way this screen already calls
-     * settings_factory_reset() and prov_addr_commit() directly. The event
-     * callback is handed over so an upload can come back to the panel. */
-    const bool up = ota_start(s_cb);
+     * settings_factory_reset() and prov_pending_commit() directly. The event
+     * callback is handed over so a submission can come back to the panel.
+     *
+     * First call on a fresh terminal generates its TLS key, which takes a moment
+     * of frozen panel — under a second for P-256, and once per device. */
+    const bool up = prov_start(PROV_MODE_ADMIN, s_cb);
 
     if (!up) {
         lv_obj_t *card = open_modal(OTA_CARD_W, 200);
         lv_obj_t *m = ota_text(card, NULL,
                  "The terminal has to be on a Wi-Fi network before a browser "
-                 "can update it.\n\nSet one up in the Wi-Fi tab first.",
+                 "can configure it.\n\nSet one up in the Wi-Fi tab first.",
                  COL_TEXT, &lv_font_montserrat_14);
         ota_fit_card(card, m, 42);
         make_button(card, "Close", COL_SURFACE, COL_TEXT, OTA_TEXT_W, 40,
@@ -1321,29 +1383,46 @@ static void open_update_window(void) {
         return;
     }
 
-    lv_obj_t *card = open_modal(OTA_CARD_W, 236);
+    lv_obj_t *card = open_modal(OTA_CARD_W, 300);
 
-    lv_obj_t *cap = ota_text(card, NULL, "On this Wi-Fi, open",
+    lv_obj_t *cap = ota_text(card, NULL, "Scan this, on this Wi-Fi",
                              COL_DIM, &lv_font_montserrat_14);
 
-    /* The address without its scheme: "http://192.168.1.40/" does not fit one
-     * line at 20 pt, and wrapping it would split the number across two lines.
-     * A browser sends a bare IPv4 literal to http:// on its own. */
-    lv_obj_t *ip = ota_text(card, cap, ota_ip(), COL_TEXT,
-                            &lv_font_montserrat_20);
+    /* A QR code and not a typed address: the page is on the venue network, on a
+     * device with no name to look up, so its address is the only way to find it —
+     * and reading a dotted quad off a 2.8" panel into a phone is the step that
+     * goes wrong. 104 px is 26 modules at 4 px, which holds "https://" plus a
+     * dotted quad. The white quiet zone is not optional: a code drawn hard
+     * against an edge is a code half the scanners in the world will not see. */
+    lv_obj_t *qr = lv_qrcode_create(card, 104, COL_TEXT, COL_BG);
+    if (qr != NULL) {
+        const char *payload = prov_qr_payload();
+        (void)lv_qrcode_update(qr, payload, strlen(payload));
+        lv_obj_set_style_border_color(qr, COL_BG, LV_PART_MAIN);
+        lv_obj_set_style_border_width(qr, 4, LV_PART_MAIN);
+        lv_obj_update_layout(card);
+        lv_obj_align_to(qr, cap, LV_ALIGN_OUT_BOTTOM_MID, 0, OTA_GAP);
+    }
 
-    char note[96];
+    /* The URL in text too — a laptop has no camera to point, and a phone camera
+     * that balks at a self-signed https:// link still leaves it typable. */
+    lv_obj_t *url = ota_text(card, (qr != NULL) ? qr : cap, prov_qr_payload(),
+                             COL_TEXT, &lv_font_montserrat_14);
+
+    char note[192];
     snprintf(note, sizeof(note),
-             "It will ask for the admin code.\n\n"
-             "Closes by itself in %u min.", ota_window_left_min());
-    lv_obj_t *n = ota_text(card, ip, note, COL_DIM, &lv_font_montserrat_14);
+             "The browser will warn about the certificate: it is this "
+             "terminal's own. Accept it once.\n\n"
+             "The admin code is typed here, never there.\n\n"
+             "Closes by itself in %u min.", prov_window_left_min());
+    lv_obj_t *n = ota_text(card, url, note, COL_DIM, &lv_font_montserrat_14);
     ota_fit_card(card, n, 42);
 
     make_button(card, "Done", COL_SURFACE, COL_TEXT, OTA_TEXT_W, 40,
-                LV_ALIGN_BOTTOM_MID, 0, -2, ACT_UPDATE_CLOSE,
+                LV_ALIGN_BOTTOM_MID, 0, -2, ACT_PORTAL_CLOSE,
                 &lv_font_montserrat_20);
 
-    s_ota_modal = true;   /* set last: open_modal() cleared it */
+    s_portal_modal = true;   /* set last: open_modal() cleared it */
 }
 
 /**
@@ -1390,7 +1469,7 @@ static void build_ota_confirm(void) {
     make_button(card, "Discard", COL_SURFACE, COL_TEXT, OTA_TEXT_W, 40,
                 LV_ALIGN_BOTTOM_MID, 0, -2, ACT_OTA_NO, &lv_font_montserrat_20);
 
-    s_ota_modal = true;
+    s_portal_modal = true;
 }
 
 /* Asset selection, in two steps: the network, then the coin on it. Two modals
@@ -1401,6 +1480,21 @@ static void build_ota_confirm(void) {
  *
  * The card is 228 wide (212 inside the 8px pad), so the pills run to 206. */
 #define PICK_W  206
+
+/**
+ * Grey a row out and make it inert.
+ *
+ * For a network whose payout address nobody has set. Shown rather than hidden: a
+ * network that silently vanishes reads as a firmware that lost a feature, where a
+ * dimmed row saying why tells the operator what to go and do.
+ */
+static void pill_disable(lv_obj_t *p) {
+    lv_obj_clear_flag(p, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_bg_opa(p, LV_OPA_50, LV_PART_MAIN);
+    for (uint32_t i = 0; i < lv_obj_get_child_cnt(p); i++) {
+        lv_obj_set_style_text_color(lv_obj_get_child(p, i), COL_DIM, LV_PART_MAIN);
+    }
+}
 
 /** Step 1 — the network. */
 static void open_network_picker(void) {
@@ -1420,11 +1514,18 @@ static void open_network_picker(void) {
     };
 
     for (size_t i = 0; i < (sizeof(NETS) / sizeof(NETS[0])); i++) {
+        /* A network with no payout address of its own is not offered. Otherwise a
+         * terminal set up for Ethereum and interrupted before Tron would quietly
+         * take Tron payments to the compile-time recipient — somebody else's
+         * address — and look entirely normal doing it. */
+        const bool have = settings_has_payout(NETS[i].tron);
         lv_coord_t y = static_cast<lv_coord_t>(22 + (i * (PILL_H + 2)));
-        lv_obj_t  *p = make_pill(card, NETS[i].name, NETS[i].sub,
+        lv_obj_t  *p = make_pill(card, NETS[i].name,
+                                 have ? NETS[i].sub : "No payout address",
                                  PICK_W, y, NETS[i].act);
         lv_obj_align(make_net_badge(p, NETS[i].tron),
                      LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
+        if (!have) { pill_disable(p); }
     }
 
     make_button(card, "Cancel", COL_SURFACE, COL_TEXT, PICK_W, 40,
@@ -1560,39 +1661,90 @@ static void build_welcome(void) {
  * opens the form by itself, so there is never a URL to scan or type. The SSID
  * and passphrase are printed underneath for the camera that will not play along.
  *
- * 240x320 leaves room for a 116 px code (29 modules at 4 px) plus two lines of
- * credentials and the on-device escape hatch, which every step keeps: the panel
- * is slow to type on but it never depends on someone's phone. */
+ * There is deliberately no "use this screen instead" button any more. Past the
+ * admin code the wizard is a browser flow: typing a payout address or a venue
+ * passphrase on a resistive 240x320 panel is the thing this module exists to
+ * avoid, and keeping a second, worse path meant maintaining two of everything.
+ * The one step that stays on the panel is the admin code, because that is the step
+ * whose entire value is that it never crosses a network.
+ *
+ * The last step is not a form at all: it thanks the operator and offers Finish,
+ * which is what applies the settings (see main). */
 static void build_prov(void) {
     clear_screen();
     lv_obj_set_style_bg_color(lv_scr_act(), lv_color_white(), LV_PART_MAIN);
+
+    const prov_step_t step = static_cast<prov_step_t>(s_prov_step);
+
+    /* The end of the wizard gets the whole screen: nothing left to scan, and the
+     * one thing to say is that it worked. */
+    if (step == PROV_STEP_DONE) {
+        lv_obj_t *chk = make_label(lv_scr_act(), LV_SYMBOL_OK, COL_SUCCESS,
+                                   &lv_font_montserrat_48, LV_ALIGN_TOP_MID, 0, 76);
+        pop_in(chk);
+        make_label(lv_scr_act(), "All set", COL_TEXT, &lv_font_montserrat_20,
+                   LV_ALIGN_TOP_MID, 0, 142);
+        lv_obj_t *b = make_label(lv_scr_act(),
+                                 "Thank you - your terminal is configured.\n\n"
+                                 "It restarts once to apply everything.",
+                                 COL_DIM, &lv_font_montserrat_14,
+                                 LV_ALIGN_TOP_MID, 0, 176);
+        lv_obj_set_width(b, SCR_W - 32);
+        lv_label_set_long_mode(b, LV_LABEL_LONG_WRAP);
+        lv_obj_set_style_text_align(b, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+        lv_obj_align(b, LV_ALIGN_TOP_MID, 0, 176);
+
+        (void)make_button(lv_scr_act(), "Finish", COL_ACCENT, COL_BG,
+                          SCR_W - 24, ACT_BTN_H, LV_ALIGN_BOTTOM_MID, 0, -10,
+                          ACT_PROV_FINISH, &lv_font_montserrat_20);
+        return;
+    }
 
     /* The title names the step, and it is the biggest thing on the screen. An
      * earlier cut put "Set up from your phone" here for every step and moved
      * only a line of 14px grey caption between them — which made a step
      * advancing indistinguishable from nothing happening, since the QR code and
-     * the credentials below are identical throughout. */
-    const char *step  = "";
-    const char *title = "";
-    switch (static_cast<prov_step_t>(s_prov_step)) {
-        case PROV_STEP_ADMIN: step = "Step 1 of 3"; title = "Admin code";     break;
-        case PROV_STEP_WIFI:  step = "Step 2 of 3"; title = "Wi-Fi network";  break;
-        case PROV_STEP_ADDR:  step = "Step 3 of 3"; title = "Payout address"; break;
-        default:              step = "Setup";       title = "Nothing to set"; break;
+     * the credentials below are identical throughout.
+     *
+     * The step numbers count the whole flow, panel steps included: 1 is the admin
+     * code the operator has just created on this screen, so "Step 2" here lines up
+     * with what they have actually done rather than with this module's own idea of
+     * where the flow starts. */
+    const char *eyebrow = "Setup";
+    const char *title   = "Nothing to set";
+    const char *hint    = "";
+    switch (step) {
+        case PROV_STEP_AUTH:
+            eyebrow = "Step 2";
+            title   = "Scan with your phone";
+            hint    = "Your admin code is asked for here";
+            break;
+        case PROV_STEP_ADDR:
+            eyebrow = "Step 4";
+            title   = "Payout addresses";
+            hint    = "Continue on your phone";
+            break;
+        case PROV_STEP_WIFI:
+            eyebrow = "Step 5";
+            title   = "Wi-Fi network";
+            hint    = "Continue on your phone";
+            break;
+        default:
+            break;
     }
 
-    make_label(lv_scr_act(), step, COL_DIM, &lv_font_montserrat_14,
+    make_label(lv_scr_act(), eyebrow, COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_MID, 0, 6);
     make_label(lv_scr_act(), title, COL_TEXT, &lv_font_montserrat_20,
                LV_ALIGN_TOP_MID, 0, 22);
-    make_label(lv_scr_act(), "Scan to continue on your phone", COL_DIM,
-               &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0, 46);
+    make_label(lv_scr_act(), hint, COL_DIM,
+               &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0, 48);
 
-    lv_obj_t *qr = lv_qrcode_create(lv_scr_act(), 116, COL_TEXT, COL_BG);
+    lv_obj_t *qr = lv_qrcode_create(lv_scr_act(), 112, COL_TEXT, COL_BG);
     if (qr != NULL) {
         const char *payload = prov_qr_payload();
         (void)lv_qrcode_update(qr, payload, strlen(payload));
-        lv_obj_align(qr, LV_ALIGN_TOP_MID, 0, 66);
+        lv_obj_align(qr, LV_ALIGN_TOP_MID, 0, 70);
         /* White quiet zone: a code drawn hard against a coloured edge is a code
          * half the scanners in the world will not see. */
         lv_obj_set_style_border_color(qr, COL_BG, LV_PART_MAIN);
@@ -1607,36 +1759,50 @@ static void build_prov(void) {
     make_label(lv_scr_act(), line, COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_MID, 0, 212);
 
-    /* The addresses step is the only optional one — config.h already carries a
-     * recipient, so declining leaves a working terminal. The other two steps
-     * must be answered somewhere, hence "use this screen" rather than "skip". */
-    const bool optional = (static_cast<prov_step_t>(s_prov_step) == PROV_STEP_ADDR);
-    (void)make_button(lv_scr_act(), optional ? "Keep current address"
-                                            : "Use this screen instead",
-                      COL_ACCENT, COL_BG, SCR_W - 24, ACT_BTN_H,
-                      LV_ALIGN_BOTTOM_MID, 0, -10,
-                      optional ? ACT_PROV_SKIP : ACT_PROV_LOCAL,
-                      &lv_font_montserrat_20);
+    /* Where the bottom button used to be. A spinner instead: past the QR code the
+     * operator is meant to be looking at their phone, and this is the only thing
+     * on the panel that says the terminal is still with them. */
+    lv_obj_t *sp = lv_spinner_create(lv_scr_act(), 1000, 60);
+    lv_obj_set_size(sp, 24, 24);
+    lv_obj_align(sp, LV_ALIGN_BOTTOM_MID, 0, -34);
+    lv_obj_set_style_arc_width(sp, 3, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(sp, 3, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_color(sp, COL_SURFACE, LV_PART_MAIN);
+    lv_obj_set_style_arc_color(sp, COL_ACCENT, LV_PART_INDICATOR);
+    make_label(lv_scr_act(), "Waiting for your phone", COL_DIM,
+               &lv_font_montserrat_14, LV_ALIGN_BOTTOM_MID, 0, -10);
 }
 
-/* A payout address proposed from the phone, shown for acceptance here. The
- * modal is the security boundary, not decoration: HTTP over the setup AP can
- * propose an address, only the panel in the operator's hands can store one.
+/* A payout address or a token contract proposed from a browser, shown for
+ * acceptance here. The modal is the security boundary, not decoration: a browser
+ * can propose a value, only the panel in the operator's hands can store one — and
+ * that holds for the card-derived route too, which comes through the same
+ * handshake rather than writing straight to NVS.
  *
- * The address is drawn wrapped at 14 px rather than elided — the operator is
- * being asked to compare it against their own records character by character,
- * so every character has to be on the screen. */
-static void build_addr_confirm(void) {
-    char label[16] = "";
+ * The value is drawn wrapped at 14 px rather than elided — the operator is being
+ * asked to compare it against their own records character by character, so every
+ * character has to be on the screen. */
+static void build_prov_confirm(void) {
+    prov_ask_t kind = PROV_ASK_NONE;
+    char label[40] = "";
     char addr[SETTINGS_PAYOUT_MAX] = "";
-    if (!prov_addr_pending(label, sizeof(label), addr, sizeof(addr))) { return; }
+    if (!prov_pending(&kind, label, sizeof(label), addr, sizeof(addr))) { return; }
 
-    lv_obj_t *card = open_modal(228, 268);
+    const bool contract = (kind == PROV_ASK_CONTRACT_ETH) ||
+                          (kind == PROV_ASK_CONTRACT_TRON);
 
-    make_label(card, "Set payout address?", COL_TEXT, &lv_font_montserrat_20,
-               LV_ALIGN_TOP_MID, 0, 2);
-    make_label(card, label, COL_DIM, &lv_font_montserrat_14,
-               LV_ALIGN_TOP_MID, 0, 28);
+    lv_obj_t *card = open_modal(228, 276);
+
+    make_label(card, contract ? "Set token contract?" : "Set payout address?",
+               COL_TEXT, &lv_font_montserrat_20, LV_ALIGN_TOP_MID, 0, 2);
+    /* Elided by width: the labels run to "TRC-20 token contract", which is longer
+     * than the 16-character network name this row used to carry. */
+    lv_obj_t *l = make_label(card, label, COL_DIM, &lv_font_montserrat_14,
+                             LV_ALIGN_TOP_MID, 0, 28);
+    lv_obj_set_width(l, 204);
+    lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_align(l, LV_ALIGN_TOP_MID, 0, 28);
 
     lv_obj_t *a = make_label(card, addr, COL_TEXT, &lv_font_montserrat_14,
                              LV_ALIGN_TOP_LEFT, 4, 50);
@@ -1644,8 +1810,11 @@ static void build_addr_confirm(void) {
     lv_label_set_long_mode(a, LV_LABEL_LONG_WRAP);
 
     lv_obj_t *warn = make_label(card,
-                                "Takings will be sent here. Check it against "
-                                "your own records before accepting.",
+                                contract
+                                ? "This decides which token is charged. A wrong "
+                                  "contract moves a different asset."
+                                : "Takings will be sent here. Check it against "
+                                  "your own records before accepting.",
                                 COL_DIM, &lv_font_montserrat_14,
                                 LV_ALIGN_TOP_LEFT, 4, 118);
     lv_obj_set_width(warn, 204);
@@ -1654,11 +1823,37 @@ static void build_addr_confirm(void) {
     /* Reject is the wide, plainly-labelled one and Accept is the deliberate tap:
      * the safe answer to "a stranger's address appeared on my terminal" is no. */
     (void)make_button(card, "Accept", COL_ACCENT, COL_BG, 206, 40,
-                      LV_ALIGN_BOTTOM_MID, 0, -46, ACT_ADDR_OK,
+                      LV_ALIGN_BOTTOM_MID, 0, -46, ACT_PROV_OK,
                       &lv_font_montserrat_20);
     (void)make_button(card, "Reject", COL_SURFACE, COL_TEXT, 206, 40,
-                      LV_ALIGN_BOTTOM_MID, 0, -2, ACT_ADDR_NO,
+                      LV_ALIGN_BOTTOM_MID, 0, -2, ACT_PROV_NO,
                       &lv_font_montserrat_20);
+}
+
+/* "Hold your card to the reader" while an address is derived from it. Its own
+ * screen rather than the transaction one: nothing is being paid, and that screen's
+ * wording and its Cancel semantics both belong to a sale. */
+static void build_card_wait(void) {
+    clear_screen();
+    build_header("Cryptnox card");
+
+    lv_obj_t *card = lv_img_create(lv_scr_act());
+    lv_img_set_src(card, &card_img);
+    lv_obj_align(card, LV_ALIGN_TOP_MID, 0, 64);
+
+    make_label(lv_scr_act(), "Hold card to reader", COL_TEXT,
+               &lv_font_montserrat_20, LV_ALIGN_TOP_MID, 0, 172);
+
+    lv_obj_t *info = make_label(lv_scr_act(), s_tx_info, COL_DIM,
+                                &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0, 204);
+    lv_obj_set_width(info, 216);
+    lv_label_set_long_mode(info, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(info, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_align(info, LV_ALIGN_TOP_MID, 0, 204);
+
+    make_button(lv_scr_act(), "Cancel", COL_SURFACE, COL_TEXT, 232, ACT_BTN_H,
+                LV_ALIGN_BOTTOM_MID, 0, ACT_BTN_Y, ACT_CANCEL,
+                &lv_font_montserrat_20);
 }
 
 static void build_splash(void) {
@@ -1796,6 +1991,19 @@ static void pin_submit(void) {
     s_pin[sizeof(s_pin) - 1] = '\0';
     s_pin_len = static_cast<uint8_t>(strlen(s_pin));
 
+    /* Same keypad, two errands. A card read is not a payment: it gets the card
+     * screen and its own event, so main cannot mistake it for a sale and the tx
+     * screen's "Declined" wording never appears over a setup step. */
+    if (s_pin_for_card) {
+        s_pin_for_card = false;
+        strncpy(s_tx_info, "Reading your payout addresses",
+                sizeof(s_tx_info) - 1);
+        s_tx_info[sizeof(s_tx_info) - 1] = '\0';
+        request_screen(UI_SCREEN_CARD_WAIT);
+        if (s_cb != NULL) { s_cb(UI_EVENT_CARD_PIN, 0); }
+        return;
+    }
+
     s_tx_state = UI_TX_STATE_PLACE_CARD;
     strncpy(s_tx_info, "Preparing...", sizeof(s_tx_info) - 1);
     s_tx_info[sizeof(s_tx_info) - 1] = '\0';
@@ -1872,7 +2080,9 @@ static void build_pin(void) {
     CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_pin), sizeof(s_pin));
     s_pin_len = 0;
 
-    make_label(lv_scr_act(), "Enter PIN", COL_TITLE, &lv_font_montserrat_20,
+    make_label(lv_scr_act(),
+               s_pin_for_card ? "Card PIN" : "Enter PIN",
+               COL_TITLE, &lv_font_montserrat_20,
                LV_ALIGN_TOP_MID, 0, HDR_TITLE_Y);
     /* Back (cancel) icon, top-left like the burger on other screens. */
     (void)make_icon_button(LV_SYMBOL_LEFT, ACT_PIN_CANCEL);
@@ -1953,11 +2163,11 @@ static void admin_submit(void) {
                                   sizeof(s_admin_first));
             s_admin_confirming = false;
             admin_set_note("");
-            /* Not the amount screen: this is the first-run path, so main answers
-             * by bringing the network up and that blocks on a scan for a couple
-             * of seconds — the payment keypad would flash up and be replaced by
-             * the Wi-Fi list. Say what is actually happening instead. */
-            set_wifi_progress("Scanning...", NULL);
+            /* Not the amount screen: this is the first-run path, so main answers by
+             * raising the setup access point, which takes a second or two — the
+             * payment keypad would flash up and be replaced by the setup screen.
+             * Say what is actually happening instead. */
+            set_wifi_progress("Starting setup", NULL);
             request_screen(UI_SCREEN_WIFI_CONNECTING);
             if (s_cb != NULL) { s_cb(UI_EVENT_ADMIN_SET, 0); }
         } else {
@@ -1981,7 +2191,23 @@ static void admin_submit(void) {
             admin_set_note(msg);
         } else if (settings_check_admin_code(code)) {
             s_admin_lock_ms = 0U;
-            request_screen(UI_SCREEN_SETTINGS);
+            if (s_admin_for_portal) {
+                /* This is the whole authorisation mechanism: the code was typed
+                 * here, so the browser is let in without it ever having been on
+                 * the network.
+                 *
+                 * Where to go back to differs by mode, and the setup screen is
+                 * wrong for admin mode — it would draw a QR code beside an AP name
+                 * and passphrase that only exist during setup. The code was just
+                 * verified, so the settings page is a legitimate landing spot and
+                 * the one the operator came from. */
+                s_admin_for_portal = false;
+                prov_auth_resolve(true);
+                request_screen((prov_mode() == PROV_MODE_WIZARD)
+                               ? UI_SCREEN_PROV : UI_SCREEN_SETTINGS);
+            } else {
+                request_screen(UI_SCREEN_SETTINGS);
+            }
         } else {
             const uint32_t penalty = admin_penalty_ms(settings_admin_fail_count());
             if (penalty > 0U) {
@@ -2039,7 +2265,10 @@ static void build_admin_set(void) {
 }
 
 static void build_admin_unlock(void) {
-    build_admin_screen("Admin code", true);
+    /* Same screen either way — the escalating lockout, the note band and the
+     * keypad are what this is, and only the door it opens differs. */
+    build_admin_screen(s_admin_for_portal ? "Authorise browser" : "Admin code",
+                       true);
 }
 
 /* Header with a back arrow (to amount entry) instead of the burger. */
@@ -2367,6 +2596,7 @@ static void render_requested_screen(void) {
         case UI_SCREEN_ADMIN_UNLOCK: build_admin_unlock(); break;
         case UI_SCREEN_WELCOME:      build_welcome();      break;
         case UI_SCREEN_PROV:         build_prov();         break;
+        case UI_SCREEN_CARD_WAIT:    build_card_wait();    break;
     }
 
     /* Guard the freshly built screen against a tap carried over from the
@@ -2460,23 +2690,29 @@ static void ui_task(void *arg) {
                 lv_label_set_text(s_boot_step_lbl, s_boot_step);
             }
         }
-        /* A payout address proposed from the setup page. Built here, on the UI
-         * task, and after the screen render above — a modal raised straight from
-         * the main task would be touching LVGL from two tasks at once. */
+        /* A value proposed from the config page. Built here, on the UI task, and
+         * after the screen render above — a modal raised straight from the main or
+         * HTTP task would be touching LVGL from two tasks at once. */
         if (s_addr_modal_dirty) {
             s_addr_modal_dirty = false;
-            build_addr_confirm();
+            build_prov_confirm();
         }
-        /* Same handoff for firmware uploaded from the update page — it replaces
+        /* Same handoff for firmware uploaded from the config page — it replaces
          * the "browser at this address" card the operator is looking at. */
         if (s_ota_modal_dirty) {
             s_ota_modal_dirty = false;
             build_ota_confirm();
         }
-        /* The update window can close on its own timer, from a task that must not
-         * touch LVGL. Retiring its card is this task's job. */
-        if (s_ota_modal && !ota_is_running()) {
-            close_modal();
+        /* The admin page closes on its own deadline, and the check has to run
+         * somewhere that may touch LVGL — so it runs here rather than in a timer
+         * task. Deliberately NOT gated on the card still being up: the operator may
+         * have left the modal (to enter the admin code, say), and a config server
+         * that outlives its window because nobody was looking at a card is the
+         * thing the window exists to prevent. Wizard mode has no deadline
+         * (prov_window_left_min() is 0 there), hence the mode test. */
+        if ((prov_mode() == PROV_MODE_ADMIN) && (prov_window_left_min() == 0U)) {
+            prov_stop();
+            if (s_portal_modal) { close_modal(); }
         }
         lv_timer_handler();
 
@@ -2546,8 +2782,8 @@ extern "C" void ui_show_wifi_list(const net_wifi_ap_t *aps, uint16_t n,
     request_screen(UI_SCREEN_WIFI_LIST);
 }
 
-extern "C" void ui_set_addresses(const char *usdc_contract, const char *dest_addr) {
-    s_addr_usdc = usdc_contract;
+extern "C" void ui_set_addresses(const char *token_contract, const char *dest_addr) {
+    s_addr_usdc = token_contract;
     s_addr_dest = dest_addr;
 }
 
@@ -2612,8 +2848,31 @@ extern "C" void ui_show_prov(int step) {
     request_screen(UI_SCREEN_PROV);
 }
 
-extern "C" void ui_show_addr_confirm(void) {
+extern "C" void ui_show_prov_confirm(void) {
     s_addr_modal_dirty = true;
+}
+
+extern "C" void ui_show_prov_auth(void) {
+    s_admin_for_portal = true;
+    s_admin_confirming = false;
+    s_admin_note[0]    = '\0';
+    /* Re-arm the wait from the persisted attempt count, exactly as the burger tap
+     * does: this is the same code and the same guessing budget, so it must not be
+     * a cheaper door than the menu. */
+    s_admin_lock_ms    = admin_penalty_ms(settings_admin_fail_count());
+    s_admin_lock_start = lv_tick_get();
+    request_screen(UI_SCREEN_ADMIN_UNLOCK);
+}
+
+extern "C" void ui_show_card_pin(void) {
+    s_pin_for_card = true;
+    request_screen(UI_SCREEN_PIN);
+}
+
+extern "C" void ui_show_card_wait(const char *note) {
+    strncpy(s_tx_info, (note != NULL) ? note : "", sizeof(s_tx_info) - 1);
+    s_tx_info[sizeof(s_tx_info) - 1] = '\0';
+    request_screen(UI_SCREEN_CARD_WAIT);
 }
 
 extern "C" void ui_show_ota_confirm(void) {

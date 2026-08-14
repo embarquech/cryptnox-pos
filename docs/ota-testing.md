@@ -71,7 +71,8 @@ release image the panel and the browser are the only instrumentation.
 ## 1. Host tests
 
 ```bash
-for t in test_eth_addr test_hardening test_tron_tx test_prov_form test_ota_version; do
+for t in test_eth_addr test_hardening test_tron_tx test_prov_form \
+         test_addr_check test_json_out test_ota_version; do
   g++ -std=c++14 -Wall -Imain -Icryptnox-sdk-esp32/cryptnox-sdk-cpp \
       tests/units/$t.cpp -o $t && ./$t || exit 1
 done
@@ -103,53 +104,65 @@ disagreeing means one of them is wrong.
 ## 2. Bench tests — `curl` against the endpoints
 
 Finish setup so the terminal is joined to a network with an admin code set. Then
-**Settings → About → Update**. The panel shows the address; the log agrees:
+**Settings → About → Update** (or Wi-Fi → **Configure** — the same page). The panel
+shows a QR code and the URL; the log agrees:
 
 ```
-W (nnnn) ota: update server up at http://192.168.1.34/ for 15 min
+W (nnnn) prov: admin page up at https://192.168.1.34/ for 15 min
 ```
 
-Export it and the admin code:
+The transport is HTTPS with the terminal's own self-signed certificate, so every
+`curl` here needs `-k`. Authorisation is a session token, not an admin-code header —
+see [config-portal.md](config-portal.md) and §2.4 of
+[testing-provisioning.md](testing-provisioning.md), which is where the
+authorisation itself is tested. Get a token the same way:
 
 ```bash
-T=http://192.168.1.34
-C=1234
+T=https://192.168.1.34
+curl -sk -X POST $T/api/auth        # then enter the admin code ON THE PANEL
+H="X-Prov-Token: $(curl -sk -X POST $T/api/auth)"
 ```
 
 **Fail before you start:** if the panel says the terminal has to be on a Wi-Fi
 network while it plainly is, the DHCP lease has not landed yet
-(`not on a network - nothing could reach the update page`). Wait and retry.
+(`not on a network - nothing could reach the config page`). Wait and retry.
 
-### 2.1 The page and the info endpoint
+### 2.1 The page and the state endpoint
 
 ```bash
-curl -s $T/api/info
-curl -s -o /dev/null -w '%{http_code} %{size_download}\n' $T/
+curl -sk -H "$H" $T/api/state
+curl -sk -o /dev/null -w '%{http_code} %{size_download}\n' $T/
 ```
 
-**Pass:** `{"version":"1.0.0","slot":"ota_0","staged":false,"window_min":15}`
-and a `200` of roughly 4.3 kB. `version` must match the About tab and
-`version.txt`; `slot` names the partition currently *running*.
+**Pass:** the JSON carries `"mode":"admin"`, `"authed":true`, `"version":"1.0.0"`,
+`"win":15`, and the stored addresses and contracts. `version` must match the About
+tab and `version.txt`. The page is a `200` of roughly 9 kB.
 
-### 2.2 Authentication
+### 2.2 Authorisation
 
 ```bash
 head -c 400000 /dev/urandom > /tmp/junk.bin
-curl -si -X POST --data-binary @/tmp/junk.bin $T/api/ota | head -1                        # no header
-curl -si -X POST -H "X-Admin-Code: 9999" --data-binary @/tmp/junk.bin $T/api/ota | head -1 # wrong
+curl -ski -X POST --data-binary @/tmp/junk.bin $T/api/ota | head -1   # no token
+curl -ski -X POST -H 'X-Prov-Token: 00000000000000000000000000000000' \
+     --data-binary @/tmp/junk.bin $T/api/ota | head -1                # wrong token
 ```
 
-**Pass:** both `401`, body `Wrong admin code.`, log
-`upload rejected: bad or missing admin code` — and **no** `receiving ... bytes`
-line. The flash must not be touched before the code is checked.
+**Pass:** both `401`, body "This browser is not authorised" — and **no**
+`receiving ... bytes` line. The flash must not be touched before the token is
+checked.
+
+Note what is *not* being tested here any more: there is no admin code on the wire
+to guess, so there is no rate limit to exercise on this endpoint. The guessing
+budget lives on the panel keypad, and §2.4 of the provisioning plan is where it is
+tested.
 
 ### 2.3 Size rejection
 
 ```bash
 head -c 1000 /dev/urandom > /tmp/tiny.bin
 head -c 2200000 /dev/urandom > /tmp/huge.bin
-curl -s -X POST -H "X-Admin-Code: $C" --data-binary @/tmp/tiny.bin $T/api/ota
-curl -s -X POST -H "X-Admin-Code: $C" --data-binary @/tmp/huge.bin $T/api/ota
+curl -sk -X POST -H "$H" --data-binary @/tmp/tiny.bin $T/api/ota
+curl -sk -X POST -H "$H" --data-binary @/tmp/huge.bin $T/api/ota
 ```
 
 **Pass:** `too small to be firmware` and `larger than the firmware slot`. Again no
@@ -160,8 +173,8 @@ curl -s -X POST -H "X-Admin-Code: $C" --data-binary @/tmp/huge.bin $T/api/ota
 This is the check that proves `esp_ota_end()` is doing its job:
 
 ```bash
-curl -s -X POST -H "X-Admin-Code: $C" --data-binary @/tmp/junk.bin $T/api/ota
-curl -s $T/api/info
+curl -sk -X POST -H "$H" --data-binary @/tmp/junk.bin $T/api/ota
+curl -sk -H "$H" $T/api/state
 ```
 
 **Pass:** the upload runs (`receiving 400000 bytes into 'ota_1'`), then
@@ -176,9 +189,9 @@ Then take a payment. The terminal must be completely unaffected by having had
 
 ```bash
 # throttled, then cut off part-way: ~600 kB of a 1.6 MB image arrives
-curl -s -X POST -H "X-Admin-Code: $C" --data-binary @build/cryptnox_pos.bin \
+curl -sk -X POST -H "$H" --data-binary @build/cryptnox_pos.bin \
      --limit-rate 200k --max-time 3 $T/api/ota
-curl -s $T/api/info
+curl -sk -H "$H" $T/api/state
 ```
 
 **Pass:** log shows `upload aborted at <n>/<total> bytes`, `staged` is `false`,
@@ -190,7 +203,7 @@ not wedge the slot for the next one.
 Upload a real image (§3) so something is staged, and *before* touching the panel:
 
 ```bash
-curl -s -X POST -H "X-Admin-Code: $C" --data-binary @build/cryptnox_pos.bin $T/api/ota
+curl -sk -X POST -H "$H" --data-binary @build/cryptnox_pos.bin $T/api/ota
 ```
 
 **Pass:** `409`, "An update is already waiting to be accepted on the terminal
@@ -199,24 +212,28 @@ screen." Two images cannot occupy one slot.
 ### 2.7 The window closes
 
 Open the window, note the time, and leave the terminal alone for 15 minutes
-(`OTA_WINDOW_MIN`).
+(`PROV_WINDOW_MIN`).
 
 ```bash
-curl -s -o /dev/null -w '%{http_code}\n' -X POST -H "X-Admin-Code: $C" \
+curl -sk -o /dev/null -w '%{http_code}\n' -X POST -H "$H" \
      --data-binary @/tmp/junk.bin $T/api/ota
-curl -s -o /dev/null -w '%{http_code}\n' $T/
+curl -sk -o /dev/null -w '%{http_code}\n' $T/
 ```
 
-**Pass:** `503` from the upload endpoint, log `update window expired` then
-`update server down`, and **the card on the panel disappears by itself**. The
-terminal must then accept a payment normally.
+**Pass:** `503` from the upload endpoint, log `config portal down`, and **the card
+on the panel disappears by itself**. The terminal must then accept a payment
+normally.
 
 That last part matters more than it looks: these modals swallow every touch, so a
 card left behind after its window closed is a terminal that cannot take money
 until somebody power-cycles it.
 
+Also check the case where the operator has *left* the card — enter the admin code
+so the panel moves to the settings page, then wait the window out. The server must
+still stop; the shutdown is not gated on anybody looking at a modal.
+
 For the impatient version, tap **Done** instead and check the same:
-`update server down`, card gone, `curl $T/` refused.
+`config portal down`, card gone, `curl -k $T/` refused.
 
 ---
 
@@ -233,8 +250,10 @@ echo 1.0.0 > version.txt        # keep 1.0.0 around for the downgrade check
 
 ### 3.1 File picker — the path that needs no internet
 
-1. Open Update on the panel, open the address in a browser on the same network.
-2. Enter the admin code, pick `/tmp/1.0.1.bin`, **Install this file**.
+1. Open Update on the panel, then scan the QR code (or type the `https://` URL)
+   into a browser on the same network, accepting the certificate warning.
+2. The panel asks for the admin code — enter it *there*. Then pick
+   `/tmp/1.0.1.bin` and press **Install this file**.
 3. Watch the percentage climb. Expect `receiving 1653... bytes into 'ota_1'`.
 4. Browser says *"Version 1.0.1 received and verified. Accept it on the terminal
    screen…"*; log says `staged 1.0.1 in 'ota_1' - awaiting on-screen accept`.
@@ -248,7 +267,7 @@ the panel. A browser may propose; only the panel may install.
 
 Tap **Discard** first, on purpose.
 
-**Pass:** the card closes, the window closes with it, and `/api/info` still
+**Pass:** the card closes, the window closes with it, and `/api/state` still
 reports `1.0.0` in `ota_0`. Reboot the terminal — still `1.0.0`. A refused image
 must not install itself later.
 
@@ -263,7 +282,7 @@ W (nnnn) ota: installing 1.0.1 from 'ota_1' - rebooting
 **Pass, after the reboot:**
 
 - About tab reads `1.0.1`.
-- `curl -s $T/api/info` → `"version":"1.0.1","slot":"ota_1"` — the slot has
+- `curl -sk -H "$H" $T/api/state` → `"version":"1.0.1","slot":"ota_1"` — the slot has
   flipped.
 - The log carries `ota: update to 1.0.1 confirmed - rollback cancelled`, and it
   appears **after** `cryptnox_pos: Ready`, not before.
@@ -295,7 +314,7 @@ Publish a `firmware.json` (shape in [`docs/ota.md`](ota.md)) at
 `Access-Control-Allow-Origin: *`.
 
 ```bash
-curl -sI -H "Origin: http://192.168.1.34" <manifest url> | grep -i access-control
+curl -sI -H "Origin: https://192.168.1.34" <manifest url> | grep -i access-control
 ```
 
 **Pass:** `Access-Control-Allow-Origin: *` *before* you try the browser. Then tap
@@ -348,7 +367,7 @@ Upload `/tmp/broken.bin`, accept it on the panel, and watch the serial log.
 2. The reset that follows does **not** come back on `9.9.9` — the bootloader
    reports falling back to the other app and the terminal boots the previous
    version.
-3. About shows the old version; `/api/info` shows the old `slot`.
+3. About shows the old version; `/api/state` shows the old `slot`.
 4. It takes a payment.
 
 **Fail:** a terminal that boot-loops on `9.9.9` means rollback is not compiled in

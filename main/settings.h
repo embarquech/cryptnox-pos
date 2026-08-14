@@ -144,6 +144,17 @@ void settings_set_priority_fee_gwei(uint32_t gwei);
 bool settings_get_payout(bool tron, char *out, size_t n);
 
 /**
+ * @brief Whether an operator has actually set the payout address for a network.
+ *
+ * The difference between this and @ref settings_get_payout's return value is only
+ * that this one does not need a buffer. It exists because it decides whether an
+ * asset is offered at all: a terminal that was set up for Ethereum and never got
+ * as far as Tron must not quietly offer Tron payments to the compile-time
+ * recipient, which is somebody else's address.
+ */
+bool settings_has_payout(bool tron);
+
+/**
  * @brief Persist a payout address, writing both the value and its echo copy.
  *
  * Does not validate: the caller checks the EIP-55 / base58 checksum first and
@@ -155,6 +166,35 @@ bool settings_get_payout(bool tron, char *out, size_t n);
  *         that a later read would trust — the echo comparison catches it).
  */
 bool settings_set_payout(bool tron, const char *addr);
+
+/**
+ * @brief Read the token-contract address for a network.
+ *
+ * Which token the terminal charges in, as opposed to who gets paid. Same
+ * dual-store and same config.h fallback as @ref settings_get_payout, for the same
+ * reason: the contract decides which asset moves, so a half-written string in NVS
+ * must not be able to point the terminal at a different token.
+ *
+ * There is one contract per network — USDC on Ethereum, USDT on Tron. Native TRX
+ * has none, and asking for one on a chain that has no token is the caller's
+ * mistake; @p tron selects the network, not the chain.
+ *
+ * @param[in]  tron true for the Tron TRC-20 contract, false for the ERC-20 one.
+ * @param[out] out  Buffer, >= @ref SETTINGS_PAYOUT_MAX. Ethereum contracts are
+ *                  returned "0x"-prefixed.
+ * @param[in]  n    Capacity of @p out.
+ * @return true if a stored (operator-set) contract was returned, false if the
+ *         config.h default was used. Either way @p out is valid.
+ */
+bool settings_get_contract(bool tron, char *out, size_t n);
+
+/**
+ * @brief Persist a token-contract address, value and echo copy.
+ *
+ * Does not validate — same contract as @ref settings_set_payout: the caller
+ * checks the address and has it accepted on the device screen first.
+ */
+bool settings_set_contract(bool tron, const char *addr);
 
 /** @brief Erase all stored settings (brightness, auto, Wi-Fi creds, fees). */
 void settings_factory_reset(void);

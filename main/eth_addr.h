@@ -50,6 +50,23 @@ extern "C" {
  */
 bool eth_addr_parse(const char *hex, uint8_t out[ETH_ADDR_LEN]);
 
+/**
+ * @brief Render a 20-byte address as an EIP-55 mixed-case "0x..." string.
+ *
+ * The inverse of @ref eth_addr_parse, and it produces the checksummed form on
+ * purpose: an address derived on the device (from a card's public key, say) is then
+ * displayed exactly as the operator's own wallet displays it, which is the whole
+ * point of showing it to them. It also means the value that goes into storage
+ * carries a checksum, so the boot-time parse is a real check on it rather than the
+ * no-op it is for an all-lowercase string.
+ *
+ * @param[in]  addr 20-byte address.
+ * @param[out] out  Buffer for "0x" + 40 hex + NUL.
+ * @param[in]  n    Capacity of @p out; needs at least 43 bytes.
+ * @return true on success, false if @p out is too small (and then left empty).
+ */
+bool eth_addr_format(const uint8_t addr[ETH_ADDR_LEN], char *out, size_t n);
+
 #ifdef __cplusplus
 }
 #endif

@@ -167,7 +167,9 @@ typedef struct {
     bool        ok;     /**< false until decoded: refuse to charge in it        */
 } trc20_asset_t;
 
-static trc20_asset_t s_trc20_usdt = { TRON_ADDR_USDT, {}, false };
+/* Points at s_contract_trx, filled from settings at boot — the operator can set the
+ * contract from the config page, and config.h is only the fallback. */
+static trc20_asset_t s_trc20_usdt = { NULL, {}, false };
 
 /**
  * @brief Decode a token's configured base58 contract into its dual store.
@@ -198,14 +200,16 @@ static trc20_asset_t *active_trc20(void) {
     return (settings_get_chain() == POS_CHAIN_TRON_USDT) ? &s_trc20_usdt : NULL;
 }
 
-/* The recipient strings the dual stores are built from: whatever the operator set
- * through the setup page, or the config.h address when they never set one.
- * Resolved once at boot — a payout address changed during setup takes effect
- * through a restart, so it goes through this same path rather than a second one
- * that would have to re-validate everything this one already validates. The
- * Ethereum string is "0x"-prefixed, ready for eth_addr_parse. */
-static char s_payout_eth[SETTINGS_PAYOUT_MAX]  = "";
-static char s_payout_tron[SETTINGS_PAYOUT_MAX] = "";
+/* The recipient and contract strings the dual stores are built from: whatever the
+ * operator set through the config page, or the config.h value when they never set
+ * one. Resolved once at boot — an address changed during setup takes effect through
+ * a restart, so it goes through this same path rather than a second one that would
+ * have to re-validate everything this one already validates. The Ethereum strings
+ * are "0x"-prefixed, ready for eth_addr_parse. */
+static char s_payout_eth[SETTINGS_PAYOUT_MAX]   = "";
+static char s_payout_tron[SETTINGS_PAYOUT_MAX]  = "";
+static char s_contract_eth[SETTINGS_PAYOUT_MAX] = "";
+static char s_contract_trx[SETTINGS_PAYOUT_MAX] = "";
 
 /**
  * @brief Point the UI's address rows at the selected chain.
@@ -220,7 +224,7 @@ static void ui_refresh_addresses(void) {
     } else if (chain_is_tron()) {
         ui_set_addresses("Native TRX (no contract)", s_payout_tron);
     } else {
-        ui_set_addresses("0x" ADDR_USDC, s_payout_eth);
+        ui_set_addresses(s_contract_eth, s_payout_eth);
     }
 }
 
@@ -244,9 +248,13 @@ static pos_addr_t s_dest;
  * its own dual store rather than borrowing the Ethereum one. */
 static pos_addr_t s_tron_dest;
 
-/* Whether the phone-setup portal came up, so the setup steps know whether there
- * is a QR screen to offer before falling back to the panel. */
-static bool s_portal_up = false;
+/* And the ERC-20 contract. It used to be a config.h literal parsed at signing time,
+ * which needed no protection because it lived in the signed app image. It is now an
+ * operator-settable value in NVS, and the address the terminal *calls* decides which
+ * asset moves just as surely as the recipient decides who is paid — so it gets the
+ * same dual store and the same reconciles. The Tron token contract already had one
+ * (trc20_asset_t). */
+static pos_addr_t s_usdc;
 
 /** @brief The reconciled recipient for the chain currently selected. */
 static const pos_addr_t *active_dest(void) {
@@ -347,14 +355,20 @@ struct WipeGuard {
  * @param[in]  wallet    Initialised wallet instance.
  * @param[in]  transport PN532 transport, polled directly.
  * @param[out] session   Open secure session on success.
+ * @param[in]  setup     true when the card is being read to derive a payout
+ *                       address rather than to pay. The transaction screen says
+ *                       "Transaction", prints a total and offers a Cancel whose
+ *                       meaning is "abandon this sale" — none of which is true
+ *                       during setup, so that case gets its own screen.
  * @return true with @p session open; false on user cancel or after 60 s —
  *         the two are told apart by @ref s_user_cancelled.
  */
 static bool card_connect(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
-                         CW_SecureSession &session)
+                         CW_SecureSession &session, bool setup = false)
 {
     if (!s_user_cancelled) {
-        ui_show_tx_status(UI_TX_STATE_PLACE_CARD, "Hold card to reader");
+        if (setup) { ui_show_card_wait("Reading your payout addresses"); }
+        else { ui_show_tx_status(UI_TX_STATE_PLACE_CARD, "Hold card to reader"); }
     }
 
     /* Start from a clean reader state: a previous attempt that ended with the
@@ -375,7 +389,8 @@ static bool card_connect(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
         if (transport.inListPassiveTarget()) {
             /* Card tapped — show immediate feedback while the secure channel
              * comes up. */
-            ui_show_tx_status(UI_TX_STATE_PROCESSING, NULL);
+            if (setup) { ui_show_card_wait("Reading..."); }
+            else { ui_show_tx_status(UI_TX_STATE_PROCESSING, NULL); }
             vTaskDelay(pdMS_TO_TICKS(200));
             if (wallet.establishSecureChannel(session)) {
                 return true;
@@ -386,7 +401,8 @@ static bool card_connect(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
              * the card again, then back to the tap prompt. */
             transport.resetReader();
             if (!s_user_cancelled) {
-                ui_show_tx_status(UI_TX_STATE_PLACE_CARD, "Hold card to reader");
+                if (setup) { ui_show_card_wait("Hold it still"); }
+                else { ui_show_tx_status(UI_TX_STATE_PLACE_CARD, "Hold card to reader"); }
             }
         }
         vTaskDelay(pdMS_TO_TICKS(200));
@@ -424,10 +440,11 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
                                 char *tx_hash_out, size_t tx_hash_max,
                                 char *err_out, size_t err_max)
 {
-    /* Reconcile amount + recipient right before they enter the calldata
+    /* Reconcile amount + recipient + contract right before they enter the calldata
      * (§3.2/§7.1); a mismatch means the working copy was corrupted. */
     if (!IS_TRUE32(amount_consistent(amount)) ||
-        !IS_TRUE32(address_consistent(to))) {
+        !IS_TRUE32(address_consistent(to)) ||
+        !IS_TRUE32(address_consistent(&s_usdc))) {
         pos_handle_anomaly("pre-calldata reconcile");
         (void)snprintf(err_out, err_max, "Integrity check failed");
         return false;
@@ -459,10 +476,11 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
     tx.eth_value         = 0U;
     tx.calldata          = calldata;
     tx.calldata_len      = sizeof(calldata);
-    if (!eth_addr_parse("0x" ADDR_USDC, tx.to)) {
-        (void)snprintf(err_out, err_max, "Bad ADDR_USDC in config");
-        return false;
-    }
+    /* From the reconciled store, not from a literal or from NVS at this moment:
+     * this is the address the transaction calls, so it comes from the copy that was
+     * validated at boot and has just been checked against its echo. */
+    (void)CW_Utils::safe_memcpy(tx.to, sizeof(tx.to),
+                                s_usdc.addr, ETH_ADDR_LEN);
 
     uint8_t unsigned_tx[TX_BUF_SIZE];
     size_t  unsigned_len = eth_rlp_encode_unsigned(&tx, unsigned_tx, sizeof(unsigned_tx));
@@ -500,11 +518,12 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
     req.derivePath       = ETH_DERIVE_PATH;
     req.derivePathLength = static_cast<uint8_t>(sizeof(ETH_DERIVE_PATH));
 
-    /* Re-reconcile amount + recipient right before signing — this is the last
-     * point before the card produces an irreversible signature over the
+    /* Re-reconcile amount + recipient + contract right before signing — this is the
+     * last point before the card produces an irreversible signature over the
      * calldata (§3.2/§7.1). */
     if (!IS_TRUE32(amount_consistent(amount)) ||
-        !IS_TRUE32(address_consistent(to))) {
+        !IS_TRUE32(address_consistent(to)) ||
+        !IS_TRUE32(address_consistent(&s_usdc))) {
         pos_handle_anomaly("pre-sign reconcile");
         (void)snprintf(err_out, err_max, "Integrity check failed");
         return false;
@@ -867,7 +886,7 @@ static void wifi_keep_or_drop(bool keep)
  *
  * For the first-run steps, which are modal by design: nothing else the operator
  * can tap matters until the step is done. The queue is flushed on the way out —
- * a repeated tap would otherwise be read by the next stage, and ensure_wifi()
+ * a repeated tap would otherwise be read by the next stage, and wifi_picker()
  * treats an event it does not recognise as "rescan and reopen the picker",
  * which would throw away a password half typed.
  */
@@ -883,82 +902,60 @@ static void wait_for_ui_event(ui_event_t want)
 }
 
 /**
- * @brief Block until one of @p want arrives, and say which.
+ * @brief Try the saved credentials, staying on the splash while it happens.
  *
- * The setup steps can each be answered from the phone or from the panel, and the
- * main task does not care which — it waits for the answer or for the operator
- * choosing to type it here instead. Same flush-on-exit rule as
- * @ref wait_for_ui_event, and for the same reason.
+ * Unattended, so it reports through @ref ui_set_boot_status rather than flashing
+ * up a setup screen the operator never asked for. config.h Wi-Fi credentials are
+ * intentionally not used (NVS only).
  *
- * @param[in] want Events to accept.
- * @param[in] n    How many.
- * @return the event that arrived.
+ * @return true if a saved network was joined.
  */
-static ui_event_t wait_for_one_of(const ui_event_t *want, size_t n)
-{
-    ui_msg_t msg;
-    while (true) {
-        if (xQueueReceive(s_ui_queue, &msg, portMAX_DELAY) != pdTRUE) { continue; }
-        for (size_t i = 0; i < n; i++) {
-            if (msg.event == want[i]) {
-                (void)xQueueReset(s_ui_queue);
-                return msg.event;
-            }
-        }
-    }
-}
-
-/**
- * @brief Bring up Wi-Fi: retry the saved credentials, then run the network
- *        picker (scan → list → keyboard → connect) until connected.
- *
- * Blocks until a connection succeeds; the operator cannot leave setup without
- * one. config.h Wi-Fi credentials are intentionally not used (NVS only).
- *
- * A network joined through the picker is not persisted here — the credentials
- * are staged for @ref wifi_keep_or_drop, which the caller invokes once the
- * clock proves the uplink usable.
- *
- * @param[in] try_saved Try the saved credentials first; false goes straight to
- *                      the picker, for a saved network already proven unusable.
- * @param[in] note      One-line reason shown above the picker, or NULL.
- * @return true if the picker ran and took the screen, so the caller must
- *         restore the splash; false if the splash was never replaced.
- */
-static bool ensure_wifi(bool try_saved, const char *note)
+static bool wifi_try_saved(void)
 {
     char ssid[33] = { 0 };
     char pass[65] = { 0 };
-    if (try_saved &&
-        settings_get_wifi(ssid, sizeof(ssid), pass, sizeof(pass))) {
-        /* Unattended: report on the splash rather than flashing up a setup
-         * screen the operator never asked for. */
-        ui_set_boot_status("Connecting to Wi-Fi");
-        bool ok = false;
-        for (uint32_t a = 1U; (a <= WIFI_SAVED_ATTEMPTS) && !ok; a++) {
-            ESP_LOGI(TAG, "Wi-Fi '%s': attempt %" PRIu32 "/%u",
-                     ssid, a, WIFI_SAVED_ATTEMPTS);
-            ok = net_wifi_connect(ssid, pass);
-        }
-        CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(pass), sizeof(pass));
-        if (ok) { return false; }   /* splash never left the screen */
-        ESP_LOGW(TAG, "saved network '%s' failed %u times - opening the picker",
-                 ssid, WIFI_SAVED_ATTEMPTS);
-        note = "Could not join the saved network";
+    if (!settings_get_wifi(ssid, sizeof(ssid), pass, sizeof(pass))) {
+        return false;
     }
 
-    /* No usable saved network — forced interactive setup. Offer the phone first
-     * when the portal is up: a venue passphrase is miserable to type on this
-     * panel. "Use this screen instead" arrives as UI_EVENT_PROV_LOCAL, which the
-     * loop below treats like any unrecognised event — rescan, show the list. */
-    net_wifi_ap_t aps[16];
-    uint16_t n = 0U;
-    if (s_portal_up) {
-        ui_show_prov(PROV_STEP_WIFI);
-    } else {
-        n = net_wifi_scan(aps, 16);
-        ui_show_wifi_list(aps, n, note);
+    ui_set_boot_status("Connecting to Wi-Fi");
+    bool ok = false;
+    for (uint32_t a = 1U; (a <= WIFI_SAVED_ATTEMPTS) && !ok; a++) {
+        ESP_LOGI(TAG, "Wi-Fi '%s': attempt %" PRIu32 "/%u",
+                 ssid, a, WIFI_SAVED_ATTEMPTS);
+        ok = net_wifi_connect(ssid, pass);
     }
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(pass), sizeof(pass));
+    if (!ok) {
+        ESP_LOGW(TAG, "saved network '%s' failed %u times",
+                 ssid, WIFI_SAVED_ATTEMPTS);
+    }
+    return ok;
+}
+
+/**
+ * @brief Run the panel network picker (scan → list → keyboard → connect) until
+ *        connected.
+ *
+ * Blocks until a connection succeeds; the operator cannot leave setup without one.
+ * This is now the fallback path rather than the main one — setup does Wi-Fi in the
+ * browser (see @ref run_wizard), because typing a venue passphrase on a resistive
+ * 240x320 panel is what that exists to avoid. It is still reached two ways: from
+ * the settings menu, and when the SoftAP itself could not come up.
+ *
+ * A network joined here is not persisted — the credentials are staged for
+ * @ref wifi_keep_or_drop, which the caller invokes once the clock proves the uplink
+ * usable.
+ *
+ * @param[in] note One-line reason shown above the picker, or NULL.
+ * @return true always, as a reminder to the caller that the picker took the screen
+ *         and the splash has to be restored.
+ */
+static bool wifi_picker(const char *note)
+{
+    net_wifi_ap_t aps[16];
+    uint16_t n = net_wifi_scan(aps, 16);
+    ui_show_wifi_list(aps, n, note);
 
     ui_msg_t msg;
     while (true) {
@@ -991,6 +988,302 @@ static bool ensure_wifi(bool try_saved, const char *note)
          * the list again so the user stays in setup until connected. */
         n = net_wifi_scan(aps, 16);
         ui_show_wifi_list(aps, n, note);
+    }
+}
+
+/******************************************************************
+ * 5b. The setup wizard
+ ******************************************************************/
+
+/**
+ * @brief Read the card's payout addresses and put them through the panel.
+ *
+ * The card will not export a public key without a verified PIN, so this needs the
+ * card PIN exactly as signing does — the caller collects it on the keypad first.
+ *
+ * One tap yields both addresses: the Ethereum one from m/44'/60'/0'/0/0 and the
+ * Tron one from m/44'/195'/0'/0/0. That is deliberate, and it is the fix for the
+ * commonest way a terminal ends up half configured — somebody sets Ethereum, gets
+ * interrupted, and the terminal then offers Tron payments to whatever address the
+ * firmware was compiled with.
+ *
+ * Neither address is stored here. Both are *proposed*, through the same
+ * accept-on-the-panel handshake a browser submission goes through, because "the
+ * card said so" is not the same claim as "the operator checked it" — a card
+ * presented by a customer would otherwise redirect the takings.
+ *
+ * @param[out] eth_out  EIP-55 "0x..." address, or "" if it could not be read.
+ * @param[in]  eth_n    Capacity of @p eth_out.
+ * @param[out] tron_out base58 "T..." address, or "".
+ * @param[in]  tron_n   Capacity of @p tron_out.
+ * @param[out] err      Short reason for the panel when nothing could be read.
+ * @param[in]  err_n    Capacity of @p err.
+ * @return true if at least one address was read.
+ */
+static bool card_read_payouts(CryptnoxWallet &wallet,
+                              Pn532NfcTransport &transport,
+                              CW_CryptoProvider &crypto,
+                              const char *pin, size_t pin_chars,
+                              char *eth_out, size_t eth_n,
+                              char *tron_out, size_t tron_n,
+                              char *err, size_t err_n)
+{
+    eth_out[0]  = '\0';
+    tron_out[0] = '\0';
+
+    CW_SecureSession session;
+    /* setup = true: same 60-second cancellable poll, but the card-wait screen
+     * rather than the transaction one. Nothing is being paid here. */
+    if (!card_connect(wallet, transport, session, true)) {
+        (void)snprintf(err, err_n, s_user_cancelled ? "Cancelled"
+                                                    : "Card not found");
+        return false;
+    }
+
+    if (!wallet.verifyPin(session, reinterpret_cast<const uint8_t *>(pin),
+                          static_cast<uint8_t>(pin_chars))) {
+        wallet.disconnect(session);
+        (void)snprintf(err, err_n, "Wrong card PIN");
+        return false;
+    }
+
+    uint8_t pubkey[64];
+    WipeGuard g_pub(pubkey, sizeof(pubkey));
+
+    /* Ethereum: keccak256 of the uncompressed public key, low 20 bytes. Rendered
+     * checksummed so it reads exactly as the operator's own wallet shows it, which
+     * is the entire point of putting it on the screen. */
+    if (wallet.getPublicKey(session, ETH_DERIVE_PATH,
+                            static_cast<uint8_t>(sizeof(ETH_DERIVE_PATH)),
+                            pubkey)) {
+        uint8_t h[32];
+        keccak256(pubkey, sizeof(pubkey), h);
+        (void)eth_addr_format(&h[12], eth_out, eth_n);
+        CW_Utils::secure_wipe(h, sizeof(h));
+    } else {
+        ESP_LOGW(TAG, "card would not export its Ethereum key");
+    }
+
+    uint8_t addr21[CW_TRON_ADDRESS_BYTES];
+    if (wallet.getPublicKey(session, CW_TRON_DERIVE_PATH,
+                            CW_TRON_PATH_LENGTH, pubkey) &&
+        CW_Tron::addressBytesFromPublicKey(pubkey, addr21)) {
+        (void)CW_Tron::encodeAddress(addr21, crypto, tron_out, tron_n);
+    } else {
+        ESP_LOGW(TAG, "card would not export its Tron key");
+    }
+
+    wallet.disconnect(session);
+
+    if ((eth_out[0] == '\0') && (tron_out[0] == '\0')) {
+        (void)snprintf(err, err_n, "Card gave no usable address");
+        return false;
+    }
+    ESP_LOGI(TAG, "card addresses: eth=%s tron=%s", eth_out, tron_out);
+    return true;
+}
+
+/**
+ * @brief Run the browser wizard until the operator presses Finish.
+ *
+ * The flow, and the reason it is shaped this way:
+ *
+ *   1. admin code   on the panel  — the caller does this before calling us. It is
+ *                                   the one secret whose value is that it never
+ *                                   crosses a network.
+ *   2. QR code      on the panel  — a camera joins the SoftAP from it and the
+ *                                   captive portal opens the page by itself.
+ *   3. authorise    both          — the browser asks; the panel takes the code.
+ *   4. addresses    in the browser
+ *   5. Wi-Fi        in the browser
+ *   6. Finish       on the panel  — restarts, which is what applies everything.
+ *
+ * @param[in] wifi_only Skip step 4. For a terminal that is already configured but
+ *                      whose saved network has gone: the addresses are set, so
+ *                      asking again would be busywork standing between the operator
+ *                      and a working till.
+ * @return false if the portal could not be raised at all, in which case the caller
+ *         has to fall back to the panel.
+ */
+static bool run_wizard(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
+                       CW_CryptoProvider &crypto, bool wifi_only)
+{
+    if (!prov_start(PROV_MODE_WIZARD, ui_event_dispatch)) {
+        ESP_LOGE(TAG, "setup portal unavailable - falling back to the panel");
+        return false;
+    }
+
+    prov_set_step(PROV_STEP_AUTH);
+    ui_show_prov(PROV_STEP_AUTH);
+
+    /* Entering a step is two or three things, never one, and the Wi-Fi step's third
+     * thing is the reason this is a function: the scan has to run on THIS task,
+     * because it hops the radio across channels and briefly drops whoever is joined
+     * to the SoftAP. Doing it once as the step opens is deliberate; doing it inside
+     * an HTTP handler would drop the very browser asking. */
+    auto enter_step = [](prov_step_t step) {
+        prov_set_step(step);
+        ui_show_prov(step);
+        if (step == PROV_STEP_WIFI) {
+            net_wifi_ap_t aps[16];
+            prov_set_scan(aps, net_wifi_scan(aps, 16));
+        }
+    };
+
+    /* Held between the two halves of a card read: one tap yields both addresses,
+     * but only one value at a time can be waiting on the panel, so the second is
+     * parked here until the first is resolved either way. */
+    char card_eth[SETTINGS_PAYOUT_MAX]  = "";
+    char card_tron[SETTINGS_PAYOUT_MAX] = "";
+
+    ui_msg_t msg;
+    while (true) {
+        if (xQueueReceive(s_ui_queue, &msg, portMAX_DELAY) != pdTRUE) { continue; }
+
+        switch (msg.event) {
+            case UI_EVENT_PROV_AUTH:
+                /* A browser is asking to be let in. Demand the admin code on the
+                 * panel; the UI task resolves it and prov_auth_resolve() reports
+                 * the grant back here as PROV_NEXT, which is what moves the flow
+                 * on. A refusal reports nothing — the browser can ask again. */
+                ui_show_prov_auth();
+                break;
+
+            /* One event moves the flow on, whether it came from the browser's
+             * Continue button or from prov_auth_resolve() letting it in. */
+            case UI_EVENT_PROV_NEXT:
+                if (!prov_authed()) { break; }
+                if (prov_step() == PROV_STEP_AUTH) {
+                    prov_set_note("");
+                    enter_step(wifi_only ? PROV_STEP_WIFI : PROV_STEP_ADDR);
+                } else if (prov_step() == PROV_STEP_ADDR) {
+                    /* Refuse to leave the address step with nothing set. A terminal
+                     * with no payout address of its own offers no assets at all
+                     * (see the network picker), so letting this pass would end the
+                     * wizard on a till that cannot take a payment. */
+                    if (!settings_has_payout(false) && !settings_has_payout(true)) {
+                        prov_set_note("Set at least one payout address first.");
+                        break;
+                    }
+                    prov_set_note("");
+                    enter_step(PROV_STEP_WIFI);
+                }
+                break;
+
+            case UI_EVENT_PROV_SCAN: {
+                net_wifi_ap_t aps[16];
+                prov_set_scan(aps, net_wifi_scan(aps, 16));
+                break;
+            }
+
+            case UI_EVENT_PROV_CARD:
+                /* The page asked us to read the card. Collect the PIN first — the
+                 * card will not export a key without it. */
+                card_eth[0]  = '\0';
+                card_tron[0] = '\0';
+                s_user_cancelled = false;
+                prov_set_note("Follow the terminal screen.");
+                ui_show_card_pin();
+                break;
+
+            case UI_EVENT_CARD_PIN: {
+                char   pin[16]   = { 0 };
+                size_t pin_chars = ui_take_pin(pin, sizeof(pin));
+                char   err[48]   = { 0 };
+                const bool got = card_read_payouts(wallet, transport, crypto,
+                                                   pin, pin_chars,
+                                                   card_eth, sizeof(card_eth),
+                                                   card_tron, sizeof(card_tron),
+                                                   err, sizeof(err));
+                CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(pin), sizeof(pin));
+
+                ui_show_prov(prov_step());   /* back to the QR/step screen */
+                if (!got) {
+                    prov_set_note(err);
+                    break;
+                }
+                prov_set_note("Accept each address on the terminal screen.");
+                /* Ethereum first if there is one; the Tron one waits in card_tron
+                 * and is offered when this proposal is resolved. */
+                if (card_eth[0] != '\0') {
+                    (void)prov_propose(PROV_ASK_PAYOUT_ETH, card_eth);
+                    card_eth[0] = '\0';
+                } else if (card_tron[0] != '\0') {
+                    (void)prov_propose(PROV_ASK_PAYOUT_TRON, card_tron);
+                    card_tron[0] = '\0';
+                }
+                break;
+            }
+
+            case UI_EVENT_PROV_VALUE:
+                ui_show_prov_confirm();
+                break;
+
+            case UI_EVENT_PROV_VALUE_SET:
+            case UI_EVENT_PROV_VALUE_NO:
+                /* Accepted or refused, the panel slot is free again — so offer the
+                 * second card-derived address if one is still parked. */
+                if (card_tron[0] != '\0') {
+                    (void)prov_propose(PROV_ASK_PAYOUT_TRON, card_tron);
+                    card_tron[0] = '\0';
+                }
+                break;
+
+            case UI_EVENT_WIFI_TRY: {
+                if (!prov_authed()) { break; }
+                char w_ssid[33] = { 0 };
+                char w_pass[65] = { 0 };
+                bool joined = false;
+                if (ui_take_wifi_creds(w_ssid, sizeof(w_ssid),
+                                       w_pass, sizeof(w_pass)) > 0U) {
+                    ui_show_wifi_connecting(w_ssid);
+                    /* Associating proves nothing — a captive-portal or offline AP
+                     * joins fine. The clock is the proof, and it is also what TLS
+                     * needs before the first RPC call. */
+                    if (!net_wifi_connect(w_ssid, w_pass)) {
+                        prov_set_note(NOTE_JOIN_FAILED);
+                    } else if (!net_time_sync(15000U)) {
+                        prov_set_note(NOTE_NO_TIME);
+                    } else {
+                        settings_set_wifi(w_ssid, w_pass);
+                        joined = true;
+                    }
+                }
+                CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(w_pass),
+                                      sizeof(w_pass));
+                if (joined) {
+                    /* Done. The AP goes down with the portal, which is also what
+                     * dropped the operator's phone the moment we joined their
+                     * network — so the last word is on the panel, not in the
+                     * browser. */
+                    prov_stop();
+                    ui_show_prov(PROV_STEP_DONE);
+                } else {
+                    /* Still on the setup AP: the join failed, so the radio never
+                     * moved and the phone is most likely still with us. Rescan on
+                     * the way back — the list is a minute old and the network that
+                     * would not join may simply have gone. */
+                    enter_step(PROV_STEP_WIFI);
+                }
+                break;
+            }
+
+            case UI_EVENT_PROV_FINISH:
+                /* Restart to apply. The recipient and contract dual stores are
+                 * built at boot from validated strings; rebuilding them in place
+                 * would mean a second path into the money code that has to
+                 * re-validate everything the boot path already validates. A reboot
+                 * costs three seconds during setup and reuses the checks verbatim. */
+                prov_stop();
+                ESP_LOGW(TAG, "setup finished - restarting to apply it");
+                ui_set_boot_status("Applying settings");
+                vTaskDelay(pdMS_TO_TICKS(600));   /* let the screen land */
+                esp_restart();
+                break;
+
+            default:
+                break;
+        }
     }
 }
 
@@ -1070,6 +1363,21 @@ extern "C" void app_main(void)
         !eth_addr_parse(s_payout_eth, s_dest.addr_echo)) {
         ESP_LOGE(TAG, "Bad ADDR_TO in config");
         ui_show_tx_status(UI_TX_STATE_FAILED, "Bad ADDR_TO in config");
+        return;
+    }
+
+    /* Same shape for the ERC-20 contract, and for the same reason: it is settable
+     * from the config page now, so a stored value gets a probe parse and falls back
+     * to config.h on failure rather than stranding the terminal. */
+    if (settings_get_contract(false, s_contract_eth, sizeof(s_contract_eth)) &&
+        !eth_addr_parse(s_contract_eth, s_usdc.addr)) {
+        ESP_LOGE(TAG, "stored ERC-20 contract rejected - using config.h");
+        (void)snprintf(s_contract_eth, sizeof(s_contract_eth), "0x%s", ADDR_USDC);
+    }
+    if (!eth_addr_parse(s_contract_eth, s_usdc.addr) ||
+        !eth_addr_parse(s_contract_eth, s_usdc.addr_echo)) {
+        ESP_LOGE(TAG, "Bad ADDR_USDC in config");
+        ui_show_tx_status(UI_TX_STATE_FAILED, "Bad ADDR_USDC in config");
         return;
     }
     /* Warn if the recipient carries no EIP-55 checksum (no upper-case hex
@@ -1157,11 +1465,45 @@ extern "C" void app_main(void)
      * find out where takings go must see the one that is actually in use. */
     ESP_LOGI(TAG, "Tron recipient: %s", s_payout_tron);
 
-    /* TRC-20 contract, decoded the same way. Non-fatal on purpose: an operator
-     * who never charges in tokens leaves the placeholder in config.h, and the
-     * terminal must still boot — the asset is simply refused if selected. */
+    /* TRC-20 contract, decoded the same way. Operator-settable now, so the stored
+     * value is tried first and a failure falls back to config.h. Non-fatal on
+     * purpose either way: an operator who never charges in tokens leaves the
+     * placeholder in config.h, and the terminal must still boot — the asset is
+     * simply refused if selected. */
+    (void)settings_get_contract(true, s_contract_trx, sizeof(s_contract_trx));
+    s_trc20_usdt.b58 = s_contract_trx;
     if (!trc20_load(&s_trc20_usdt, cryptoProvider)) {
+        ESP_LOGW(TAG, "stored TRC-20 contract not usable - trying config.h");
+        (void)snprintf(s_contract_trx, sizeof(s_contract_trx), "%s", TRON_ADDR_USDT);
+    }
+    if (!s_trc20_usdt.ok && !trc20_load(&s_trc20_usdt, cryptoProvider)) {
         ESP_LOGW(TAG, "TRON_ADDR_USDT not usable - USDT on Tron disabled");
+    }
+
+    /* Refuse to come up selling an asset whose payout address nobody set.
+     *
+     * The picker will not let an operator *switch* to such a network, but that is
+     * not enough on its own: a terminal can already be sitting on one, which is
+     * exactly what happens when somebody configures Ethereum, is interrupted before
+     * Tron, and the stored chain is still Tron. The result looks entirely normal and
+     * pays the compile-time recipient — somebody else's address. So the selection is
+     * corrected here, at the one point that has both the stored chain and the
+     * resolved addresses in hand. */
+    if (!settings_has_payout(chain_is_tron())) {
+        if (settings_has_payout(!chain_is_tron())) {
+            const pos_chain_t to = chain_is_tron() ? POS_CHAIN_ETH_SEPOLIA
+                                                   : POS_CHAIN_TRON_NILE;
+            ESP_LOGW(TAG, "selected chain has no payout address - switching to %d",
+                     static_cast<int>(to));
+            settings_set_chain(to);
+            ui_refresh_addresses();
+        } else {
+            /* Neither network is configured. Nothing to switch to, so the terminal
+             * runs on its config.h recipient exactly as it always has — but the log
+             * says so, and the Tx tab says so on screen. */
+            ESP_LOGW(TAG, "no payout address configured - using the config.h "
+                          "recipient; set one from the config page");
+        }
     }
     Pn532NfcTransport   nfcTransport(&nfc, logger);
     ESP32Platform       platform;
@@ -1190,59 +1532,71 @@ extern "C" void app_main(void)
      * attacker has to beat both that check and TLS rather than just the one. */
     tron_rpc_set_ca_cert(TRON_CA_CERT_PEM);
 #endif
-    /* ── First run: greet, then set up ────────────────────────── */
-    /* A missing admin code means a virgin or factory-reset terminal, since the
+    /* ── First run: greet, take the admin code, then hand over to the browser ──
+     *
+     * A missing admin code means a virgin or factory-reset terminal, since the
      * reset erases it too. Greet before the setup steps start asking for a
      * network and a code — it is the one moment we have the operator's attention
-     * and nothing to demand of them yet. */
+     * and nothing to demand of them yet.
+     *
+     * The admin code is the one step that stays on this panel. Not for tidiness:
+     * its entire value is that it is never on a network, and it also has to exist
+     * before anything else, because the Wi-Fi picker carries a back arrow that the
+     * UI task honours on its own — which drops the operator on the amount screen,
+     * burger included, while main is still blocked in setup. With no code stored
+     * that burger opened the settings freely. Creating the code first closes that
+     * window; the creation screen itself has no way out.
+     *
+     * run_wizard() does not return: it ends in a restart, which is what applies
+     * the addresses. It only comes back if the portal could not be raised at all,
+     * and then the panel picker below is the fallback. */
     const bool first_run = !settings_has_admin_code();
     if (first_run) {
         ui_show_welcome();
         wait_for_ui_event(UI_EVENT_WELCOME_DONE);
 
-        /* Raise the setup portal for the whole of first run. It runs beside the
-         * panel rather than instead of it: every step below can be answered from
-         * a phone or typed here, and prov_start() reports submissions through the
-         * same callback the UI task uses, so main cannot tell them apart. */
-        s_portal_up = prov_start(ui_event_dispatch);
-        if (!s_portal_up) {
-            ESP_LOGW(TAG, "setup portal unavailable - panel-only setup");
-        }
-
-        /* The code comes BEFORE the network, and not for tidiness: the Wi-Fi
-         * picker carries a back arrow that the UI task honours on its own, which
-         * drops the operator on the amount screen — burger included — while main
-         * is still blocked here. With no code stored yet, that burger opened the
-         * settings freely. Creating the code first closes that window; the
-         * creation screen itself has no way out. */
         ESP_LOGI(TAG, "no admin code - first-run setup");
-        bool on_panel = true;
-        if (s_portal_up) {
-            static const ui_event_t want[] = { UI_EVENT_ADMIN_SET,
-                                               UI_EVENT_PROV_LOCAL };
-            prov_set_step(PROV_STEP_ADMIN);
-            ui_show_prov(PROV_STEP_ADMIN);
-            on_panel = (wait_for_one_of(want, 2) == UI_EVENT_PROV_LOCAL);
-        }
-        if (on_panel) {
-            ui_show_admin_set();
-            wait_for_ui_event(UI_EVENT_ADMIN_SET);
-        }
-        if (s_portal_up) { prov_set_step(PROV_STEP_WIFI); }
+        ui_show_admin_set();
+        wait_for_ui_event(UI_EVENT_ADMIN_SET);
+
+        (void)run_wizard(wallet, nfcTransport, cryptoProvider, false);
     }
 
     ui_set_boot_status("Starting network");
     net_wifi_init();
 
     /* Wi-Fi and a valid clock are one bring-up step, since TLS needs both: a
-     * failed sync sends the operator back to the picker with the reason rather
-     * than stranding the terminal on an error screen. */
-    bool        try_saved = true;
-    const char *net_note  = NULL;
+     * failed sync sends the operator back to setup with the reason rather than
+     * stranding the terminal on an error screen.
+     *
+     * A configured terminal whose saved network has gone gets the wizard too, cut
+     * short to the Wi-Fi step: the addresses are already set, so asking again would
+     * be busywork standing between the operator and a working till. Typing a venue
+     * passphrase on this panel is exactly what the browser flow exists to avoid, so
+     * the panel picker is only reached when the SoftAP itself could not come up. */
+    bool        try_saved  = true;
+    /* first_run already ran the full wizard, so it has had its turn. */
+    bool        offer_setup = !first_run;
+    const char *net_note   = NULL;
     while (true) {
-        if (ensure_wifi(try_saved, net_note)) {
-            ui_show_splash();   /* only when the picker took the screen */
+        if (!(try_saved && wifi_try_saved())) {
+            /* No usable saved network. The browser flow first, once; then the panel
+             * picker, which is also where a failed clock sync sends us. */
+            if (offer_setup) {
+                offer_setup = false;
+                (void)run_wizard(wallet, nfcTransport, cryptoProvider, true);
+                /* Only reached if the SoftAP would not come up. */
+                ESP_LOGW(TAG, "no setup portal - panel Wi-Fi picker");
+            }
+            /* Only blame the saved network if there was one — on a terminal that
+             * has never been on a network this is the first screen, not a failure. */
+            if ((net_note == NULL) && settings_has_wifi()) {
+                net_note = "Could not join the saved network";
+            }
+            (void)wifi_picker(net_note);
+            ui_show_splash();   /* the picker took the screen */
         }
+
         ui_set_boot_status("Syncing clock");
         if (sync_time()) {
             wifi_keep_or_drop(true);    /* proven usable — safe to persist */
@@ -1256,56 +1610,6 @@ extern "C" void app_main(void)
         /* Force the picker: retrying the same network loops straight back here. */
         try_saved = false;
         net_note  = NOTE_NO_TIME;
-    }
-
-    /* ── First run, last step: where the takings go ────────────── */
-    /* Optional, unlike the two before it: config.h already carries a recipient,
-     * so declining leaves a terminal that works. Offered on the phone only — the
-     * whole point is not typing 42 characters on this panel — but ACCEPTED only
-     * here, on the screen in the operator's hands. The portal can propose an
-     * address; the modal is what stores one.
-     *
-     * A stored address takes effect through a restart. The recipient was parsed
-     * into its dual store hundreds of lines above, and rebuilding that in place
-     * would mean a second path into the money code that has to re-validate
-     * everything the boot path already validates. A reboot costs three seconds
-     * during setup and reuses the checks verbatim. */
-    if (first_run && s_portal_up) {
-        prov_set_step(PROV_STEP_ADDR);
-        ui_show_prov(PROV_STEP_ADDR);
-
-        static const ui_event_t want[] = { UI_EVENT_PROV_SKIP,
-                                           UI_EVENT_ADDR_PROPOSED,
-                                           UI_EVENT_ADDR_SET };
-        bool restart = false;
-        bool done    = false;
-        while (!done) {
-            switch (wait_for_one_of(want, 3)) {
-                case UI_EVENT_ADDR_PROPOSED:
-                    /* Rejecting emits nothing, so the loop simply waits again and
-                     * the operator can be offered another address. */
-                    ui_show_addr_confirm();
-                    break;
-                case UI_EVENT_ADDR_SET:
-                    restart = true;
-                    done    = true;
-                    break;
-                default:
-                    done = true;
-                    break;
-            }
-        }
-        prov_stop();
-        s_portal_up = false;
-        if (restart) {
-            ESP_LOGW(TAG, "payout address stored - restarting to apply it");
-            ui_set_boot_status("Applying settings");
-            vTaskDelay(pdMS_TO_TICKS(600));   /* let the screen land */
-            esp_restart();
-        }
-    } else if (s_portal_up) {
-        prov_stop();
-        s_portal_up = false;
     }
 
     /* One RPC round-trip at boot, for two reasons at once: it proves the
@@ -1494,6 +1798,81 @@ extern "C" void app_main(void)
                  * appearing over a customer's transaction. */
                 ui_show_ota_confirm();
                 break;
+
+            /* ── The admin page, open beside a running terminal ──
+             * Same handlers as the wizard's, and for the same reason: a browser may
+             * propose, only the panel may accept. Routed through this queue so an
+             * offer waits behind a payment in progress rather than appearing over
+             * a customer's transaction. */
+            case UI_EVENT_PROV_AUTH:
+                ui_show_prov_auth();
+                break;
+
+            case UI_EVENT_PROV_VALUE:
+                ui_show_prov_confirm();
+                break;
+
+            case UI_EVENT_PROV_VALUE_SET:
+                /* Stored. The recipient and contract dual stores are built at boot
+                 * from validated strings, so the change takes effect through a
+                 * restart — the same rule the wizard follows, and for the same
+                 * reason: the alternative is a second path into the money code that
+                 * has to re-validate everything the boot path already validates. */
+                ESP_LOGW(TAG, "config changed from the admin page - restarting");
+                prov_stop();
+                ui_set_boot_status("Applying settings");
+                vTaskDelay(pdMS_TO_TICKS(600));
+                esp_restart();
+                break;
+
+            case UI_EVENT_PROV_CARD: {
+                /* Deriving addresses from a card mid-shift is the same flow as in
+                 * the wizard, so it reuses it: PIN on the keypad, tap, then the
+                 * accept-on-the-panel handshake. */
+                s_user_cancelled = false;
+                prov_set_note("Follow the terminal screen.");
+                ui_show_card_pin();
+                break;
+            }
+
+            case UI_EVENT_CARD_PIN: {
+                char   pin[16]   = { 0 };
+                size_t pin_chars = ui_take_pin(pin, sizeof(pin));
+                char   c_eth[SETTINGS_PAYOUT_MAX]  = "";
+                char   c_tron[SETTINGS_PAYOUT_MAX] = "";
+                char   err[48] = { 0 };
+                const bool got = card_read_payouts(wallet, nfcTransport,
+                                                   cryptoProvider,
+                                                   pin, pin_chars,
+                                                   c_eth, sizeof(c_eth),
+                                                   c_tron, sizeof(c_tron),
+                                                   err, sizeof(err));
+                CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(pin), sizeof(pin));
+                ui_show_amount_entry();
+                if (!got) {
+                    prov_set_note(err);
+                } else {
+                    /* One at a time here too. Unlike the wizard this loop does not
+                     * park waiting for the second, because accepting the first
+                     * restarts the terminal — so the operator taps the card again
+                     * for the other network, which is a fair trade for not having
+                     * two ways to store an address. */
+                    prov_set_note("Accept the address on the terminal screen. "
+                                  "Tap the card again for the other network.");
+                    if (c_eth[0] != '\0') {
+                        (void)prov_propose(PROV_ASK_PAYOUT_ETH, c_eth);
+                    } else if (c_tron[0] != '\0') {
+                        (void)prov_propose(PROV_ASK_PAYOUT_TRON, c_tron);
+                    }
+                }
+                break;
+            }
+
+            case UI_EVENT_PROV_SCAN: {
+                net_wifi_ap_t aps[16];
+                prov_set_scan(aps, net_wifi_scan(aps, 16));
+                break;
+            }
 
             case UI_EVENT_WIFI_SCAN: {
                 /* Scan runs in this task so the UI stays responsive. */

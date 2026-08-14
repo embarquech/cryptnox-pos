@@ -6,42 +6,37 @@
 /**
  * @file ota.h
  * @ingroup device
- * @brief Browser-mediated firmware update: the terminal never talks to GitHub,
- *        a browser on the same network carries the bytes.
+ * @brief Firmware slot handling: receive an image into the idle slot, verify it,
+ *        and install it only once somebody accepts it on the panel.
  *
- * Why not esp_https_ota, which would be a tenth of this code: because it makes
- * every terminal in the field open a connection to a third party that then knows
- * how many units exist, where they are and which firmware each one runs. A
- * payment terminal should not be the thing that publishes that. So the browser
- * is the courier — it fetches the release manifest and the image from GitHub over
- * its own connection, then POSTs the image to the terminal:
+ * This file owns the flash, not the network. The bytes arrive through the config
+ * portal (provision.h), which serves the update page and drives the three-call
+ * streaming API below; keeping the two apart means the partition logic is not
+ * entangled with a web server, and the portal has exactly one place to POST to.
+ *
+ * Why the browser is the courier rather than esp_https_ota, which would be a tenth
+ * of the code: because that makes every terminal in the field open a connection to
+ * a third party who then knows how many units exist, where they are and which
+ * firmware each one runs. A payment terminal should not be the thing that
+ * publishes that. So:
  *
  *     browser --HTTPS--> raw.githubusercontent.com   (manifest, then image)
- *     browser --HTTP---> http://<terminal>/api/ota   (image, streamed to flash)
+ *     browser --HTTPS--> https://<terminal>/api/ota  (image, streamed to flash)
  *
- * That shape is forced, not chosen. The update page has to be served by the
- * terminal over plain HTTP, and a page served over HTTPS cannot POST to an
- * http:// address — mixed content, blocked everywhere — so hosting the nice page
- * on a website and pushing from there is not an option. An HTTP page fetching
- * HTTPS is fine, which is the direction that has to work.
+ * Consequence for the operator: the browser needs the internet and the terminal at
+ * the same moment, so this runs on the venue network the terminal already joined.
+ * The page's file picker covers a venue network with no internet — download the
+ * image anywhere, upload it here.
  *
- * Consequence for the operator: the browser needs the internet and the terminal
- * at the same moment, so this runs on the venue network the terminal already
- * joined, with the laptop or phone on that same network. The page's file picker
- * covers the case where that network has no internet — download the image
- * anywhere, upload it here.
- *
- * Threat model. Plain HTTP over a LAN, so the bytes are neither confidential nor
- * authenticated in transit, and the admin code that gates POST /api/ota crosses
- * that LAN in a header. Neither is what keeps a stranger's firmware off the
- * device: the signature is (CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT, see
- * sdkconfig.defaults.release). esp_ota_end() refuses an image that is not signed
- * by the key this firmware was built against, which is checked *before* the
- * staged slot can ever become bootable. On top of that the server only runs when
- * an operator turns it on from behind the admin code, it stops itself after
- * OTA_WINDOW_MIN minutes, and nothing reboots until somebody accepts the
- * received version on the panel — the same "a phone may propose, only the panel
- * may accept" rule the payout addresses follow.
+ * Threat model. What keeps a stranger's firmware off the device is not the
+ * transport and not the admin code: it is the signature
+ * (CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT, see sdkconfig.defaults.release).
+ * @ref ota_end refuses an image that is not signed by the key this firmware was
+ * built against, and it does so *before* the staged slot can become bootable. On
+ * top of that the portal only runs when an operator turns it on from behind the
+ * admin code, it closes itself, and nothing reboots until the received version is
+ * accepted on the panel — the same "a browser may propose, only the panel may
+ * accept" rule the payout addresses follow.
  */
 
 #ifndef OTA_H
@@ -50,14 +45,12 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#include "ui.h"   /* ui_event_cb_t — a received image is reported as a UI event */
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/** @brief How long the update server stays up before closing itself, minutes. */
-#define OTA_WINDOW_MIN  15U
+/** @brief Longest version string kept from an image header, plus NUL elsewhere. */
+#define OTA_ERR_MAX  160U
 
 /**
  * @brief Confirm the running image, cancelling the rollback armed by the
@@ -82,49 +75,45 @@ void ota_mark_valid(void);
 const char *ota_running_version(void);
 
 /**
- * @brief Start the update server on the joined network.
+ * @brief Open the idle slot for an image of @p len bytes.
  *
- * Serves the update page and its two endpoints on port 80 of every live
- * interface. Idempotent. Does not raise an AP: the terminal has to be on a
- * network already, which is also the network the operator's browser is on.
+ * Erases only the pages that will be written, which on a 1.94 MB slot is a few
+ * seconds saved with the operator watching. Refuses a second concurrent upload, a
+ * length that is not plausibly firmware, and a device whose partition table has no
+ * second app slot at all.
  *
- * @param[in] cb Where a received image is reported, so the panel can ask about
- *               it. The same callback the UI task uses. Must outlive the call.
- * @return true if the server came up. false if no network is joined, in which
- *         case there would be no way to reach it.
+ * @param[in]  len Exact image length, from Content-Length.
+ * @param[out] err Set to a caller-displayable reason on failure; never NULL on
+ *                 return, points at a string literal.
+ * @return true with the slot open — the caller must then reach @ref ota_end or
+ *         @ref ota_abort, or the slot stays claimed until the next boot.
  */
-bool ota_start(ui_event_cb_t cb);
+bool ota_begin(size_t len, const char **err);
 
-/** @brief Stop the update server. Safe if never started. Drops a staged image. */
-void ota_stop(void);
-
-/** @brief Whether the update server is up. */
-bool ota_is_running(void);
+/** @brief Append @p n bytes to the open slot. @return false on a write error. */
+bool ota_write(const void *buf, size_t n);
 
 /**
- * @brief The URL to type into a browser, or "" if the server is not up.
+ * @brief Close and verify the received image, then stage it for the panel.
  *
- * The terminal's address on the joined network ("http://192.168.1.34/"), shown
- * on the panel because there is nowhere else the operator could learn it. mDNS
- * would save the typing; Android's support for it is not dependable enough to
- * put in the one screen that has to work.
- */
-const char *ota_url(void);
-
-/**
- * @brief Just the dotted address, no scheme ("192.168.1.40"), or "".
+ * The gate. Checks the image's own SHA-256, and — on a signed build — its
+ * signature against the public key in the running firmware. An image that fails
+ * here never becomes bootable, whoever uploaded it. On success the version is read
+ * out of the image that was just verified, never out of anything the browser said
+ * about it, and the image is staged: written, valid, and still not bootable.
  *
- * What the panel shows. The full URL does not fit on one line of the 240 px
- * screen at a size worth reading, and wrapping it breaks the address across two
- * lines mid-number, which is the one string on that card nobody may mistype. A
- * browser given a bare IPv4 literal goes to http:// anyway — address literals
- * are not HTTPS-upgraded — so the scheme is only needed by @ref ota_url for the
- * log and for curl.
+ * @param[out] ver   Version from the image header, may be NULL.
+ * @param[in]  ver_n Capacity of @p ver.
+ * @param[out] err   Displayable reason on failure; never NULL on return.
+ * @return true if the image is staged and awaiting acceptance on the panel.
  */
-const char *ota_ip(void);
+bool ota_end(char *ver, size_t ver_n, const char **err);
 
-/** @brief Minutes left in the update window, 0 once it has closed. */
-unsigned ota_window_left_min(void);
+/** @brief Give up on an upload in progress. Nothing is installed. Safe always. */
+void ota_abort(void);
+
+/** @brief Whether an upload is in flight, so a second can be refused. */
+bool ota_receiving(void);
 
 /**
  * @brief Fetch the version of an image that has been received and verified but
@@ -149,6 +138,15 @@ bool ota_staged(char *version, size_t version_n, bool *older);
  *         bootable. Does not return on success with @p install true.
  */
 bool ota_commit(bool install);
+
+/**
+ * @brief Withdraw an offer nobody accepted.
+ *
+ * Called when the portal closes. The bytes stay in the idle slot — harmless, it is
+ * not bootable and the next upload overwrites it — but the offer is gone, so a
+ * refused image cannot be installed by whoever wanders past next.
+ */
+void ota_forget(void);
 
 #ifdef __cplusplus
 }

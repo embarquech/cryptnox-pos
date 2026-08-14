@@ -24,6 +24,13 @@ extern "C" {
 
 #include "config.h"   /* MAX_FEE / MAX_PRIORITY_FEE — compile-time fee defaults */
 
+/* Same guard main.cpp carries: Tron TRC-20 support post-dates the first config.h
+ * files in the field, so an absent contract compiles to an empty string that
+ * fails its decode and disables the asset, rather than breaking the build. */
+#ifndef TRON_ADDR_USDT
+#define TRON_ADDR_USDT  ""
+#endif
+
 static const char *const TAG = "settings";
 
 #define NS_SETTINGS   "settings"
@@ -41,6 +48,11 @@ static const char *const TAG = "settings";
 #define K_PAY_ETH2    "pay_eth_e"
 #define K_PAY_TRX     "pay_trx"
 #define K_PAY_TRX2    "pay_trx_e"
+/* Token contracts, same treatment — see settings_get_contract. */
+#define K_CT_ETH      "ct_eth"
+#define K_CT_ETH2     "ct_eth_e"
+#define K_CT_TRX      "ct_trx"
+#define K_CT_TRX2     "ct_trx_e"
 
 #define ADMIN_SALT_LEN    16U
 #define ADMIN_HASH_LEN    32U
@@ -327,17 +339,26 @@ uint8_t settings_admin_fail_count(void)
     return n;
 }
 
-/* Payout addresses. Two keys per network — the value and an echo copy — read
- * back and compared, so a torn write or a flipped bit in NVS cannot silently
- * redirect a payment. See the settings.h contract for why the compile-time
+/* Money-carrying addresses — the payout recipient and the token contract. Two
+ * keys each: the value and an echo copy, read back and compared, so a torn write
+ * or a flipped bit in NVS cannot silently redirect a payment or point the terminal
+ * at a different asset. See the settings.h contract for why the compile-time
  * address does not need this and a stored one does. */
-bool settings_get_payout(bool tron, char *out, size_t n)
+
+/**
+ * @brief Read a dual-stored address, falling back to @p def on any doubt.
+ *
+ * @param[in]  k_val  NVS key holding the value.
+ * @param[in]  k_echo NVS key holding its echo copy.
+ * @param[in]  def    Compile-time fallback, already in the returned form.
+ * @param[in]  what   Label for the log line when the copies disagree.
+ * @return true if the stored pair agreed and was returned.
+ */
+static bool dual_get(const char *k_val, const char *k_echo, const char *def,
+                     const char *what, char *out, size_t n)
 {
     if ((out == NULL) || (n == 0U)) { return false; }
     out[0] = '\0';
-
-    const char *const k_val  = tron ? K_PAY_TRX  : K_PAY_ETH;
-    const char *const k_echo = tron ? K_PAY_TRX2 : K_PAY_ETH2;
 
     char val[SETTINGS_PAYOUT_MAX]  = { 0 };
     char echo[SETTINGS_PAYOUT_MAX] = { 0 };
@@ -357,32 +378,25 @@ bool settings_get_payout(bool tron, char *out, size_t n)
     if (stored && !CW_Utils::secure_compare(reinterpret_cast<const uint8_t *>(val),
                                             reinterpret_cast<const uint8_t *>(echo),
                                             sizeof(val))) {
-        ESP_LOGE(TAG, "payout(%s): stored copies disagree - using config.h",
-                 tron ? "tron" : "eth");
+        ESP_LOGE(TAG, "%s: stored copies disagree - using config.h", what);
         stored = false;
     }
 
-    /* Ethereum addresses are handed out "0x"-prefixed so every caller can parse
-     * them directly; config.h stores them bare, the setup form accepts either. */
-    if (stored) {
-        (void)snprintf(out, n, "%s", val);
-    } else if (tron) {
-        (void)snprintf(out, n, "%s", TRON_ADDR_TO);
-    } else {
-        (void)snprintf(out, n, "0x%s", ADDR_TO);
-    }
+    (void)snprintf(out, n, "%s", stored ? val : def);
     CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(val), sizeof(val));
     CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(echo), sizeof(echo));
     return stored;
 }
 
-bool settings_set_payout(bool tron, const char *addr)
+/** @brief Write a dual-stored address, normalising Ethereum to "0x"-prefixed. */
+static bool dual_set(const char *k_val, const char *k_echo, bool tron,
+                     const char *what, const char *addr)
 {
     if ((addr == NULL) || (addr[0] == '\0')) { return false; }
     if (strlen(addr) >= SETTINGS_PAYOUT_MAX) { return false; }
 
-    /* Normalise to the form settings_get_payout hands back, so the echo
-     * comparison compares like with like on the next boot. */
+    /* Normalise to the form the getter hands back, so the echo comparison
+     * compares like with like on the next boot. */
     char norm[SETTINGS_PAYOUT_MAX];
     if (tron) {
         (void)snprintf(norm, sizeof(norm), "%s", addr);
@@ -394,17 +408,55 @@ bool settings_set_payout(bool tron, const char *addr)
     bool         ok = false;
     nvs_handle_t h;
     if (nvs_open(NS_SETTINGS, NVS_READWRITE, &h) == ESP_OK) {
-        ok = (nvs_set_str(h, tron ? K_PAY_TRX  : K_PAY_ETH,  norm) == ESP_OK) &&
-             (nvs_set_str(h, tron ? K_PAY_TRX2 : K_PAY_ETH2, norm) == ESP_OK) &&
+        ok = (nvs_set_str(h, k_val,  norm) == ESP_OK) &&
+             (nvs_set_str(h, k_echo, norm) == ESP_OK) &&
              (nvs_commit(h) == ESP_OK);
         nvs_close(h);
     }
     if (ok) {
-        ESP_LOGW(TAG, "payout(%s) set to %s", tron ? "tron" : "eth", norm);
+        ESP_LOGW(TAG, "%s set to %s", what, norm);
     } else {
-        ESP_LOGE(TAG, "payout(%s): NVS write failed", tron ? "tron" : "eth");
+        ESP_LOGE(TAG, "%s: NVS write failed", what);
     }
     return ok;
+}
+
+bool settings_get_payout(bool tron, char *out, size_t n)
+{
+    /* Ethereum addresses are handed out "0x"-prefixed so every caller can parse
+     * them directly; config.h stores them bare, the setup form accepts either. */
+    return tron
+        ? dual_get(K_PAY_TRX, K_PAY_TRX2, TRON_ADDR_TO, "payout(tron)", out, n)
+        : dual_get(K_PAY_ETH, K_PAY_ETH2, "0x" ADDR_TO, "payout(eth)",  out, n);
+}
+
+bool settings_has_payout(bool tron)
+{
+    char scratch[SETTINGS_PAYOUT_MAX];
+    const bool stored = settings_get_payout(tron, scratch, sizeof(scratch));
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(scratch), sizeof(scratch));
+    return stored;
+}
+
+bool settings_set_payout(bool tron, const char *addr)
+{
+    return tron
+        ? dual_set(K_PAY_TRX, K_PAY_TRX2, true,  "payout(tron)", addr)
+        : dual_set(K_PAY_ETH, K_PAY_ETH2, false, "payout(eth)",  addr);
+}
+
+bool settings_get_contract(bool tron, char *out, size_t n)
+{
+    return tron
+        ? dual_get(K_CT_TRX, K_CT_TRX2, TRON_ADDR_USDT, "contract(tron)", out, n)
+        : dual_get(K_CT_ETH, K_CT_ETH2, "0x" ADDR_USDC, "contract(eth)",  out, n);
+}
+
+bool settings_set_contract(bool tron, const char *addr)
+{
+    return tron
+        ? dual_set(K_CT_TRX, K_CT_TRX2, true,  "contract(tron)", addr)
+        : dual_set(K_CT_ETH, K_CT_ETH2, false, "contract(eth)",  addr);
 }
 
 void settings_factory_reset(void)
