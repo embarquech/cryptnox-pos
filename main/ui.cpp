@@ -1108,7 +1108,14 @@ static void build_settings(void) {
      * there: it raises the config page and shows a QR code to scan. Same row on
      * the About tab, because "update the firmware" and "change the addresses" are
      * two things on one page and an operator should reach it from either. */
-    lv_obj_t *cpill = make_pill(t_wifi, "Configure", "Scan to open in a browser",
+    /* Subtitle held to make_pill's cap, like the Update row on the About tab:
+     * TAB_W - PILL_TEXT_X - PILL_TEXT_PAD_R = 140px, and montserrat_14 renders
+     * "Scan to open in a browser" at 184px — so it arrived dot-elided, which on
+     * the row that explains the feature reads as a bug. This is 131px, and it
+     * says where the operator ends up rather than naming a QR code they have not
+     * been shown yet; the screen this opens is what shows them the code. Reads as
+     * a pair with the About tab's "From a browser". */
+    lv_obj_t *cpill = make_pill(t_wifi, "Configure", "Open in a browser",
                                 TAB_W, 116, ACT_PORTAL);
     lv_obj_align(make_glyph_disc(cpill, LV_SYMBOL_SETTINGS, COL_ACCENT, COIN_SZ),
                  LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
@@ -1520,8 +1527,11 @@ static void open_network_picker(void) {
          * address — and look entirely normal doing it. */
         const bool have = settings_has_payout(NETS[i].tron);
         lv_coord_t y = static_cast<lv_coord_t>(22 + (i * (PILL_H + 2)));
+        /* "No payout address" measured 133px against this pill's
+         * PICK_W - PILL_TEXT_X - PILL_TEXT_PAD_R = 130px cap, so the one row
+         * that explains why a network is greyed out arrived elided. */
         lv_obj_t  *p = make_pill(card, NETS[i].name,
-                                 have ? NETS[i].sub : "No payout address",
+                                 have ? NETS[i].sub : "No payout set",
                                  PICK_W, y, NETS[i].act);
         lv_obj_align(make_net_badge(p, NETS[i].tron),
                      LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
@@ -1605,12 +1615,49 @@ static void add_menu_button(void) {
     (void)make_icon_button(LV_SYMBOL_LIST, ACT_SETTINGS);
 }
 
+/**
+ * @brief Screen title, centred but never underneath the top-left icon button.
+ *
+ * A centred 20px title and a hard-left icon button are two independent claims on
+ * the same row, and on a 240px screen the wide ones collide: "Authorise browser"
+ * measures 187px, so centred it starts at x=26 and the back arrow — which ends at
+ * x=46 — was drawn straight through its first two characters.
+ *
+ * So the title gets the gap between the two gutters and nothing more. If it does
+ * not fit at 20px it drops to the 14px face, where "Authorise browser" is 131px
+ * and fits with room to spare. Shrinking beats both alternatives: overlapping is
+ * the bug being fixed, and dot-eliding a title on a screen whose entire job is to
+ * say what it wants is worse than a smaller one. The width cap and LONG_DOT stay
+ * on as the backstop for a title too long even at 14px.
+ *
+ * @param has_icon true when make_icon_button() has put a glyph in the top-left.
+ */
+static lv_obj_t *make_title(const char *txt, bool has_icon) {
+    /* Symmetric, so the title stays optically centred on the screen rather than
+     * centred in the leftover space beside the button. */
+    const lv_coord_t gutter = has_icon ? (MENU_BTN_X + MENU_BTN_W + 4) : 8;
+    const lv_coord_t avail  = SCR_W - (2 * gutter);
+
+    const bool small = lv_txt_get_width(txt, strlen(txt), &lv_font_montserrat_20,
+                                        0, LV_TEXT_FLAG_NONE) > avail;
+    /* +4 keeps the shorter 14px cap optically level with the 20px arrow glyph
+     * beside it, which is drawn from the same HDR_TITLE_Y baseline. */
+    lv_obj_t *l = make_label(lv_scr_act(), txt, COL_TITLE,
+                             small ? &lv_font_montserrat_14
+                                   : &lv_font_montserrat_20,
+                             LV_ALIGN_TOP_MID, 0,
+                             small ? (HDR_TITLE_Y + 4) : HDR_TITLE_Y);
+    lv_obj_set_width(l, avail);
+    lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    return l;
+}
+
 /* Identical header on every screen: eyebrow title + rule + burger menu. */
 /* Title + divider only — the burger (settings) lives solely on the amount
  * screen so settings can't be opened mid-transaction. */
 static void build_header(const char *title) {
-    make_label(lv_scr_act(), title, COL_TITLE, &lv_font_montserrat_20,
-               LV_ALIGN_TOP_MID, 0, HDR_TITLE_Y);
+    (void)make_title(title, false);
     make_divider(lv_scr_act(), HDR_DIVIDER_Y);
 }
 
@@ -2080,10 +2127,7 @@ static void build_pin(void) {
     CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_pin), sizeof(s_pin));
     s_pin_len = 0;
 
-    make_label(lv_scr_act(),
-               s_pin_for_card ? "Card PIN" : "Enter PIN",
-               COL_TITLE, &lv_font_montserrat_20,
-               LV_ALIGN_TOP_MID, 0, HDR_TITLE_Y);
+    (void)make_title(s_pin_for_card ? "Card PIN" : "Enter PIN", true);
     /* Back (cancel) icon, top-left like the burger on other screens. */
     (void)make_icon_button(LV_SYMBOL_LEFT, ACT_PIN_CANCEL);
 
@@ -2243,8 +2287,7 @@ static void admin_kbd_cb(lv_event_t *e) {
 /* Shared body of both admin screens; only the title and the way out differ. */
 static void build_admin_screen(const char *title, bool allow_cancel) {
     clear_screen();
-    make_label(lv_scr_act(), title, COL_TITLE, &lv_font_montserrat_20,
-               LV_ALIGN_TOP_MID, 0, HDR_TITLE_Y);
+    (void)make_title(title, allow_cancel);
     if (allow_cancel) {
         (void)make_icon_button(LV_SYMBOL_LEFT, ACT_ADMIN_CANCEL);
     }
@@ -2273,8 +2316,7 @@ static void build_admin_unlock(void) {
 
 /* Header with a back arrow (to amount entry) instead of the burger. */
 static void build_header_back(const char *title) {
-    make_label(lv_scr_act(), title, COL_TITLE, &lv_font_montserrat_20,
-               LV_ALIGN_TOP_MID, 0, HDR_TITLE_Y);
+    (void)make_title(title, true);
     make_divider(lv_scr_act(), HDR_DIVIDER_Y);
     (void)make_icon_button(LV_SYMBOL_LEFT, ACT_WIFI_CANCEL);
 }

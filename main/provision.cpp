@@ -553,27 +553,161 @@ static bool gate(httpd_req_t *req, esp_err_t *rc)
  * building DOM keeps the JavaScript to something a reviewer can read, and means
  * the wizard and the admin page cannot drift apart into two designs. */
 static const char *const PAGE_HTML =
-"<!doctype html><html><head><meta charset=utf-8>"
+"<!doctype html><html lang=en><head><meta charset=utf-8>"
 "<meta name=viewport content='width=device-width,initial-scale=1'>"
 "<title>Cryptnox terminal</title><style>"
-"body{font:16px/1.5 system-ui,sans-serif;margin:0;padding:24px 20px;"
-"background:#fff;color:#000;max-width:34rem}"
-"h1{font-size:1.25rem;margin:0 0 1rem}h2{font-size:1rem;margin:1.75rem 0 .5rem}"
-"p{color:#555;margin:.25rem 0 1rem}"
-"input,button,select{font:inherit;width:100%;padding:12px;margin:4px 0;"
-"box-sizing:border-box;border:1px solid #ccc;border-radius:8px}"
-"button{background:#000;color:#fff;border:0;margin-top:8px}"
-"button[disabled]{background:#888}"
-"button.alt{background:#f2f2f2;color:#000;border:1px solid #ccc}"
-"code{background:#f2f2f2;padding:2px 5px;border-radius:4px;word-break:break-all}"
-"pre{background:#f2f2f2;padding:10px;border-radius:8px;white-space:pre-wrap;"
-"color:#333;font-size:.9rem}"
-"#msg{min-height:1.5em;color:#000}"
-".wait{background:#f2f2f2;border-radius:8px;padding:14px 16px}"
+
+/* The Cryptnox palette, taken from the brand's own stylesheet
+ * (cryptnox.github.io/docs/source/_static/custom.css): apricot #fcb770 as the
+ * accent, slate #2c3e50 as the ink, #e1e4e5 hairlines. Plus a dark scheme,
+ * because this is opened on a phone in a venue and a white page at night is the
+ * first thing an operator complains about. Custom properties rather than two
+ * stylesheets: the dark block only restates the colours that differ.
+ *
+ * --accf is slate and NOT white on purpose. #fcb770 is a light accent: white on
+ * it is 1.8:1 and unreadable, slate on it is 6.3:1 and passes AA. Anything put on
+ * the accent from here on uses --accf. */
+":root{color-scheme:light dark;accent-color:var(--acc);"
+"--bg:#f4f6f8;--card:#fff;--fg:#2c3e50;--dim:#5a6874;--line:#e1e4e5;"
+"--soft:#f8f9fa;--acc:#fcb770;--accf:#2c3e50;--ink:#2c3e50;"
+"--tint:#fdf3e8;--tintl:#f2d3ac;--tintf:#8a5a1c;"
+"--okbg:#eaf6ef;--okl:#b8e0c8;--okf:#186c39;"
+"--sh:0 1px 2px rgba(44,62,80,.05),0 1px 8px rgba(44,62,80,.04)}"
+"@media(prefers-color-scheme:dark){:root{"
+"--bg:#131a21;--card:#1b242e;--fg:#eaeff4;--dim:#93a2b1;--line:#2a3540;"
+"--soft:#222d38;--acc:#fcb770;--accf:#22303d;--ink:#0e141a;"
+"--tint:#2a2318;--tintl:#4d3d26;--tintf:#fcb770;"
+"--okbg:#16281e;--okl:#27492f;--okf:#7fd0a0;"
+"--sh:0 1px 2px rgba(0,0,0,.3)}}"
+
+"*{box-sizing:border-box}"
+/* Sections are toggled by the `hidden` attribute and some of them are flex or
+ * grid, which outranks the browser's default `[hidden]{display:none}`. Without
+ * this line every section shows at once. */
+"[hidden]{display:none!important}"
+/* 'Noto Sans' is the brand's face and ships on most Android, which is what this
+ * page is opened on. It is listed, never fetched: the phone is on a captive
+ * portal with no route to a font CDN, so a @font-face here would only cost a
+ * three-second timeout before falling back to exactly this stack. */
+"body{margin:0;padding:0 16px 40px;background:var(--bg);color:var(--fg);"
+"font:16px/1.55 'Noto Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',"
+"system-ui,sans-serif;-webkit-font-smoothing:antialiased}"
+"header,main{max-width:34rem;margin:0 auto}"
+"header{display:flex;align-items:center;gap:10px;padding:22px 2px 16px}"
+".mark{flex:0 0 30px;width:30px;height:30px;display:block}"
+".mark circle{fill:var(--ink)}.mark path{fill:var(--acc)}"
+".brand{font-size:1.05rem;font-weight:700;letter-spacing:-.015em;margin:0}"
+".brand span{color:var(--dim);font-weight:400}"
+".chip{margin-left:auto;padding:6px 10px;border-radius:999px;font-size:.75rem;"
+"color:var(--dim);background:var(--card);border:1px solid var(--line)}"
+
+"section{background:var(--card);border:1px solid var(--line);border-radius:16px;"
+"padding:18px;margin:0 0 14px;box-shadow:var(--sh)}"
+/* The apricot tick beside a heading is the only decoration on the page. It is
+ * what makes a stack of grey cards read as Cryptnox rather than as a default
+ * form, and it costs one pseudo-element. */
+"h2{font-size:.95rem;font-weight:700;margin:0 0 .35rem;padding-left:12px;"
+"position:relative;letter-spacing:-.005em}"
+"h2::before{content:'';position:absolute;left:0;top:.28em;width:3px;"
+"height:.95em;border-radius:2px;background:var(--acc)}"
+/* A second heading inside one card ("Or type them") is a divider, not a new card. */
+"section h2~h2{margin-top:1.6rem;padding-top:1.2rem;border-top:1px solid var(--line)}"
+"p{color:var(--dim);font-size:.92rem;margin:.3rem 0 .9rem}"
+
+"input,select,button{font:inherit;width:100%;padding:12px 14px;margin:6px 0 0;"
+"border:1px solid var(--line);border-radius:11px;background:var(--soft);"
+"color:var(--fg)}"
+/* The six address fields are the inputs with no type= — the other two are the
+ * Wi-Fi password and the file picker. Addresses are compared character by
+ * character against a panel, so they get a face where 0 and O differ. */
+"input:not([type]){font-family:ui-monospace,SFMono-Regular,Menlo,monospace;"
+"font-size:.9rem}"
+"input::placeholder{color:var(--dim)}"
+":focus-visible{outline:2px solid var(--acc);outline-offset:2px}"
+"input[type=file]{padding:10px}"
+"input[type=file]::file-selector-button{font:inherit;margin-right:10px;"
+"padding:7px 12px;border:1px solid var(--line);border-radius:8px;"
+"background:var(--card);color:var(--fg)}"
+
+/* 48px so it is a thumb target, not a mouse one. */
+"button{min-height:48px;margin-top:10px;border:0;background:var(--acc);"
+"color:var(--accf);font-weight:700;cursor:pointer;"
+"transition:filter .15s,transform .05s}"
+"button:hover{filter:brightness(1.06)}button:active{transform:scale(.995)}"
+"button[disabled]{opacity:.45;cursor:not-allowed;filter:none}"
+"button.alt{background:var(--card);color:var(--fg);border:1px solid var(--line);"
+"font-weight:600}"
+"button.alt:hover{border-color:var(--acc);filter:none}"
+
+"code{font:.85rem/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;"
+"background:var(--soft);border:1px solid var(--line);padding:3px 7px;"
+"border-radius:7px;word-break:break-all;color:var(--fg)}"
+"pre{background:var(--soft);border:1px solid var(--line);padding:12px;"
+"border-radius:11px;white-space:pre-wrap;color:var(--dim);font-size:.85rem}"
+
+/* :empty rather than a JS toggle — render() already writes '' when there is
+ * nothing to say, so the banner collapses on its own. */
+"#msg,#note{margin:0 0 14px;padding:12px 14px 12px 16px;border-radius:12px;"
+"background:var(--card);border:1px solid var(--line);border-left:3px solid "
+"var(--acc);color:var(--fg);box-shadow:var(--sh)}"
+"#msg:empty,#note:empty{display:none}"
+"#out p{margin-top:.9rem}"
+
+".wait{display:flex;align-items:center;gap:12px;padding:14px 16px;"
+"border-radius:12px;background:var(--tint);border:1px solid var(--tintl);"
+"color:var(--tintf);font-size:.92rem}"
+".spin{flex:0 0 18px;width:18px;height:18px;border:2px solid currentColor;"
+"border-top-color:transparent;border-radius:50%;animation:sp .8s linear infinite}"
+"@keyframes sp{to{transform:rotate(360deg)}}"
+"@media(prefers-reduced-motion:reduce){.spin{animation:none}}"
+
+/* The one card that is a demand rather than a form, so it wears the accent
+ * outright instead of a hairline. */
+"#s_pend{background:var(--tint);border-color:var(--tintl);"
+"border-left:3px solid var(--acc)}"
+"#s_pend h2,#s_pend p{color:var(--tintf)}"
+"#s_pend h2::before{display:none}#s_pend h2{padding-left:0}"
+"#pend{font-weight:700;word-break:break-all}"
+/* Finishing is the one green moment in the flow; ui.cpp's COL_SUCCESS. */
+"#s_done{background:var(--okbg);border-color:var(--okl)}"
+"#s_done h2,#s_done p{color:var(--okf)}"
+"#s_done h2::before{background:var(--okf)}"
+"#nav{background:none;border:0;padding:0;box-shadow:none}"
 "</style></head><body>"
 
-"<h1>Cryptnox terminal</h1>"
-"<p>Firmware <b id=ver>&hellip;</b></p>"
+/* The Cryptnox mark from assets/logo.svg, inlined so it needs no request — the
+ * phone is on a captive portal and a second GET for a logo is a second thing
+ * that can hang. Both fills come from the palette, so it follows the scheme. */
+"<header><svg class=mark viewBox='0 0 461 461' aria-hidden=true>"
+"<circle cx=230.5 cy=230.5 r=230.5/>"
+"<path d='M229.02 406C205.904 406 183.016 401.434 161.66 392.565C140.304 383.694 "
+"120.9 370.694 104.555 354.304C88.2102 337.914 75.2443 318.457 66.3988 297.044C57.5533 "
+"275.629 53 252.678 53 229.5C53 206.322 57.5533 183.371 66.3988 161.956C75.2443 140.542 "
+"88.2102 121.086 104.555 104.696C120.9 88.3063 140.304 75.305 161.66 66.4354C183.016 "
+"57.5657 205.904 53 229.02 53C274.665 53 315.69 68.9362 347.641 99.0661L352.575 "
+"103.828L340.286 117.652L334.964 112.575C306.523 85.724 269.878 71.5302 229.02 "
+"71.5302C187.237 71.5302 147.167 88.1732 117.622 117.798C88.0774 147.424 71.4798 "
+"187.604 71.4798 229.5C71.4798 271.396 88.0774 311.576 117.622 341.202C147.167 370.826 "
+"187.237 387.47 229.02 387.47C271.523 387.47 305.47 370.144 328.108 353.689L300.499 "
+"312.033C272.946 329.859 254.06 336.122 229.02 336.122C200.838 336.122 173.811 324.897 "
+"153.883 304.915C133.956 284.933 122.761 257.832 122.761 229.574C122.761 201.315 133.956 "
+"174.215 153.883 154.233C173.811 134.251 200.838 123.026 229.02 123.026C252.519 122.992 "
+"275.419 130.463 294.401 144.354L305.1 131.382C283.171 114.798 256.487 105.758 229.02 "
+"105.607C196.241 105.607 164.804 118.664 141.626 141.906C118.448 165.147 105.427 196.669 "
+"105.427 229.537C105.427 262.405 118.448 293.927 141.626 317.169C164.804 340.41 196.241 "
+"353.466 229.02 353.466C249.711 353.777 270.114 348.586 288.155 338.42L295.122 "
+"334.492L305.286 350.039L297.228 354.578C276.44 366.31 252.927 372.32 229.075 "
+"371.997C191.395 371.997 155.258 356.987 128.614 330.272C101.971 303.555 87.003 267.32 "
+"87.003 229.537C87.003 191.754 101.971 155.519 128.614 128.803C155.258 102.086 191.395 "
+"87.0768 229.075 87.0768C264.098 87.2915 297.879 100.115 324.264 123.21L331.009 "
+"129.159L296.618 170.723L289.467 164.237C272.761 149.522 251.255 141.459 229.02 "
+"141.574C205.739 141.574 183.412 150.848 166.95 167.354C150.489 183.861 141.241 206.249 "
+"141.241 229.592C141.241 252.937 150.489 275.324 166.95 291.831C183.412 308.337 205.739 "
+"317.611 229.02 317.611C252.359 317.611 269.102 311.292 297.875 291.669L305.618 "
+"286.276L353 357.803L346.274 363.083C310.977 391.157 270.506 406 229.02 406Z'/></svg>"
+"<h1 class=brand>Cryptnox <span>terminal</span></h1>"
+"<span class=chip>fw <b id=ver>&hellip;</b></span></header>"
+"<main>"
 "<p id=msg></p>"
 "<p id=note></p>"
 
@@ -582,8 +716,8 @@ static const char *const PAGE_HTML =
 "<section id=s_auth hidden><h2>Authorise this browser</h2>"
 "<p>The admin code is never typed here. Enter it on the terminal's own screen "
 "&mdash; that is what proves you are standing in front of it.</p>"
-"<div id=waiting class=wait hidden><b>Waiting for the admin code on the terminal "
-"screen&hellip;</b></div>"
+"<div id=waiting class=wait hidden><span class=spin></span>"
+"<b>Waiting for the admin code on the terminal screen&hellip;</b></div>"
 "<button id=go_auth>Ask the terminal again</button></section>"
 
 /* Something is waiting to be accepted on the panel. Shown over everything else,
@@ -639,7 +773,8 @@ static const char *const PAGE_HTML =
 "<p>Thank you &mdash; the terminal is configured and ready to take payments. "
 "Press <b>Finish</b> on its screen to start.</p></section>"
 
-"<section id=nav hidden><button id=go_next>Continue</button></section>";
+"<section id=nav hidden><button id=go_next>Continue</button></section>"
+"</main>";
 
 /* Split so neither literal is unreasonable to read, and so the CSS/HTML above can
  * be edited without scrolling past the script. Concatenated by page_get(). */
