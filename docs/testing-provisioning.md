@@ -108,8 +108,9 @@ complete, on a device with no console to read the reason from.
 ## 2. Bench tests — laptop on the setup AP
 
 Factory-reset, tap **Start**, set an admin code on the panel (say `1234`). The
-screen should then show **Step 2 / Scan with your phone**, a QR code,
-`Cryptnox-XXXX` and a 10-character passphrase. The log carries both:
+screen should then show **Step 2 / Scan with your phone / Point your camera at the
+code**, a QR code, `Cryptnox-XXXX` and a 10-character passphrase. The log carries
+both:
 
 ```
 I (nnnn) prov: setup portal up: SSID 'Cryptnox-A2E8', pass 'K7QMR3XPZW', http://192.168.4.1/
@@ -406,9 +407,28 @@ the connectivity probes.
    opens by itself within a few seconds. No typing, no URL.
 4. **Pass:** the page immediately says it is waiting for the admin code, and the
    panel is *already* asking for it — nothing to press in the browser first.
-5. Walk the addresses and Wi-Fi steps from the phone, including **Use my Cryptnox
-   card**.
-6. **Pass:** each address appears on the terminal for acceptance.
+5. **Pass:** once the code is accepted, the panel drops the QR code and the AP
+   passphrase and says the phone is connected. A code still on screen at the payout
+   step reads as "scan me again", which is the one thing that cannot help.
+6. Walk the addresses and Wi-Fi steps from the phone. The payout card offers
+   **Cryptnox card address** and **Manual input**, and the `0x…` fields appear only
+   after Manual input — and must not disappear again while you are typing (the page
+   re-renders every 1.5 s).
+7. On the Wi-Fi card, tap the eye beside the password: it must reveal and re-mask.
+8. **Pass:** each address appears on the terminal for acceptance.
+
+### 4.1 The Wi-Fi-only re-join
+
+With a configured terminal, change the venue password (or move the terminal out of
+range) and power-cycle it.
+
+**Pass:** the panel raises the AP and shows **Wi-Fi / Wi-Fi network / Scan with your
+phone** — no admin-code screen, no Step numbers, no payout step. The phone joins,
+the page opens on the Wi-Fi card alone, and the log says
+`W (nnnn) prov: browser let in without a code (Wi-Fi-only re-join)`. The panel then
+replaces the QR code with "your phone is connected".
+
+**Fail:** being asked for the admin code, or being shown the payout addresses.
 
 Failure modes worth telling apart:
 

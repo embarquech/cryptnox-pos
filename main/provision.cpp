@@ -148,6 +148,9 @@ static char           s_token[TOKEN_HEX_LEN + 1U] = "";
 static volatile bool  s_auth_pending = false;
 static volatile bool  s_authed       = false;
 
+/* Wi-Fi-only re-join: no admin code, no numbered steps. See prov_set_wifi_only(). */
+static volatile bool  s_wifi_only    = false;
+
 /* A line for the page from the one party that knows why something did not work.
  * Written by the main task, read by the HTTP task; a torn read would show a garbled
  * sentence for 1.5 seconds until the next poll, which is not worth a mutex. */
@@ -639,6 +642,24 @@ static const char *const PAGE_HTML =
 "font-weight:600}"
 "button.alt:hover{border-color:var(--acc);filter:none}"
 
+/* The reveal eye sits inside the password box. The wrapper carries the field's
+ * margin so the button can be centred on the input itself, and the input keeps
+ * its text clear of the button. */
+".pw{position:relative;margin:6px 0 0}.pw input{margin:0;padding-right:52px}"
+".eye{position:absolute;right:5px;top:50%;transform:translateY(-50%);"
+"width:42px;height:38px;min-height:0;margin:0;padding:0;background:none;"
+"border:0;color:var(--dim)}"
+".eye:hover{filter:none;color:var(--fg)}"
+".eye[aria-pressed=true]{color:var(--fg)}"
+".eye svg{display:block;width:22px;height:22px;margin:0 auto;fill:none;"
+"stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}"
+/* Which of the two is drawn is derived from aria-pressed rather than toggled in
+ * JavaScript, so the state a screen reader is told and the state the icon shows
+ * cannot drift apart — and .hidden does not exist on an SVG element anyway.
+ * Masked shows the plain eye ("reveal"); revealed shows the struck-through one. */
+".eye .off,.eye[aria-pressed=true] .on{display:none}"
+".eye[aria-pressed=true] .off{display:block}"
+
 "code{font:.85rem/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;"
 "background:var(--soft);border:1px solid var(--line);padding:3px 7px;"
 "border-radius:7px;word-break:break-all;color:var(--fg)}"
@@ -729,16 +750,20 @@ static const char *const PAGE_HTML =
 "<section id=s_addr hidden><h2>Payout addresses</h2>"
 "<p>Where takings are sent. Submitting one here only <i>proposes</i> it: the "
 "terminal shows it on its own screen and somebody has to accept it there.</p>"
-"<p>Easiest way: let the terminal read the addresses off your own Cryptnox card. "
-"Both networks at once, and nothing to type.</p>"
-"<button id=go_card>Use my Cryptnox card</button>"
-"<h2>Or type them</h2>"
-"<p>Ethereum &mdash; currently <code id=cur_eth>&hellip;</code></p>"
+/* Two ways in, and the address fields stay out of sight until somebody picks the
+ * one that needs them: six monospace 0x… boxes on arrival read as "type all of
+ * this", which is the opposite of what the card button is for. */
+"<p>Ethereum &mdash; currently <code id=cur_eth>&hellip;</code><br>"
+"Tron &mdash; currently <code id=cur_trx>&hellip;</code></p>"
+"<button id=go_card>Cryptnox card address</button>"
+"<button class=alt id=go_man>Manual input</button>"
+"<div id=manual hidden>"
+"<p>Ethereum</p>"
 "<input id=in_eth placeholder='0x...' autocapitalize=off autocomplete=off>"
 "<button class=alt id=go_eth>Propose Ethereum address</button>"
-"<p>Tron &mdash; currently <code id=cur_trx>&hellip;</code></p>"
+"<p>Tron</p>"
 "<input id=in_trx placeholder='T...' autocapitalize=off autocomplete=off>"
-"<button class=alt id=go_trx>Propose Tron address</button></section>"
+"<button class=alt id=go_trx>Propose Tron address</button></div></section>"
 
 "<section id=s_ct hidden><h2>Token contracts</h2>"
 "<p>Which token the terminal charges in. Accepted on the terminal screen like a "
@@ -754,7 +779,28 @@ static const char *const PAGE_HTML =
 "<p id=wifi_note></p>"
 "<p>Currently <code id=cur_ssid>&hellip;</code></p>"
 "<select id=ssid></select>"
-"<input id=wpass type=password placeholder='Password' autocomplete=off>"
+/* The eye is the panel's (ui.cpp's Wi-Fi keyboard has one): a venue passphrase
+ * typed blind on a phone and rejected tells the operator nothing about which of
+ * the two got it wrong. */
+"<div class=pw><input id=wpass type=password placeholder='Password' "
+"autocomplete=off>"
+"<button type=button class=eye id=eye aria-label='Show password' "
+"aria-pressed=false>"
+/* Feather's eye / eye-off (MIT), which Lucide, Heroicons and every phone keyboard's
+ * own reveal button all draw a version of — the shape people already know. Inline
+ * paths rather than a glyph: an emoji renders as a different picture on every
+ * handset (and in colour on some), and a font or an <img> would be a second request
+ * on a captive portal that has nowhere to fetch it from. Stroked in currentColor,
+ * so it follows the colour scheme for free. */
+"<svg class=on viewBox='0 0 24 24' aria-hidden=true>"
+"<path d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z'/>"
+"<circle cx=12 cy=12 r=3/></svg>"
+"<svg class=off viewBox='0 0 24 24' aria-hidden=true>"
+"<path d='M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 "
+"5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 "
+"3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24'/>"
+"<path d='M1 1l22 22'/></svg>"
+"</button></div>"
 "<button id=go_wifi>Join this network</button>"
 "<button class=alt id=go_rescan>Scan again</button></section>"
 
@@ -812,7 +858,9 @@ static const char *const PAGE_JS =
 "show('s_wifi',a&&!p&&(w?st=='wifi':true));"
 "show('s_fw',  a&&!p&&!w);"
 "show('s_done',w&&st=='done');"
-"show('nav',   a&&!p&&w&&st!='done');"
+/* Continue exists to leave the address step. There is nothing after the Wi-Fi one
+ * to continue to — joining is what ends the wizard — so it is not offered there. */
+"show('nav',   a&&!p&&w&&st=='addr');"
 "$('wifi_note').textContent=w?'This page will disconnect: the terminal has one "
 "radio, so joining your network drops this setup network. Watch the terminal "
 "screen for the result.':'Scanning briefly interrupts this page - it comes "
@@ -859,6 +907,9 @@ static const char *const PAGE_JS =
 "$('go_card').onclick=function(){"
 "post('/api/card').then(function(){say('Tap your Cryptnox card on the terminal "
 "when it asks, then accept each address on its screen.')},say)};"
+/* One way: the fields stay open once asked for, and render() never closes them —
+ * losing a half-typed address to a poll would be its own bug report. */
+"$('go_man').onclick=function(){show('manual',true);this.hidden=true};"
 
 "function propose(u,net,el){var v=$(el).value.trim();"
 "if(!v){say('Nothing to propose.');return}"
@@ -867,6 +918,10 @@ static const char *const PAGE_JS =
 "$('go_trx').onclick=function(){propose('/api/payout','tron','in_trx')};"
 "$('go_cte').onclick=function(){propose('/api/contract','eth','in_cte')};"
 "$('go_ctt').onclick=function(){propose('/api/contract','tron','in_ctt')};"
+
+"$('eye').onclick=function(){var p=$('wpass'),r=(p.type=='password');"
+"p.type=r?'text':'password';this.setAttribute('aria-pressed',r);"
+"this.setAttribute('aria-label',r?'Hide password':'Show password')};"
 
 "$('go_wifi').onclick=function(){var s=$('ssid').value;"
 "if(!s){say('Pick a network first.');return}"
@@ -1097,6 +1152,20 @@ static esp_err_t auth_post(httpd_req_t *req)
         s_token[i] = "0123456789abcdef"[esp_random() & 0x0FU];
     }
     s_token[TOKEN_HEX_LEN] = '\0';
+
+    if (s_wifi_only) {
+        /* Nothing to authorise: the only reason this portal is up is that the
+         * terminal has lost its network, and whoever is asking read this AP's
+         * per-device passphrase off the panel in front of them. Demanding the
+         * admin code as well would put three screens between an operator and a
+         * till that only needs a password. Everything else the page can reach is
+         * unchanged — a proposed address or a firmware image still has to be
+         * accepted on the panel. */
+        s_authed = true;
+        ESP_LOGW(TAG, "browser let in without a code (Wi-Fi-only re-join)");
+        if (s_cb != NULL) { s_cb(UI_EVENT_PROV_NEXT, 0); }
+        return ok(req, s_token);
+    }
 
     s_auth_pending = true;
     ESP_LOGI(TAG, "browser asked to be authorised - admin code needed on panel");
@@ -1430,6 +1499,7 @@ bool prov_start(prov_mode_t mode, ui_event_cb_t cb)
     s_cb           = cb;
     s_authed       = false;
     s_auth_pending = false;
+    s_wifi_only    = false;
     s_token[0]     = '\0';
 
     const bool wizard = (mode == PROV_MODE_WIZARD);
@@ -1557,6 +1627,7 @@ void prov_stop(void)
 
     s_authed       = false;
     s_auth_pending = false;
+    s_wifi_only    = false;
     CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_token), sizeof(s_token));
 
     /* Not the AP passphrase — it is persisted anyway and the QR screen may still
@@ -1615,6 +1686,10 @@ void prov_auth_resolve(bool grant)
 }
 
 bool prov_authed(void) { return s_authed; }
+
+void prov_set_wifi_only(void) { s_wifi_only = true; }
+
+bool prov_wifi_only(void) { return s_wifi_only; }
 
 void prov_set_note(const char *note)
 {

@@ -1098,10 +1098,13 @@ static bool card_read_payouts(CryptnoxWallet &wallet,
  *   5. Wi-Fi        in the browser
  *   6. Finish       on the panel  — restarts, which is what applies everything.
  *
- * @param[in] wifi_only Skip step 4. For a terminal that is already configured but
- *                      whose saved network has gone: the addresses are set, so
- *                      asking again would be busywork standing between the operator
- *                      and a working till.
+ * @param[in] wifi_only Steps 5 and 6 only. For a terminal that is already configured
+ *                      but whose saved network has gone: nothing is missing except a
+ *                      password, so the addresses are not asked for again and neither
+ *                      is the admin code — three screens standing between an operator
+ *                      and a working till, guarding a form that can only propose
+ *                      things the panel still has to accept. The AP passphrase, which
+ *                      is on that panel, is the perimeter (see prov_set_wifi_only).
  * @return false if the portal could not be raised at all, in which case the caller
  *         has to fall back to the panel.
  */
@@ -1112,9 +1115,6 @@ static bool run_wizard(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
         ESP_LOGE(TAG, "setup portal unavailable - falling back to the panel");
         return false;
     }
-
-    prov_set_step(PROV_STEP_AUTH);
-    ui_show_prov(PROV_STEP_AUTH);
 
     /* Entering a step is two or three things, never one, and the Wi-Fi step's third
      * thing is the reason this is a function: the scan has to run on THIS task,
@@ -1129,6 +1129,13 @@ static bool run_wizard(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
             prov_set_scan(aps, net_wifi_scan(aps, 16));
         }
     };
+
+    /* A configured terminal that has only lost its network opens on the Wi-Fi step
+     * with nothing to authorise: no admin code, no numbered steps, one screen. The
+     * page still cannot store anything without the panel, and the AP passphrase it
+     * was reached through is on that panel. */
+    if (wifi_only) { prov_set_wifi_only(); }
+    enter_step(wifi_only ? PROV_STEP_WIFI : PROV_STEP_AUTH);
 
     /* Held between the two halves of a card read: one tap yields both addresses,
      * but only one value at a time can be waiting on the panel, so the second is
@@ -1167,6 +1174,11 @@ static bool run_wizard(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
                     }
                     prov_set_note("");
                     enter_step(PROV_STEP_WIFI);
+                } else {
+                    /* Nowhere left to go, but the panel may still be showing the
+                     * QR code: this is also how the Wi-Fi-only flow reports that a
+                     * browser walked in, and that screen changes when it does. */
+                    ui_show_prov(prov_step());
                 }
                 break;
 
@@ -1569,11 +1581,12 @@ extern "C" void app_main(void)
      * failed sync sends the operator back to setup with the reason rather than
      * stranding the terminal on an error screen.
      *
-     * A configured terminal whose saved network has gone gets the wizard too, cut
-     * short to the Wi-Fi step: the addresses are already set, so asking again would
-     * be busywork standing between the operator and a working till. Typing a venue
-     * passphrase on this panel is exactly what the browser flow exists to avoid, so
-     * the panel picker is only reached when the SoftAP itself could not come up. */
+     * A terminal that is genuinely configured — a payout address, not merely an admin
+     * code — and has only lost its saved network gets the wizard cut short to the
+     * Wi-Fi step, with no admin code either: the addresses are set, so asking again
+     * would be busywork standing between the operator and a working till. Typing a
+     * venue passphrase on this panel is exactly what the browser flow exists to
+     * avoid, so the panel picker is only reached when the SoftAP would not come up. */
     bool        try_saved  = true;
     /* first_run already ran the full wizard, so it has had its turn. */
     bool        offer_setup = !first_run;
@@ -1584,7 +1597,15 @@ extern "C" void app_main(void)
              * picker, which is also where a failed clock sync sends us. */
             if (offer_setup) {
                 offer_setup = false;
-                (void)run_wizard(wallet, nfcTransport, cryptoProvider, true);
+                /* "Cut it short" is only honest for a terminal that really is
+                 * configured. An admin code proves somebody started setup, not that
+                 * they finished it — a terminal left with no payout address takes
+                 * payments to the config.h recipient, and that one needs the whole
+                 * wizard, addresses and admin code included, rather than a one-screen
+                 * flow that never mentions either. */
+                const bool configured = settings_has_payout(false) ||
+                                        settings_has_payout(true);
+                (void)run_wizard(wallet, nfcTransport, cryptoProvider, configured);
                 /* Only reached if the SoftAP would not come up. */
                 ESP_LOGW(TAG, "no setup portal - panel Wi-Fi picker");
             }

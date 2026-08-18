@@ -21,7 +21,8 @@ the session becomes authorised and carries a random 128-bit token
 
 So the code never crosses the network in either direction, on either mode's
 transport, and a browser that can reach the page without the terminal in reach can
-do nothing at all. Guessing at the panel earns the same escalating lockout the
+do nothing at all. (One exception, in the wizard only: the Wi-Fi-only re-join below
+asks for no code at all.) Guessing at the panel earns the same escalating lockout the
 settings menu imposes — it is the same screen and the same counter, so this is not
 a cheaper door.
 
@@ -77,9 +78,16 @@ avoid, and a second, worse path meant maintaining two of everything. The panel
 picker still exists (`wifi_picker()` in `main/main.cpp`) but it is now the
 settings-menu route and the fallback for when the SoftAP itself will not come up.
 
-**A configured terminal whose network has gone** gets the same wizard cut short to
-`1 → 2 → 3 → 5 → 6`. The addresses are already set; asking again would be busywork
-between the operator and a working till.
+**A configured terminal whose network has gone** gets `2 → 5 → 6`, and no admin code:
+the addresses are already set and there is no code to create, so the page opens
+straight on the Wi-Fi card and the first browser to ask is let in
+(`prov_set_wifi_only()`). Three screens guarding a form whose only unconfirmed power
+is "try this network" is three screens between an operator and a working till.
+
+What still holds in that flow: the AP passphrase — per device, on the panel in front
+of whoever is asking — is the perimeter, and every value that decides where money
+goes, or which firmware boots, is still accepted on the panel. The panel drops the
+step numbers there, since there are no steps 1, 3 or 4 to count.
 
 **Finishing restarts the terminal.** The recipient and contract dual stores are
 built at boot from validated strings, so applying a change in place would mean a
@@ -127,7 +135,7 @@ Everything except `GET /` and `GET /api/state` requires the session token.
 | `GET /` | the page — HTML then JS, two strings in `provision.cpp` |
 | `GET /api/state` | mode, step, `authed`, version; and once authorised the addresses, contracts, SSID, pending value, note, scan generation |
 | `GET /api/scan` | the device's last Wi-Fi scan |
-| `POST /api/auth` | ask to be authorised → returns the token; the panel decides |
+| `POST /api/auth` | ask to be authorised → returns the token; the panel decides (except the Wi-Fi-only wizard, which grants it) |
 | `POST /api/payout` | `net=eth\|tron`, `addr=…` → proposed, panel confirms |
 | `POST /api/contract` | same shape, for the ERC-20 / TRC-20 contract |
 | `POST /api/card` | read the payout addresses off a Cryptnox card |

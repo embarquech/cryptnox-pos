@@ -1707,6 +1707,8 @@ static void build_welcome(void) {
  * and Android cameras join a network from directly — and the captive portal then
  * opens the form by itself, so there is never a URL to scan or type. The SSID
  * and passphrase are printed underneath for the camera that will not play along.
+ * All three are for joining, so all three go away once a browser has been let in:
+ * a code still sitting there on the payout step reads as "scan this again".
  *
  * There is deliberately no "use this screen instead" button any more. Past the
  * admin code the wizard is a browser flow: typing a payout address or a venue
@@ -1757,14 +1759,18 @@ static void build_prov(void) {
      * code the operator has just created on this screen, so "Step 2" here lines up
      * with what they have actually done rather than with this module's own idea of
      * where the flow starts. */
-    const char *eyebrow = "Setup";
-    const char *title   = "Nothing to set";
-    const char *hint    = "";
+    /* The Wi-Fi-only re-join has no numbers to count — there was no code to create
+     * and no address to set — so it says what it is instead. */
+    const bool  numbered = !prov_wifi_only();
+    const char *eyebrow  = "Setup";
+    const char *title    = "Nothing to set";
+    /* Each hint describes THIS screen, not the one after it. */
+    const char *hint     = "";
     switch (step) {
         case PROV_STEP_AUTH:
             eyebrow = "Step 2";
             title   = "Scan with your phone";
-            hint    = "Your admin code is asked for here";
+            hint    = "Point your camera at the code";
             break;
         case PROV_STEP_ADDR:
             eyebrow = "Step 4";
@@ -1772,9 +1778,10 @@ static void build_prov(void) {
             hint    = "Continue on your phone";
             break;
         case PROV_STEP_WIFI:
-            eyebrow = "Step 5";
+            eyebrow = numbered ? "Step 5" : "Wi-Fi";
             title   = "Wi-Fi network";
-            hint    = "Continue on your phone";
+            hint    = numbered ? "Continue on your phone"
+                               : "Scan with your phone";
             break;
         default:
             break;
@@ -1787,24 +1794,40 @@ static void build_prov(void) {
     make_label(lv_scr_act(), hint, COL_DIM,
                &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0, 48);
 
-    lv_obj_t *qr = lv_qrcode_create(lv_scr_act(), 112, COL_TEXT, COL_BG);
-    if (qr != NULL) {
-        const char *payload = prov_qr_payload();
-        (void)lv_qrcode_update(qr, payload, strlen(payload));
-        lv_obj_align(qr, LV_ALIGN_TOP_MID, 0, 70);
-        /* White quiet zone: a code drawn hard against a coloured edge is a code
-         * half the scanners in the world will not see. */
-        lv_obj_set_style_border_color(qr, COL_BG, LV_PART_MAIN);
-        lv_obj_set_style_border_width(qr, 4, LV_PART_MAIN);
-    }
+    /* The QR code and the AP credentials are for joining, so they go away the
+     * moment the phone has joined and been let in. Left up on the later steps they
+     * read as "scan this again", which is the one thing that cannot help: the
+     * operator is looking for the payout form, not for a network. */
+    if (!prov_authed()) {
+        lv_obj_t *qr = lv_qrcode_create(lv_scr_act(), 112, COL_TEXT, COL_BG);
+        if (qr != NULL) {
+            const char *payload = prov_qr_payload();
+            (void)lv_qrcode_update(qr, payload, strlen(payload));
+            lv_obj_align(qr, LV_ALIGN_TOP_MID, 0, 70);
+            /* White quiet zone: a code drawn hard against a coloured edge is a code
+             * half the scanners in the world will not see. */
+            lv_obj_set_style_border_color(qr, COL_BG, LV_PART_MAIN);
+            lv_obj_set_style_border_width(qr, 4, LV_PART_MAIN);
+        }
 
-    char line[64];
-    (void)snprintf(line, sizeof(line), "%s", prov_ap_ssid());
-    make_label(lv_scr_act(), line, COL_TEXT, &lv_font_montserrat_14,
-               LV_ALIGN_TOP_MID, 0, 194);
-    (void)snprintf(line, sizeof(line), "Pass  %s", prov_ap_pass());
-    make_label(lv_scr_act(), line, COL_DIM, &lv_font_montserrat_14,
-               LV_ALIGN_TOP_MID, 0, 212);
+        char line[64];
+        (void)snprintf(line, sizeof(line), "%s", prov_ap_ssid());
+        make_label(lv_scr_act(), line, COL_TEXT, &lv_font_montserrat_14,
+                   LV_ALIGN_TOP_MID, 0, 194);
+        (void)snprintf(line, sizeof(line), "Pass  %s", prov_ap_pass());
+        make_label(lv_scr_act(), line, COL_DIM, &lv_font_montserrat_14,
+                   LV_ALIGN_TOP_MID, 0, 212);
+    } else {
+        lv_obj_t *on = make_label(lv_scr_act(),
+                                  "Your phone is connected and has the setup "
+                                  "page open.",
+                                  COL_DIM, &lv_font_montserrat_14,
+                                  LV_ALIGN_TOP_MID, 0, 110);
+        lv_obj_set_width(on, SCR_W - 40);
+        lv_label_set_long_mode(on, LV_LABEL_LONG_WRAP);
+        lv_obj_set_style_text_align(on, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+        lv_obj_align(on, LV_ALIGN_TOP_MID, 0, 110);
+    }
 
     /* Where the bottom button used to be. A spinner instead: past the QR code the
      * operator is meant to be looking at their phone, and this is the only thing

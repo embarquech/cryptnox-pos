@@ -48,11 +48,14 @@ function makeEl(id) {
     hidden: false,
     textContent: '',
     value: '',
+    type: '',
     disabled: false,
     onclick: null,
     files: [],
     children: [],
+    attrs: {},
     appendChild(c) { this.children.push(c); return c; },
+    setAttribute(k, v) { this.attrs[k] = String(v); },
   };
 }
 
@@ -177,9 +180,11 @@ const CASES = [
     on: ['s_addr', 'nav'],
   },
   {
+    /* No Continue here: joining is what ends the wizard, so a button that only
+     * repaints the panel would be the one thing on screen doing nothing. */
     name: 'wizard, authorised, Wi-Fi step',
     state: { mode: 'wizard', step: 'wifi', authed: true },
-    on: ['s_wifi', 'nav'],
+    on: ['s_wifi'],
   },
   {
     name: 'wizard, finished',
@@ -270,6 +275,54 @@ try {
   failures++;
 }
 
+/* ── The typed-address fields are opt-in ────────────────────────────────────
+ * Six monospace 0x… boxes on arrival read as "type all of this", which is the
+ * opposite of what the card button is for. So they are hidden until somebody asks,
+ * and — the part worth a test — a poll must never close them again: render() runs
+ * every 1.5 s and would otherwise eat a half-typed address.
+ */
+try {
+  els.get('manual').hidden = true;
+  els.get('go_man').hidden = false;
+  page.setS({ mode: 'admin', step: 'admin', authed: true, scan_gen: 0 });
+  page.render();
+  assert.strictEqual(els.get('manual').hidden, true,
+    'render() opened the address fields nobody asked for');
+  els.get('go_man').onclick.call(els.get('go_man'));
+  assert.strictEqual(els.get('manual').hidden, false,
+    'Manual input should reveal the address fields');
+  assert.strictEqual(els.get('go_man').hidden, true,
+    'the button should retire once the fields are open');
+  page.render();
+  assert.strictEqual(els.get('manual').hidden, false,
+    'a poll closed the address fields on whoever was typing into them');
+  console.log('  ok    the typed-address fields are opt-in and stay open');
+} catch (e) {
+  console.log(`  FAIL  the typed-address fields are opt-in\n        ${e.message}`);
+  failures++;
+}
+
+/* ── The Wi-Fi reveal eye ───────────────────────────────────────────────────
+ * A venue passphrase typed blind on a phone and rejected tells the operator
+ * nothing about which of the two got it wrong. Both directions, because a toggle
+ * that only unmasks is a password left on a screen facing a room.
+ */
+try {
+  const eye = els.get('eye');
+  const p = els.get('wpass');
+  p.type = 'password';
+  eye.onclick.call(eye);
+  assert.strictEqual(p.type, 'text', 'the eye did not reveal the password');
+  assert.strictEqual(eye.attrs['aria-pressed'], 'true');
+  eye.onclick.call(eye);
+  assert.strictEqual(p.type, 'password', 'the eye did not mask it again');
+  assert.strictEqual(eye.attrs['aria-pressed'], 'false');
+  console.log('  ok    the reveal eye masks and unmasks the Wi-Fi password');
+} catch (e) {
+  console.log(`  FAIL  the reveal eye\n        ${e.message}`);
+  failures++;
+}
+
 /* ── The authorisation handshake, end to end ────────────────────────────────
  * The regression test for a bug that shipped: the page polled /api/state without
  * the session token, so after the operator typed the admin code on the panel the
@@ -328,5 +381,5 @@ const flush = async () => { for (let i = 0; i < 20; i++) { await new Promise(r =
     console.error(`portal render test: ${failures} failure(s)`);
     process.exit(1);
   }
-  console.log(`portal render test OK (${CASES.length + 1} render scenarios + handshake)`);
+  console.log(`portal render test OK (${CASES.length + 3} render scenarios + handshake)`);
 })();

@@ -39,6 +39,9 @@
  * either direction, on either mode's transport, and a browser that reaches the
  * page without the terminal in reach can do nothing at all.
  *
+ * One exception, and it is the wizard's alone: @ref prov_set_wifi_only, the flow a
+ * configured terminal gets when all it has lost is its network. See there.
+ *
  * Everything that changes where money goes goes further than that: a browser may
  * *propose* a payout address or a token contract, and the value is then displayed
  * on the panel for somebody to accept there. Nothing is stored until they do.
@@ -180,6 +183,25 @@ void prov_auth_resolve(bool grant);
 
 /** @brief Whether the browser session is authorised to change anything. */
 bool prov_authed(void);
+
+/**
+ * @brief Cut the wizard down to the Wi-Fi step, with no admin code.
+ *
+ * For a terminal that is already configured and has only lost its network. Call it
+ * right after @ref prov_start (which clears it) and before any browser arrives; the
+ * first browser to ask is then let in without the panel demanding the code, and the
+ * panel drops the step numbering, since steps 1 and 3-4 do not happen.
+ *
+ * The relaxation is bounded: the perimeter here is the AP's per-device passphrase,
+ * which is on the panel in front of whoever is asking, and everything that decides
+ * where money goes still has to be accepted on that panel. What it buys is an
+ * operator whose till has moved venues typing a password instead of walking three
+ * screens to be allowed to.
+ */
+void prov_set_wifi_only(void);
+
+/** @brief Whether the portal is the cut-down Wi-Fi-only flow. */
+bool prov_wifi_only(void);
 
 /**
  * @brief Put a one-line message on the page.
