@@ -30,7 +30,12 @@ step "config portal page"
 # The extractor doubles as the id-wiring check, and emits the script for the
 # render test so there is one extractor rather than two that could disagree.
 mkdir -p build
-if python tools/check_portal_page.py --emit-js build/portal_page.js; then
+# Not a bare `python`: Windows has it under three names and WSL has none of them,
+# so the shell you happen to be in decided whether this check ran at all.
+PY=$(command -v python || command -v python3 || command -v py || true)
+if [ -z "$PY" ]; then
+  bad "no python found (tried python, python3, py)"
+elif "$PY" tools/check_portal_page.py --emit-js build/portal_page.js; then
   ok "parses, ids wired"
   if command -v node >/dev/null; then
     if node tools/test_portal_render.js build/portal_page.js; then
@@ -47,9 +52,11 @@ fi
 
 if [ "${1:-}" = "--build" ]; then
   step "firmware build"
-  # idf.py will not run in Git Bash; the .bat sets up the environment. Warnings
-  # from TFT_eSPI about the reset and touch pins are expected — see sdkconfig.defaults.
-  if cmd //c "scripts\\idf-build.bat" 2>&1 |
+  # idf.py will not run in Git Bash; the .bat sets up the environment. Called
+  # directly, not through `cmd //c` — that double slash is a Git Bash idiom and
+  # was a silent no-op anywhere else. Warnings from TFT_eSPI about the reset and
+  # touch pins are expected — see sdkconfig.defaults.
+  if ./scripts/idf-build.bat 2>&1 |
        grep -E "error:|FAILED|binary size|Project build complete" |
        grep -v "TFT_config.h\|TFT_eSPI.h"; then
     grep -q . /dev/null   # keep the pipeline's exit status out of it

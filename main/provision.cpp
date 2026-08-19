@@ -315,17 +315,18 @@ static bool tls_load(void)
  * 5. AP identity
  ******************************************************************/
 
-/** @brief Load the AP passphrase, generating and persisting one on first run. */
-static void ap_pass_load(void)
+/**
+ * @brief Draw a fresh AP passphrase for this portal session.
+ *
+ * Nothing is stored. The passphrase is displayed on the panel and in a QR on a
+ * screen a customer can see, so a photo of it has to expire with the session
+ * that showed it — a persisted one would still open the wifi_only portal, which
+ * asks for no admin code, months later. It only has to live long enough for a
+ * phone standing in front of the terminal to type it, so RAM is the right place
+ * and a reboot mid-setup simply shows a new one.
+ */
+static void ap_pass_new(void)
 {
-    nvs_handle_t h;
-    if (nvs_open(NS_PROV, NVS_READONLY, &h) == ESP_OK) {
-        size_t n = sizeof(s_pass);
-        const bool got = (nvs_get_str(h, K_AP_PASS, s_pass, &n) == ESP_OK);
-        nvs_close(h);
-        if (got && (strlen(s_pass) >= 8U)) { return; }
-    }
-
     /* esp_random() is the hardware RNG, seeded by the radio. prov_start() calls
      * net_wifi_init() before this for exactly that reason. */
     for (size_t i = 0; i < AP_PASS_LEN; i++) {
@@ -333,14 +334,16 @@ static void ap_pass_load(void)
     }
     s_pass[AP_PASS_LEN] = '\0';
 
+    /* One-off: terminals provisioned by an earlier build have a permanent
+     * passphrase sitting in flash under this key. Nothing reads it any more, so
+     * drop the key too. NVS deletes logically — the old entry is tombstoned and
+     * its bytes leave the page only on the next compaction — so this closes the
+     * NVS read, not a raw flash dump. Factory reset and CONFIG_NVS_ENCRYPTION
+     * are what cover the dump, and neither is this function's job. */
+    nvs_handle_t h;
     if (nvs_open(NS_PROV, NVS_READWRITE, &h) == ESP_OK) {
-        (void)nvs_set_str(h, K_AP_PASS, s_pass);
-        (void)nvs_commit(h);
+        if (nvs_erase_key(h, K_AP_PASS) == ESP_OK) { (void)nvs_commit(h); }
         nvs_close(h);
-    } else {
-        /* Kept in RAM only: setup still works, it just restarts if the terminal
-         * reboots mid-flow. Better than refusing to provision at all. */
-        ESP_LOGW(TAG, "AP passphrase not persisted (NVS unavailable)");
     }
 }
 
@@ -1512,11 +1515,15 @@ bool prov_start(prov_mode_t mode, ui_event_cb_t cb)
          * on. */
         net_wifi_init();
         ap_ssid_build();
-        ap_pass_load();
+        ap_pass_new();   /* a new one every time the portal opens - see ap_pass_new */
         (void)snprintf(s_qr, sizeof(s_qr), "WIFI:T:WPA;S:%s;P:%s;;", s_ssid, s_pass);
 
         if (!net_ap_start(s_ssid, s_pass)) {
             ESP_LOGE(TAG, "SoftAP failed to start");
+            /* prov_stop() never runs for a portal that never came up, so the
+             * passphrase it would have wiped is wiped here instead. */
+            CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_pass), sizeof(s_pass));
+            CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_qr), sizeof(s_qr));
             return false;
         }
 
@@ -1532,6 +1539,8 @@ bool prov_start(prov_mode_t mode, ui_event_cb_t cb)
             ESP_LOGE(TAG, "httpd failed to start");
             s_httpd = NULL;
             net_ap_stop();
+            CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_pass), sizeof(s_pass));
+            CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_qr), sizeof(s_qr));
             return false;
         }
         s_httpd_tls = false;
@@ -1630,8 +1639,10 @@ void prov_stop(void)
     s_wifi_only    = false;
     CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_token), sizeof(s_token));
 
-    /* Not the AP passphrase — it is persisted anyway and the QR screen may still
-     * be on display. A proposed value IS dropped: unaccepted means unwanted. */
+    /* The AP passphrase too: the AP it opened is down, the next portal draws a new
+     * one, and the QR screen is only ever painted while a portal is up. A proposed
+     * value IS dropped as well: unaccepted means unwanted. */
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_pass), sizeof(s_pass));
     if (s_ask_lock != NULL) {
         if (xSemaphoreTake(s_ask_lock, pdMS_TO_TICKS(100)) == pdTRUE) {
             s_ask = PROV_ASK_NONE;
@@ -1640,7 +1651,8 @@ void prov_stop(void)
             (void)xSemaphoreGive(s_ask_lock);
         }
     }
-    s_qr[0]       = '\0';
+    /* s_qr holds the passphrase in wizard mode, so clear all of it, not just byte 0. */
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_qr), sizeof(s_qr));
     s_ip[0]       = '\0';
     s_deadline_us = 0;
     ESP_LOGI(TAG, "config portal down");

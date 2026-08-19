@@ -109,6 +109,13 @@ static const char *const TAG = "cryptnox_pos";
 #define PN532_RST           (-1)
 #define PN532_I2C_HZ        100000U
 
+/* The CYD's onboard RGB LED, common anode: the pin is the cathode side, so HIGH
+ * is off and a floating pin is a glow. Nothing here uses it, and a till lighting
+ * up at a customer for no stated reason is worse than no indicator at all. */
+#define LED_R               GPIO_NUM_4
+#define LED_G               GPIO_NUM_16
+#define LED_B               GPIO_NUM_17
+
 /* ── USDC ERC-20 transfer(address,uint256) selector + calldata ── */
 static const uint8_t TRANSFER_SELECTOR[4] = { 0xa9U, 0x05U, 0x9cU, 0xbbU };
 #define ABI_SELECTOR_LEN    4U     /* transfer(address,uint256) selector      */
@@ -1256,6 +1263,12 @@ static bool run_wizard(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
                         prov_set_note(NOTE_JOIN_FAILED);
                     } else if (!net_time_sync(15000U)) {
                         prov_set_note(NOTE_NO_TIME);
+                        /* Joined, but we are not keeping it — and the portal stays
+                         * up for another attempt. Its HTTP server binds every
+                         * interface, so an association we are not using would leave
+                         * the setup forms answering the whole venue LAN, which is
+                         * the one place the AP passphrase guards nothing. Drop it. */
+                        net_wifi_disconnect();
                     } else {
                         settings_set_wifi(w_ssid, w_pass);
                         joined = true;
@@ -1271,10 +1284,12 @@ static bool run_wizard(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
                     prov_stop();
                     ui_show_prov(PROV_STEP_DONE);
                 } else {
-                    /* Still on the setup AP: the join failed, so the radio never
-                     * moved and the phone is most likely still with us. Rescan on
-                     * the way back — the list is a minute old and the network that
-                     * would not join may simply have gone. */
+                    /* Back on the setup AP alone — either the join failed and the
+                     * radio never moved, or it worked without a clock and we just
+                     * dropped it. Rescan on the way back: the list is a minute old
+                     * and the network that would not join may simply have gone.
+                     * A phone that was dragged off by the association rejoins the
+                     * SoftAP by itself; the outcome is on the panel regardless. */
                     enter_step(PROV_STEP_WIFI);
                 }
                 break;
@@ -1318,6 +1333,12 @@ static bool sync_time(void)
 extern "C" void app_main(void)
 {
     ESP_LOGI(TAG, "===== cryptnox-pos boot =====");
+
+    /* Before anything slow: the LED is lit from reset until this runs. */
+    for (gpio_num_t p : { LED_R, LED_G, LED_B }) {
+        (void)gpio_set_direction(p, GPIO_MODE_OUTPUT);
+        (void)gpio_set_level(p, 1);
+    }
 #ifdef CRYPTNOX_POS_DEV_BUILD
     /* build timestamp helps firmware fingerprinting — dev builds only. */
     ESP_LOGI(TAG, "Build: %s %s", __DATE__, __TIME__);

@@ -23,13 +23,22 @@ The CYD's CH340 moves COM ports between sessions. Find it first:
 powershell -NoProfile -Command "[System.IO.Ports.SerialPort]::GetPortNames()"
 ```
 
-Build, flash and read the log (substitute your port):
+Build, flash and read the log (substitute your port). Run the `.bat` directly —
+`cmd //c` works only in Git Bash, and in PowerShell or cmd it opens a nested shell
+and runs nothing at all, silently:
 
 ```bash
-cmd //c "C:\Cryptnox\cryptnox-pos\scripts\idf-build-flash.bat COM7"
-"C:/Users/Yann/.espressif/python_env/idf5.5_py3.14_env/Scripts/python.exe" \
-    scripts/serial_tail.py COM7 20
+./scripts/idf-build-flash.bat COM7        # Git Bash
+./scripts/idf-monitor.bat COM7 20
 ```
+
+```powershell
+& .\scripts\idf-build-flash.bat COM7      # PowerShell
+& .\scripts\idf-monitor.bat COM7 20
+```
+
+The port defaults to COM3 in both scripts. `idf-monitor.bat` wraps
+`serial_tail.py` because `idf.py monitor` needs a tty.
 
 ### Getting into first-run setup
 
@@ -38,11 +47,13 @@ The wizard runs on a virgin or factory-reset terminal — the trigger is
 
 | Method | What it costs | When |
 |---|---|---|
-| Settings → About → Reset → confirm | admin code, Wi-Fi creds, brightness, fees, payout addresses, contracts, **and** the AP passphrase + TLS identity in the `prov` namespace | normal test loop |
+| Settings → About → Reset → confirm | admin code, Wi-Fi creds, brightness, fees, payout addresses, contracts, **and** the TLS identity in the `prov` namespace | normal test loop |
 | `idf.py -p COM7 erase-flash` then flash | all of the above | testing a truly virgin unit |
 
-Both now clear the `prov` namespace, so both exercise AP-passphrase and TLS-key
-generation. Watch for these once per wipe:
+Both clear the `prov` namespace, so both exercise TLS-key generation. The AP
+passphrase is not stored at all — every portal open shows a different one, so check
+the panel against the log each time rather than reusing yesterday's photo. Watch for
+this once per wipe:
 
 ```
 W (nnnn) prov: generating this terminal's TLS identity (once)
@@ -315,6 +326,15 @@ still parse as JSON (that is what `json_str()` is for).
 radio, one channel. If the network was wrong, the device screen returns to the
 Wi-Fi step with a reason in the page's note and the AP stays up.
 
+**The associated-but-rejected case is worth its own run**, because it is the one
+that used to leave a second door open: give it a network that joins but cannot
+reach NTP (a hotspot with no uplink, or block UDP 123 on the router). The panel must
+return to the Wi-Fi step with "no network time", and the log must carry
+`I (nnnn) net: station association dropped`. Then, from a machine on *that* network,
+`curl http://<the IP the terminal had> /api/state` — it must not answer. The setup
+forms are reachable from the SoftAP only; `httpd` binds every interface, so an
+association the terminal is not keeping has to be dropped, not left up.
+
 ### 2.10 Finishing
 
 **Pass:** on a good network the panel shows a green tick, **All set**, and a
@@ -436,7 +456,7 @@ Failure modes worth telling apart:
 |---|---|
 | Joins, no page | probe answered correctly — check §2.2 for that platform |
 | Joins, then drops back to cellular | phone decided there is no internet; usually the Apple probe body |
-| "Cannot join" | passphrase mismatch — check the screen against the log |
+| "Cannot join" | passphrase mismatch (it changes on every portal open — re-read the screen), or the AP's single slot is still held by the last device; it frees itself within 2 min |
 | Page opens but is blank | `httpd` out of memory; check the log for allocation failures |
 | Page opens, panel never asks for the code | the auto `/api/auth` did not fire — check the browser console |
 

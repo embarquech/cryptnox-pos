@@ -39,8 +39,9 @@ Not an oversight, and not laziness in the one that is plaintext.
 **Wizard mode has to be HTTP.** A captive-portal probe fetches a bare `http://`
 URL on port 80 and will not follow a redirect to 443. TLS there means the phone's
 browser never opens by itself, which is the entire feature. And the link is already
-encrypted: a WPA2 SoftAP whose random per-device passphrase is on the panel in
-front of the operator, existing only during setup. The admin code is not on that
+encrypted: a WPA2 SoftAP whose random per-session passphrase is on the panel in
+front of the operator, existing only during setup, and which admits one station at
+a time. The admin code is not on that
 link, and the values that are get confirmed on the panel.
 
 **Admin mode is HTTPS**, because a venue LAN is a different proposition — every
@@ -57,8 +58,11 @@ around "now", because the key is generated the first time the admin page is open
 and that can be before any SNTP sync — a window derived from a wrong clock lands in
 the past and the browser rejects it for a reason nobody could diagnose.
 
-A factory reset erases the TLS identity along with the AP passphrase. A new
-operator must not inherit the last one's.
+A factory reset erases the TLS identity. A new operator must not inherit the last
+one's. The AP passphrase needs no erasing: it is drawn fresh every time the portal
+opens and never leaves RAM, because the screen showing it is a screen a customer can
+photograph — and one association is all the AP allows, so a stranger using a
+photographed passphrase locks the operator out instead of watching them.
 
 ## The wizard flow
 
@@ -84,10 +88,18 @@ straight on the Wi-Fi card and the first browser to ask is let in
 (`prov_set_wifi_only()`). Three screens guarding a form whose only unconfirmed power
 is "try this network" is three screens between an operator and a working till.
 
-What still holds in that flow: the AP passphrase — per device, on the panel in front
-of whoever is asking — is the perimeter, and every value that decides where money
+What still holds in that flow: the AP passphrase — per device, per session, on the
+panel in front of whoever is asking — is the perimeter, and every value that decides where money
 goes, or which firmware boots, is still accepted on the panel. The panel drops the
 step numbers there, since there are no steps 1, 3 or 4 to count.
+
+For that perimeter to mean anything the SoftAP has to be the *only* way in, and
+`httpd` binds every interface — so a station association is a second door. A join
+that works is therefore either kept and the portal stopped in the same breath, or
+dropped again (`net_wifi_disconnect()`): a network that associated but had no clock
+is rejected, and leaving that association up would put the setup forms in front of
+everyone holding the venue PSK, which is exactly who the AP passphrase does not
+keep out.
 
 **Finishing restarts the terminal.** The recipient and contract dual stores are
 built at boot from validated strings, so applying a change in place would mean a

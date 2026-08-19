@@ -123,9 +123,10 @@ typedef enum {
  * switched, since the two listen on different interfaces with different
  * transports. Stop it first.
  *
- * In wizard mode the AP passphrase is generated once and kept in NVS: the operator
- * may well have photographed the QR code, and a reboot mid-setup should not
- * invalidate it. It is erased by settings_factory_reset().
+ * In wizard mode a new AP passphrase is drawn on every call and never stored: it is
+ * shown on a screen a customer can see, so a photograph of it must not still open
+ * the wifi_only portal — which asks for no admin code — weeks later. prov_stop()
+ * wipes it, and a reboot mid-setup simply shows the next one.
  *
  * @param[in] mode Which portal to run.
  * @param[in] cb   Where submissions are reported; the same callback the UI task

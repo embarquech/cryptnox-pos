@@ -68,6 +68,17 @@ uint16_t net_wifi_scan(net_wifi_ap_t *out, uint16_t max);
 bool net_wifi_connect(const char *ssid, const char *password);
 
 /**
+ * @brief Drop the station association, without the retry loop pulling it back.
+ *
+ * For a join that worked but is not being kept: the setup portal's HTTP server
+ * binds every interface, so an associated station puts the setup forms on the
+ * venue LAN as well as on the SoftAP. Leaving a test association up while that
+ * portal is still running hands the forms to everyone holding the venue PSK.
+ * Idempotent, and safe before any connect.
+ */
+void net_wifi_disconnect(void);
+
+/**
  * @brief Raise a WPA2 SoftAP beside the station, for phone-based setup.
  *
  * Switches the radio to APSTA so provisioning survives a station connect. One

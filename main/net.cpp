@@ -153,15 +153,43 @@ bool net_ap_start(const char *ssid, const char *pass)
                    sizeof(cfg.ap.password), "%s", pass);
     cfg.ap.authmode = WIFI_AUTH_WPA2_PSK;
     cfg.ap.channel  = 1;
-    /* Two: the operator's phone, plus one spare so a stale lease cannot lock
-     * setup out. Not more — every association is someone who can reach the
-     * setup forms, and the passphrase is the only thing in their way. */
-    cfg.ap.max_connection = 2;
+    /* One. WPA2-PSK gives every station the same key, so it does not isolate
+     * them from each other: a second association is a silent seat on the wire,
+     * watching the operator type the venue's Wi-Fi password. At one, an intruder
+     * who got the passphrase off the screen instead takes the operator's seat —
+     * the operator cannot join, notices immediately, and restarts setup with a
+     * new passphrase. Loud beats quiet. A stale association is cleared the same
+     * way; net_ap_stop() and the AP's own inactivity timeout free the slot. */
+    cfg.ap.max_connection = 1;
 
     if (esp_wifi_set_mode(WIFI_MODE_APSTA) != ESP_OK)          { return false; }
     if (esp_wifi_set_config(WIFI_IF_AP, &cfg) != ESP_OK)       { return false; }
+    /* With one slot, a phone that walked away without deauthenticating holds the
+     * only seat until the AP gives up on it, and the 300 s default is five minutes
+     * of "cannot join" in the middle of setup. Not much shorter than this, though:
+     * the auth step deliberately sends the operator from the phone to the panel, a
+     * locked phone stops polling, and deauthing it there is how a browser ends up
+     * back on cellular. Two minutes is longer than any panel interaction and less
+     * than half the lockout. Diagnosable if it fails: silently keeping 300 s with
+     * one slot is the lockout nobody could explain. */
+    if (esp_wifi_set_inactive_time(WIFI_IF_AP, 120) != ESP_OK) {
+        ESP_LOGW(TAG, "AP idle timeout unchanged - a dropped phone may hold the "
+                      "only slot for 5 min");
+    }
     ESP_LOGI(TAG, "SoftAP '%s' up on 192.168.4.1", ssid);
     return true;
+}
+
+void net_wifi_disconnect(void)
+{
+    if (!s_wifi_inited) { return; }
+    /* Past the retry ceiling first: wifi_event_handler() re-associates on every
+     * STA_DISCONNECTED below it, so a bare esp_wifi_disconnect() would undo
+     * itself three times over. net_wifi_connect() zeroes the counter again, so
+     * nothing after this inherits the ceiling. */
+    s_retry_num = WIFI_MAX_RETRY;
+    (void)esp_wifi_disconnect();
+    ESP_LOGI(TAG, "station association dropped");
 }
 
 void net_ap_stop(void)
