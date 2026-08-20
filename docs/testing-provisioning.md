@@ -1,7 +1,8 @@
 # Testing the config portal
 
-Test plan for `main/provision.cpp` — the SoftAP + captive portal wizard and the
-HTTPS admin page. Design notes are in [config-portal.md](config-portal.md).
+Test plan for `main/provision.cpp` — the SoftAP + captive portal, in both its
+wizard and admin modes. Design notes are in
+[config-portal.md](config-portal.md).
 
 Four layers, cheapest first. Do them in order — a failure at layer 1 makes the
 rest meaningless.
@@ -9,7 +10,7 @@ rest meaningless.
 1. **Host** — the urlencoded parser and the address checks, no hardware.
 2. **Bench, wizard** — a laptop joined to the setup AP, `curl` and `nslookup`.
    Proves the DNS and HTTP halves independently of any phone's opinion.
-3. **Bench, admin** — a laptop on the venue network, HTTPS.
+3. **Bench, admin** — a laptop joined to the same setup AP, admin mode.
 4. **Handset** — real iOS and real Android. The only thing that proves the portal
    *opens by itself*, which is the whole feature.
 
@@ -358,37 +359,47 @@ curl -s -X POST -H "$H" $P/api/next
 
 ---
 
-## 3. Bench tests — laptop on the venue network (admin mode)
+## 3. Bench tests — laptop on the setup AP (admin mode)
 
 Settings → Wi-Fi → **Configure**, or Settings → About → **Update**. Both open the
 same page.
 
-**Pass on the panel:** a QR code, the `https://<ip>/` URL in text underneath, a
-line warning about the certificate, and a 15-minute countdown.
+**Pass on the panel:** a QR code, the SSID and passphrase in text underneath, a
+line saying the terminal leaves its own network while this is open, and a
+15-minute countdown. Same AP, same page, same port as the wizard:
 
 ```bash
-T=https://192.168.1.34            # substitute
-curl -sk $T/api/state
+T=http://192.168.4.1
+curl -s $T/api/state
 ```
 
-`-k` is required and expected: the certificate is the terminal's own, self-signed.
+### 3.1 The terminal is AP-only while this is open
 
-### 3.1 The certificate is per device
+With the terminal on a venue network, note its LAN address, then open the admin
+page and from a machine **on the venue LAN** (not on the AP):
 
 ```bash
-openssl s_client -connect 192.168.1.34:443 </dev/null 2>/dev/null \
-  | openssl x509 -noout -subject -dates -fingerprint
+ping -n 2 192.168.1.34                                   # substitute
+curl -s  --max-time 3 http://192.168.1.34/api/state
+curl -sk --max-time 3 https://192.168.1.34/api/state
 ```
 
-**Pass:** subject `CN=Cryptnox terminal, O=Cryptnox SA`, validity 2025→2035, and a
-fingerprint that **survives a reboot** but **changes after a factory reset**. Two
-terminals must never show the same fingerprint — if they do, the key came from the
-image and the TLS is decoration.
+**Pass:** all three fail. The terminal is not on that network at all while the
+portal is up, and nothing on it answers on 80 or 443. This is the whole
+architectural claim — a LAN that can reach `/api/state` can reach `/api/payout`.
+
+Then tap **Done** and watch the log: `SoftAP down`, `re-joining '<ssid>'`, and the
+venue address answers again. A terminal that stays offline after the page closes
+is a regression in `net_ap_stop()`.
+
+**Also pass:** no TLS identity anywhere. On a unit provisioned by an earlier
+build, grep the whole boot-and-portal log for `TLS` — it must not appear, and the
+`tls_crt`/`tls_key` NVS keys are erased the first time a portal opens.
 
 ### 3.2 Everything the wizard tested, again
 
-§2.3 through §2.9 apply unchanged apart from the scheme and `-k`. Two differences
-worth checking explicitly:
+§2.3 through §2.9 apply unchanged — same scheme, same host, same port. Two
+differences worth checking explicitly:
 
 * The page shows **all** sections at once — addresses, contracts, Wi-Fi, firmware —
   rather than one step, and there is no Continue button.
@@ -402,7 +413,7 @@ Leave it 15 minutes without touching the panel, or shorten `PROV_WINDOW_MIN` for
 the test.
 
 ```bash
-curl -sk -o /dev/null -w '%{http_code}\n' -X POST -H "$H" \
+curl -s -o /dev/null -w '%{http_code}\n' -X POST -H "$H" \
      -d 'net=eth&addr=0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed' $T/api/payout
 ```
 
@@ -464,9 +475,13 @@ Also worth doing once on each platform: put the phone into airplane mode and bac
 and re-join from Settings rather than the QR code. The portal should open both
 times.
 
-For **admin mode** on a phone, the QR code carries an `https://` URL with an IP
-literal. Some camera apps refuse to open a self-signed HTTPS link directly — that
-is why the URL is printed in text underneath. Check that path too.
+**Admin mode on a phone** is the same journey as the wizard's — the same QR code
+joins the same AP and the same captive portal opens the page — so §4's steps 1-3
+apply to it unchanged. Two things only admin mode has: the panel says the terminal
+is off its network for the duration, and **Check for updates** in the firmware
+section either works over the phone's cellular data or fails with the message
+pointing at the file picker. Neither is a certificate warning any more — there is
+no certificate.
 
 ---
 

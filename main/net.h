@@ -74,15 +74,28 @@ bool net_wifi_connect(const char *ssid, const char *password);
  * binds every interface, so an associated station puts the setup forms on the
  * venue LAN as well as on the SoftAP. Leaving a test association up while that
  * portal is still running hands the forms to everyone holding the venue PSK.
+ * With a SoftAP up this also returns the radio to AP-only, so the station
+ * interface goes down with the association rather than lingering idle.
  * Idempotent, and safe before any connect.
  */
 void net_wifi_disconnect(void);
 
 /**
- * @brief Raise a WPA2 SoftAP beside the station, for phone-based setup.
+ * @brief Raise a WPA2 SoftAP as the radio's *only* interface, for phone-based
+ *        configuration.
  *
- * Switches the radio to APSTA so provisioning survives a station connect. One
- * radio, one channel: when the station later associates, the SoftAP is dragged
+ * AP-only, not APSTA, and the station association is dropped on the way in. The
+ * config portal's HTTP server binds every interface (esp_http_server offers no
+ * bind address), so an APSTA terminal answers the payout forms on the venue LAN
+ * as well as on the AP — which is exactly where the AP passphrase guards
+ * nothing. Taking the station down makes the AP the only door there is.
+ *
+ * The station is borrowed back where it is genuinely needed and only for as long
+ * as that takes: @ref net_wifi_scan flips to APSTA for the scan itself, and
+ * @ref net_wifi_connect for the join the operator asked for. @ref net_ap_stop
+ * re-associates afterwards.
+ *
+ * One radio, one channel: when the station associates, the SoftAP is dragged
  * onto the station's channel and any joined phone is dropped. That is expected —
  * the setup page warns before it submits Wi-Fi credentials, and the device
  * screen, not the phone, reports the outcome.
@@ -93,7 +106,14 @@ void net_wifi_disconnect(void);
  */
 bool net_ap_start(const char *ssid, const char *pass);
 
-/** @brief Drop the SoftAP and return the radio to station-only. */
+/**
+ * @brief Drop the SoftAP, return the radio to station-only, and re-join.
+ *
+ * The association @ref net_ap_start displaced is put back if it is not already
+ * up: the driver still holds the credentials, so only the association went away.
+ * Without it, closing the config page would leave a working terminal offline
+ * until somebody rebooted it.
+ */
 void net_ap_stop(void);
 
 /**

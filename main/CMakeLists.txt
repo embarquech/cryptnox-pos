@@ -8,7 +8,6 @@ idf_component_register(
     REQUIRES pn532 driver cryptnox_utils crypto_provider esp32_logger esp32_platform
              secure_channel pn532_nfc_transport
              esp_wifi esp_event esp_netif esp_http_client esp_http_server
-             esp_https_server
              app_update esp_timer
              nvs_flash mbedtls
              json lwip

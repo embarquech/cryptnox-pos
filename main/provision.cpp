@@ -5,8 +5,8 @@
 
 /**
  * @file provision.cpp
- * @brief The config portal: SoftAP + captive portal for setup, HTTPS for
- *        administration, one page for both. See provision.h for the why.
+ * @brief The config portal: a SoftAP and a captive portal, for setup and for
+ *        administration alike, one page for both. See provision.h for the why.
  */
 
 /******************************************************************
@@ -32,18 +32,11 @@
 #include "lwip/sockets.h"
 
 #include "esp_http_server.h"
-#include "esp_https_server.h"
 #include "esp_log.h"
 #include "esp_mac.h"
-#include "esp_netif.h"
 #include "esp_random.h"
 #include "esp_timer.h"
 #include "nvs.h"
-
-#include "mbedtls/ctr_drbg.h"
-#include "mbedtls/entropy.h"
-#include "mbedtls/pk.h"
-#include "mbedtls/x509_crt.h"
 
 #include "addr_check.h"
 #include "eth_addr.h"
@@ -70,20 +63,15 @@ static const char *const TAG = "prov";
  * code will not scan, and those four are where that goes wrong. */
 static const char AP_PASS_ALPHABET[] = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 
-/* Own namespace, so neither the AP passphrase nor the portal's TLS key is swept
- * up by anything that erases settings for other reasons. settings_factory_reset()
- * erases this one BY NAME — grep "prov" in settings.cpp before renaming it, or a
- * factory reset will silently hand the next operator the last one's AP
- * passphrase and TLS identity. */
+/* Own namespace, so nothing this module keeps is swept up by anything that
+ * erases settings for other reasons. settings_factory_reset() erases this one BY
+ * NAME — grep "prov" in settings.cpp before renaming it. */
 #define NS_PROV       "prov"
+
+/* Keys nothing writes any more; erased on sight. See ap_pass_new(). */
 #define K_AP_PASS     "ap_pass"
 #define K_TLS_CRT     "tls_crt"
 #define K_TLS_KEY     "tls_key"
-
-/* PEM buffers. A P-256 key is ~240 bytes of PEM and its self-signed certificate
- * ~600; the slack is for the header/footer and NVS's NUL. */
-#define TLS_CRT_MAX   1024U
-#define TLS_KEY_MAX   512U
 
 /* Read this much of an upload at a time. 4 KB is a flash page-erase unit and one
  * lwIP window's worth, and it lives in .bss rather than on the httpd task's
@@ -119,7 +107,6 @@ static const char AP_PASS_ALPHABET[] = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
  ******************************************************************/
 
 static httpd_handle_t    s_httpd    = NULL;
-static bool              s_httpd_tls = false;   /* stop it with the right call */
 static TaskHandle_t      s_dns_task = NULL;
 static volatile bool     s_dns_run  = false;
 static ui_event_cb_t     s_cb       = NULL;
@@ -137,7 +124,6 @@ static int64_t              s_deadline_us = 0;   /* 0 = no self-close */
 static char s_ssid[33]  = "";
 static char s_pass[AP_PASS_LEN + 1U] = "";
 static char s_qr[96]    = "";
-static char s_ip[16]    = "";
 
 static uint8_t s_upload[UPLOAD_CHUNK];
 
@@ -173,146 +159,7 @@ static prov_ask_t        s_ask      = PROV_ASK_NONE;
 static char              s_ask_val[SETTINGS_PAYOUT_MAX] = "";
 
 /******************************************************************
- * 4. TLS identity — one self-signed P-256 certificate per terminal
- ******************************************************************/
-
-/* Held for the lifetime of the admin server: httpd_ssl_start copies neither the
- * certificate nor the key, so these have to outlive the call. */
-static char s_crt[TLS_CRT_MAX] = "";
-static char s_key[TLS_KEY_MAX] = "";
-
-/* The name in the certificate. It cannot match anything a browser would verify —
- * the terminal is reached by IP on whatever network it joined, and its address
- * changes with the venue — so this is only what the warning dialog displays.
- * Making it say what the thing is, is the whole value it can have. */
-#define TLS_DN  "CN=Cryptnox terminal,O=Cryptnox SA"
-
-/* Fixed validity. There is no trusted clock when the certificate is generated
- * (it happens the first time the operator opens the admin page, which may be
- * before any SNTP sync), so a window derived from "now" could land in the past
- * and be rejected by the browser for a reason nobody could diagnose. A decade,
- * fixed, on a certificate whose only claim is "this is the box in front of you". */
-#define TLS_NOT_BEFORE  "20250101000000"
-#define TLS_NOT_AFTER   "20350101000000"
-
-/**
- * @brief Generate a fresh self-signed P-256 certificate into @ref s_crt/@ref s_key.
- *
- * P-256 and not RSA on purpose: RSA-2048 keygen on this chip is tens of seconds
- * with the operator watching a frozen panel, where an EC key is well under one.
- *
- * @return false on any mbedtls failure; the buffers are then not usable.
- */
-static bool tls_generate(void)
-{
-    mbedtls_pk_context       pk;
-    mbedtls_entropy_context  ent;
-    mbedtls_ctr_drbg_context drbg;
-    mbedtls_x509write_cert   crt;
-
-    mbedtls_pk_init(&pk);
-    mbedtls_entropy_init(&ent);
-    mbedtls_ctr_drbg_init(&drbg);
-    mbedtls_x509write_crt_init(&crt);
-
-    static const char PERS[] = "cryptnox-pos-portal";
-    /* Serial number, big-endian raw. Any nonzero value does: nothing chains off
-     * this certificate, so there is no issuer whose serials must not collide.
-     * NOT called SERIAL — Arduino.h, which CW_Utils.h drags in, defines that. */
-    static unsigned char cert_serial[] = { 0x01 };
-
-    bool ok = false;
-    do {
-        if (mbedtls_ctr_drbg_seed(&drbg, mbedtls_entropy_func, &ent,
-                                  reinterpret_cast<const unsigned char *>(PERS),
-                                  sizeof(PERS) - 1U) != 0) { break; }
-
-        if (mbedtls_pk_setup(&pk,
-                mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY)) != 0) { break; }
-        if (mbedtls_ecp_gen_key(MBEDTLS_ECP_DP_SECP256R1, mbedtls_pk_ec(pk),
-                                mbedtls_ctr_drbg_random, &drbg) != 0) { break; }
-        if (mbedtls_pk_write_key_pem(&pk,
-                reinterpret_cast<unsigned char *>(s_key),
-                sizeof(s_key)) != 0) { break; }
-
-        mbedtls_x509write_crt_set_subject_key(&crt, &pk);
-        mbedtls_x509write_crt_set_issuer_key(&crt, &pk);   /* self-signed */
-        mbedtls_x509write_crt_set_version(&crt, MBEDTLS_X509_CRT_VERSION_3);
-        mbedtls_x509write_crt_set_md_alg(&crt, MBEDTLS_MD_SHA256);
-
-        if (mbedtls_x509write_crt_set_subject_name(&crt, TLS_DN) != 0) { break; }
-        if (mbedtls_x509write_crt_set_issuer_name(&crt, TLS_DN)  != 0) { break; }
-        if (mbedtls_x509write_crt_set_serial_raw(&crt, cert_serial,
-                sizeof(cert_serial)) != 0) { break; }
-        if (mbedtls_x509write_crt_set_validity(&crt, TLS_NOT_BEFORE,
-                                               TLS_NOT_AFTER) != 0) { break; }
-        /* Self-signed leaf that signs nothing else: is_ca = 0. */
-        if (mbedtls_x509write_crt_set_basic_constraints(&crt, 0, -1) != 0) { break; }
-
-        if (mbedtls_x509write_crt_pem(&crt,
-                reinterpret_cast<unsigned char *>(s_crt), sizeof(s_crt),
-                mbedtls_ctr_drbg_random, &drbg) != 0) { break; }
-        ok = true;
-    } while (false);
-
-    mbedtls_x509write_crt_free(&crt);
-    mbedtls_ctr_drbg_free(&drbg);
-    mbedtls_entropy_free(&ent);
-    mbedtls_pk_free(&pk);
-
-    if (!ok) {
-        CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_key), sizeof(s_key));
-        s_crt[0] = '\0';
-    }
-    return ok;
-}
-
-/**
- * @brief Load the portal's TLS identity, generating and persisting one on first use.
- *
- * Per device, not per build: a key shared by every terminal from one image is a
- * key an attacker reads out of the published firmware, and then the HTTPS is
- * decoration. Generated on the terminal, kept in NVS (encrypted on a unit built
- * with flash encryption), and erased by a factory reset along with the AP
- * passphrase — a new operator must not inherit the last one's identity.
- *
- * @return false if no usable identity could be had; the caller must not start a
- *         TLS server, since it would have nothing to present.
- */
-static bool tls_load(void)
-{
-    nvs_handle_t h;
-    if (nvs_open(NS_PROV, NVS_READONLY, &h) == ESP_OK) {
-        size_t lc = sizeof(s_crt);
-        size_t lk = sizeof(s_key);
-        const bool got = (nvs_get_str(h, K_TLS_CRT, s_crt, &lc) == ESP_OK) &&
-                         (nvs_get_str(h, K_TLS_KEY, s_key, &lk) == ESP_OK);
-        nvs_close(h);
-        if (got && (s_crt[0] != '\0') && (s_key[0] != '\0')) { return true; }
-    }
-
-    ESP_LOGW(TAG, "generating this terminal's TLS identity (once)");
-    if (!tls_generate()) {
-        ESP_LOGE(TAG, "TLS keygen failed - no HTTPS admin page");
-        return false;
-    }
-
-    if (nvs_open(NS_PROV, NVS_READWRITE, &h) == ESP_OK) {
-        (void)nvs_set_str(h, K_TLS_CRT, s_crt);
-        (void)nvs_set_str(h, K_TLS_KEY, s_key);
-        (void)nvs_commit(h);
-        nvs_close(h);
-    } else {
-        /* Kept in RAM only: this session works, and the browser is asked to
-         * accept a different certificate next time. Worth a warning, not a
-         * refusal. */
-        ESP_LOGW(TAG, "TLS identity not persisted (NVS unavailable)");
-    }
-    return true;
-}
-
-/******************************************************************
- * 5. AP identity
+ * 4. AP identity
  ******************************************************************/
 
 /**
@@ -334,15 +181,22 @@ static void ap_pass_new(void)
     }
     s_pass[AP_PASS_LEN] = '\0';
 
-    /* One-off: terminals provisioned by an earlier build have a permanent
-     * passphrase sitting in flash under this key. Nothing reads it any more, so
-     * drop the key too. NVS deletes logically — the old entry is tombstoned and
-     * its bytes leave the page only on the next compaction — so this closes the
-     * NVS read, not a raw flash dump. Factory reset and CONFIG_NVS_ENCRYPTION
-     * are what cover the dump, and neither is this function's job. */
+    /* One-off, on units provisioned by an earlier build: a permanent AP
+     * passphrase under K_AP_PASS, and the admin page's self-signed TLS identity
+     * under K_TLS_CRT/K_TLS_KEY (~1 KB of a 24 KB NVS). Nothing reads any of them
+     * any more — the admin page is on this AP now, not on the venue LAN — so drop
+     * the keys. NVS deletes logically: the old entry is tombstoned and its bytes
+     * leave the page only on the next compaction, so this closes the NVS read,
+     * not a raw flash dump. Factory reset and CONFIG_NVS_ENCRYPTION cover the
+     * dump, and neither is this function's job. */
     nvs_handle_t h;
     if (nvs_open(NS_PROV, NVS_READWRITE, &h) == ESP_OK) {
-        if (nvs_erase_key(h, K_AP_PASS) == ESP_OK) { (void)nvs_commit(h); }
+        static const char *const DEAD[] = { K_AP_PASS, K_TLS_CRT, K_TLS_KEY };
+        bool erased = false;
+        for (size_t i = 0; i < (sizeof(DEAD) / sizeof(DEAD[0])); i++) {
+            if (nvs_erase_key(h, DEAD[i]) == ESP_OK) { erased = true; }
+        }
+        if (erased) { (void)nvs_commit(h); }
         nvs_close(h);
     }
 }
@@ -355,25 +209,8 @@ static void ap_ssid_build(void)
     (void)snprintf(s_ssid, sizeof(s_ssid), "Cryptnox-%02X%02X", mac[4], mac[5]);
 }
 
-/** @brief Fill s_ip from the station interface, or clear it. */
-static bool ip_from_sta(void)
-{
-    s_ip[0] = '\0';
-
-    esp_netif_t *sta = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-    if (sta == NULL) { return false; }
-
-    esp_netif_ip_info_t ip;
-    memset(&ip, 0, sizeof(ip));
-    if (esp_netif_get_ip_info(sta, &ip) != ESP_OK) { return false; }
-    if (ip.ip.addr == 0U) { return false; }   /* associated but no lease yet */
-
-    (void)esp_ip4addr_ntoa(&ip.ip, s_ip, sizeof(s_ip));
-    return true;
-}
-
 /******************************************************************
- * 6. DNS hijack (wizard mode only)
+ * 5. DNS hijack
  ******************************************************************/
 
 /**
@@ -461,7 +298,7 @@ static void dns_task(void *arg)
 }
 
 /******************************************************************
- * 7. Request helpers
+ * 6. Request helpers
  ******************************************************************/
 
 /* form_field() lives in form_parse.h and addr_is_base58()/addr_tron_plausible()
@@ -551,7 +388,7 @@ static bool gate(httpd_req_t *req, esp_err_t *rc)
 }
 
 /******************************************************************
- * 8. The page
+ * 7. The page
  ******************************************************************/
 
 /* One document for both modes and every step, with each section hidden until
@@ -1016,7 +853,7 @@ static esp_err_t page_get(httpd_req_t *req)
 }
 
 /******************************************************************
- * 9. API — state
+ * 8. API — state
  ******************************************************************/
 
 /** @brief Label the panel and the page both use for a pending proposal. */
@@ -1133,7 +970,7 @@ static esp_err_t scan_get(httpd_req_t *req)
 }
 
 /******************************************************************
- * 10. API — authorisation
+ * 9. API — authorisation
  ******************************************************************/
 
 static esp_err_t auth_post(httpd_req_t *req)
@@ -1178,7 +1015,7 @@ static esp_err_t auth_post(httpd_req_t *req)
 }
 
 /******************************************************************
- * 11. API — the values the panel has to confirm
+ * 10. API — the values the panel has to confirm
  ******************************************************************/
 
 /**
@@ -1253,7 +1090,7 @@ static esp_err_t card_post(httpd_req_t *req)
 }
 
 /******************************************************************
- * 12. API — Wi-Fi and wizard navigation
+ * 11. API — Wi-Fi and wizard navigation
  ******************************************************************/
 
 static esp_err_t wifi_post(httpd_req_t *req)
@@ -1319,7 +1156,7 @@ static esp_err_t next_post(httpd_req_t *req)
 }
 
 /******************************************************************
- * 13. API — firmware upload
+ * 12. API — firmware upload
  ******************************************************************/
 
 /**
@@ -1380,7 +1217,7 @@ static esp_err_t ota_post(httpd_req_t *req)
 }
 
 /******************************************************************
- * 14. Captive-portal probes (wizard mode only)
+ * 13. Captive-portal probes
  ******************************************************************/
 
 /**
@@ -1402,12 +1239,6 @@ static esp_err_t redirect(httpd_req_t *req)
 static esp_err_t redirect_404(httpd_req_t *req, httpd_err_code_t err)
 {
     (void)err;
-    /* Admin mode has no portal to send anyone to, and a browser that asked for
-     * /favicon.ico should be told there isn't one rather than bounced to a page
-     * it is already on. */
-    if (s_mode != PROV_MODE_WIZARD) {
-        return reply(req, "404 Not Found", "No such page.");
-    }
     return redirect(req);
 }
 
@@ -1439,10 +1270,10 @@ static esp_err_t apple_probe(httpd_req_t *req)
 }
 
 /******************************************************************
- * 15. Handler registration
+ * 14. Handler registration
  ******************************************************************/
 
-static void register_handlers(bool wizard)
+static void register_handlers(void)
 {
     const httpd_uri_t api[] = {
         { "/",             HTTP_GET,  page_get,      NULL },
@@ -1461,22 +1292,22 @@ static void register_handlers(bool wizard)
         (void)httpd_register_uri_handler(s_httpd, &api[i]);
     }
 
-    if (wizard) {
-        for (size_t i = 0; i < (sizeof(PROBE_URIS) / sizeof(PROBE_URIS[0])); i++) {
-            const httpd_uri_t p = { PROBE_URIS[i], HTTP_GET, redirect, NULL };
-            (void)httpd_register_uri_handler(s_httpd, &p);
-        }
-        const httpd_uri_t a1 = { "/hotspot-detect.html", HTTP_GET, apple_probe, NULL };
-        const httpd_uri_t a2 = { "/library/test/success.html", HTTP_GET, apple_probe, NULL };
-        (void)httpd_register_uri_handler(s_httpd, &a1);
-        (void)httpd_register_uri_handler(s_httpd, &a2);
+    /* Both modes: they are the same SoftAP with the same page on it, so the admin
+     * page opens itself on the phone exactly like the wizard's does. */
+    for (size_t i = 0; i < (sizeof(PROBE_URIS) / sizeof(PROBE_URIS[0])); i++) {
+        const httpd_uri_t p = { PROBE_URIS[i], HTTP_GET, redirect, NULL };
+        (void)httpd_register_uri_handler(s_httpd, &p);
     }
+    const httpd_uri_t a1 = { "/hotspot-detect.html", HTTP_GET, apple_probe, NULL };
+    const httpd_uri_t a2 = { "/library/test/success.html", HTTP_GET, apple_probe, NULL };
+    (void)httpd_register_uri_handler(s_httpd, &a1);
+    (void)httpd_register_uri_handler(s_httpd, &a2);
 
     (void)httpd_register_err_handler(s_httpd, HTTPD_404_NOT_FOUND, redirect_404);
 }
 
 /******************************************************************
- * 16. Public API
+ * 15. Public API
  ******************************************************************/
 
 bool prov_start(prov_mode_t mode, ui_event_cb_t cb)
@@ -1507,103 +1338,76 @@ bool prov_start(prov_mode_t mode, ui_event_cb_t cb)
 
     const bool wizard = (mode == PROV_MODE_WIZARD);
 
-    if (wizard) {
-        /* Before generating the passphrase, not after: esp_random() is only
-         * properly seeded once the RF subsystem is running, and net_wifi_init()
-         * is what starts it. Generating first would hand out a passphrase drawn
-         * from the bootloader's entropy, which is the one thing this AP relies
-         * on. */
-        net_wifi_init();
-        ap_ssid_build();
-        ap_pass_new();   /* a new one every time the portal opens - see ap_pass_new */
-        (void)snprintf(s_qr, sizeof(s_qr), "WIFI:T:WPA;S:%s;P:%s;;", s_ssid, s_pass);
+    /* Both modes are the same SoftAP with the same page on it. Not a convenience:
+     * httpd binds every interface, so a portal running beside a station
+     * association answers the venue LAN too — and every device holding the venue
+     * PSK is on that LAN. The AP is the perimeter, so it has to be the only
+     * interface there is. net_ap_start() drops the station for exactly that
+     * reason, and net_ap_stop() puts it back. */
 
-        if (!net_ap_start(s_ssid, s_pass)) {
-            ESP_LOGE(TAG, "SoftAP failed to start");
-            /* prov_stop() never runs for a portal that never came up, so the
-             * passphrase it would have wiped is wiped here instead. */
-            CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_pass), sizeof(s_pass));
-            CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_qr), sizeof(s_qr));
-            return false;
-        }
+    /* Before generating the passphrase, not after: esp_random() is only properly
+     * seeded once the RF subsystem is running, and net_wifi_init() is what starts
+     * it. Generating first would hand out a passphrase drawn from the
+     * bootloader's entropy, which is the one thing this AP relies on. */
+    net_wifi_init();
+    ap_ssid_build();
+    ap_pass_new();   /* a new one every time the portal opens - see ap_pass_new */
+    (void)snprintf(s_qr, sizeof(s_qr), "WIFI:T:WPA;S:%s;P:%s;;", s_ssid, s_pass);
 
-        httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
-        cfg.max_uri_handlers  = 24;
-        cfg.lru_purge_enable  = true;
-        /* Port 80 is not optional here: a captive-portal probe fetches a bare
-         * http:// URL and will not follow us anywhere else. */
-        cfg.server_port       = 80;
-        cfg.recv_wait_timeout = 30;
-        cfg.send_wait_timeout = 30;
-        if (httpd_start(&s_httpd, &cfg) != ESP_OK) {
-            ESP_LOGE(TAG, "httpd failed to start");
-            s_httpd = NULL;
-            net_ap_stop();
-            CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_pass), sizeof(s_pass));
-            CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_qr), sizeof(s_qr));
-            return false;
-        }
-        s_httpd_tls = false;
-    } else {
-        if (!ip_from_sta()) {
-            ESP_LOGW(TAG, "not on a network - nothing could reach the config page");
-            return false;
-        }
-        if (!tls_load()) { return false; }
-        (void)snprintf(s_qr, sizeof(s_qr), "https://%s/", s_ip);
-
-        httpd_ssl_config_t cfg = HTTPD_SSL_CONFIG_DEFAULT();
-        cfg.servercert     = reinterpret_cast<const uint8_t *>(s_crt);
-        cfg.servercert_len = strlen(s_crt) + 1U;   /* mbedtls wants the NUL */
-        cfg.prvtkey_pem    = reinterpret_cast<const uint8_t *>(s_key);
-        cfg.prvtkey_len    = strlen(s_key) + 1U;
-        cfg.port_secure    = 443;
-        cfg.httpd.max_uri_handlers = 24;
-        cfg.httpd.lru_purge_enable = true;
-        /* Two sockets, not the default four: an SSL socket costs ~40 KB and this
-         * chip is also carrying LVGL and the Wi-Fi stack. One browser is the
-         * expected load, and the second slot is what lets its next request in
-         * while the first is still closing. */
-        cfg.httpd.max_open_sockets = 2;
-        /* A 1.9 MB upload over a venue link is minutes, and each erase-and-write
-         * pause inside it is seconds. The default 5 s would drop the socket
-         * mid-image; ota_post() also retries on timeout, and between the two a
-         * slow uplink survives. */
-        cfg.httpd.recv_wait_timeout = 30;
-        cfg.httpd.send_wait_timeout = 30;
-        if (httpd_ssl_start(&s_httpd, &cfg) != ESP_OK) {
-            ESP_LOGE(TAG, "HTTPS server failed to start");
-            s_httpd = NULL;
-            return false;
-        }
-        s_httpd_tls = true;
+    if (!net_ap_start(s_ssid, s_pass)) {
+        ESP_LOGE(TAG, "SoftAP failed to start");
+        /* prov_stop() never runs for a portal that never came up, so the
+         * passphrase it would have wiped is wiped here instead. */
+        CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_pass), sizeof(s_pass));
+        CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_qr), sizeof(s_qr));
+        return false;
     }
 
-    register_handlers(wizard);
+    httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
+    cfg.max_uri_handlers  = 24;
+    cfg.lru_purge_enable  = true;
+    /* Port 80 is not optional: a captive-portal probe fetches a bare http:// URL
+     * and will not follow us anywhere else. Plain HTTP over WPA2 is the whole
+     * transport story now — see provision.h. */
+    cfg.server_port       = 80;
+    /* A firmware image is 1.9 MB and each erase-and-write pause inside the
+     * upload is seconds. The default 5 s would drop the socket mid-image;
+     * ota_post() also retries on timeout, and between the two a slow phone
+     * survives. */
+    cfg.recv_wait_timeout = 30;
+    cfg.send_wait_timeout = 30;
+    if (httpd_start(&s_httpd, &cfg) != ESP_OK) {
+        ESP_LOGE(TAG, "httpd failed to start");
+        s_httpd = NULL;
+        net_ap_stop();
+        CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_pass), sizeof(s_pass));
+        CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_qr), sizeof(s_qr));
+        return false;
+    }
+
+    register_handlers();
 
     s_mode = mode;
     s_step = wizard ? PROV_STEP_AUTH : PROV_STEP_ADMIN;
 
-    if (wizard) {
-        /* No self-close for the wizard: a terminal halfway through setup that shut
-         * its own setup page after a quarter of an hour would strand whoever went
-         * to fetch the Wi-Fi password. main stops this one when setup ends. */
-        s_deadline_us = 0;
-        s_dns_run = true;
-        if (xTaskCreate(dns_task, "prov_dns", 3072, NULL, 4, &s_dns_task) != pdPASS) {
-            /* The forms still work for anyone who types the IP, but the portal
-             * will not open by itself — which is the entire point, so say so. */
-            ESP_LOGE(TAG, "DNS task failed - captive portal will NOT auto-open");
-            s_dns_run  = false;
-            s_dns_task = NULL;
-        }
-        ESP_LOGI(TAG, "setup portal up: SSID '%s', pass '%s', %s",
-                 s_ssid, s_pass, PORTAL_URL);
-    } else {
-        s_deadline_us = esp_timer_get_time() +
-                        ((int64_t)PROV_WINDOW_MIN * 60LL * 1000000LL);
-        ESP_LOGW(TAG, "admin page up at %s for %u min", s_qr, PROV_WINDOW_MIN);
+    /* No self-close for the wizard: a terminal halfway through setup that shut its
+     * own setup page after a quarter of an hour would strand whoever went to fetch
+     * the Wi-Fi password. main stops this one when setup ends. Admin mode does
+     * close itself — it has taken a working terminal off its network to do this. */
+    s_deadline_us = wizard ? 0
+                           : (esp_timer_get_time() +
+                              ((int64_t)PROV_WINDOW_MIN * 60LL * 1000000LL));
+
+    s_dns_run = true;
+    if (xTaskCreate(dns_task, "prov_dns", 3072, NULL, 4, &s_dns_task) != pdPASS) {
+        /* The forms still work for anyone who types the IP, but the portal will
+         * not open by itself — which is the entire point, so say so. */
+        ESP_LOGE(TAG, "DNS task failed - captive portal will NOT auto-open");
+        s_dns_run  = false;
+        s_dns_task = NULL;
     }
+    ESP_LOGW(TAG, "%s portal up: SSID '%s', pass '%s', %s",
+             wizard ? "setup" : "admin", s_ssid, s_pass, PORTAL_URL);
     return true;
 }
 
@@ -1623,11 +1427,12 @@ void prov_stop(void)
     }
 
     if (s_httpd != NULL) {
-        if (s_httpd_tls) { (void)httpd_ssl_stop(s_httpd); }
-        else             { (void)httpd_stop(s_httpd); }
+        (void)httpd_stop(s_httpd);
         s_httpd = NULL;
     }
-    if (was == PROV_MODE_WIZARD) { net_ap_stop(); }
+    /* Both modes raise the AP, and net_ap_stop() also re-joins the network the AP
+     * displaced — so closing the admin page puts a working terminal back online. */
+    net_ap_stop();
 
     /* An upload half-received, or an image nobody accepted, does not outlive the
      * page it arrived through. */
@@ -1651,9 +1456,8 @@ void prov_stop(void)
             (void)xSemaphoreGive(s_ask_lock);
         }
     }
-    /* s_qr holds the passphrase in wizard mode, so clear all of it, not just byte 0. */
+    /* s_qr holds the passphrase, so clear all of it, not just byte 0. */
     CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_qr), sizeof(s_qr));
-    s_ip[0]       = '\0';
     s_deadline_us = 0;
     ESP_LOGI(TAG, "config portal down");
 }

@@ -6,11 +6,14 @@ One web app configures a terminal, in two modes. Implementation is
 | | **Wizard** (`PROV_MODE_WIZARD`) | **Admin** (`PROV_MODE_ADMIN`) |
 |---|---|---|
 | When | blank terminal, or saved Wi-Fi unreachable | any time, from the settings menu |
-| Network | the terminal's own WPA2 SoftAP | the venue network it is already on |
-| Reached by | captive portal — the browser opens itself | QR code / URL on the panel |
-| Transport | plain HTTP, port 80 | HTTPS, port 443, self-signed |
+| Network | the terminal's own WPA2 SoftAP | the same SoftAP |
+| Reached by | captive portal — the browser opens itself | the same captive portal |
+| Transport | plain HTTP, port 80 | plain HTTP, port 80 |
 | Closes | when setup ends | after `PROV_WINDOW_MIN` (15 min), or **Done** |
 | Serves | one step at a time | everything at once |
+
+The modes differ in what they serve and when they close. They do not differ in
+how they are reached — that is the point of the next section.
 
 ## Authorisation: the panel, never the wire
 
@@ -32,35 +35,58 @@ the panel and somebody has to accept it there. Nothing is stored until they do,
 and the same is true of firmware: an upload is verified and staged, and only an
 on-screen accept makes it bootable.
 
-## Why the wizard is HTTP and the admin page is HTTPS
+## The SoftAP is the only interface, and that is the security model
 
-Not an oversight, and not laziness in the one that is plaintext.
+`esp_http_server` binds every interface and gives you no bind address. So a portal
+running beside a station association is not "on the AP" — it is on the venue LAN
+too, answering the payout forms to every device holding the venue PSK. The
+perimeter this module relies on is *a passphrase shown on the panel to whoever is
+standing there*, and on a venue LAN that perimeter is not merely weaker, it is
+absent.
 
-**Wizard mode has to be HTTP.** A captive-portal probe fetches a bare `http://`
-URL on port 80 and will not follow a redirect to 443. TLS there means the phone's
-browser never opens by itself, which is the entire feature. And the link is already
-encrypted: a WPA2 SoftAP whose random per-session passphrase is on the panel in
-front of the operator, existing only during setup, and which admits one station at
-a time. The admin code is not on that
-link, and the values that are get confirmed on the panel.
+So `net_ap_start()` raises the AP in `WIFI_MODE_AP`, not APSTA, and drops the
+station association on the way in. Both modes. The station comes back in
+`net_ap_stop()` — the driver still holds the credentials, so it is a reconnect,
+not a reconfigure, and closing the admin page puts a working terminal back online
+rather than leaving it offline until somebody reboots it.
 
-**Admin mode is HTTPS**, because a venue LAN is a different proposition — every
-device holding the same PSK is on it. The certificate is self-signed and generated
-**on the terminal**, once, into NVS (`tls_generate()`), so:
+Two calls borrow the station back, for as long as they need it and no longer:
+`net_wifi_scan()` flips to APSTA for the scan and hands the radio straight back,
+and `net_wifi_connect()` holds APSTA for the join the operator asked for — the
+phone that submitted the form is on the AP and has to be told what happened. The
+caller then either keeps the join and stops the portal in the same breath, or
+drops the association again (`net_wifi_disconnect()`, which also returns the radio
+to AP-only).
 
-* the browser warns the first time, and the panel says it will;
-* no two terminals share a private key, which a certificate baked into the image
-  could not manage — that key is in the published firmware.
+**Consequences, stated plainly.** There is no remote administration: you are in
+front of the terminal or you are nowhere. The terminal is off its network while
+the admin page is open, so it is not taking payments during that window — which
+is fine, because somebody is standing at it with the panel in one hand and a phone
+in the other. And the browser-side update check needs the *phone's* internet, not
+the terminal's, so on a phone with no cellular data the release-list check fails
+and says so; the file picker still works.
 
-P-256 rather than RSA: RSA-2048 keygen on this chip is tens of seconds of frozen
-panel, an EC key is well under one. Validity is a fixed decade rather than a window
-around "now", because the key is generated the first time the admin page is opened
-and that can be before any SNTP sync — a window derived from a wrong clock lands in
-the past and the browser rejects it for a reason nobody could diagnose.
+**Both modes are plain HTTP**, and that is not laziness in the plaintext one:
 
-A factory reset erases the TLS identity. A new operator must not inherit the last
-one's. The AP passphrase needs no erasing: it is drawn fresh every time the portal
-opens and never leaves RAM, because the screen showing it is a screen a customer can
+* A captive-portal probe fetches a bare `http://` URL on port 80 and will not
+  follow a redirect to 443. TLS means the phone's browser never opens by itself,
+  which is the entire feature.
+* The link is already encrypted — a WPA2 SoftAP whose random per-session
+  passphrase is on the panel in front of the operator, admitting one station at a
+  time, existing only while the portal does.
+* The admin code is not on that link, and the values that are get confirmed on the
+  panel.
+* There is nothing else on the wire: the AP is the radio's only interface.
+
+TLS on top of that would buy a certificate warning to explain on a 2.8" panel, a
+self-signed key to generate and keep in NVS, a second transport through the same
+forms, and no security anybody can point at. It used to be there; it is gone
+(`CONFIG_ESP_HTTPS_SERVER_ENABLE` is deliberately off in `sdkconfig.defaults`),
+and the leftover `tls_crt`/`tls_key` NVS entries on an already-provisioned unit
+are erased the next time a portal opens (`ap_pass_new()`).
+
+The AP passphrase needs no erasing: it is drawn fresh every time the portal opens
+and never leaves RAM, because the screen showing it is a screen a customer can
 photograph — and one association is all the AP allows, so a stranger using a
 photographed passphrase locks the operator out instead of watching them.
 
@@ -93,13 +119,12 @@ panel in front of whoever is asking — is the perimeter, and every value that d
 goes, or which firmware boots, is still accepted on the panel. The panel drops the
 step numbers there, since there are no steps 1, 3 or 4 to count.
 
-For that perimeter to mean anything the SoftAP has to be the *only* way in, and
-`httpd` binds every interface — so a station association is a second door. A join
-that works is therefore either kept and the portal stopped in the same breath, or
-dropped again (`net_wifi_disconnect()`): a network that associated but had no clock
-is rejected, and leaving that association up would put the setup forms in front of
-everyone holding the venue PSK, which is exactly who the AP passphrase does not
-keep out.
+For that perimeter to mean anything the SoftAP has to be the *only* way in — which
+is why the radio is AP-only while a portal is up (above). The Wi-Fi step is the one
+place that has to open the station again, so a join that works is either kept and
+the portal stopped in the same breath, or dropped again (`net_wifi_disconnect()`): a
+network that associated but had no clock is rejected, and leaving that association
+up would put the setup forms in front of everyone holding the venue PSK.
 
 **Finishing restarts the terminal.** The recipient and contract dual stores are
 built at boot from validated strings, so applying a change in place would mean a

@@ -1261,6 +1261,11 @@ static bool run_wizard(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
                      * needs before the first RPC call. */
                     if (!net_wifi_connect(w_ssid, w_pass)) {
                         prov_set_note(NOTE_JOIN_FAILED);
+                        /* It may still be half-associated: a hung DHCP times out
+                         * in net_wifi_connect(), not in the driver, so a lease
+                         * arriving after this point would put the setup forms on
+                         * that LAN. Back to AP-only. */
+                        net_wifi_disconnect();
                     } else if (!net_time_sync(15000U)) {
                         prov_set_note(NOTE_NO_TIME);
                         /* Joined, but we are not keeping it — and the portal stays
@@ -1946,6 +1951,13 @@ extern "C" void app_main(void)
                         why = NOTE_NO_TIME;
                     } else {
                         settings_set_wifi(w_ssid, w_pass);   /* persist for next boot */
+                        /* Submitted from the config page, not the settings
+                         * picker: the terminal is now on a network *and* serving
+                         * that page, which is the one combination the portal must
+                         * never be in — httpd binds every interface. The network
+                         * was the thing being changed, so close the page rather
+                         * than hand the forms to the new LAN. */
+                        if (prov_mode() != PROV_MODE_OFF) { prov_stop(); }
                         ui_show_amount_entry();
                     }
 
@@ -1970,6 +1982,12 @@ extern "C" void app_main(void)
                         }
                         CW_Utils::secure_wipe(
                             reinterpret_cast<uint8_t *>(b_pass), sizeof(b_pass));
+
+                        /* The rollback restored the credentials the driver holds,
+                         * which is what prov_stop() re-joins with — but the
+                         * association itself cannot stay up while the config page
+                         * is being served. Drop it and go back to AP-only. */
+                        if (prov_mode() != PROV_MODE_OFF) { net_wifi_disconnect(); }
 
                         /* Back to the picker with the reason, so another network
                          * can be chosen instead of a dead end. */

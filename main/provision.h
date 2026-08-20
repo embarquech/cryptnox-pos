@@ -16,20 +16,38 @@
  * address is only marginally better. Scanning a QR code should land them on the
  * form.
  *
+ * ## One transport: the terminal's own SoftAP
+ *
+ * Both modes raise a WPA2 SoftAP with a fresh per-session passphrase and run a
+ * captive portal on it: a DNS responder answers every lookup with the AP's
+ * address, and the HTTP server deliberately fails each OS's connectivity probe so
+ * the phone concludes the network is captive and opens the browser by itself. Miss
+ * either half and the phone joins in silence. The QR code on the panel carries
+ * "WIFI:T:WPA;S:...;P:...;;", which both iOS and Android cameras join from
+ * directly — so there is never a URL to type.
+ *
+ * The AP is the *only* interface while a portal is up: @ref net_ap_start drops the
+ * station association and @ref net_ap_stop restores it. That is not tidiness.
+ * esp_http_server binds every interface and offers no bind address, so a portal
+ * running beside a station association also answers the venue LAN — where every
+ * device holding the venue PSK can reach the payout forms, and where the perimeter
+ * this module actually relies on (a passphrase on the panel, in front of the
+ * person asking) means nothing at all. So there is no remote administration here,
+ * by construction: you are in front of the terminal or you are nowhere.
+ *
+ * What that buys, besides the smaller attack surface, is one transport instead of
+ * two — no TLS server, no self-signed identity in NVS, no certificate warning to
+ * explain on a panel, and no second code path through the same forms.
+ *
  * ## The two modes
  *
  * @ref PROV_MODE_WIZARD — a blank terminal, or one whose saved network has become
- * unreachable. There is no network to serve a page on, so the terminal raises its
- * own WPA2 SoftAP and runs a captive portal: a DNS responder answers every lookup
- * with the AP's address, and the HTTP server deliberately fails each OS's
- * connectivity probe so the phone concludes the network is captive and opens the
- * browser by itself. Miss either half and the phone joins in silence. The QR code
- * on the panel carries "WIFI:T:WPA;S:...;P:...;;", which both iOS and Android
- * cameras join from directly — so there is never a URL to type.
+ * unreachable. Walks the setup steps one at a time and stays up until setup ends.
  *
- * @ref PROV_MODE_ADMIN — a terminal already on the venue network, opened from
- * behind the admin code in the settings menu. Served over HTTPS on that network,
- * and the QR code on the panel is simply the https:// URL.
+ * @ref PROV_MODE_ADMIN — a configured terminal, opened from behind the admin code
+ * in the settings menu. Serves everything at once and closes itself after
+ * @ref PROV_WINDOW_MIN, because it has taken a working terminal off its network to
+ * do this.
  *
  * ## Authorisation: the panel, never the wire
  *
@@ -48,22 +66,21 @@
  * Firmware follows the same rule — an upload is verified and staged, and only an
  * on-screen accept makes it bootable.
  *
- * ## Transport
+ * ## Why plain HTTP, in both modes
  *
- * Admin mode is HTTPS (self-signed, per-device key generated on the terminal and
- * kept in NVS — so the browser warns once, and no two terminals share a key).
- *
- * Wizard mode is deliberately plain HTTP, and that is not an oversight:
+ * Not an oversight:
  *   - A captive-portal probe fetches a bare http:// URL on port 80 and will not
- *     follow us to 443. TLS there means the browser never opens by itself, which
- *     is the entire point of the mode.
- *   - The link is already encrypted. It is a WPA2 SoftAP whose random per-device
- *     passphrase is on the panel in front of the operator, and it only exists
- *     during setup.
+ *     follow us to 443. TLS means the browser never opens by itself, which is the
+ *     entire point of a captive portal.
+ *   - The link is already encrypted. It is a WPA2 SoftAP whose random per-session
+ *     passphrase is on the panel in front of the operator, it admits one station
+ *     at a time, and it only exists while the portal does.
  *   - The admin code is not on that link (see above), and the values that are get
  *     confirmed on the panel.
- * So the AP passphrase is the perimeter in wizard mode, and TLS on top of WPA2
- * would buy a certificate warning and nothing else.
+ *   - There is nothing else on the wire to protect it from: the AP is the radio's
+ *     only interface for as long as the portal is up.
+ * So the AP passphrase is the perimeter, and TLS on top of WPA2 would buy a
+ * certificate warning and nothing else.
  */
 
 #ifndef PROVISION_H
@@ -86,8 +103,8 @@ extern "C" {
 /** @brief Which of the two portals is running. */
 typedef enum {
     PROV_MODE_OFF,      /**< Not running.                                     */
-    PROV_MODE_WIZARD,   /**< SoftAP + captive portal, for setup.              */
-    PROV_MODE_ADMIN,    /**< HTTPS on the joined network, for administration. */
+    PROV_MODE_WIZARD,   /**< Setup: one step at a time, no self-close.        */
+    PROV_MODE_ADMIN,    /**< Administration: everything at once, times out.   */
 } prov_mode_t;
 
 /**
@@ -120,24 +137,31 @@ typedef enum {
  * @brief Raise the portal.
  *
  * Idempotent for the same mode; a different mode is refused rather than silently
- * switched, since the two listen on different interfaces with different
- * transports. Stop it first.
+ * switched, since the two serve different steps to the same page. Stop it first.
  *
- * In wizard mode a new AP passphrase is drawn on every call and never stored: it is
- * shown on a screen a customer can see, so a photograph of it must not still open
- * the wifi_only portal — which asks for no admin code — weeks later. prov_stop()
+ * Raising the portal takes the terminal off its network for the duration (see
+ * above); @ref prov_stop puts it back.
+ *
+ * A new AP passphrase is drawn on every call and never stored: it is shown on a
+ * screen a customer can see, so a photograph of it must not still open the
+ * wifi_only portal — which asks for no admin code — weeks later. prov_stop()
  * wipes it, and a reboot mid-setup simply shows the next one.
  *
  * @param[in] mode Which portal to run.
  * @param[in] cb   Where submissions are reported; the same callback the UI task
  *                 uses, so a form and a screen tap are indistinguishable to the
  *                 main task. Must outlive the call.
- * @return true if the portal is up and reachable. Admin mode returns false when no
- *         network is joined, since there would be no way to reach it.
+ * @return true if the portal is up and reachable; false if the SoftAP or the HTTP
+ *         server would not start.
  */
 bool prov_start(prov_mode_t mode, ui_event_cb_t cb);
 
-/** @brief Stop the portal, drop the AP, and withdraw anything unaccepted. */
+/**
+ * @brief Stop the portal, drop the AP, and withdraw anything unaccepted.
+ *
+ * Also re-joins the network the AP displaced, so a configured terminal is back
+ * online when the page closes rather than at the next reboot.
+ */
 void prov_stop(void);
 
 /** @brief Which mode is running, or @ref PROV_MODE_OFF. */
@@ -152,18 +176,18 @@ prov_step_t prov_step(void);
 /** @brief Minutes left before the portal closes itself, 0 once it has. */
 unsigned prov_window_left_min(void);
 
-/** @brief AP SSID, or "" outside wizard mode. */
+/** @brief AP SSID, or "" while no portal is up. */
 const char *prov_ap_ssid(void);
 
-/** @brief AP passphrase, or "" outside wizard mode. */
+/** @brief AP passphrase, or "" while no portal is up. */
 const char *prov_ap_pass(void);
 
 /**
  * @brief What the panel's QR code should carry.
  *
- * Wizard mode: "WIFI:T:WPA;S:<ssid>;P:<pass>;;" — a camera joins the AP from it
- * and the captive portal takes over, so one code is enough.
- * Admin mode: "https://<ip>/" — the page itself.
+ * "WIFI:T:WPA;S:<ssid>;P:<pass>;;" — a camera joins the AP from it and the captive
+ * portal takes over, so one code is enough and there is no URL to read off the
+ * panel. Empty while no portal is up.
  */
 const char *prov_qr_payload(void);
 

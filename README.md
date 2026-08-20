@@ -288,7 +288,7 @@ python tools/secure_flash.py --package    # -> dist/cryptnox_pos-encrypted-full.
 - **`Card not found`** → confirm the PN532 switches are set for I²C, the SDA/SCL wires match GPIO 27/22, and the card is well centred on the antenna.
 - **`ecrecover did not match either parity`** → `ADDR_FROM` in `config.h` does not correspond to the card's `m/44'/60'/0'/0/0` derived key. Verify the seed and the path.
 - **WiFi connect fails** → only WPA2 is supported; check SSID/password.
-- **App partition full** → the project uses two 1.94 MB OTA app slots (`partitions.csv`) on a 4 MB flash, so the budget is half what a single-slot table would give. Drop unused LVGL fonts (`CONFIG_LV_FONT_MONTSERRAT_*`) in `sdkconfig.defaults` if you need more headroom.
+- **App partition full** → the project uses two 1.94 MB OTA app slots (`partitions.csv`) on a 4 MB flash, so the budget is half what a single-slot table would give — a "% free" that halved between two builds is almost always that table, not growth. Where the space actually goes, biggest first: the image assets in `.rodata` (`chain_icons.c`, `logo_img.c`, `card_img.c` — ~60 KB between them), then LVGL and the fonts it pulls in. Regenerate an asset smaller (`tools/gen_*.py`) or drop unused fonts (`CONFIG_LV_FONT_MONTSERRAT_*` in `sdkconfig.defaults`); check with `idf.py size-components` before assuming a subsystem is to blame.
 - **`Update` says the terminal has no second firmware slot** → that unit was flashed with the old single-app partition table. The table itself is never rewritten by an update, so it needs one reflash over USB first. See [docs/ota.md](docs/ota.md).
 
 ---
@@ -297,7 +297,7 @@ python tools/secure_flash.py --package    # -> dist/cryptnox_pos-encrypted-full.
 
 The generated documentation for this project is available [here](https://embarquech.github.io/cryptnox-pos/).
 
-- [The config portal](docs/config-portal.md) — the setup wizard and the HTTPS admin page: why the admin code is only ever typed on the panel, why the wizard is HTTP and the admin page is not, and the endpoint list. Test plan: [docs/testing-provisioning.md](docs/testing-provisioning.md).
+- [The config portal](docs/config-portal.md) — setup and administration on the terminal's own SoftAP: why that AP is the radio's only interface while the page is up, why the admin code is only ever typed on the panel, and the endpoint list. Test plan: [docs/testing-provisioning.md](docs/testing-provisioning.md).
 - [Firmware updates over Wi-Fi](docs/ota.md) — the browser-mediated OTA path, publishing a release, and the signing key you must not ship without. Test plan: [docs/ota-testing.md](docs/ota-testing.md).
 
 ---

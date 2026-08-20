@@ -5,7 +5,7 @@ The terminal never connects to GitHub. A browser does, and carries the bytes:
 ```
  browser ──HTTPS──> raw.githubusercontent.com/…/firmware.json   version, url, notes
  browser ──HTTPS──> …/cryptnox_pos.bin                          the image itself
- browser ──HTTPS──> https://<terminal>/api/ota                  streamed to flash
+ browser ──HTTP──>  http://192.168.4.1/api/ota                  streamed to flash
  panel:   operator accepts the version → reboot into the other slot
 ```
 
@@ -21,19 +21,20 @@ addresses and contracts are set. Firmware is one section of one page.
 
 ## Why the flow has this shape
 
-The browser needs the internet **and** the terminal at the same time:
+The page is on the terminal's own SoftAP and nowhere else — that AP is the
+radio's only interface while the config portal is up, which is what keeps the
+payout forms off the venue LAN (see
+[config-portal.md](config-portal.md)). So the browser is on a network with no
+route to the internet, and the two ways to feed it an image are:
 
-* **On the venue network** (the normal case). The terminal is already joined to
-  it; put the laptop or phone on the same network and both are reachable. The
-  terminal makes no outbound connection at any point.
-* **No internet on that network.** The page's file picker takes a `.bin`
-  downloaded anywhere else. Everything except the "Check for updates" button
-  works with no internet at all.
-
-A phone joined to the terminal's *setup* AP is not a usable combination — that
-AP has no route to the internet, and which interface a phone uses for a given
-request while a captive network is joined is not something to build on. Use the
-file picker.
+* **The file picker** (the reliable one). Download the `.bin` anywhere — desk,
+  phone, USB stick — before joining the terminal's AP, then pick it. Everything
+  except the "Check for updates" button works with no internet at all.
+* **Check for updates**, which needs internet in *that browser*. A phone usually
+  keeps cellular data alive alongside a Wi-Fi network that has no route, and then
+  it works; which interface a phone picks for a given request while a captive
+  network is joined is not something to build on. When it does not work the page
+  says so and points at the file picker.
 
 ### What the transport is worth, and what it is not
 
@@ -46,20 +47,23 @@ screen to authorise the browser, and the browser then carries a random session
 token; there is no code field in the page and no `X-Admin-Code` header any more.
 See the authorisation section of [config-portal.md](config-portal.md).
 
-The page is served over HTTPS with the terminal's own self-signed certificate, so
-the browser warns once. That is worth having for the session token and the
-addresses on the page, and it is not what keeps a stranger's firmware off the
-device — the signature is.
+The page is served over plain HTTP on the terminal's own WPA2 SoftAP, which
+admits one station at a time and is the radio's only interface while the portal is
+up. That link, not a certificate, is what protects the session token and the
+addresses on the page — and neither is what keeps a stranger's firmware off the
+device. The signature is.
 
 ## Operating it
 
 1. Settings → About → **Update** (or Wi-Fi → **Configure**; same page). The panel
-   shows a QR code and the address, e.g. `https://192.168.1.34/`, and starts a
-   **15-minute** window (`PROV_WINDOW_MIN`). Tapping **Done** closes it
-   immediately.
-2. Open it and accept the certificate warning. The panel asks for the admin code;
-   enter it there. Then either **Check for updates** (needs internet in *that
-   browser*) or pick a `.bin` file.
+   shows a QR code for the terminal's own Wi-Fi, the SSID and passphrase in text,
+   and starts a **15-minute** window (`PROV_WINDOW_MIN`). Tapping **Done** closes
+   it immediately — and puts the terminal back on its network, which it leaves for
+   the duration.
+2. Scan the code with a phone camera to join, and the page opens itself. The panel
+   asks for the admin code; enter it there. Then either pick a `.bin` file (see
+   above — download it *before* joining) or **Check for updates**, which needs
+   internet in that browser.
 3. The terminal verifies the image and asks on its own screen. Nothing reboots
    until somebody accepts it there — the same rule payout addresses follow: a
    browser may propose, only the panel may accept. A version that goes
@@ -73,7 +77,7 @@ device — the signature is.
 
 `OTA_MANIFEST_URL` in `main/provision.cpp` points at a JSON file. Host it — and the
 `.bin` — somewhere that sends `Access-Control-Allow-Origin: *`, or the browser
-will refuse to hand the response to a page served from `https://<terminal>/`:
+will refuse to hand the response to a page served from `http://192.168.4.1/`:
 
 | Host | CORS | Notes |
 |---|---|---|
@@ -149,7 +153,8 @@ Firmware uses two of the portal's; the full list is in
 | `POST /api/ota` | image body, `X-Prov-Token` header, streamed to the idle slot |
 
 Same-origin, so no CORS headers are needed on the device side and no preflight
-happens. The page does not hash the download itself even though HTTPS now makes
-`crypto.subtle` available — there would be no point: the image carries its own
-SHA-256 and `esp_ota_end()` is what checks it, along with the signature, on the
-device that has to trust the result.
+happens. The page does not hash the download itself — `crypto.subtle` is not even
+available to it, since `http://192.168.4.1/` is not a secure context, and there
+would be no point if it were: the image carries its own SHA-256 and
+`esp_ota_end()` is what checks it, along with the signature, on the device that
+has to trust the result.

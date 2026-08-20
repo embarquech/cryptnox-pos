@@ -134,6 +134,11 @@ void net_wifi_init(void)
  * lwIP still holds sockets is a known way to crash. */
 static esp_netif_t *s_ap_netif = NULL;
 
+/* Whether the SoftAP is currently the radio's only interface. The scan and
+ * connect calls below need the station back for a moment, and this is how they
+ * know to put the radio back to AP-only afterwards. */
+static bool s_ap_up = false;
+
 bool net_ap_start(const char *ssid, const char *pass)
 {
     if ((ssid == NULL) || (pass == NULL) || (strlen(pass) < 8U)) { return false; }
@@ -162,7 +167,13 @@ bool net_ap_start(const char *ssid, const char *pass)
      * way; net_ap_stop() and the AP's own inactivity timeout free the slot. */
     cfg.ap.max_connection = 1;
 
-    if (esp_wifi_set_mode(WIFI_MODE_APSTA) != ESP_OK)          { return false; }
+    /* AP-only, and the station goes down first. httpd binds every interface, so
+     * in APSTA the config portal answers the venue LAN too — the one place its
+     * perimeter (a passphrase on the panel in front of the operator) means
+     * nothing. The scan and connect calls borrow the station back below, and
+     * net_ap_stop() re-associates. */
+    net_wifi_disconnect();
+    if (esp_wifi_set_mode(WIFI_MODE_AP) != ESP_OK)             { return false; }
     if (esp_wifi_set_config(WIFI_IF_AP, &cfg) != ESP_OK)       { return false; }
     /* With one slot, a phone that walked away without deauthenticating holds the
      * only seat until the AP gives up on it, and the 300 s default is five minutes
@@ -176,7 +187,8 @@ bool net_ap_start(const char *ssid, const char *pass)
         ESP_LOGW(TAG, "AP idle timeout unchanged - a dropped phone may hold the "
                       "only slot for 5 min");
     }
-    ESP_LOGI(TAG, "SoftAP '%s' up on 192.168.4.1", ssid);
+    s_ap_up = true;
+    ESP_LOGI(TAG, "SoftAP '%s' up on 192.168.4.1 (AP-only, station down)", ssid);
     return true;
 }
 
@@ -189,14 +201,46 @@ void net_wifi_disconnect(void)
      * nothing after this inherits the ceiling. */
     s_retry_num = WIFI_MAX_RETRY;
     (void)esp_wifi_disconnect();
+    /* Take the interface down with the association while a portal is up: the
+     * association is what put the config forms on the venue LAN, and leaving an
+     * idle station enabled leaves half of that in place. */
+    if (s_ap_up) { (void)esp_wifi_set_mode(WIFI_MODE_AP); }
     ESP_LOGI(TAG, "station association dropped");
 }
 
 void net_ap_stop(void)
 {
     if (s_ap_netif == NULL) { return; }
+    s_ap_up = false;
     (void)esp_wifi_set_mode(WIFI_MODE_STA);
     ESP_LOGI(TAG, "SoftAP down");
+
+    /* Put back the association net_ap_start() displaced. The driver still holds
+     * the credentials — only the link went away — so this is a reconnect, not a
+     * reconfigure. Skipped when the station is already up, which is the wizard
+     * case: it joined the venue network through net_wifi_connect() and the portal
+     * comes down in the same breath. */
+    wifi_ap_record_t joined;
+    if (esp_wifi_sta_get_ap_info(&joined) == ESP_OK) { return; }
+
+    wifi_config_t cfg;
+    if ((esp_wifi_get_config(WIFI_IF_STA, &cfg) == ESP_OK) &&
+        (cfg.sta.ssid[0] != '\0')) {
+        s_retry_num = 0;   /* net_wifi_disconnect() left it at the ceiling */
+        const esp_err_t err = esp_wifi_connect();
+        if (err == ESP_OK) {
+            ESP_LOGI(TAG, "re-joining '%s'",
+                     reinterpret_cast<const char *>(cfg.sta.ssid));
+        } else {
+            /* Loud: a terminal that quietly stayed off its network after the
+             * config page closed looks working and fails at the first RPC call. */
+            ESP_LOGE(TAG, "could not re-join '%s' (%s) - restart the terminal",
+                     reinterpret_cast<const char *>(cfg.sta.ssid),
+                     esp_err_to_name(err));
+        }
+    }
+    /* The copy carries the passphrase (CODING_RULES §1.4). */
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(&cfg), sizeof(cfg));
 }
 
 uint16_t net_wifi_scan(net_wifi_ap_t *out, uint16_t max)
@@ -206,18 +250,29 @@ uint16_t net_wifi_scan(net_wifi_ap_t *out, uint16_t max)
 
     wifi_scan_config_t scan_cfg;
     CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(&scan_cfg), sizeof(scan_cfg));   /* all channels, all SSIDs */
-    if (esp_wifi_scan_start(&scan_cfg, true) != ESP_OK) {
-        return 0U;
+
+    /* Scanning is a station operation, and net_ap_start() switched the station
+     * off. Borrow it for the scan and the readout, then hand the radio straight
+     * back: AP-only is what keeps the portal off the venue LAN, so the window
+     * where it is not AP-only has to be this one call and no longer. */
+    const bool borrowed = s_ap_up;
+    if (borrowed) { (void)esp_wifi_set_mode(WIFI_MODE_APSTA); }
+
+    uint16_t          num  = 0U;
+    wifi_ap_record_t *recs = NULL;
+    if (esp_wifi_scan_start(&scan_cfg, true) == ESP_OK) {
+        (void)esp_wifi_scan_get_ap_num(&num);
+        if (num > 0U) {
+            recs = static_cast<wifi_ap_record_t *>(
+                       malloc(num * sizeof(wifi_ap_record_t)));
+            if (recs != NULL) {
+                (void)esp_wifi_scan_get_ap_records(&num, recs);
+            }
+        }
     }
 
-    uint16_t num = 0U;
-    (void)esp_wifi_scan_get_ap_num(&num);
-    if (num == 0U) { return 0U; }
-
-    wifi_ap_record_t *recs =
-        static_cast<wifi_ap_record_t *>(malloc(num * sizeof(wifi_ap_record_t)));
+    if (borrowed) { (void)esp_wifi_set_mode(WIFI_MODE_AP); }
     if (recs == NULL) { return 0U; }
-    (void)esp_wifi_scan_get_ap_records(&num, recs);
 
     uint16_t count = 0U;
     for (uint16_t i = 0U; (i < num) && (count < max); i++) {
@@ -244,6 +299,14 @@ uint16_t net_wifi_scan(net_wifi_ap_t *out, uint16_t max)
 bool net_wifi_connect(const char *ssid, const char *password)
 {
     net_wifi_init();
+
+    /* The station is off while the SoftAP is up (net_ap_start), and joining
+     * obviously needs it. APSTA rather than AP-only for the duration: the phone
+     * that submitted the form is on the AP and has to be told what happened, and
+     * a mid-join mode flip would drop it before it could be. The caller either
+     * keeps the join and stops the portal, or drops the association again —
+     * see UI_EVENT_WIFI_TRY in main.cpp. */
+    if (s_ap_up) { (void)esp_wifi_set_mode(WIFI_MODE_APSTA); }
 
     xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
     s_retry_num = 0;

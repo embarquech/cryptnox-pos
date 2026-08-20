@@ -1371,17 +1371,14 @@ static void ota_fit_card(lv_obj_t *card, lv_obj_t *last, lv_coord_t buttons_h) {
 static void open_portal_window(void) {
     /* Started here, on the UI task, the same way this screen already calls
      * settings_factory_reset() and prov_pending_commit() directly. The event
-     * callback is handed over so a submission can come back to the panel.
-     *
-     * First call on a fresh terminal generates its TLS key, which takes a moment
-     * of frozen panel — under a second for P-256, and once per device. */
+     * callback is handed over so a submission can come back to the panel. */
     const bool up = prov_start(PROV_MODE_ADMIN, s_cb);
 
     if (!up) {
         lv_obj_t *card = open_modal(OTA_CARD_W, 200);
         lv_obj_t *m = ota_text(card, NULL,
-                 "The terminal has to be on a Wi-Fi network before a browser "
-                 "can configure it.\n\nSet one up in the Wi-Fi tab first.",
+                 "The terminal's own Wi-Fi would not come up, so there is "
+                 "nothing for a phone to join.\n\nRestart and try again.",
                  COL_TEXT, &lv_font_montserrat_14);
         ota_fit_card(card, m, 42);
         make_button(card, "Close", COL_SURFACE, COL_TEXT, OTA_TEXT_W, 40,
@@ -1392,14 +1389,13 @@ static void open_portal_window(void) {
 
     lv_obj_t *card = open_modal(OTA_CARD_W, 300);
 
-    lv_obj_t *cap = ota_text(card, NULL, "Scan this, on this Wi-Fi",
+    lv_obj_t *cap = ota_text(card, NULL, "Scan this with your phone",
                              COL_DIM, &lv_font_montserrat_14);
 
-    /* A QR code and not a typed address: the page is on the venue network, on a
-     * device with no name to look up, so its address is the only way to find it —
-     * and reading a dotted quad off a 2.8" panel into a phone is the step that
-     * goes wrong. 104 px is 26 modules at 4 px, which holds "https://" plus a
-     * dotted quad. The white quiet zone is not optional: a code drawn hard
+    /* The same "WIFI:..." code the setup screen shows: the page is on the
+     * terminal's own AP, so joining it is the whole journey and a camera does that
+     * from the code directly. 104 px is 26 modules at 4 px, which holds the SSID
+     * and the passphrase. The white quiet zone is not optional: a code drawn hard
      * against an edge is a code half the scanners in the world will not see. */
     lv_obj_t *qr = lv_qrcode_create(card, 104, COL_TEXT, COL_BG);
     if (qr != NULL) {
@@ -1411,15 +1407,18 @@ static void open_portal_window(void) {
         lv_obj_align_to(qr, cap, LV_ALIGN_OUT_BOTTOM_MID, 0, OTA_GAP);
     }
 
-    /* The URL in text too — a laptop has no camera to point, and a phone camera
-     * that balks at a self-signed https:// link still leaves it typable. */
-    lv_obj_t *url = ota_text(card, (qr != NULL) ? qr : cap, prov_qr_payload(),
+    /* The credentials in text too — a laptop has no camera to point, and a code
+     * that will not scan in a dim bar still leaves ten characters to type. */
+    char creds[80];
+    snprintf(creds, sizeof(creds), "%s\nPass  %s",
+             prov_ap_ssid(), prov_ap_pass());
+    lv_obj_t *url = ota_text(card, (qr != NULL) ? qr : cap, creds,
                              COL_TEXT, &lv_font_montserrat_14);
 
     char note[192];
     snprintf(note, sizeof(note),
-             "The browser will warn about the certificate: it is this "
-             "terminal's own. Accept it once.\n\n"
+             "The terminal leaves its own network while this is open, and "
+             "re-joins when it closes.\n\n"
              "The admin code is typed here, never there.\n\n"
              "Closes by itself in %u min.", prov_window_left_min());
     lv_obj_t *n = ota_text(card, url, note, COL_DIM, &lv_font_montserrat_14);

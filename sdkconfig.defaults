@@ -24,23 +24,12 @@ CONFIG_MBEDTLS_HAVE_TIME_DATE=y
 # HTTPS support in the HTTP client
 CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS=y
 
-# ── HTTPS for the config portal (main/provision.cpp, PROV_MODE_ADMIN) ──
-# The admin page is served over TLS on the venue network. The certificate is
-# self-signed and generated ON THE TERMINAL, once, into NVS — so the browser
-# warns the first time and no two terminals share a private key. A key baked
-# into the image would be one an attacker reads out of the published firmware,
-# which is worth less than the warning costs.
-#
-# The setup portal (PROV_MODE_WIZARD) stays plain HTTP on purpose: a
-# captive-portal probe fetches a bare http:// URL on port 80 and will not follow
-# a redirect to 443, so TLS there means the phone's browser never opens by
-# itself. That link is a WPA2 SoftAP with a random per-device passphrase and the
-# admin code never crosses it. See the threat model in main/provision.h.
-CONFIG_ESP_HTTPS_SERVER_ENABLE=y
-# Needed by tls_generate(): mbedtls writes the key and certificate as PEM, which
-# is the form esp_https_server takes. X509_CREATE_C/X509_CRT_WRITE_C are on
-# unconditionally in IDF's mbedtls config; this one has a Kconfig.
-CONFIG_MBEDTLS_PEM_WRITE_C=y
+# NOT enabled, deliberately: CONFIG_ESP_HTTPS_SERVER_ENABLE and
+# CONFIG_MBEDTLS_PEM_WRITE_C. The config portal (main/provision.cpp) serves plain
+# HTTP over its own WPA2 SoftAP, which is the radio's only interface while it is
+# up — so there is no TLS server, no self-signed identity in NVS, and nothing on
+# that wire but the phone in front of the terminal. See main/provision.h.
+# mbedtls itself stays linked: the RPC client (main/https_post.cpp) needs it.
 
 # Allow up to 3 SNTP servers (multi-server time sync fallback in eth_rpc)
 CONFIG_LWIP_SNTP_MAX_SERVERS=3
