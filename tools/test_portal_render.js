@@ -158,7 +158,8 @@ const page = sandbox.__out;
  * new section added to the page with no case here fails every scenario at once,
  * rather than silently defaulting to visible.
  */
-const SECTIONS = ['s_auth', 's_pend', 's_addr', 's_ct', 's_wifi', 's_fw', 's_done', 'nav'];
+const SECTIONS = ['s_auth', 's_pend', 's_card', 's_addr', 's_ct', 's_wifi',
+  's_fw', 's_done', 'nav'];
 
 const CASES = [
   {
@@ -177,7 +178,7 @@ const CASES = [
   {
     name: 'wizard, authorised, address step',
     state: { mode: 'wizard', step: 'addr', authed: true, pay_eth: '', pay_trx: '' },
-    on: ['s_addr', 'nav'],
+    on: ['s_card', 's_addr', 'nav'],
   },
   {
     /* No Continue here: joining is what ends the wizard, so a button that only
@@ -209,7 +210,7 @@ const CASES = [
       pay_eth: '0xAAA', pay_trx: 'TBBB', ct_eth: '0xCCC', ct_trx: 'TDDD',
       ssid: 'My Cafe', version: '1.0.1', scan_gen: 0,
     },
-    on: ['s_addr', 's_ct', 's_wifi', 's_fw'],
+    on: ['s_card', 's_addr', 's_ct', 's_wifi', 's_fw'],
     also: () => {
       assert.strictEqual(els.get('cur_eth').textContent, '0xAAA');
       assert.strictEqual(els.get('cur_trx').textContent, 'TBBB');
@@ -275,30 +276,27 @@ try {
   failures++;
 }
 
-/* ── The typed-address fields are opt-in ────────────────────────────────────
- * Six monospace 0x… boxes on arrival read as "type all of this", which is the
- * opposite of what the card button is for. So they are hidden until somebody asks,
- * and — the part worth a test — a poll must never close them again: render() runs
- * every 1.5 s and would otherwise eat a half-typed address.
+/* ── The typed send-to fields are always there ──────────────────────────────
+ * They used to be hidden behind a "Manual input" button, which left the card
+ * read looking like the only way to set a payout address — and that sets it to
+ * the tapped card. So they are open on arrival, and render() (every 1.5 s) must
+ * never close them on whoever is typing into one.
  */
 try {
-  els.get('manual').hidden = true;
-  els.get('go_man').hidden = false;
   page.setS({ mode: 'admin', step: 'admin', authed: true, scan_gen: 0 });
   page.render();
-  assert.strictEqual(els.get('manual').hidden, true,
-    'render() opened the address fields nobody asked for');
-  els.get('go_man').onclick.call(els.get('go_man'));
-  assert.strictEqual(els.get('manual').hidden, false,
-    'Manual input should reveal the address fields');
-  assert.strictEqual(els.get('go_man').hidden, true,
-    'the button should retire once the fields are open');
+  els.get('in_eth').value = '0xhalf-typed';
+  els.get('in_trx').value = 'Thalf-typed';
   page.render();
-  assert.strictEqual(els.get('manual').hidden, false,
-    'a poll closed the address fields on whoever was typing into them');
-  console.log('  ok    the typed-address fields are opt-in and stay open');
+  assert.strictEqual(els.get('s_addr').hidden, false,
+    'render() hid the send-to card on an authorised admin page');
+  assert.strictEqual(els.get('in_eth').value, '0xhalf-typed',
+    'a poll cleared a half-typed Ethereum address');
+  assert.strictEqual(els.get('in_trx').value, 'Thalf-typed',
+    'a poll cleared a half-typed Tron address');
+  console.log('  ok    the typed send-to fields stay open');
 } catch (e) {
-  console.log(`  FAIL  the typed-address fields are opt-in\n        ${e.message}`);
+  console.log(`  FAIL  the typed send-to fields stay open\n        ${e.message}`);
   failures++;
 }
 
@@ -358,7 +356,7 @@ const flush = async () => { for (let i = 0; i < 20; i++) { await new Promise(r =
     assert.strictEqual(page.getS().authed, true,
       'the page never saw the grant — is the token being sent on /api/state?');
     assert.strictEqual(els.get('s_auth').hidden, true, 'auth section should be gone');
-    for (const id of ['s_addr', 's_ct', 's_wifi', 's_fw']) {
+    for (const id of ['s_card', 's_addr', 's_ct', 's_wifi', 's_fw']) {
       assert.strictEqual(els.get(id).hidden, false, `${id} should be visible in admin mode`);
     }
     assert.strictEqual(els.get('cur_ssid').textContent, 'Lucky_2.4G');

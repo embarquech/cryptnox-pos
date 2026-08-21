@@ -587,23 +587,16 @@ static const char *const PAGE_HTML =
 "<p><span id=pend></span> is on the terminal screen now. Compare it there, "
 "character by character, and accept it on the terminal.</p></section>"
 
-"<section id=s_addr hidden><h2>Payout addresses</h2>"
-"<p>Where takings are sent. Submitting one here only <i>proposes</i> it: the "
-"terminal shows it on its own screen and somebody has to accept it there.</p>"
-/* Two ways in, and the address fields stay out of sight until somebody picks the
- * one that needs them: six monospace 0x… boxes on arrival read as "type all of
- * this", which is the opposite of what the card button is for. */
-"<p>Ethereum &mdash; currently <code id=cur_eth>&hellip;</code><br>"
-"Tron &mdash; currently <code id=cur_trx>&hellip;</code></p>"
-"<button id=go_card>Cryptnox card address</button>"
-"<button class=alt id=go_man>Manual input</button>"
-"<div id=manual hidden>"
-"<p>Ethereum</p>"
-"<input id=in_eth placeholder='0x...' autocapitalize=off autocomplete=off>"
-"<button class=alt id=go_eth>Propose Ethereum address</button>"
-"<p>Tron</p>"
-"<input id=in_trx placeholder='T...' autocapitalize=off autocomplete=off>"
-"<button class=alt id=go_trx>Propose Tron address</button></div></section>"
+/* Card first, contracts, then the typed send-to last — the operator reads down
+ * to the thing they are most likely to type. The card route says out loud that it
+ * points the payout at the tapped card: doing that with the card that pays is how
+ * a till ends up paying itself. */
+"<section id=s_card hidden><h2>Card addresses</h2>"
+"<p>Take a payout address off a Cryptnox card. Whichever card is tapped, "
+"<i>its own</i> address becomes the address takings are sent to &mdash; so tap "
+"the merchant's card, not a customer's. The terminal asks for that card's PIN, "
+"then shows each address on its own screen for acceptance.</p>"
+"<button class=alt id=go_card>Read a Cryptnox card</button></section>"
 
 "<section id=s_ct hidden><h2>Token contracts</h2>"
 "<p>Which token the terminal charges in. Accepted on the terminal screen like a "
@@ -614,6 +607,19 @@ static const char *const PAGE_HTML =
 "<p>TRC-20 on Tron &mdash; currently <code id=cur_ctt>&hellip;</code></p>"
 "<input id=in_ctt placeholder='T...' autocapitalize=off autocomplete=off>"
 "<button class=alt id=go_ctt>Propose TRC-20 contract</button></section>"
+
+"<section id=s_addr hidden><h2>Send to</h2>"
+"<p>Where takings are sent &mdash; the merchant's own address. Submitting one "
+"here only <i>proposes</i> it: the terminal shows it on its own screen and "
+"somebody has to accept it there.</p>"
+"<p>Ethereum &mdash; currently <code id=cur_eth>&hellip;</code><br>"
+"Tron &mdash; currently <code id=cur_trx>&hellip;</code></p>"
+"<p>Ethereum</p>"
+"<input id=in_eth placeholder='0x...' autocapitalize=off autocomplete=off>"
+"<button id=go_eth>Propose Ethereum address</button>"
+"<p>Tron</p>"
+"<input id=in_trx placeholder='T...' autocapitalize=off autocomplete=off>"
+"<button id=go_trx>Propose Tron address</button></section>"
 
 "<section id=s_wifi hidden><h2>Wi-Fi</h2>"
 "<p id=wifi_note></p>"
@@ -693,6 +699,7 @@ static const char *const PAGE_JS =
 "show('s_pend',a&&p);"
 /* In the wizard one section at a time, in the order of the flow. In admin mode
  * everything at once — it is a settings page, not a sequence. */
+"show('s_card',a&&!p&&(w?st=='addr':true));"
 "show('s_addr',a&&!p&&(w?st=='addr':true));"
 "show('s_ct',  a&&!p&&!w);"
 "show('s_wifi',a&&!p&&(w?st=='wifi':true));"
@@ -747,9 +754,6 @@ static const char *const PAGE_JS =
 "$('go_card').onclick=function(){"
 "post('/api/card').then(function(){say('Tap your Cryptnox card on the terminal "
 "when it asks, then accept each address on its screen.')},say)};"
-/* One way: the fields stay open once asked for, and render() never closes them —
- * losing a half-typed address to a poll would be its own bug report. */
-"$('go_man').onclick=function(){show('manual',true);this.hidden=true};"
 
 "function propose(u,net,el){var v=$(el).value.trim();"
 "if(!v){say('Nothing to propose.');return}"

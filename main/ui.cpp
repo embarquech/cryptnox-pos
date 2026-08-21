@@ -1125,9 +1125,13 @@ static void build_settings(void) {
      * operator needs it there during a shift, and an administrator setting the
      * terminal up expects to find it with the other transaction settings. ── */
     const bool tron = chain_is_tron();
-    char net_line[48];
-    snprintf(net_line, sizeof(net_line), "%s on %s", asset_name(), asset_network());
-    lv_obj_t *apill = make_pill(t_tx, "Asset", net_line, TAB_W, 0, ACT_NET_PICK);
+    /* Ticker over network, not "Asset" over "USDC on Ethereum Sepolia": that line
+     * measured ~178px against make_pill's 140px cap, so the row that says which
+     * chain the terminal is charging on arrived dot-elided as "USDC on Ethereum
+     * Sep...". Split across the pill's two lines both fit at full length, and the
+     * badge beside them already says "asset". */
+    lv_obj_t *apill = make_pill(t_tx, asset_name(), asset_network(),
+                                TAB_W, 0, ACT_NET_PICK);
     lv_obj_align(make_asset_badge(apill, settings_get_chain()),
                  LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
 
@@ -1415,12 +1419,18 @@ static void open_portal_window(void) {
     lv_obj_t *url = ota_text(card, (qr != NULL) ? qr : cap, creds,
                              COL_TEXT, &lv_font_montserrat_14);
 
-    char note[192];
+    /* Two short lines, broken by hand, because the card cannot grow: 304px is
+     * ota_fit_card's ceiling, and the caption, the 112px code, the credentials and
+     * the Done button leave about 45px of it — three lines at most. The paragraph
+     * that used to sit here ran to nine and simply stopped mid-sentence at the
+     * card's edge. Each line is kept under OTA_TEXT_W (200px, ~27 characters at
+     * montserrat_14) so neither wraps into a fourth. What was dropped is not lost:
+     * "the admin code is typed here, never there" is the first thing the browser
+     * page itself says, to the person who needs to read it. */
+    char note[64];
     snprintf(note, sizeof(note),
-             "The terminal leaves its own network while this is open, and "
-             "re-joins when it closes.\n\n"
-             "The admin code is typed here, never there.\n\n"
-             "Closes by itself in %u min.", prov_window_left_min());
+             "Venue Wi-Fi off while open\nCloses in %u min",
+             prov_window_left_min());
     lv_obj_t *n = ota_text(card, url, note, COL_DIM, &lv_font_montserrat_14);
     ota_fit_card(card, n, 42);
 

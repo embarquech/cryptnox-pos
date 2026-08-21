@@ -441,9 +441,9 @@ the connectivity probes.
 5. **Pass:** once the code is accepted, the panel drops the QR code and the AP
    passphrase and says the phone is connected. A code still on screen at the payout
    step reads as "scan me again", which is the one thing that cannot help.
-6. Walk the addresses and Wi-Fi steps from the phone. The payout card offers
-   **Cryptnox card address** and **Manual input**, and the `0x…` fields appear only
-   after Manual input — and must not disappear again while you are typing (the page
+6. Walk the addresses and Wi-Fi steps from the phone. The address step shows
+   **Card addresses** first and **Send to** last, with the `0x…` / `T…` fields
+   open on arrival — and those must not disappear while you are typing (the page
    re-renders every 1.5 s).
 7. On the Wi-Fi card, tap the eye beside the password: it must reveal and re-mask.
 8. **Pass:** each address appears on the terminal for acceptance.
