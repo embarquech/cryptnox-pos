@@ -98,13 +98,21 @@ static XPT2046_Touchscreen touch(T_CS, T_IRQ);
 #define MENU_BTN_H      30
 #define MENU_BTN_X      4
 #define MENU_BTN_Y      6
-/* Asset selector — its own row above the amount. Sized off the 36px badge it
- * carries: 8 pad + 36 badge + 12 gap + 10 arrow + 10 pad = 76 wide, and 3px of
- * air above and below the badge = 42 tall. (BADGE_SZ is defined with the icon
- * helpers, further down — kept numeric here so the metrics read as one block.) */
+/* Asset selector — on the amount's own row, hard right. Centred above the amount
+ * it read as a heading; beside it, it reads as the currency of the figure, which
+ * is what somebody about to charge 12.50 is looking for.
+ *
+ * Sized off the 36px badge it carries: 8 pad + 36 badge + 12 gap + 10 arrow + 10
+ * pad = 76 wide, and 3px of air above and below the badge = 42 tall. (BADGE_SZ is
+ * defined with the icon helpers, further down — kept numeric here so the metrics
+ * read as one block.) The narrow width is the same minus the chevron and its gap:
+ * once digits are on screen they get the room, because "this opens something" is
+ * worth less than the amount being legible. */
 #define ASSET_BTN_W     76
+#define ASSET_BTN_W_SM  52     /* 8 pad + 36 badge + 8 pad, no chevron */
 #define ASSET_BTN_H     42
-#define ASSET_BTN_Y     4      /* own row, level with the burger       */
+#define ASSET_BTN_X     (-6)   /* right edge inset                     */
+#define ASSET_BTN_Y     47     /* centred on the amount's row (y=50)   */
 #define ASSET_BTN_PAD   8      /* badge inset from the left edge       */
 #define TAB_PAD         12     /* settings tab page padding           */
 #define TAB_W           (SCR_W - (2 * TAB_PAD))   /* usable tab width */
@@ -244,9 +252,17 @@ static char     s_confirm_addr[64] = "";
 static ui_tx_state_t s_tx_state    = UI_TX_STATE_PLACE_CARD;
 static char          s_tx_info[64] = "";
 
-/* Amount entry — keypad input string (e.g. "12.50") and its display label. */
+/* Amount entry — keypad input string (e.g. "12.50") and its display label. The
+ * cents are their own label so they can be set in a smaller font past 100; below
+ * that they stay in the main label and this one holds "". */
 static lv_obj_t *s_amount_label = NULL;
+static lv_obj_t *s_amount_cents_label = NULL;
 static uint64_t  s_amount_cents = 0;      /* amount entered, in cents          */
+
+/* The asset selector on the amount row, and the chevron it drops when it has to
+ * make room. Both die with the screen — cleared in clear_screen(). */
+static lv_obj_t *s_asset_btn   = NULL;
+static lv_obj_t *s_asset_arrow = NULL;
 
 /* PIN entry — the textarea (password mode) is the live input; s_pin is the
  * handoff buffer read by main via ui_take_pin() and wiped on read. */
@@ -359,6 +375,8 @@ static void open_coin_picker(bool tron);
 static void open_portal_window(void);
 static void close_modal(void);
 static void pop_in(lv_obj_t *obj);   /* defined in section 8 (animations) */
+/* Defined with the icon helpers; called from amount_update_display() above them. */
+static void asset_btn_set_compact(bool compact);
 static uint32_t admin_penalty_ms(uint8_t fails);   /* defined with the admin screens */
 static ui_screen_t s_settings_return = UI_SCREEN_AMOUNT;   /* screen to go back to */
 
@@ -417,13 +435,38 @@ static void format_amount(uint64_t units, char *out, size_t n) {
 
 #define AMOUNT_CENTS_MAX  9999999ULL   /* 99999.99 */
 
+/* From 100.00 up, the cents move to the small font. Five figures and cents in
+ * montserrat_28 is ~150 of 240 pixels, and the asset button now shares the row —
+ * so the change gives up its size to the part anybody actually reads. Below 100
+ * there is room for all of it, and "7.50" with shrunken cents would just look
+ * like a typographic tic. */
+#define AMOUNT_SMALL_CENTS_FROM  10000ULL   /* 100.00 in cents */
+
 static void amount_update_display(void) {
     char buf[24];
-    snprintf(buf, sizeof(buf), "%" PRIu64 ".%02" PRIu64,
-             s_amount_cents / 100ULL, s_amount_cents % 100ULL);
+    const bool split = (s_amount_cents >= AMOUNT_SMALL_CENTS_FROM);
+
     if (s_amount_label != NULL) {
+        if (split) {
+            snprintf(buf, sizeof(buf), "%" PRIu64, s_amount_cents / 100ULL);
+        } else {
+            snprintf(buf, sizeof(buf), "%" PRIu64 ".%02" PRIu64,
+                     s_amount_cents / 100ULL, s_amount_cents % 100ULL);
+        }
         lv_label_set_text(s_amount_label, buf);
     }
+    if (s_amount_cents_label != NULL) {
+        snprintf(buf, sizeof(buf), ".%02" PRIu64, s_amount_cents % 100ULL);
+        /* "" rather than the hidden flag: an empty label measures zero and the
+         * flex row re-centres on its own, with no rule to remember about how
+         * hidden children are laid out. */
+        lv_label_set_text(s_amount_cents_label, split ? buf : "");
+    }
+
+    /* Nothing entered yet: the selector is the only thing to do on the screen, so
+     * it keeps its chevron. Once there is an amount, it gets out of its way. */
+    asset_btn_set_compact(s_amount_cents != 0ULL);
+
     s_amount_units = s_amount_cents * 10000ULL;   /* cents -> 6-decimal base units */
 }
 
@@ -770,8 +813,8 @@ static lv_obj_t *make_asset_badge(lv_obj_t *parent, pos_chain_t chain) {
     }
 }
 
-/* The asset selector itself: the badge above turned into a tappable pill, on its
- * own row centred above the amount. Deliberately wordless — the ticker is
+/* The asset selector itself: the badge above turned into a tappable pill, at the
+ * right-hand end of the amount's row. Deliberately wordless — the ticker is
  * spelled out on the picker it opens and on the confirm screen, and a compact
  * mark leaves the amount the biggest thing on the screen.
  *
@@ -783,20 +826,33 @@ static lv_obj_t *make_asset_badge(lv_obj_t *parent, pos_chain_t chain) {
 static lv_obj_t *make_asset_button(void) {
     /* make_button carries the fill/press/border/event wiring; this one is an
      * icon row, so its label is pushed right to serve as the arrow. */
-    lv_obj_t *btn = make_button(lv_scr_act(), LV_SYMBOL_RIGHT, COL_SURFACE,
-                                COL_TEXT, ASSET_BTN_W, ASSET_BTN_H,
-                                LV_ALIGN_TOP_MID, 0, ASSET_BTN_Y, ACT_NET_PICK,
-                                &lv_font_montserrat_14);
-    lv_obj_set_style_radius(btn, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    s_asset_btn = make_button(lv_scr_act(), LV_SYMBOL_RIGHT, COL_SURFACE,
+                              COL_TEXT, ASSET_BTN_W, ASSET_BTN_H,
+                              LV_ALIGN_TOP_RIGHT, ASSET_BTN_X, ASSET_BTN_Y,
+                              ACT_NET_PICK, &lv_font_montserrat_14);
+    lv_obj_set_style_radius(s_asset_btn, LV_RADIUS_CIRCLE, LV_PART_MAIN);
     /* Zero the theme's button padding first, exactly as make_pill does. Child
      * aligns are relative to the CONTENT area, so the default ~12px inset shoved
      * the badge inward until it sat on top of the arrow — and the badge is added
      * last, so it wins the draw order and the arrow simply vanished. */
-    lv_obj_set_style_pad_all(btn, 0, LV_PART_MAIN);
-    lv_obj_align(lv_obj_get_child(btn, 0), LV_ALIGN_RIGHT_MID, -10, 0);
-    lv_obj_align(make_asset_badge(btn, settings_get_chain()),
+    lv_obj_set_style_pad_all(s_asset_btn, 0, LV_PART_MAIN);
+    s_asset_arrow = lv_obj_get_child(s_asset_btn, 0);
+    lv_obj_align(s_asset_arrow, LV_ALIGN_RIGHT_MID, -10, 0);
+    lv_obj_align(make_asset_badge(s_asset_btn, settings_get_chain()),
                  LV_ALIGN_LEFT_MID, ASSET_BTN_PAD, 0);
-    return btn;
+    return s_asset_btn;
+}
+
+/* Chevron off and the pill narrowed to its badge, so a five-figure amount has
+ * the middle of the screen. Right-aligned, so only the left edge moves — the
+ * thing under the thumb stays where it was. */
+static void asset_btn_set_compact(bool compact) {
+    if (s_asset_btn == NULL) { return; }   /* not the amount screen */
+    lv_obj_set_width(s_asset_btn, compact ? ASSET_BTN_W_SM : ASSET_BTN_W);
+    if (s_asset_arrow != NULL) {
+        if (compact) { lv_obj_add_flag(s_asset_arrow, LV_OBJ_FLAG_HIDDEN); }
+        else         { lv_obj_clear_flag(s_asset_arrow, LV_OBJ_FLAG_HIDDEN); }
+    }
 }
 
 /* The bare network mark, for the network picker's own rows — no coin is chosen
@@ -872,6 +928,9 @@ static void clear_screen(void) {
     lv_obj_set_style_bg_color(scr, COL_BG, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, LV_PART_MAIN);
     s_amount_label = NULL;
+    s_amount_cents_label = NULL;
+    s_asset_btn    = NULL;
+    s_asset_arrow  = NULL;
     s_pin_ta       = NULL;   /* deleted by lv_obj_clean — drop the dangling ref */
     s_wifi_pass_ta = NULL;
     s_wifi_eye_lbl   = NULL;
@@ -1153,10 +1212,13 @@ static void build_settings(void) {
 
     /* Say out loud when the recipient is the compile-time one rather than an
      * address somebody chose. This is the row an operator checks to answer "where
-     * does my money go", and "the default" is a different answer from "mine". */
+     * does my money go", and "the default" is a different answer from "mine".
+     * The address above is still shown, because it is what the row is for — but
+     * the sale is refused at the confirm step, so say that and not "in use". */
     if (!settings_has_payout(tron)) {
-        lv_obj_t *w = make_label(t_tx, "Not configured - using the built-in "
-                                       "default. Set it from the Configure page.",
+        lv_obj_t *w = make_label(t_tx, "Not configured - this terminal cannot "
+                                       "take payments. Set it from the "
+                                       "Configure page.",
                                  COL_DANGER, &lv_font_montserrat_14,
                                  LV_ALIGN_TOP_LEFT, 0, 0);
         lv_obj_set_width(w, 200);
@@ -1977,16 +2039,39 @@ static void build_amount(void) {
      * the burger (settings) top-left. */
     add_menu_button();
 
-    /* Stacked, both centred: selector row (4..46), then the amount (50..88),
-     * then the keypad. The amount stays dead centre whatever its width, because
-     * nothing is glued to its side any more — no sideways drift as digits land.
+    /* One row at 47..89: the amount centred on the screen, the asset selector at
+     * its right-hand end. Taking money means reading a figure and a currency
+     * together, and a selector centred on its own line above the figure was a
+     * heading for it instead.
+     *
+     * The amount stays centred on the screen rather than in what is left of the
+     * row: at the widest it will ever be — 99999 in montserrat_28 plus small
+     * cents, ~105px — it stops ~10px short of the narrowed pill, and the pill is
+     * only wide when the amount is "0.00".
      *
      * The 320px column is fully spoken for: keypad 90..266 and the Charge button
-     * 266..312 below it, so the selector's row is paid for out of the keypad's
+     * 266..312 below it, so the amount's row is paid for out of the keypad's
      * height (196 -> 176, keys 44 tall — still a comfortable target). */
     make_asset_button();
-    s_amount_label = make_label(lv_scr_act(), "0.00", COL_TEXT,
-                                &lv_font_montserrat_28, LV_ALIGN_TOP_MID, 0, 50);
+
+    /* The figure and its cents are two labels in one content-sized flex row, so
+     * the pair centres itself whatever the fonts measure — nothing here has to
+     * know how wide montserrat_28 draws a 5. Bottom-aligned across the row: the
+     * small cents sit on the big font's baseline, near enough (its descender is
+     * a pixel or two, and a real baseline align is not on offer in LVGL 8). */
+    lv_obj_t *row = lv_obj_create(lv_scr_act());
+    lv_obj_remove_style_all(row);
+    lv_obj_set_size(row, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_END,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_align(row, LV_ALIGN_TOP_MID, 0, 50);
+
+    s_amount_label = make_label(row, "0.00", COL_TEXT,
+                                &lv_font_montserrat_28, LV_ALIGN_DEFAULT, 0, 0);
+    s_amount_cents_label = make_label(row, "", COL_TEXT,
+                                      &lv_font_montserrat_20, LV_ALIGN_DEFAULT, 0, 0);
 
     /* Numeric keypad: digits, double-zero, backspace (cents entry). */
     static const char *amap[] = {

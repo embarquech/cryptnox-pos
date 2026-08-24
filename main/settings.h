@@ -126,7 +126,12 @@ void settings_set_priority_fee_gwei(uint32_t gwei);
  * @brief Read the payout address for a network.
  *
  * Falls back to the config.h compile-time recipient when nothing is stored, so
- * a terminal that never saw the setup page keeps working exactly as before.
+ * every caller gets a parseable address and none of them has to carry a
+ * not-configured branch. It is not a licence to spend to it: the payment path
+ * checks @ref settings_has_payout first and refuses the sale (main.cpp,
+ * UI_EVENT_AMOUNT_CONFIRMED), because an address nobody chose is somebody
+ * else's. The fallback is what the Tx tab displays and what the boot-time chain
+ * correction reasons about, not what a transaction pays.
  *
  * Stored twice and compared here, which is the same dual-store rule main.cpp
  * applies when it parses the recipient (§7.1). A compile-time address lives in

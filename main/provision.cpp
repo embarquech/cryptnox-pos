@@ -415,12 +415,14 @@ static const char *const PAGE_HTML =
 "--soft:#f8f9fa;--acc:#fcb770;--accf:#2c3e50;--ink:#2c3e50;"
 "--tint:#fdf3e8;--tintl:#f2d3ac;--tintf:#8a5a1c;"
 "--okbg:#eaf6ef;--okl:#b8e0c8;--okf:#186c39;"
+"--errbg:#f8d7da;--errl:#f5c6cb;--errf:#721c24;"
 "--sh:0 1px 2px rgba(44,62,80,.05),0 1px 8px rgba(44,62,80,.04)}"
 "@media(prefers-color-scheme:dark){:root{"
 "--bg:#131a21;--card:#1b242e;--fg:#eaeff4;--dim:#93a2b1;--line:#2a3540;"
 "--soft:#222d38;--acc:#fcb770;--accf:#22303d;--ink:#0e141a;"
 "--tint:#2a2318;--tintl:#4d3d26;--tintf:#fcb770;"
 "--okbg:#16281e;--okl:#27492f;--okf:#7fd0a0;"
+"--errbg:#2c1619;--errl:#5b2b30;--errf:#f2a2aa;"
 "--sh:0 1px 2px rgba(0,0,0,.3)}}"
 
 "*{box-sizing:border-box}"
@@ -438,7 +440,6 @@ static const char *const PAGE_HTML =
 "header,main{max-width:34rem;margin:0 auto}"
 "header{display:flex;align-items:center;gap:10px;padding:22px 2px 16px}"
 ".mark{flex:0 0 30px;width:30px;height:30px;display:block}"
-".mark circle{fill:var(--ink)}.mark path{fill:var(--acc)}"
 ".brand{font-size:1.05rem;font-weight:700;letter-spacing:-.015em;margin:0}"
 ".brand span{color:var(--dim);font-weight:400}"
 ".chip{margin-left:auto;padding:6px 10px;border-radius:999px;font-size:.75rem;"
@@ -508,11 +509,31 @@ static const char *const PAGE_HTML =
 
 /* :empty rather than a JS toggle — render() already writes '' when there is
  * nothing to say, so the banner collapses on its own. */
-"#msg,#note{margin:0 0 14px;padding:12px 14px 12px 16px;border-radius:12px;"
+"#msg,#note,#out.alert{margin:0 0 14px;padding:12px 14px 12px 16px;border-radius:12px;"
 "background:var(--card);border:1px solid var(--line);border-left:3px solid "
 "var(--acc);color:var(--fg);box-shadow:var(--sh)}"
 "#msg:empty,#note:empty{display:none}"
+/* Severity, Bootstrap's alert colours in this palette's terms: a refused address
+ * and a stored one used to be the same grey box with the same accent bar, which
+ * is how an operator walks away from a rejection thinking it went in. Red or
+ * green, and sticky — the message is at the top of the document and the button
+ * that produced it may be a scroll away. */
+"#msg{position:sticky;top:8px;z-index:5}"
+/* #out is in the selector list because the update check reports there, and its
+ * four ways to fail deserve the same red as everything else. Written with the
+ * ids and not as a bare .err, which would lose to the id-carrying base rule
+ * above it and repaint nothing at all. */
+"#msg.err,#out.err{background:var(--errbg);border-color:var(--errl);"
+"border-left-color:var(--errf);color:var(--errf);font-weight:600}"
+"#msg.ok{background:var(--okbg);border-color:var(--okl);"
+"border-left-color:var(--okf);color:var(--okf)}"
+/* The device's own line, and it is only ever written when something did not go
+ * the way it was asked, so it wears the warning tint outright. */
+"#note{background:var(--tint);border-color:var(--tintl);color:var(--tintf)}"
 "#out p{margin-top:.9rem}"
+/* The card illustration. Line art in the palette, so it follows the scheme and
+ * costs no request on a captive portal. */
+".cardart{display:block;width:100%;max-width:15rem;height:auto;margin:0 auto .8rem}"
 
 ".wait{display:flex;align-items:center;gap:12px;padding:14px 16px;"
 "border-radius:12px;background:var(--tint);border:1px solid var(--tintl);"
@@ -538,10 +559,17 @@ static const char *const PAGE_HTML =
 
 /* The Cryptnox mark from assets/logo.svg, inlined so it needs no request — the
  * phone is on a captive portal and a second GET for a logo is a second thing
- * that can hang. Both fills come from the palette, so it follows the scheme. */
-"<header><svg class=mark viewBox='0 0 461 461' aria-hidden=true>"
-"<circle cx=230.5 cy=230.5 r=230.5/>"
-"<path d='M229.02 406C205.904 406 183.016 401.434 161.66 392.565C140.304 383.694 "
+ * that can hang. Both fills come from the palette, so it follows the scheme.
+ *
+ * A <symbol> drawn twice (the header, and the card in the card-read section)
+ * rather than that path written out twice — it is 2 KB of flash per copy. The
+ * fills are inline styles and not a `.mark path{}` rule because <use> clones into
+ * a shadow tree that outer selectors cannot reach; custom properties still
+ * inherit into it, so var() resolves and the scheme still applies. */
+"<svg width=0 height=0 aria-hidden=true style=position:absolute>"
+"<symbol id=cnx viewBox='0 0 461 461'>"
+"<circle cx=230.5 cy=230.5 r=230.5 style='fill:var(--ink)'/>"
+"<path style=fill:var(--acc) d='M229.02 406C205.904 406 183.016 401.434 161.66 392.565C140.304 383.694 "
 "120.9 370.694 104.555 354.304C88.2102 337.914 75.2443 318.457 66.3988 297.044C57.5533 "
 "275.629 53 252.678 53 229.5C53 206.322 57.5533 183.371 66.3988 161.956C75.2443 140.542 "
 "88.2102 121.086 104.555 104.696C120.9 88.3063 140.304 75.305 161.66 66.4354C183.016 "
@@ -565,12 +593,14 @@ static const char *const PAGE_HTML =
 "141.574C205.739 141.574 183.412 150.848 166.95 167.354C150.489 183.861 141.241 206.249 "
 "141.241 229.592C141.241 252.937 150.489 275.324 166.95 291.831C183.412 308.337 205.739 "
 "317.611 229.02 317.611C252.359 317.611 269.102 311.292 297.875 291.669L305.618 "
-"286.276L353 357.803L346.274 363.083C310.977 391.157 270.506 406 229.02 406Z'/></svg>"
+"286.276L353 357.803L346.274 363.083C310.977 391.157 270.506 406 229.02 406Z'/>"
+"</symbol></svg>"
+"<header><svg class=mark aria-hidden=true><use href='#cnx'/></svg>"
 "<h1 class=brand>Cryptnox <span>terminal</span></h1>"
 "<span class=chip>fw <b id=ver>&hellip;</b></span></header>"
 "<main>"
-"<p id=msg></p>"
-"<p id=note></p>"
+"<p id=msg role=alert></p>"
+"<p id=note role=status></p>"
 
 /* Authorisation. The only thing an unauthorised browser can see, and it does not
  * ask for the code — it asks the operator to look at the terminal. */
@@ -592,6 +622,27 @@ static const char *const PAGE_HTML =
  * points the payout at the tapped card: doing that with the card that pays is how
  * a till ends up paying itself. */
 "<section id=s_card hidden><h2>Card addresses</h2>"
+/* Which card, and what to do with it. The instruction below says "tap a Cryptnox
+ * card" to somebody who may never have seen one, and a card held to a reader is
+ * one picture's worth of that sentence. Drawn from the same mark as the header,
+ * in the palette's own colours, so it needs no asset and no second request. */
+"<svg class=cardart viewBox='0 0 200 110' aria-hidden=true>"
+"<rect x=6 y=14 width=132 height=83 rx=9 "
+"style='fill:var(--soft);stroke:var(--line);stroke-width:2'/>"
+"<use href='#cnx' x=18 y=24 width=30 height='30'/>"
+/* textLength, because the face is whatever the phone has and a wider one would
+ * print the name off the edge of the card. */
+"<text x=56 y=45 textLength=74 lengthAdjust=spacingAndGlyphs "
+"style='fill:var(--fg);font-size:14px;font-weight:700'>CRYPTNOX</text>"
+"<rect x=18 y=64 width=26 height=20 rx=4 style='fill:var(--acc)'/>"
+"<rect x=54 y=68 width=64 height=6 rx=3 style='fill:var(--line)'/>"
+"<rect x=54 y=79 width=44 height=6 rx=3 style='fill:var(--line)'/>"
+/* Three arcs off the card's right edge: the contactless mark everybody already
+ * reads as "hold it here". */
+"<g style='fill:none;stroke:var(--acc);stroke-width:5;stroke-linecap:round'>"
+"<path d='M150 38A24 24 0 0 1 150 72'/>"
+"<path d='M160 30A34 34 0 0 1 160 80'/>"
+"<path d='M170 22A44 44 0 0 1 170 88'/></g></svg>"
 "<p>Take a payout address off a Cryptnox card. Whichever card is tapped, "
 "<i>its own</i> address becomes the address takings are sent to &mdash; so tap "
 "the merchant's card, not a customer's. The terminal asks for that card's PIN, "
@@ -640,7 +691,7 @@ static const char *const PAGE_HTML =
  * so it follows the colour scheme for free. */
 "<svg class=on viewBox='0 0 24 24' aria-hidden=true>"
 "<path d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z'/>"
-"<circle cx=12 cy=12 r=3/></svg>"
+"<circle cx=12 cy=12 r='3'/></svg>"
 "<svg class=off viewBox='0 0 24 24' aria-hidden=true>"
 "<path d='M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 "
 "5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 "
@@ -674,7 +725,14 @@ static const char *const PAGE_JS =
 "<script>"
 "var $=function(i){return document.getElementById(i)};"
 "var T='',S={},G=-1,asked=false;"
-"var say=function(t){$('msg').textContent=t||''};"
+/* Three kinds, because "that is not a valid Ethereum address" and "it is stored"
+ * in the same grey box is how a refusal gets read as a success. 'err' is the one
+ * that matters, so it is what a bare say() rejection handler produces: every
+ * post() failure path is an error, and none of them has to remember to say so. */
+"var say=function(t,k){var m=$('msg');m.textContent=t||'';"
+"m.className=t?(k||'err'):''};"
+"var info=function(t){say(t,'info')};"
+"var good=function(t){say(t,'ok')};"
 
 /* Every mutating call carries the session token. A 401 means the portal was
  * restarted or the window closed, so drop the token and let the render fall back
@@ -752,12 +810,12 @@ static const char *const PAGE_JS =
 "$('go_auth').onclick=ask;"
 
 "$('go_card').onclick=function(){"
-"post('/api/card').then(function(){say('Tap your Cryptnox card on the terminal "
+"post('/api/card').then(function(){info('Tap your Cryptnox card on the terminal "
 "when it asks, then accept each address on its screen.')},say)};"
 
 "function propose(u,net,el){var v=$(el).value.trim();"
 "if(!v){say('Nothing to propose.');return}"
-"post(u,enc({net:net,addr:v})).then(function(m){$(el).value='';say(m)},say)}"
+"post(u,enc({net:net,addr:v})).then(function(m){$(el).value='';good(m)},say)}"
 "$('go_eth').onclick=function(){propose('/api/payout','eth','in_eth')};"
 "$('go_trx').onclick=function(){propose('/api/payout','tron','in_trx')};"
 "$('go_cte').onclick=function(){propose('/api/contract','eth','in_cte')};"
@@ -770,8 +828,8 @@ static const char *const PAGE_JS =
 "$('go_wifi').onclick=function(){var s=$('ssid').value;"
 "if(!s){say('Pick a network first.');return}"
 "post('/api/wifi',enc({ssid:s,pass:$('wpass').value})).then(function(m){"
-"$('wpass').value='';say(m)},say)};"
-"$('go_rescan').onclick=function(){say('Scanning\\u2026');"
+"$('wpass').value='';good(m)},say)};"
+"$('go_rescan').onclick=function(){info('Scanning\\u2026');"
 "post('/api/rescan').then(function(){},say)};"
 "$('go_next').onclick=function(){post('/api/next').then(function(){},say)};"
 
@@ -782,7 +840,7 @@ static const char *const PAGE_JS =
 "x.setRequestHeader('Content-Type','application/octet-stream');"
 "x.setRequestHeader('X-Prov-Token',T);"
 "x.upload.onprogress=function(e){if(e.lengthComputable)"
-"say('Sending to the terminal: '+Math.round(e.loaded/e.total*100)+'%')};"
+"info('Sending to the terminal: '+Math.round(e.loaded/e.total*100)+'%')};"
 "x.onload=function(){x.status==200?res(x.responseText):"
 "rej(x.responseText||('HTTP '+x.status))};"
 "x.onerror=function(){rej('the connection to the terminal dropped')};"
@@ -800,11 +858,11 @@ static const char *const PAGE_JS =
 /* ponytail: no download progress — arrayBuffer() does not report any and nothing
  * has been written to the terminal yet, so a slow bar here is only cosmetic.
  * Stream it with a reader if operators start power-cycling. */
-"say('Downloading the firmware\\u2026');"
+"info('Downloading the firmware\\u2026');"
 "fetch(url).then(function(r){"
 "if(!r.ok)throw 'the download answered HTTP '+r.status;return r.arrayBuffer()})"
-".then(function(b){say('Sending to the terminal\\u2026');return send(b)})"
-".then(say).catch(function(e){say('Not installed: '+e)})"
+".then(function(b){info('Sending to the terminal\\u2026');return send(b)})"
+".then(good).catch(function(e){say('Not installed: '+e)})"
 ".then(function(){$('chk').disabled=$('up').disabled=false})}"
 
 /* Four different things go wrong here — no internet, a host that refuses the
@@ -813,7 +871,8 @@ static const char *const PAGE_JS =
  * whoever hit the likeliest one off to debug their network instead of their
  * release. A thrown string is this page's own diagnosis; anything else is the
  * browser's, and only that case gets the generic advice. */
-"$('chk').onclick=function(){var o=$('out');o.textContent='Checking\\u2026';"
+"$('chk').onclick=function(){var o=$('out');o.className='';"
+"o.textContent='Checking\\u2026';"
 "fetch('" OTA_MANIFEST_URL "',{cache:'no-store'}).then(function(r){"
 "if(!r.ok)throw 'the release list answered HTTP '+r.status+'. Check that "
 "firmware.json is published at that address.';return r.text()})"
@@ -831,7 +890,8 @@ static const char *const PAGE_JS =
 "if(d!==0&&m.url){var b=document.createElement('button');"
 "b.textContent=(d>0?'Install ':'Go back to ')+m.version;"
 "b.onclick=function(){install(m.url)};o.appendChild(b)}})"
-".catch(function(e){o.textContent='Could not check for updates: '+"
+".catch(function(e){o.className='alert err';"
+"o.textContent='Could not check for updates: '+"
 "(typeof e=='string'?e:'this browser could not reach the release list at all. "
 "It needs internet access, and the host has to allow cross-origin requests. "
 "Use the file picker below instead.')})};"
@@ -839,7 +899,7 @@ static const char *const PAGE_JS =
 "$('up').onclick=function(){var f=$('file').files[0];"
 "if(!f){say('Pick a .bin file first.');return}"
 "$('chk').disabled=$('up').disabled=true;"
-"f.arrayBuffer().then(send).then(say,function(e){say('Not installed: '+e)})"
+"f.arrayBuffer().then(send).then(good,function(e){say('Not installed: '+e)})"
 ".then(function(){$('chk').disabled=$('up').disabled=false})};"
 
 "setInterval(poll,1500);poll();"

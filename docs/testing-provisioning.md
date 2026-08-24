@@ -492,7 +492,7 @@ in first-run:
 
 | Check | Expected |
 |---|---|
-| Boot with no stored payout address | log shows the `config.h` recipient, plus `no payout address configured - using the config.h recipient` |
+| Boot with no stored payout address | `no payout address configured - payments will be refused`, and confirming an amount is refused (§5.3) |
 | Boot after storing an Ethereum address | Confirm screen **To** row shows the stored one |
 | Boot with a stored ERC-20 contract | Confirm screen contract row shows it; a corrupt one logs `stored ERC-20 contract rejected - using config.h` |
 | Factory reset, then boot | back to the `config.h` recipient and contract |
@@ -533,22 +533,35 @@ chain you are on.
 3. **Neither configured** (a fresh unit, nothing set): no switch is possible, so
    expect the warning instead and no chain change:
    ```
-   W (nnnn) cryptnox_pos: no payout address configured - using the config.h recipient; set one from the config page
+   W (nnnn) cryptnox_pos: no payout address configured - payments will be refused; set one from the config page
    ```
-   The terminal still takes payments, to the `config.h` fallback. That is deliberate
-   — see the note under §5.3.
+   Then enter an amount and confirm it. **Pass:** the sale is refused with
+   **Payout address not configured**, before any card is asked for — see §5.3.
 
-### 5.3 What the fallback still allows
+### 5.3 A terminal with no payout address refuses to sell
 
-`settings_has_payout()` gates which assets are *offered*, not whether the terminal
-will charge at all. A unit with nothing configured stays on its stored chain and
-pays the `config.h` recipient, so an existing `config.h`-only deployment keeps
-working after this change.
+`settings_has_payout()` gates two things now: which assets the picker *offers*, and
+whether a sale may be confirmed at all. `UI_EVENT_AMOUNT_CONFIRMED` refuses when the
+active chain has no stored address, alongside the "Token contract not configured"
+guard it sits next to.
 
-That is a policy choice, and the stricter one is a few lines: refuse
-`UI_EVENT_AMOUNT_CONFIRMED` when `!settings_has_payout(chain_is_tron())`, next to the
-existing "Token contract not configured" guard in `main.cpp`. Take it if a terminal
-that has never been told where the money goes should decline rather than fall back.
+```
+enter 1.00 -> Confirm  =>  "Payout address not configured"
+```
+
+**Pass:** refused at the confirm step, *before* the PIN keypad or any card prompt —
+a customer must never tap a card into a sale that cannot complete. The amount is
+cleared, and the terminal returns to amount entry rather than locking up.
+
+**Fail:** reaching the Confirm screen, or the card reader, on a unit with no stored
+address. That is the original bug in its most expensive form: `settings_get_payout()`
+still hands out the `config.h` recipient (it has to — every caller needs a parseable
+address), so a sale that gets past this guard pays a stranger and looks normal.
+
+The cost of this rule: a `config.h`-only unit must be configured once, by card or by
+the **Send to** field, before it can charge. That is intended. Check it explicitly on
+a unit built with a `config.h` recipient and an empty NVS — it must refuse, not fall
+back.
 
 ### 5.2 Corruption fallback
 

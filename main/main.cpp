@@ -1537,10 +1537,12 @@ extern "C" void app_main(void)
             ui_refresh_addresses();
         } else {
             /* Neither network is configured. Nothing to switch to, so the terminal
-             * runs on its config.h recipient exactly as it always has — but the log
-             * says so, and the Tx tab says so on screen. */
-            ESP_LOGW(TAG, "no payout address configured - using the config.h "
-                          "recipient; set one from the config page");
+             * comes up but will not sell: the amount screen takes an entry and the
+             * confirm step refuses it (see UI_EVENT_AMOUNT_CONFIRMED). Said here as
+             * well as on the Tx tab, because this is the log somebody reads when a
+             * terminal "won't take payments" after a reset. */
+            ESP_LOGW(TAG, "no payout address configured - payments will be "
+                          "refused; set one from the config page");
         }
     }
     Pn532NfcTransport   nfcTransport(&nfc, logger);
@@ -1705,6 +1707,19 @@ extern "C" void app_main(void)
         switch (msg.event) {
             case UI_EVENT_AMOUNT_CONFIRMED: {
                 pos_amount_set(&pending_amount, msg.payload);
+                /* Refuse rather than fall back. settings_get_payout() answers with
+                 * the config.h recipient when nobody set one, which keeps a
+                 * config.h-only unit working — but "working" there means taking a
+                 * stranger's money to an address the operator never chose, and it
+                 * looks entirely normal doing it. A till that was never told where
+                 * the money goes should decline the sale, the same way it declines
+                 * one whose token contract was never set. */
+                if (!settings_has_payout(chain_is_tron())) {
+                    ui_show_tx_status(UI_TX_STATE_FAILED,
+                                      "Payout address not configured");
+                    pos_amount_set(&pending_amount, 0U);
+                    break;
+                }
                 const trc20_asset_t *tok = active_trc20();
                 /* Say so here rather than after the customer has tapped a card:
                  * a placeholder contract means this asset was never set up. */

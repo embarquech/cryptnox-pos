@@ -100,6 +100,10 @@ def main():
     # side only. Matched against any quoted string in the script, not just $('x'),
     # because show() and propose() are handed ids as arguments.
     named = set(re.findall(r"'([A-Za-z_][\w-]*)'", js))
+    # An id the markup references itself — <use href=#cnx> for the Cryptnox mark,
+    # drawn in the header and again on the card illustration — is wired even
+    # though no JavaScript ever names it.
+    named |= set(re.findall(r"href=['\"]?#([A-Za-z_][\w-]*)", page))
     unused = sorted(have - named)
     if unused:
         raise SystemExit(f"markup defines ids the script never names: {unused}")
