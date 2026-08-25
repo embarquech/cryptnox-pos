@@ -456,7 +456,9 @@ static const char *const PAGE_HTML =
 "height:.95em;border-radius:2px;background:var(--acc)}"
 /* A second heading inside one card ("Or type them") is a divider, not a new card. */
 "section h2~h2{margin-top:1.6rem;padding-top:1.2rem;border-top:1px solid var(--line)}"
-"p{color:var(--dim);font-size:.92rem;margin:.3rem 0 .9rem}"
+"p,label{display:block;color:var(--dim);font-size:.92rem;margin:.3rem 0 .9rem}"
+/* A label belongs to the field under it, so it keeps only the field's own 6px. */
+"label{margin-bottom:0}"
 
 "input,select,button{font:inherit;width:100%;padding:12px 14px;margin:6px 0 0;"
 "border:1px solid var(--line);border-radius:11px;background:var(--soft);"
@@ -559,7 +561,8 @@ static const char *const PAGE_HTML =
 
 /* The Cryptnox mark from assets/logo.svg, inlined so it needs no request — the
  * phone is on a captive portal and a second GET for a logo is a second thing
- * that can hang. Both fills come from the palette, so it follows the scheme.
+ * that can hang. The C is white as in assets/logo.svg, not an accent that follows
+ * the scheme; the disc behind it is --ink, dark in both schemes, so it stays legible.
  *
  * A <symbol> drawn twice (the header, and the card in the card-read section)
  * rather than that path written out twice — it is 2 KB of flash per copy. The
@@ -569,7 +572,7 @@ static const char *const PAGE_HTML =
 "<svg width=0 height=0 aria-hidden=true style=position:absolute>"
 "<symbol id=cnx viewBox='0 0 461 461'>"
 "<circle cx=230.5 cy=230.5 r=230.5 style='fill:var(--ink)'/>"
-"<path style=fill:var(--acc) d='M229.02 406C205.904 406 183.016 401.434 161.66 392.565C140.304 383.694 "
+"<path style=fill:#fff d='M229.02 406C205.904 406 183.016 401.434 161.66 392.565C140.304 383.694 "
 "120.9 370.694 104.555 354.304C88.2102 337.914 75.2443 318.457 66.3988 297.044C57.5533 "
 "275.629 53 252.678 53 229.5C53 206.322 57.5533 183.371 66.3988 161.956C75.2443 140.542 "
 "88.2102 121.086 104.555 104.696C120.9 88.3063 140.304 75.305 161.66 66.4354C183.016 "
@@ -675,12 +678,13 @@ static const char *const PAGE_HTML =
 "<section id=s_wifi hidden><h2>Wi-Fi</h2>"
 "<p id=wifi_note></p>"
 "<p>Currently <code id=cur_ssid>&hellip;</code></p>"
+"<label for=ssid>SSID:</label>"
 "<select id=ssid></select>"
 /* The eye is the panel's (ui.cpp's Wi-Fi keyboard has one): a venue passphrase
  * typed blind on a phone and rejected tells the operator nothing about which of
  * the two got it wrong. */
-"<div class=pw><input id=wpass type=password placeholder='Password' "
-"autocomplete=off>"
+"<label for=wpass>Password:</label>"
+"<div class=pw><input id=wpass type=password autocomplete=off>"
 "<button type=button class=eye id=eye aria-label='Show password' "
 "aria-pressed=false>"
 /* Feather's eye / eye-off (MIT), which Lucide, Heroicons and every phone keyboard's
