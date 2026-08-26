@@ -21,7 +21,7 @@ Run from repo root:  python tools/gen_chain_icons.py [--preview]
 import sys
 from PIL import Image, ImageDraw
 
-USDC_SRC = "assets/Circle_USDC_Logo.svg.png"
+USDC_SRC = "assets/circle_usdc_logo.svg.png"
 
 OUT_C = "main/chain_icons.c"
 OUT_H = "main/chain_icons.h"

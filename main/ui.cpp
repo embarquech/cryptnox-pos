@@ -32,7 +32,6 @@
 #include "logo_img.h"
 #include "logo_small.h"
 #include "chain_icons.h"
-#include "card_img.h"
 #include "settings.h"
 #include "provision.h"   /* QR payload + the pending payout-address handshake */
 #include "ota.h"         /* running version + the update window and its handshake */
@@ -98,9 +97,11 @@ static XPT2046_Touchscreen touch(T_CS, T_IRQ);
 #define MENU_BTN_H      30
 #define MENU_BTN_X      4
 #define MENU_BTN_Y      6
-/* Asset selector — on the amount's own row, hard right. Centred above the amount
- * it read as a heading; beside it, it reads as the currency of the figure, which
- * is what somebody about to charge 12.50 is looking for.
+/* Asset selector — its own line above the figure, centred, chevron always
+ * showing: it is the one control on this screen besides the keypad, and sharing
+ * the figure's row made it compete with the figure for the same 240px. What the
+ * figure needs beside it is its unit, not the control, so the row carries the
+ * ticker in text (see amount_update_display) and this opens the picker.
  *
  * Sized off the 36px badge it carries: 8 pad + 36 badge + 12 gap + 10 arrow + 10
  * pad = 76 wide, and 3px of air above and below the badge = 42 tall. (BADGE_SZ is
@@ -108,11 +109,15 @@ static XPT2046_Touchscreen touch(T_CS, T_IRQ);
  * read as one block.) The narrow width is the same minus the chevron and its gap:
  * once digits are on screen they get the room, because "this opens something" is
  * worth less than the amount being legible. */
-#define ASSET_BTN_W     76
-#define ASSET_BTN_W_SM  52     /* 8 pad + 36 badge + 8 pad, no chevron */
+/* 8 pad + 36 badge + 6 gap + 38 ticker + 12 gap + 10 chevron + 8 pad. The ticker
+ * is four caps at most (USDC/USDT/TRX) in montserrat_14; a fixed box rather than
+ * LV_SIZE_CONTENT because the pill's children are aligned, not laid out, and a
+ * content-sized button measures those to nothing useful. */
+#define ASSET_BTN_W     118
 #define ASSET_BTN_H     42
-#define ASSET_BTN_X     (-6)   /* right edge inset                     */
-#define ASSET_BTN_Y     47     /* centred on the amount's row (y=50)   */
+#define ASSET_BTN_Y     4      /* top line, level with the burger  */
+/* The figure's row, under the selector and clear of the keypad at 90. */
+#define AMOUNT_ROW_Y    52
 #define ASSET_BTN_PAD   8      /* badge inset from the left edge       */
 #define TAB_PAD         12     /* settings tab page padding           */
 #define TAB_W           (SCR_W - (2 * TAB_PAD))   /* usable tab width */
@@ -257,12 +262,14 @@ static char          s_tx_info[64] = "";
  * that they stay in the main label and this one holds "". */
 static lv_obj_t *s_amount_label = NULL;
 static lv_obj_t *s_amount_cents_label = NULL;
+/* The ticker beside the figure, empty while the figure is 0.00 — "0.00 USDC" is
+ * not a price, it is a placeholder wearing a unit. */
+static lv_obj_t *s_amount_ticker_label = NULL;
 static uint64_t  s_amount_cents = 0;      /* amount entered, in cents          */
 
-/* The asset selector on the amount row, and the chevron it drops when it has to
- * make room. Both die with the screen — cleared in clear_screen(). */
+/* The asset selector above the amount. Dies with the screen — cleared in
+ * clear_screen(). */
 static lv_obj_t *s_asset_btn   = NULL;
-static lv_obj_t *s_asset_arrow = NULL;
 
 /* PIN entry — the textarea (password mode) is the live input; s_pin is the
  * handoff buffer read by main via ui_take_pin() and wiped on read. */
@@ -375,10 +382,12 @@ static void open_coin_picker(bool tron);
 static void open_portal_window(void);
 static void close_modal(void);
 static void pop_in(lv_obj_t *obj);   /* defined in section 8 (animations) */
-/* Defined with the icon helpers; called from amount_update_display() above them. */
-static void asset_btn_set_compact(bool compact);
 static uint32_t admin_penalty_ms(uint8_t fails);   /* defined with the admin screens */
 static ui_screen_t s_settings_return = UI_SCREEN_AMOUNT;   /* screen to go back to */
+/* Which tab a (re)built settings page opens on. Zeroed when the burger opens the
+ * page, kept when something inside it forces a rebuild — picking an asset on the
+ * Tx tab has to come back to the Tx tab, not to Screen. */
+static uint16_t s_settings_tab = 0U;
 
 #define SETTINGS_TAB_COUNT  4
 #define TAB_ABOUT           3
@@ -463,9 +472,18 @@ static void amount_update_display(void) {
         lv_label_set_text(s_amount_cents_label, split ? buf : "");
     }
 
-    /* Nothing entered yet: the selector is the only thing to do on the screen, so
-     * it keeps its chevron. Once there is an amount, it gets out of its way. */
-    asset_btn_set_compact(s_amount_cents != 0ULL);
+    /* The unit, next to the figure, once there is a figure. Leading space instead
+     * of the row's pad_column, which would also push the small cents off the
+     * digits they belong to. The row is content-sized flex, so it re-centres the
+     * three labels itself — nothing here places anything. */
+    if (s_amount_ticker_label != NULL) {
+        if (s_amount_cents != 0ULL) {
+            snprintf(buf, sizeof(buf), " %s", asset_name());
+            lv_label_set_text(s_amount_ticker_label, buf);
+        } else {
+            lv_label_set_text(s_amount_ticker_label, "");
+        }
+    }
 
     s_amount_units = s_amount_cents * 10000ULL;   /* cents -> 6-decimal base units */
 }
@@ -539,6 +557,7 @@ static void btn_event_cb(lv_event_t *e) {
              * WAS reachable, by backing out of the first-run Wi-Fi picker onto
              * the amount screen while main was still waiting. */
             if (!settings_has_admin_code()) { break; }
+            s_settings_tab     = 0U;   /* a fresh open starts on Screen */
             s_admin_confirming = false;
             s_admin_for_portal = false;
             s_admin_note[0]    = '\0';
@@ -668,10 +687,13 @@ static void btn_event_cb(lv_event_t *e) {
                 (act == ACT_CHAIN_TRON_USDT) ? POS_CHAIN_TRON_USDT
                                              : POS_CHAIN_ETH_SEPOLIA);
             close_modal();
-            /* Rebuild the amount screen: the selector pill and the badge beside
-             * the amount both name the chain. The entered amount is kept — it
-             * lives in s_amount_cents, not in the widgets. */
-            request_screen(UI_SCREEN_AMOUNT);
+            /* Rebuild whatever screen the picker was opened from — the amount
+             * screen's selector and ticker name the chain, and so do the Tx tab's
+             * asset row, contract address and fee rows. s_req_screen is that
+             * screen: a modal is drawn over the current one, never instead of it.
+             * The entered amount survives either way; it lives in s_amount_cents,
+             * not in the widgets. */
+            request_screen(s_req_screen);
             break;
     }
 }
@@ -777,8 +799,12 @@ static lv_obj_t *make_glyph_disc(lv_obj_t *parent, const char *sym,
  * Circle artwork). The chips carry their white ring in the bitmap.
  *
  * @p chip may be NULL — a bare network mark needs no chip of itself, and the
- * box then shrinks to COIN_SZ so the mark sits centred wherever it is aligned
- * instead of riding high-left in a box kept wide for a chip that is not there.
+ * box then shrinks to COIN_SZ.
+ *
+ * The COIN is centred in the box and the chip hangs off the corner, so the box's
+ * centre IS the mark's centre: every caller centres the box against a figure or
+ * inside a pill and gets the mark centred, with no per-site nudge for the 6px the
+ * chip adds. (It used to sit top-left, which drew the mark 3px high everywhere.)
  *
  * Returns the box for the caller to position; the children ride along. */
 static lv_obj_t *make_icon_box(lv_obj_t *parent, const lv_img_dsc_t *coin_src,
@@ -792,7 +818,7 @@ static lv_obj_t *make_icon_box(lv_obj_t *parent, const lv_img_dsc_t *coin_src,
 
     lv_obj_t *coin = lv_img_create(box);
     lv_img_set_src(coin, coin_src);
-    lv_obj_align(coin, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_obj_center(coin);
 
     if (chip_src != NULL) {
         lv_obj_t *chip = lv_img_create(box);
@@ -813,22 +839,21 @@ static lv_obj_t *make_asset_badge(lv_obj_t *parent, pos_chain_t chain) {
     }
 }
 
-/* The asset selector itself: the badge above turned into a tappable pill, at the
- * right-hand end of the amount's row. Deliberately wordless — the ticker is
- * spelled out on the picker it opens and on the confirm screen, and a compact
- * mark leaves the amount the biggest thing on the screen.
+/* The asset selector itself: the badge above turned into a tappable pill, centred
+ * on its own line above the figure. Mark, ticker, chevron — the chevron is what
+ * says "this opens something", so it is always there, and the ticker is spelled
+ * out because a disc alone does not tell a merchant what is being charged.
  *
- * Mark hard left, arrow hard right. Both badge boxes draw their mark at their
- * own top-left, so left-aligning the box puts the mark at the same x whether or
- * not it carries a network chip — no measuring needed, which is the point: the
- * box has no width to measure until LVGL runs a layout pass, and asking anyway
- * put the icon on the wrong side of the button. */
+ * Mark hard left, ticker beside it, arrow hard right — aligned, never measured:
+ * the box has no width until LVGL runs a layout pass, and asking anyway put the
+ * icon on the wrong side of the button. A chipped box is 6px wider than a bare
+ * one, so its mark starts 3px further in; not worth a per-chain constant. */
 static lv_obj_t *make_asset_button(void) {
     /* make_button carries the fill/press/border/event wiring; this one is an
      * icon row, so its label is pushed right to serve as the arrow. */
     s_asset_btn = make_button(lv_scr_act(), LV_SYMBOL_RIGHT, COL_SURFACE,
                               COL_TEXT, ASSET_BTN_W, ASSET_BTN_H,
-                              LV_ALIGN_TOP_RIGHT, ASSET_BTN_X, ASSET_BTN_Y,
+                              LV_ALIGN_TOP_MID, 0, ASSET_BTN_Y,
                               ACT_NET_PICK, &lv_font_montserrat_14);
     lv_obj_set_style_radius(s_asset_btn, LV_RADIUS_CIRCLE, LV_PART_MAIN);
     /* Zero the theme's button padding first, exactly as make_pill does. Child
@@ -836,29 +861,51 @@ static lv_obj_t *make_asset_button(void) {
      * the badge inward until it sat on top of the arrow — and the badge is added
      * last, so it wins the draw order and the arrow simply vanished. */
     lv_obj_set_style_pad_all(s_asset_btn, 0, LV_PART_MAIN);
-    s_asset_arrow = lv_obj_get_child(s_asset_btn, 0);
-    lv_obj_align(s_asset_arrow, LV_ALIGN_RIGHT_MID, -10, 0);
+    lv_obj_align(lv_obj_get_child(s_asset_btn, 0), LV_ALIGN_RIGHT_MID, -10, 0);
     lv_obj_align(make_asset_badge(s_asset_btn, settings_get_chain()),
                  LV_ALIGN_LEFT_MID, ASSET_BTN_PAD, 0);
+    make_label(s_asset_btn, asset_name(), COL_TEXT, &lv_font_montserrat_14,
+               LV_ALIGN_LEFT_MID, ASSET_BTN_PAD + BADGE_SZ + 6, 0);
     return s_asset_btn;
-}
-
-/* Chevron off and the pill narrowed to its badge, so a five-figure amount has
- * the middle of the screen. Right-aligned, so only the left edge moves — the
- * thing under the thumb stays where it was. */
-static void asset_btn_set_compact(bool compact) {
-    if (s_asset_btn == NULL) { return; }   /* not the amount screen */
-    lv_obj_set_width(s_asset_btn, compact ? ASSET_BTN_W_SM : ASSET_BTN_W);
-    if (s_asset_arrow != NULL) {
-        if (compact) { lv_obj_add_flag(s_asset_arrow, LV_OBJ_FLAG_HIDDEN); }
-        else         { lv_obj_clear_flag(s_asset_arrow, LV_OBJ_FLAG_HIDDEN); }
-    }
 }
 
 /* The bare network mark, for the network picker's own rows — no coin is chosen
  * at that step, so there is nothing to badge it with. */
 static lv_obj_t *make_net_badge(lv_obj_t *parent, bool tron) {
     return make_icon_box(parent, tron ? &icon_tron : &icon_eth, NULL);
+}
+
+/* "Tap here" mark — the four widening arcs every contactless reader wears, drawn
+ * by LVGL instead of shipped as a bitmap. It replaces a traced hand-and-card icon
+ * of unclear provenance: arcs are geometry, so there is no artwork to license,
+ * and ~18 KB of .rodata comes back. (The plain arcs only — EMVCo's Contactless
+ * Symbol is a registered mark and is not what this draws.)
+ *
+ * All four are concentric on the same point, so only their right-hand quadrant is
+ * ink; TAP_MARK_X shifts that ink back over the screen's centre line. Aligned
+ * TOP_MID at @p y, occupying TAP_MARK_SZ square — the same box the bitmap had. */
+#define TAP_MARK_SZ   96
+#define TAP_MARK_X    (-TAP_MARK_SZ / 4)   /* ink is the right half — recentre */
+#define TAP_MARK_W    6                    /* stroke                          */
+#define TAP_MARK_SPAN 45                    /* +/- degrees about 3 o'clock     */
+
+static void make_tap_mark(lv_coord_t y) {
+    static const lv_coord_t sz[] = { TAP_MARK_SZ, 70, 44, 18 };
+    for (unsigned i = 0U; i < (sizeof(sz) / sizeof(sz[0])); i++) {
+        lv_obj_t *a = lv_arc_create(lv_scr_act());
+        lv_obj_remove_style(a, NULL, LV_PART_KNOB);   /* not a control */
+        lv_obj_clear_flag(a, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_size(a, sz[i], sz[i]);
+        lv_arc_set_bg_angles(a, 360 - TAP_MARK_SPAN, TAP_MARK_SPAN);
+        lv_obj_set_style_arc_width(a, TAP_MARK_W, LV_PART_MAIN);
+        lv_obj_set_style_arc_color(a, COL_TEXT, LV_PART_MAIN);
+        lv_obj_set_style_arc_rounded(a, true, LV_PART_MAIN);
+        lv_obj_set_style_arc_opa(a, LV_OPA_TRANSP, LV_PART_INDICATOR);
+        /* Same centre for every ring: TOP_MID shares the x, the offset shares
+         * the y (each smaller box inset by half the difference). */
+        lv_obj_align(a, LV_ALIGN_TOP_MID, TAP_MARK_X,
+                     y + ((TAP_MARK_SZ - sz[i]) / 2));
+    }
 }
 
 /* Selector row in the style of button_style.png: full-radius grey pill, round
@@ -930,7 +977,7 @@ static void clear_screen(void) {
     s_amount_label = NULL;
     s_amount_cents_label = NULL;
     s_asset_btn    = NULL;
-    s_asset_arrow  = NULL;
+    s_amount_ticker_label = NULL;
     s_pin_ta       = NULL;   /* deleted by lv_obj_clean — drop the dangling ref */
     s_wifi_pass_ta = NULL;
     s_wifi_eye_lbl   = NULL;
@@ -990,6 +1037,7 @@ static void tab_change_cb(lv_event_t *e) {
      * LV_BTNMATRIX_BTN_NONE (0xFFFF), which must not be mistaken for a tab. */
     uint16_t sel = lv_btnmatrix_get_selected_btn(tabbar);
     if (sel >= SETTINGS_TAB_COUNT) { return; }
+    s_settings_tab = sel;
     settings_bottom_bar(sel);
 }
 
@@ -1140,12 +1188,20 @@ static void build_settings(void) {
                                        cur_pass, sizeof(cur_pass));
     CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(cur_pass), sizeof(cur_pass));
 
-    /* The pill IS the scan button: name the current network, tap to change it. */
-    lv_obj_t *wpill = make_pill(t_wifi, "Wi-Fi",
-                                have_wifi ? cur_ssid : "Not configured",
-                                TAB_W, 0, ACT_WIFI);
-    lv_obj_align(make_glyph_disc(wpill, LV_SYMBOL_WIFI, COL_ACCENT, COIN_SZ),
-                 LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
+    /* Read-only, and a caption/value pair rather than a pill: the network is set
+     * from the Configure page below, so a grey pill with a chevron — this page's
+     * own "tap me" — was an invitation to type a venue passphrase on a resistive
+     * panel, which is the thing the browser flow exists to avoid. The on-device
+     * picker still exists for the one case that cannot go through a browser: the
+     * terminal cannot re-join and raises it by itself (see main's wifi_picker). */
+    make_label(t_wifi, "Network", COL_DIM, &lv_font_montserrat_14,
+               LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_obj_t *wl = make_label(t_wifi, have_wifi ? cur_ssid : "Not configured",
+                              COL_TEXT, &lv_font_montserrat_14,
+                              LV_ALIGN_TOP_LEFT, 0, 20);
+    /* An SSID is 32 arbitrary characters; elide it on real glyph widths. */
+    lv_obj_set_width(wl, TAB_W);
+    lv_label_set_long_mode(wl, LV_LABEL_LONG_DOT);
 
     /* Link quality of the live association (snapshot at settings open),
      * as a caption/value pair like every other field. */
@@ -1158,9 +1214,9 @@ static void build_settings(void) {
         snprintf(sig, sizeof(sig), "%s (%d dBm)", qual,
                  static_cast<int>(rssi));
         make_label(t_wifi, "Signal", COL_DIM, &lv_font_montserrat_14,
-                   LV_ALIGN_TOP_LEFT, 0, 66);
+                   LV_ALIGN_TOP_LEFT, 0, 48);
         make_label(t_wifi, sig, COL_TEXT, &lv_font_montserrat_14,
-                   LV_ALIGN_TOP_LEFT, 0, 86);
+                   LV_ALIGN_TOP_LEFT, 0, 68);
     }
 
     /* Everything else lives in a browser, and this is the row that gets you
@@ -1175,7 +1231,7 @@ static void build_settings(void) {
      * been shown yet; the screen this opens is what shows them the code. Reads as
      * a pair with the About tab's "From a browser". */
     lv_obj_t *cpill = make_pill(t_wifi, "Configure", "Open in a browser",
-                                TAB_W, 116, ACT_PORTAL);
+                                TAB_W, 100, ACT_PORTAL);
     lv_obj_align(make_glyph_disc(cpill, LV_SYMBOL_SETTINGS, COL_ACCENT, COIN_SZ),
                  LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
 
@@ -1308,7 +1364,13 @@ static void build_settings(void) {
     lv_obj_add_event_cb(lv_tabview_get_tab_btns(tv), tab_change_cb,
                         LV_EVENT_VALUE_CHANGED, NULL);
 
-    settings_bottom_bar(0U);   /* a fresh page always opens on Screen */
+    /* Back to the tab the operator was on. A rebuild is how this page applies a
+     * changed asset, and landing on Screen afterwards reads as the page having
+     * closed and reopened by itself. */
+    if (s_settings_tab != 0U) {
+        lv_tabview_set_act(tv, s_settings_tab, LV_ANIM_OFF);
+    }
+    settings_bottom_bar(s_settings_tab);
 }
 
 /* Modal overlays (factory-reset confirmation, network picker). One at a time:
@@ -1476,7 +1538,7 @@ static void open_portal_window(void) {
     /* The credentials in text too — a laptop has no camera to point, and a code
      * that will not scan in a dim bar still leaves ten characters to type. */
     char creds[80];
-    snprintf(creds, sizeof(creds), "%s\nPass  %s",
+    snprintf(creds, sizeof(creds), "SSID: %s\nPassword: %s",
              prov_ap_ssid(), prov_ap_pass());
     lv_obj_t *url = ota_text(card, (qr != NULL) ? qr : cap, creds,
                              COL_TEXT, &lv_font_montserrat_14);
@@ -1881,11 +1943,14 @@ static void build_prov(void) {
             lv_obj_set_style_border_width(qr, 4, LV_PART_MAIN);
         }
 
+        /* Labelled, both of them: the bare SSID over a "Pass" line read as a title
+         * and a note, and somebody typing them into a phone's Wi-Fi sheet is
+         * filling in two named boxes. */
         char line[64];
-        (void)snprintf(line, sizeof(line), "%s", prov_ap_ssid());
+        (void)snprintf(line, sizeof(line), "SSID: %s", prov_ap_ssid());
         make_label(lv_scr_act(), line, COL_TEXT, &lv_font_montserrat_14,
                    LV_ALIGN_TOP_MID, 0, 194);
-        (void)snprintf(line, sizeof(line), "Pass  %s", prov_ap_pass());
+        (void)snprintf(line, sizeof(line), "Password: %s", prov_ap_pass());
         make_label(lv_scr_act(), line, COL_DIM, &lv_font_montserrat_14,
                    LV_ALIGN_TOP_MID, 0, 212);
     } else {
@@ -1978,9 +2043,7 @@ static void build_card_wait(void) {
     clear_screen();
     build_header("Cryptnox card");
 
-    lv_obj_t *card = lv_img_create(lv_scr_act());
-    lv_img_set_src(card, &card_img);
-    lv_obj_align(card, LV_ALIGN_TOP_MID, 0, 64);
+    make_tap_mark(64);
 
     make_label(lv_scr_act(), "Hold card to reader", COL_TEXT,
                &lv_font_montserrat_20, LV_ALIGN_TOP_MID, 0, 172);
@@ -2039,26 +2102,26 @@ static void build_amount(void) {
      * the burger (settings) top-left. */
     add_menu_button();
 
-    /* One row at 47..89: the amount centred on the screen, the asset selector at
-     * its right-hand end. Taking money means reading a figure and a currency
-     * together, and a selector centred on its own line above the figure was a
-     * heading for it instead.
-     *
-     * The amount stays centred on the screen rather than in what is left of the
-     * row: at the widest it will ever be — 99999 in montserrat_28 plus small
-     * cents, ~105px — it stops ~10px short of the narrowed pill, and the pill is
-     * only wide when the amount is "0.00".
+    /* Two lines above the keypad: the selector at 4..46, the figure's row at
+     * 52..87. The selector is a control and gets a line of its own; what belongs
+     * beside the figure is its unit, which is the third label below.
      *
      * The 320px column is fully spoken for: keypad 90..266 and the Charge button
-     * 266..312 below it, so the amount's row is paid for out of the keypad's
+     * 266..312 below it, so these two lines are paid for out of the keypad's
      * height (196 -> 176, keys 44 tall — still a comfortable target). */
     make_asset_button();
 
-    /* The figure and its cents are two labels in one content-sized flex row, so
-     * the pair centres itself whatever the fonts measure — nothing here has to
-     * know how wide montserrat_28 draws a 5. Bottom-aligned across the row: the
-     * small cents sit on the big font's baseline, near enough (its descender is
-     * a pixel or two, and a real baseline align is not on offer in LVGL 8). */
+    /* Figure, small cents and ticker in one content-sized flex row, so the group
+     * centres itself whatever the fonts measure — nothing here has to know how
+     * wide montserrat_28 draws a 5, and the ticker appearing does not shove the
+     * digits off centre by hand.
+     *
+     * Cross-axis END: the small cents and the ticker sit on the big font's
+     * baseline, near enough (its descender is a pixel or two, and a real baseline
+     * align is not on offer in LVGL 8).
+     *
+     * At its widest — 99999 in montserrat_28, small cents and " USDC", ~160px —
+     * the row still fits 240 with room either side. */
     lv_obj_t *row = lv_obj_create(lv_scr_act());
     lv_obj_remove_style_all(row);
     lv_obj_set_size(row, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
@@ -2066,12 +2129,14 @@ static void build_amount(void) {
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_END,
                           LV_FLEX_ALIGN_CENTER);
-    lv_obj_align(row, LV_ALIGN_TOP_MID, 0, 50);
+    lv_obj_align(row, LV_ALIGN_TOP_MID, 0, AMOUNT_ROW_Y);
 
     s_amount_label = make_label(row, "0.00", COL_TEXT,
                                 &lv_font_montserrat_28, LV_ALIGN_DEFAULT, 0, 0);
     s_amount_cents_label = make_label(row, "", COL_TEXT,
                                       &lv_font_montserrat_20, LV_ALIGN_DEFAULT, 0, 0);
+    s_amount_ticker_label = make_label(row, "", COL_TEXT,
+                                       &lv_font_montserrat_20, LV_ALIGN_DEFAULT, 0, 0);
 
     /* Numeric keypad: digits, double-zero, backspace (cents entry). */
     static const char *amap[] = {
@@ -2602,9 +2667,7 @@ static void build_tx_status(void) {
     format_amount(s_confirm_amount, amt, sizeof(amt));
 
     if (s_tx_state == UI_TX_STATE_PLACE_CARD) {
-        lv_obj_t *card = lv_img_create(lv_scr_act());
-        lv_img_set_src(card, &card_img);
-        lv_obj_align(card, LV_ALIGN_TOP_MID, 0, 64);
+        make_tap_mark(64);
 
         make_label(lv_scr_act(), "Tap your card", COL_TEXT, &lv_font_montserrat_20,
                    LV_ALIGN_TOP_MID, 0, 172);

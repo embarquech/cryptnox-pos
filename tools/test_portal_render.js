@@ -158,7 +158,7 @@ const page = sandbox.__out;
  * new section added to the page with no case here fails every scenario at once,
  * rather than silently defaulting to visible.
  */
-const SECTIONS = ['s_auth', 's_pend', 's_card', 's_addr', 's_ct', 's_wifi',
+const SECTIONS = ['s_auth', 's_pend', 's_addr', 's_ct', 's_wifi',
   's_fw', 's_done', 'nav'];
 
 const CASES = [
@@ -178,7 +178,7 @@ const CASES = [
   {
     name: 'wizard, authorised, address step',
     state: { mode: 'wizard', step: 'addr', authed: true, pay_eth: '', pay_trx: '' },
-    on: ['s_card', 's_addr', 'nav'],
+    on: ['s_addr', 'nav'],
   },
   {
     /* No Continue here: joining is what ends the wizard, so a button that only
@@ -210,7 +210,7 @@ const CASES = [
       pay_eth: '0xAAA', pay_trx: 'TBBB', ct_eth: '0xCCC', ct_trx: 'TDDD',
       ssid: 'My Cafe', version: '1.0.1', scan_gen: 0,
     },
-    on: ['s_card', 's_addr', 's_ct', 's_wifi', 's_fw'],
+    on: ['s_addr', 's_ct', 's_wifi', 's_fw'],
     also: () => {
       assert.strictEqual(els.get('cur_eth').textContent, '0xAAA');
       assert.strictEqual(els.get('cur_trx').textContent, 'TBBB');
@@ -356,7 +356,7 @@ const flush = async () => { for (let i = 0; i < 20; i++) { await new Promise(r =
     assert.strictEqual(page.getS().authed, true,
       'the page never saw the grant — is the token being sent on /api/state?');
     assert.strictEqual(els.get('s_auth').hidden, true, 'auth section should be gone');
-    for (const id of ['s_card', 's_addr', 's_ct', 's_wifi', 's_fw']) {
+    for (const id of ['s_addr', 's_ct', 's_wifi', 's_fw']) {
       assert.strictEqual(els.get(id).hidden, false, `${id} should be visible in admin mode`);
     }
     assert.strictEqual(els.get('cur_ssid').textContent, 'Lucky_2.4G');

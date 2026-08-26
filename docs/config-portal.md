@@ -83,12 +83,25 @@ self-signed key to generate and keep in NVS, a second transport through the same
 forms, and no security anybody can point at. It used to be there; it is gone
 (`CONFIG_ESP_HTTPS_SERVER_ENABLE` is deliberately off in `sdkconfig.defaults`),
 and the leftover `tls_crt`/`tls_key` NVS entries on an already-provisioned unit
-are erased the next time a portal opens (`ap_pass_new()`).
+are erased the next time a portal opens (`ap_pass_load()`).
 
-The AP passphrase needs no erasing: it is drawn fresh every time the portal opens
-and never leaves RAM, because the screen showing it is a screen a customer can
-photograph — and one association is all the AP allows, so a stranger using a
-photographed passphrase locks the operator out instead of watching them.
+The AP passphrase is drawn once — on the first portal a unit ever opens — and kept
+in NVS until `settings_factory_reset()` erases the `prov` namespace. It used to be
+redrawn per session, on the grounds that the screen showing it is a screen a
+customer can photograph. That defended one thing: the Wi-Fi-only re-join portal
+asks for no admin code, so an old photograph can be used to join the setup AP and
+change which network the terminal joins — but only while the terminal has that
+portal open (it opens it by itself when the venue network fails), only from inside
+the SoftAP's range, and only in front of a panel that is displaying the current
+passphrase anyway. One association is all the AP allows, so a stranger using it
+locks the operator out rather than watching them. Everything that moves money is
+behind the admin code, which is typed on the panel and never on the page. What the
+redraw cost was real: ten characters retyped every single time the page is opened.
+
+Entropy comes from `esp_random()`, called after `net_wifi_init()` — the RNG is only
+a true one with the RF subsystem running. `bootloader_random_enable()` (the SAR ADC
+source, for entropy with the radio off) is deliberately *not* used: it must not be
+called with Wi-Fi started, and by the time a portal opens it is.
 
 ## The wizard flow
 

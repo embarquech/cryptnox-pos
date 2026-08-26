@@ -39,6 +39,7 @@
 #include "nvs.h"
 
 #include "addr_check.h"
+#include "card_front.h"   /* CARD_FRONT_PNG_URI — the portal's card picture */
 #include "eth_addr.h"
 #include "form_parse.h"
 #include "json_out.h"
@@ -68,8 +69,10 @@ static const char AP_PASS_ALPHABET[] = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
  * NAME — grep "prov" in settings.cpp before renaming it. */
 #define NS_PROV       "prov"
 
-/* Keys nothing writes any more; erased on sight. See ap_pass_new(). */
+/* The AP passphrase, drawn once and kept — see ap_pass_load(). */
 #define K_AP_PASS     "ap_pass"
+
+/* Keys nothing writes any more; erased on sight. See ap_pass_load(). */
 #define K_TLS_CRT     "tls_crt"
 #define K_TLS_KEY     "tls_key"
 
@@ -162,43 +165,73 @@ static char              s_ask_val[SETTINGS_PAYOUT_MAX] = "";
  * 4. AP identity
  ******************************************************************/
 
-/**
- * @brief Draw a fresh AP passphrase for this portal session.
- *
- * Nothing is stored. The passphrase is displayed on the panel and in a QR on a
- * screen a customer can see, so a photo of it has to expire with the session
- * that showed it — a persisted one would still open the wifi_only portal, which
- * asks for no admin code, months later. It only has to live long enough for a
- * phone standing in front of the terminal to type it, so RAM is the right place
- * and a reboot mid-setup simply shows a new one.
- */
-static void ap_pass_new(void)
+/** @brief Fill s_pass with AP_PASS_LEN characters of hardware entropy. */
+static void ap_pass_draw(void)
 {
-    /* esp_random() is the hardware RNG, seeded by the radio. prov_start() calls
-     * net_wifi_init() before this for exactly that reason. */
+    /* esp_random() is the hardware RNG, and it is only a *true* one while the RF
+     * subsystem runs — prov_start() calls net_wifi_init() before coming here for
+     * exactly that reason. Which is also why bootloader_random_enable() (the SAR
+     * ADC source, for entropy with the radio off) is NOT used here: it must not be
+     * called with Wi-Fi started, and by this point it is. */
     for (size_t i = 0; i < AP_PASS_LEN; i++) {
         s_pass[i] = AP_PASS_ALPHABET[esp_random() % (sizeof(AP_PASS_ALPHABET) - 1U)];
     }
     s_pass[AP_PASS_LEN] = '\0';
+}
 
-    /* One-off, on units provisioned by an earlier build: a permanent AP
-     * passphrase under K_AP_PASS, and the admin page's self-signed TLS identity
-     * under K_TLS_CRT/K_TLS_KEY (~1 KB of a 24 KB NVS). Nothing reads any of them
-     * any more — the admin page is on this AP now, not on the venue LAN — so drop
-     * the keys. NVS deletes logically: the old entry is tombstoned and its bytes
-     * leave the page only on the next compaction, so this closes the NVS read,
-     * not a raw flash dump. Factory reset and CONFIG_NVS_ENCRYPTION cover the
-     * dump, and neither is this function's job. */
+/**
+ * @brief The AP passphrase: drawn once, then kept until a factory reset.
+ *
+ * It used to be redrawn per session, so a photograph of the panel expired with
+ * the session that showed it. That cost more than it bought: the operator retypes
+ * ten characters every single time they open the page, and the passphrase they
+ * had written down is wrong every time.
+ *
+ * What the redraw actually defended is the wifi_only portal, which asks for no
+ * admin code — so somebody who once photographed the passphrase can join the
+ * setup AP again and change which network the terminal joins. That still needs
+ * the terminal to have opened that portal by itself (it only does so when the
+ * venue network fails) and needs them standing inside its ~10 m of SoftAP, in
+ * front of the panel that is displaying the current passphrase to anyone looking
+ * anyway. Everything that moves money is behind the admin code, which is typed on
+ * the panel and never on the page.
+ *
+ * Stored in NS_PROV, which settings_factory_reset() erases by name — so "reset
+ * the terminal" is the way to retire a passphrase that has got out.
+ */
+static void ap_pass_load(void)
+{
     nvs_handle_t h;
-    if (nvs_open(NS_PROV, NVS_READWRITE, &h) == ESP_OK) {
-        static const char *const DEAD[] = { K_AP_PASS, K_TLS_CRT, K_TLS_KEY };
-        bool erased = false;
-        for (size_t i = 0; i < (sizeof(DEAD) / sizeof(DEAD[0])); i++) {
-            if (nvs_erase_key(h, DEAD[i]) == ESP_OK) { erased = true; }
-        }
-        if (erased) { (void)nvs_commit(h); }
-        nvs_close(h);
+    if (nvs_open(NS_PROV, NVS_READWRITE, &h) != ESP_OK) {
+        /* No NVS: a session-only passphrase is still a working portal, and the
+         * panel shows whatever this drew. */
+        ap_pass_draw();
+        return;
     }
+
+    size_t n = sizeof(s_pass);
+    if ((nvs_get_str(h, K_AP_PASS, s_pass, &n) != ESP_OK) ||
+        (strlen(s_pass) != AP_PASS_LEN)) {
+        /* Absent, or a length this build does not issue (an older AP_PASS_LEN, or
+         * a truncated read): draw a new one and keep it. */
+        ap_pass_draw();
+        if (nvs_set_str(h, K_AP_PASS, s_pass) == ESP_OK) {
+            (void)nvs_commit(h);
+        }
+    }
+
+    /* The admin page's self-signed TLS identity, on units provisioned by an
+     * earlier build: ~1 KB of a 24 KB NVS that nothing reads any more, because the
+     * page is on this AP now and not on the venue LAN. NVS deletes logically — the
+     * entry is tombstoned and its bytes leave the page on the next compaction — so
+     * this closes the NVS read, not a raw flash dump. */
+    static const char *const DEAD[] = { K_TLS_CRT, K_TLS_KEY };
+    bool erased = false;
+    for (size_t i = 0; i < (sizeof(DEAD) / sizeof(DEAD[0])); i++) {
+        if (nvs_erase_key(h, DEAD[i]) == ESP_OK) { erased = true; }
+    }
+    if (erased) { (void)nvs_commit(h); }
+    nvs_close(h);
 }
 
 /** @brief SSID from the SoftAP MAC, so two terminals in a room are tellable apart. */
@@ -398,7 +431,7 @@ static bool gate(httpd_req_t *req, esp_err_t *rc)
 static const char *const PAGE_HTML =
 "<!doctype html><html lang=en><head><meta charset=utf-8>"
 "<meta name=viewport content='width=device-width,initial-scale=1'>"
-"<title>Cryptnox terminal</title><style>"
+"<title>Cryptnox POS</title><style>"
 
 /* The Cryptnox palette, taken from the brand's own stylesheet
  * (cryptnox.github.io/docs/source/_static/custom.css): apricot #fcb770 as the
@@ -441,7 +474,6 @@ static const char *const PAGE_HTML =
 "header{display:flex;align-items:center;gap:10px;padding:22px 2px 16px}"
 ".mark{flex:0 0 30px;width:30px;height:30px;display:block}"
 ".brand{font-size:1.05rem;font-weight:700;letter-spacing:-.015em;margin:0}"
-".brand span{color:var(--dim);font-weight:400}"
 ".chip{margin-left:auto;padding:6px 10px;border-radius:999px;font-size:.75rem;"
 "color:var(--dim);background:var(--card);border:1px solid var(--line)}"
 
@@ -533,9 +565,20 @@ static const char *const PAGE_HTML =
  * the way it was asked, so it wears the warning tint outright. */
 "#note{background:var(--tint);border-color:var(--tintl);color:var(--tintf)}"
 "#out p{margin-top:.9rem}"
-/* The card illustration. Line art in the palette, so it follows the scheme and
- * costs no request on a captive portal. */
-".cardart{display:block;width:100%;max-width:15rem;height:auto;margin:0 auto .8rem}"
+/* The card illustration — the real card front, inlined as a data URI so it costs
+ * no request on a captive portal. Beside its paragraph rather than above it: the
+ * picture is only there to say "this object", so it earns a thumbnail's worth of
+ * a phone screen, not a banner's. The 1px halo traces the card's own rounded
+ * outline (drop-shadow follows the alpha, not the box), which a black card needs
+ * to read as an object on the dark scheme's near-black background. */
+".cardrow{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;"
+"gap:.9rem;margin:.3rem 0 .9rem}"
+".cardart{flex:0 1 15rem;width:15rem;max-width:100%;height:auto;"
+"filter:drop-shadow(0 0 1px var(--dim))}"
+/* The wrap is the whole narrow-screen story, no media query: a phone cannot fit
+ * 15rem of card and 11rem of prose on one line, so the paragraph drops below the
+ * picture — which is where it sat before it moved beside it. */
+".cardrow p{flex:1 1 11rem;margin:0}"
 
 ".wait{display:flex;align-items:center;gap:12px;padding:14px 16px;"
 "border-radius:12px;background:var(--tint);border:1px solid var(--tintl);"
@@ -564,8 +607,9 @@ static const char *const PAGE_HTML =
  * that can hang. The C is white as in assets/logo.svg, not an accent that follows
  * the scheme; the disc behind it is --ink, dark in both schemes, so it stays legible.
  *
- * A <symbol> drawn twice (the header, and the card in the card-read section)
- * rather than that path written out twice — it is 2 KB of flash per copy. The
+ * A <symbol> and a <use> rather than the path inline in the header: it was drawn
+ * twice when the card illustration was line art too, and the indirection is kept
+ * because it costs nothing and the next place that wants the mark is free. The
  * fills are inline styles and not a `.mark path{}` rule because <use> clones into
  * a shadow tree that outer selectors cannot reach; custom properties still
  * inherit into it, so var() resolves and the scheme still applies. */
@@ -599,7 +643,7 @@ static const char *const PAGE_HTML =
 "286.276L353 357.803L346.274 363.083C310.977 391.157 270.506 406 229.02 406Z'/>"
 "</symbol></svg>"
 "<header><svg class=mark aria-hidden=true><use href='#cnx'/></svg>"
-"<h1 class=brand>Cryptnox <span>terminal</span></h1>"
+"<h1 class=brand>Cryptnox POS</h1>"
 "<span class=chip>fw <b id=ver>&hellip;</b></span></header>"
 "<main>"
 "<p id=msg role=alert></p>"
@@ -620,38 +664,6 @@ static const char *const PAGE_HTML =
 "<p><span id=pend></span> is on the terminal screen now. Compare it there, "
 "character by character, and accept it on the terminal.</p></section>"
 
-/* Card first, contracts, then the typed send-to last — the operator reads down
- * to the thing they are most likely to type. The card route says out loud that it
- * points the payout at the tapped card: doing that with the card that pays is how
- * a till ends up paying itself. */
-"<section id=s_card hidden><h2>Card addresses</h2>"
-/* Which card, and what to do with it. The instruction below says "tap a Cryptnox
- * card" to somebody who may never have seen one, and a card held to a reader is
- * one picture's worth of that sentence. Drawn from the same mark as the header,
- * in the palette's own colours, so it needs no asset and no second request. */
-"<svg class=cardart viewBox='0 0 200 110' aria-hidden=true>"
-"<rect x=6 y=14 width=132 height=83 rx=9 "
-"style='fill:var(--soft);stroke:var(--line);stroke-width:2'/>"
-"<use href='#cnx' x=18 y=24 width=30 height='30'/>"
-/* textLength, because the face is whatever the phone has and a wider one would
- * print the name off the edge of the card. */
-"<text x=56 y=45 textLength=74 lengthAdjust=spacingAndGlyphs "
-"style='fill:var(--fg);font-size:14px;font-weight:700'>CRYPTNOX</text>"
-"<rect x=18 y=64 width=26 height=20 rx=4 style='fill:var(--acc)'/>"
-"<rect x=54 y=68 width=64 height=6 rx=3 style='fill:var(--line)'/>"
-"<rect x=54 y=79 width=44 height=6 rx=3 style='fill:var(--line)'/>"
-/* Three arcs off the card's right edge: the contactless mark everybody already
- * reads as "hold it here". */
-"<g style='fill:none;stroke:var(--acc);stroke-width:5;stroke-linecap:round'>"
-"<path d='M150 38A24 24 0 0 1 150 72'/>"
-"<path d='M160 30A34 34 0 0 1 160 80'/>"
-"<path d='M170 22A44 44 0 0 1 170 88'/></g></svg>"
-"<p>Take a payout address off a Cryptnox card. Whichever card is tapped, "
-"<i>its own</i> address becomes the address takings are sent to &mdash; so tap "
-"the merchant's card, not a customer's. The terminal asks for that card's PIN, "
-"then shows each address on its own screen for acceptance.</p>"
-"<button class=alt id=go_card>Read a Cryptnox card</button></section>"
-
 "<section id=s_ct hidden><h2>Token contracts</h2>"
 "<p>Which token the terminal charges in. Accepted on the terminal screen like a "
 "payout address &mdash; a wrong contract moves a different asset.</p>"
@@ -662,12 +674,29 @@ static const char *const PAGE_HTML =
 "<input id=in_ctt placeholder='T...' autocapitalize=off autocomplete=off>"
 "<button class=alt id=go_ctt>Propose TRC-20 contract</button></section>"
 
-"<section id=s_addr hidden><h2>Send to</h2>"
-"<p>Where takings are sent &mdash; the merchant's own address. Submitting one "
-"here only <i>proposes</i> it: the terminal shows it on its own screen and "
-"somebody has to accept it there.</p>"
+/* One section, two ways in. Reading a card and typing an address answer the same
+ * question — where do takings go — so they were two cards headed "Card addresses"
+ * and "Send to", which made the operator choose between two settings before
+ * finding out they were one. Card route first (it is the one that cannot be
+ * mistyped), typing under a divider heading; either way the terminal only
+ * *proposes*, and somebody accepts it on the panel. */
+"<section id=s_addr hidden><h2>Payout addresses</h2>"
+"<p>Where takings are sent &mdash; the merchant's own address. Either way this "
+"only <i>proposes</i> it: the terminal shows it on its own screen and somebody "
+"has to accept it there.</p>"
 "<p>Ethereum &mdash; currently <code id=cur_eth>&hellip;</code><br>"
 "Tron &mdash; currently <code id=cur_trx>&hellip;</code></p>"
+/* Which card, and what to do with it. The instruction below says "tap a Cryptnox
+ * card" to somebody who may never have seen one, so show them the actual card
+ * front (assets/cryptnox_card.png, inlined by tools/gen_card_front.py) rather than a
+ * line drawing of a generic one — the thing in their hand is what they have to
+ * recognise. Decorative: the paragraph beside it says everything the picture does. */
+"<div class=cardrow><img class=cardart src='" CARD_FRONT_PNG_URI "' alt=''>"
+"<p>Whichever card is tapped, <i>its own</i> addresses become the ones takings "
+"are sent to &mdash; so tap the merchant's card, not a customer's. The terminal "
+"asks for that card's PIN, then shows each address for acceptance.</p></div>"
+"<button class=alt id=go_card>Read from a Cryptnox card</button>"
+"<h2>Or type an address</h2>"
 "<p>Ethereum</p>"
 "<input id=in_eth placeholder='0x...' autocapitalize=off autocomplete=off>"
 "<button id=go_eth>Propose Ethereum address</button>"
@@ -761,7 +790,6 @@ static const char *const PAGE_JS =
 "show('s_pend',a&&p);"
 /* In the wizard one section at a time, in the order of the flow. In admin mode
  * everything at once — it is a settings page, not a sequence. */
-"show('s_card',a&&!p&&(w?st=='addr':true));"
 "show('s_addr',a&&!p&&(w?st=='addr':true));"
 "show('s_ct',  a&&!p&&!w);"
 "show('s_wifi',a&&!p&&(w?st=='wifi':true));"
@@ -1413,13 +1441,14 @@ bool prov_start(prov_mode_t mode, ui_event_cb_t cb)
      * interface there is. net_ap_start() drops the station for exactly that
      * reason, and net_ap_stop() puts it back. */
 
-    /* Before generating the passphrase, not after: esp_random() is only properly
-     * seeded once the RF subsystem is running, and net_wifi_init() is what starts
-     * it. Generating first would hand out a passphrase drawn from the
-     * bootloader's entropy, which is the one thing this AP relies on. */
+    /* Before the passphrase, not after: on the first portal this device ever opens
+     * there is one to draw, and esp_random() is only properly seeded once the RF
+     * subsystem is running — net_wifi_init() is what starts it. Drawing first
+     * would take the bootloader's entropy, which is the one thing this AP relies
+     * on. Every portal after that reads the stored one. */
     net_wifi_init();
     ap_ssid_build();
-    ap_pass_new();   /* a new one every time the portal opens - see ap_pass_new */
+    ap_pass_load();   /* drawn once, kept until a factory reset */
     (void)snprintf(s_qr, sizeof(s_qr), "WIFI:T:WPA;S:%s;P:%s;;", s_ssid, s_pass);
 
     if (!net_ap_start(s_ssid, s_pass)) {
@@ -1512,9 +1541,10 @@ void prov_stop(void)
     s_wifi_only    = false;
     CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_token), sizeof(s_token));
 
-    /* The AP passphrase too: the AP it opened is down, the next portal draws a new
-     * one, and the QR screen is only ever painted while a portal is up. A proposed
-     * value IS dropped as well: unaccepted means unwanted. */
+    /* The AP passphrase too: the AP it opened is down, the next portal reads it
+     * back from NVS, and the QR screen is only ever painted while a portal is up —
+     * so nothing needs it in RAM in between. A proposed value IS dropped as well:
+     * unaccepted means unwanted. */
     CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_pass), sizeof(s_pass));
     if (s_ask_lock != NULL) {
         if (xSemaphoreTake(s_ask_lock, pdMS_TO_TICKS(100)) == pdTRUE) {

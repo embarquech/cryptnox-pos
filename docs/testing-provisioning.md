@@ -441,8 +441,9 @@ the connectivity probes.
 5. **Pass:** once the code is accepted, the panel drops the QR code and the AP
    passphrase and says the phone is connected. A code still on screen at the payout
    step reads as "scan me again", which is the one thing that cannot help.
-6. Walk the addresses and Wi-Fi steps from the phone. The address step shows
-   **Card addresses** first and **Send to** last, with the `0x…` / `T…` fields
+6. Walk the addresses and Wi-Fi steps from the phone. The address step is one
+   **Payout addresses** card: the card-read button first, then **Or type an
+   address** with the `0x…` / `T…` fields
    open on arrival — and those must not disappear while you are typing (the page
    re-renders every 1.5 s).
 7. On the Wi-Fi card, tap the eye beside the password: it must reveal and re-mask.
@@ -559,7 +560,7 @@ still hands out the `config.h` recipient (it has to — every caller needs a par
 address), so a sale that gets past this guard pays a stranger and looks normal.
 
 The cost of this rule: a `config.h`-only unit must be configured once, by card or by
-the **Send to** field, before it can charge. That is intended. Check it explicitly on
+the **Payout addresses** fields, before it can charge. That is intended. Check it explicitly on
 a unit built with a `config.h` recipient and an empty NVS — it must refuse, not fall
 back.
 

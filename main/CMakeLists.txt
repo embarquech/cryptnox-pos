@@ -3,7 +3,7 @@ idf_component_register(
          "eth_json.cpp" "eth_rpc.cpp" "https_post.cpp" "net.cpp" "ui.cpp"
          "civil_time.cpp" "tron_tx.cpp" "tron_rpc.cpp"
          "ota.cpp" "provision.cpp" "settings.cpp"
-         "logo_img.c" "card_img.c" "logo_small.c" "chain_icons.c"
+         "logo_img.c" "logo_small.c" "chain_icons.c"
     INCLUDE_DIRS "."
     REQUIRES pn532 driver cryptnox_utils crypto_provider esp32_logger esp32_platform
              secure_channel pn532_nfc_transport
