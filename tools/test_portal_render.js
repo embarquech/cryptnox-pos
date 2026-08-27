@@ -54,8 +54,10 @@ function makeEl(id) {
     files: [],
     children: [],
     attrs: {},
+    clicked: 0,
     appendChild(c) { this.children.push(c); return c; },
     setAttribute(k, v) { this.attrs[k] = String(v); },
+    click() { this.clicked++; },
   };
 }
 
@@ -106,7 +108,9 @@ function fakeFetch(url, opts) {
     /* Mirrors state_get(): two different bodies, and which one you get depends
      * entirely on whether you presented the token. */
     if (srv.granted && token === srv.token) {
-      return reply({
+      /* srv.state lets a scenario put the device in a specific step — the
+       * wizard's last one needs it. Unset means the admin default below. */
+      return reply(srv.state || {
         mode: 'admin', step: 'admin', authed: true, auth_pending: false,
         version: '1.0.0', pay_eth: '0xAAA', pay_trx: 'TBBB',
         ct_eth: '0xCCC', ct_trx: 'TDDD', ssid: 'Lucky_2.4G',
@@ -159,7 +163,7 @@ const page = sandbox.__out;
  * rather than silently defaulting to visible.
  */
 const SECTIONS = ['s_auth', 's_pend', 's_addr', 's_ct', 's_wifi',
-  's_fw', 's_done', 'nav'];
+  's_fw', 's_final', 'nav'];
 
 const CASES = [
   {
@@ -188,9 +192,15 @@ const CASES = [
     on: ['s_wifi'],
   },
   {
-    name: 'wizard, finished',
+    /* The step the panel shows when setup is over. The page has no screen for it
+     * and cannot: reaching PROV_STEP_DONE means the portal has been stopped, so
+     * nothing answers the poll that would have reported it. The wizard's own last
+     * screen is s_final, driven by the page (see the end-of-wizard case below).
+     * Asserted anyway, because "no section at all" has to be deliberate rather
+     * than a hole. */
+    name: 'wizard, finished (a step the browser can never see)',
     state: { mode: 'wizard', step: 'done', authed: true },
-    on: ['s_done'],
+    on: [],
   },
   {
     name: 'wizard, a value waiting on the panel',
@@ -300,6 +310,23 @@ try {
   failures++;
 }
 
+/* ── Browse opens the native picker ─────────────────────────────────────────
+ * The firmware file input is hidden and this button is the only thing that can
+ * open it, so a rename on one side leaves the admin page with no way to update
+ * the terminal at all — and nothing else would notice, since the button is still
+ * there and still does something.
+ */
+try {
+  els.get('file').clicked = 0;
+  els.get('up').onclick.call(els.get('up'));
+  assert.strictEqual(els.get('file').clicked, 1,
+    'Browse did not open the file picker');
+  console.log('  ok    Browse opens the file picker');
+} catch (e) {
+  console.log(`  FAIL  Browse opens the file picker\n        ${e.message}`);
+  failures++;
+}
+
 /* ── The Wi-Fi reveal eye ───────────────────────────────────────────────────
  * A venue passphrase typed blind on a phone and rejected tells the operator
  * nothing about which of the two got it wrong. Both directions, because a toggle
@@ -375,9 +402,66 @@ const flush = async () => { for (let i = 0; i < 20; i++) { await new Promise(r =
     failures++;
   }
 
+  /* ── The end of the wizard, and its one way back ────────────────────────────
+   * Handing over the venue network takes the terminal's radio off the setup
+   * network, so the page cannot report the outcome: it says the job is done and
+   * sends the operator to the panel. Two things have to hold. Everything else
+   * must be gone — a form still on screen now posts to nothing. And the screen
+   * must not be permanent: the terminal answers again while the join is being
+   * attempted (both networks, for a few seconds), and only a terminal with
+   * something to report is the terminal actually coming back.
+   */
+  const wizardWifi = extra => Object.assign({
+    mode: 'wizard', step: 'wifi', authed: true, auth_pending: false,
+    version: '1.0.0', pay_eth: '0xAAA', pay_trx: 'TBBB',
+    ct_eth: '', ct_trx: '', ssid: '', pending: '', note: '', scan_gen: 0,
+  }, extra || {});
+
+  try {
+    srv.state = wizardWifi();
+    await page.poll();
+    await flush();
+    assert.strictEqual(els.get('s_wifi').hidden, false, 'the Wi-Fi step should show');
+
+    els.get('ssid').value = 'Venue_5G';
+    els.get('wpass').value = 'hunter2hunter2';
+    els.get('go_wifi').onclick.call(els.get('go_wifi'));
+    await flush();
+    for (const id of SECTIONS) {
+      assert.strictEqual(els.get(id).hidden, id !== 's_final',
+        `${id} should be ${id === 's_final' ? 'visible' : 'hidden'} once the wizard has handed over the network`);
+    }
+    assert.strictEqual(els.get('wpass').value, '',
+      'the venue passphrase should not be left in the field');
+    console.log('  ok    handing over the network ends the page');
+
+    /* The join is in flight and the device still answers. Not a return. */
+    await page.poll();
+    await flush();
+    assert.strictEqual(els.get('s_final').hidden, false,
+      'an answer during the join attempt must not undo the finished screen');
+    console.log('  ok    an answer mid-join does not undo it');
+
+    /* It would not join. The terminal is back on the setup network with a
+     * reason, and the page has to become usable again by itself. */
+    srv.state = wizardWifi({ note: 'Could not join that network' });
+    await page.poll();
+    await flush();
+    assert.strictEqual(els.get('s_final').hidden, true,
+      'the terminal came back with a note and the page stayed on the finished screen');
+    assert.strictEqual(els.get('s_wifi').hidden, false,
+      'the Wi-Fi step should be back so the operator can try again');
+    assert.strictEqual(els.get('note').textContent, 'Could not join that network');
+    console.log('  ok    a failed join brings the page back with the reason');
+  } catch (e) {
+    console.log(`  FAIL  end of the wizard\n        ${e.message}`);
+    failures++;
+  }
+
   if (failures) {
     console.error(`portal render test: ${failures} failure(s)`);
     process.exit(1);
   }
-  console.log(`portal render test OK (${CASES.length + 3} render scenarios + handshake)`);
+  console.log(`portal render test OK (${CASES.length + 4} render scenarios, ` +
+              'handshake, end of wizard)');
 })();

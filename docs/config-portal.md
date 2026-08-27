@@ -139,6 +139,26 @@ the portal stopped in the same breath, or dropped again (`net_wifi_disconnect()`
 network that associated but had no clock is rejected, and leaving that association
 up would put the setup forms in front of everyone holding the venue PSK.
 
+### The last screen the phone gets
+
+Joining the venue network is where the page runs out of device to talk to: the
+radio serves both networks for a few seconds and then follows the venue AP to its
+channel, which drops the phone. So handing over the network does not leave the
+operator on a Wi-Fi form with dead buttons — the page replaces itself with
+**Configuration complete / follow the instructions on the terminal's screen**,
+which is the truth: from here the panel is the only thing that knows anything.
+
+That screen is not final, though. If the join fails the terminal comes back on the
+same setup AP, the phone rejoins it by itself, and the poll that never stopped
+running sees the device answer *with a note* — which is the only thing that brings
+the page back to the Wi-Fi step, carrying the reason. An answer with nothing to
+report is the join still being attempted, and must not undo the screen
+(`tools/test_portal_render.js` asserts both).
+
+A join that *works* is silence: the terminal stops the portal and the AP goes with
+it, so nothing ever answers that poll again. Which is correct — there is nothing
+left for the phone to do.
+
 **Finishing restarts the terminal.** The recipient and contract dual stores are
 built at boot from validated strings, so applying a change in place would mean a
 second path into the money code that has to re-validate everything the boot path
@@ -154,6 +174,16 @@ presented at the wrong moment would otherwise redirect the takings.
 
 The card will not export a public key without a verified PIN, so this needs the
 card PIN on the keypad first, exactly as signing does.
+
+**A card that was never set up is named as such.** A card out of its envelope has
+no PIN and no key, and the applet says so in the clear in its SELECT response —
+so that is read before the secure channel, on the payment path as well as this one
+(`main/card_status.h`, `card_fault()` in `main/main.cpp`). Without it the holder of
+a blank card is told *"Wrong card PIN"*, which is the one message that sends them
+off to type it again. A response this cannot judge — a card type it has not been
+told about, a SELECT that did not answer `90 00` — is not a refusal: the ordinary
+paths report whatever happens next, and a parser that guessed here would turn a
+working card away at a till.
 
 The Ethereum address is rendered in EIP-55 mixed case (`eth_addr_format`). That is
 not cosmetic: it is the form the operator's own wallet shows, which is what they are

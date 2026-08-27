@@ -479,10 +479,10 @@ times.
 **Admin mode on a phone** is the same journey as the wizard's — the same QR code
 joins the same AP and the same captive portal opens the page — so §4's steps 1-3
 apply to it unchanged. Two things only admin mode has: the panel says the terminal
-is off its network for the duration, and **Check for updates** in the firmware
-section either works over the phone's cellular data or fails with the message
-pointing at the file picker. Neither is a certificate warning any more — there is
-no certificate.
+is off its network for the duration, and the firmware section is on the page —
+**Browse**, pick a `.bin` that is already on the phone (see
+[ota-testing.md](ota-testing.md) §3). Neither is a certificate warning any more —
+there is no certificate.
 
 ---
 

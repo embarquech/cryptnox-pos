@@ -20,13 +20,13 @@
  * firmware each one runs. A payment terminal should not be the thing that
  * publishes that. So:
  *
- *     browser --HTTPS--> raw.githubusercontent.com   (manifest, then image)
- *     browser --HTTPS--> https://<terminal>/api/ota  (image, streamed to flash)
+ *     you              download the image somewhere with internet
+ *     browser --HTTP--> http://192.168.4.1/api/ota   (streamed to flash)
  *
- * Consequence for the operator: the browser needs the internet and the terminal at
- * the same moment, so this runs on the venue network the terminal already joined.
- * The page's file picker covers a venue network with no internet — download the
- * image anywhere, upload it here.
+ * Consequence for the operator: the file has to be on the phone or laptop before
+ * they join the terminal's setup network, because that network has no route
+ * anywhere. The portal used to offer a release-list check as well; it is gone,
+ * along with the URL it fetched — see docs/ota.md.
  *
  * Threat model. What keeps a stranger's firmware off the device is not the
  * transport and not the admin code: it is the signature
@@ -73,6 +73,25 @@ void ota_mark_valid(void);
  * @return Version string ("1.0.0"), never NULL. Valid for the program lifetime.
  */
 const char *ota_running_version(void);
+
+/**
+ * @brief Whether the last update was installed and then thrown away.
+ *
+ * The failure this exists to name: an image installs, boots, and never reaches
+ * @ref ota_mark_valid — because bring-up did not finish, or because somebody
+ * power-cycled the terminal during the seconds it takes — so the bootloader
+ * reverts to the slot that was working and the panel goes on reading the old
+ * version. Correct behaviour, and completely silent: indistinguishable from an
+ * update that never happened at all.
+ *
+ * Read from the idle slot's state in otadata, so it needs no bookkeeping of its
+ * own and clears itself: the next update writes that slot and overwrites the
+ * verdict.
+ *
+ * @return true if the slot an update would go to holds an image the bootloader
+ *         aborted or marked invalid.
+ */
+bool ota_last_update_failed(void);
 
 /**
  * @brief Open the idle slot for an image of @p len bytes.
@@ -139,14 +158,13 @@ bool ota_staged(char *version, size_t version_n, bool *older);
  */
 bool ota_commit(bool install);
 
-/**
- * @brief Withdraw an offer nobody accepted.
- *
- * Called when the portal closes. The bytes stay in the idle slot — harmless, it is
- * not bootable and the next upload overwrites it — but the offer is gone, so a
- * refused image cannot be installed by whoever wanders past next.
- */
-void ota_forget(void);
+/* There is deliberately no ota_forget(). Closing the config portal used to
+ * withdraw a staged image, and since an upload spends minutes of the portal's own
+ * 15-minute window, that window kept expiring while the operator was reading the
+ * Install button — the offer went away and the tap did nothing, which is what "the
+ * update did not install" turned out to be. A staged image is signature-verified
+ * and gated on the panel, so nothing needs to take it away on a timer:
+ * @ref ota_commit is the only thing that resolves it, either way. */
 
 #ifdef __cplusplus
 }

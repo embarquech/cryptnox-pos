@@ -380,6 +380,7 @@ static void open_reset_confirm(void);
 static void open_network_picker(void);
 static void open_coin_picker(bool tron);
 static void open_portal_window(void);
+static void open_ota_gone(void);
 static void close_modal(void);
 static void pop_in(lv_obj_t *obj);   /* defined in section 8 (animations) */
 static uint32_t admin_penalty_ms(uint8_t fails);   /* defined with the admin screens */
@@ -658,17 +659,28 @@ static void btn_event_cb(lv_event_t *e) {
             prov_stop();
             close_modal();
             break;
-        case ACT_OTA_OK:
         case ACT_OTA_NO:
-            /* The panel is the only place firmware can be installed; the browser
-             * that uploaded it only got as far as this modal. Install does not
-             * return — it reboots into the new slot. */
+            /* Refused. The staging is dropped and the page goes with it, so a
+             * declined image cannot be re-offered to whoever wanders past next. */
             close_modal();
-            if (!ota_commit(act == ACT_OTA_OK)) {
-                /* Declined, or the boot partition would not take. Either way the
-                 * running firmware stays; the page is closed regardless so a
-                 * refused image cannot simply be re-uploaded unattended. */
+            (void)ota_commit(false);
+            prov_stop();
+            break;
+        case ACT_OTA_OK:
+            /* The panel is the only place firmware can be installed; the browser
+             * that uploaded it only got as far as this modal. Does not return on
+             * success — it reboots into the new slot. */
+            close_modal();
+            if (!ota_commit(true)) {
+                /* It said Install and nothing happened, which is exactly the
+                 * report this whole path came from. Two ways to get here now that
+                 * the portal closing no longer withdraws a staged image: the
+                 * terminal rebooted since the upload (staging is RAM), or the slot
+                 * refused to become bootable. Either way, say so — a card that
+                 * just closes is indistinguishable from a successful update that
+                 * silently did not happen. */
                 prov_stop();
+                open_ota_gone();
             }
             break;
         case ACT_NET_PICK:
@@ -1322,6 +1334,24 @@ static void build_settings(void) {
     make_label(t_about, ota_running_version(), COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_MID, 0, 70);
 
+    /* An update that installed, booted and was then reverted leaves this tab
+     * reading the old version with nothing to say why — which is how "I updated
+     * it and nothing happened" gets reported about a mechanism that worked
+     * exactly as designed. One red line, under the version it is about. It clears
+     * itself: the next update overwrites the slot this verdict is read from.
+     *
+     * The rows below shift down by the line's height when it is there, rather
+     * than the line being squeezed into the gap: this tab scrolls, so there is
+     * somewhere for them to go, and a warning overlapping the Update button is
+     * worse than no warning. */
+    const bool reverted = ota_last_update_failed();
+    if (reverted) {
+        make_label(t_about, "Last update rolled back", COL_DANGER,
+                   &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0, 90);
+    }
+    const lv_coord_t y_update = reverted ? 122 : 94;
+    const lv_coord_t y_about  = reverted ? 184 : 156;
+
     /* The update row. Tapping it opens the config page on the venue network and
      * shows a QR code to scan, so it belongs behind the admin code with the rest
      * of the settings. Same action as the Configure row on the Wi-Fi tab — one
@@ -1330,7 +1360,7 @@ static void build_settings(void) {
      * TAB_W - PILL_TEXT_X - PILL_TEXT_PAD_R = 140 px and dot-elides the rest,
      * and a row whose own label is cut off reads as a bug. */
     lv_obj_t *upill = make_pill(t_about, "Update", "From a browser",
-                                TAB_W, 94, ACT_PORTAL);
+                                TAB_W, y_update, ACT_PORTAL);
     lv_obj_align(make_glyph_disc(upill, LV_SYMBOL_DOWNLOAD, COL_ACCENT, COIN_SZ),
                  LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
 
@@ -1345,7 +1375,7 @@ static void build_settings(void) {
                                  "LVGL (MIT), TFT_eSPI (FreeBSD/MIT),\n"
                                  "XPT2046_Touchscreen (MIT)",
                                  COL_DIM, &lv_font_montserrat_14,
-                                 LV_ALIGN_TOP_MID, 0, 156);
+                                 LV_ALIGN_TOP_MID, 0, y_about);
     lv_label_set_long_mode(about, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(about, 210);
     lv_obj_set_style_text_align(about, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
@@ -1576,6 +1606,28 @@ static void open_portal_window(void) {
  * returning a terminal to firmware with a known fault is a plausible thing for
  * somebody to be talked into.
  */
+/**
+ * Install was tapped and there was nothing left to install.
+ *
+ * The one screen this flow was missing. Everything else about an update reports
+ * itself — the upload has a percentage, the verification has a version, the
+ * install has a reboot — but the gap between "accepted on the panel" and "nothing
+ * happened" was silent, so a terminal that quietly stayed on the old firmware
+ * looked exactly like one that had updated.
+ */
+static void open_ota_gone(void) {
+    lv_obj_t *card = open_modal(OTA_CARD_W, 200);
+    lv_obj_t *m = ota_text(card, NULL,
+             "That firmware is no longer waiting to be installed.\n\n"
+             "Nothing changed - this terminal is still on the version it was. "
+             "Open Update again and send the file once more.",
+             COL_TEXT, &lv_font_montserrat_14);
+    ota_fit_card(card, m, 42);
+    make_button(card, "Close", COL_SURFACE, COL_TEXT, OTA_TEXT_W, 40,
+                LV_ALIGN_BOTTOM_MID, 0, -2, ACT_MODAL_CLOSE,
+                &lv_font_montserrat_20);
+}
+
 static void build_ota_confirm(void) {
     char version[40] = "?";
     bool older = false;
@@ -2932,9 +2984,21 @@ static void ui_task(void *arg) {
          * that outlives its window because nobody was looking at a card is the
          * thing the window exists to prevent. Wizard mode has no deadline
          * (prov_window_left_min() is 0 there), hence the mode test. */
-        if ((prov_mode() == PROV_MODE_ADMIN) && (prov_window_left_min() == 0U)) {
+        /* ...and not while a firmware image is actually arriving. Stopping httpd
+         * mid-transfer drops the socket, ota_abort() throws away what was written,
+         * and the operator gets "the connection to the terminal dropped" after
+         * three minutes of progress bar. This cannot hold the page open for ever:
+         * ota_post() gives up on a socket that has gone quiet (UPLOAD_MAX_STALLS). */
+        if ((prov_mode() == PROV_MODE_ADMIN) && (prov_window_left_min() == 0U) &&
+            !ota_receiving()) {
             prov_stop();
-            if (s_portal_modal) { close_modal(); }
+            /* ...but NOT the firmware card. s_portal_modal is set by that card too
+             * (build_ota_confirm), so this used to close the Install/Discard
+             * decision the operator was in the middle of — on a deadline that had
+             * been ticking through a multi-minute upload. The window is about the
+             * config *page*, which is now down; an image already verified and
+             * waiting on this screen needs no page to install. */
+            if (s_portal_modal && !ota_staged(NULL, 0U, NULL)) { close_modal(); }
         }
         lv_timer_handler();
 

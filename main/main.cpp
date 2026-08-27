@@ -69,6 +69,7 @@ extern "C" {
 #include "pn532.h"
 #include "keccak256.h"
 #include "eth_addr.h"
+#include "card_status.h"   /* is the tapped card even set up? */
 #include "hardening.h"
 #include "eth_rlp.h"
 #include "eth_rpc.h"
@@ -352,6 +353,41 @@ struct WipeGuard {
 };
 }  // namespace
 
+/* Why the card just tapped was refused, or NULL. Set by card_connect(), read by
+ * its callers instead of their own "Card not found" — which is what a blank card
+ * used to be reported as, three APDUs further on and under the wrong name. Plain
+ * static, not atomic: it is written and read on the main task, between a tap and
+ * the message that tap produces. */
+static const char *s_card_fault = NULL;
+
+/**
+ * @brief Whether the card now on the reader is set up at all.
+ *
+ * Runs on the tapped card before the secure channel, because the SELECT response
+ * says so in the clear and everything after it would only say so obliquely: an
+ * uninitialised card has no PIN to verify (so it reads as "Wrong card PIN") and a
+ * card with no seed cannot sign (so it reads as a sign error on a machine the
+ * customer is standing at). Selecting the applet twice is harmless —
+ * establishSecureChannel() opens with its own SELECT.
+ *
+ * @return NULL if the card is usable, or if this cannot tell; else the line to
+ *         show. See card_status.h.
+ */
+static const char *card_fault(Pn532NfcTransport &transport)
+{
+    static const uint8_t SELECT[] = CARD_SELECT_APDU;
+    uint8_t r[40];
+    uint8_t n = static_cast<uint8_t>(sizeof(r));
+    if (!transport.sendAPDU(SELECT, static_cast<uint8_t>(sizeof(SELECT)), r, n)) {
+        return NULL;   /* card gone or not answering — the caller's own story */
+    }
+    const card_state_t st = card_state(r, n);
+    if (st != CARD_READY) {
+        ESP_LOGW(TAG, "card refused: state %d", static_cast<int>(st));
+    }
+    return card_state_text(st);
+}
+
 /**
  * @brief Wait for a card and open a secure channel, cancellable from the UI.
  *
@@ -367,12 +403,14 @@ struct WipeGuard {
  *                       "Transaction", prints a total and offers a Cancel whose
  *                       meaning is "abandon this sale" — none of which is true
  *                       during setup, so that case gets its own screen.
- * @return true with @p session open; false on user cancel or after 60 s —
- *         the two are told apart by @ref s_user_cancelled.
+ * @return true with @p session open; false on user cancel, after 60 s, or on a
+ *         card that is not set up — the three are told apart by
+ *         @ref s_user_cancelled and @ref s_card_fault.
  */
 static bool card_connect(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
                          CW_SecureSession &session, bool setup = false)
 {
+    s_card_fault = NULL;
     if (!s_user_cancelled) {
         if (setup) { ui_show_card_wait("Reading your payout addresses"); }
         else { ui_show_tx_status(UI_TX_STATE_PLACE_CARD, "Hold card to reader"); }
@@ -399,6 +437,14 @@ static bool card_connect(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
             if (setup) { ui_show_card_wait("Reading..."); }
             else { ui_show_tx_status(UI_TX_STATE_PROCESSING, NULL); }
             vTaskDelay(pdMS_TO_TICKS(200));
+            /* Before the channel, not after: a card with no PIN and no key gets
+             * that far and then fails at the PIN, which is the one message that
+             * sends the holder off to type it again. */
+            s_card_fault = card_fault(transport);
+            if (s_card_fault != NULL) {
+                transport.resetReader();
+                return false;
+            }
             if (wallet.establishSecureChannel(session)) {
                 return true;
             }
@@ -507,7 +553,9 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
     CW_SecureSession session;
     if (!card_connect(wallet, transport, session)) {
         if (!s_user_cancelled) {
-            (void)snprintf(err_out, err_max, "Card not found");
+            (void)snprintf(err_out, err_max, "%s",
+                           (s_card_fault != NULL) ? s_card_fault
+                                                  : "Card not found");
         }
         return false;
     }
@@ -676,7 +724,9 @@ static bool sign_and_broadcast_tron(CryptnoxWallet &wallet,
     CW_SecureSession session;
     if (!card_connect(wallet, transport, session)) {
         if (!s_user_cancelled) {
-            (void)snprintf(err_out, err_max, "Card not found");
+            (void)snprintf(err_out, err_max, "%s",
+                           (s_card_fault != NULL) ? s_card_fault
+                                                  : "Card not found");
         }
         return false;
     }
@@ -1042,8 +1092,10 @@ static bool card_read_payouts(CryptnoxWallet &wallet,
     /* setup = true: same 60-second cancellable poll, but the card-wait screen
      * rather than the transaction one. Nothing is being paid here. */
     if (!card_connect(wallet, transport, session, true)) {
-        (void)snprintf(err, err_n, s_user_cancelled ? "Cancelled"
-                                                    : "Card not found");
+        (void)snprintf(err, err_n, "%s",
+                       s_user_cancelled           ? "Cancelled" :
+                       (s_card_fault != NULL)     ? s_card_fault
+                                                  : "Card not found");
         return false;
     }
 

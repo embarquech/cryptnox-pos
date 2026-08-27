@@ -82,28 +82,23 @@ static const char AP_PASS_ALPHABET[] = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
  * one shared buffer is enough. */
 #define UPLOAD_CHUNK  4096U
 
+/* Consecutive recv timeouts before an upload is declared dead. cfg.recv_wait_timeout
+ * is 30 s, so this is two minutes of a socket saying nothing at all — far longer
+ * than any pause a slow phone puts between chunks, and it is what stops a stalled
+ * transfer from holding the admin page open past its window (see the deadline
+ * check in ui.cpp, which does not close the page while bytes are arriving). */
+#define UPLOAD_MAX_STALLS  4U
+
 #define TOKEN_HEX_LEN  32U   /* 128 bits of session token */
 
 #define PROV_MAX_APS   16U
 
-/**
- * Where the browser looks for the release list. Fetched by the *browser*, never
- * by this device — which is the entire point — so nothing here needs a CA bundle
- * or a certificate pin for it.
- *
- * It has to be a host that sends `Access-Control-Allow-Origin: *`, because the
- * page doing the fetching is served from the terminal and the browser will
- * otherwise refuse to hand over the response. raw.githubusercontent.com and
- * GitHub Pages both do; a GitHub *release asset* URL redirects to
- * objects.githubusercontent.com, which has to be confirmed before being relied
- * on. See docs/ota.md for the manifest format.
- *
- * ponytail: a #define rather than a settings field. It changes when the project
- * forks, not when a terminal is deployed, and a per-device update source is a
- * per-device way to get the wrong firmware.
- */
-#define OTA_MANIFEST_URL \
-    "https://raw.githubusercontent.com/Cryptnox/cryptnox-pos-releases/main/firmware.json"
+/* No release-list URL here any more, and no "check for updates" button on the
+ * page. The portal is served on the terminal's own SoftAP with the station
+ * interface down (see prov_start), so the phone reading this page has no route
+ * to a release list — a check button could only ever report a network error.
+ * The file picker is the whole update story: fetch the signed image on a device
+ * that does have internet, then hand it to the terminal here. */
 
 /******************************************************************
  * 3. Module state
@@ -543,7 +538,7 @@ static const char *const PAGE_HTML =
 
 /* :empty rather than a JS toggle — render() already writes '' when there is
  * nothing to say, so the banner collapses on its own. */
-"#msg,#note,#out.alert{margin:0 0 14px;padding:12px 14px 12px 16px;border-radius:12px;"
+"#msg,#note{margin:0 0 14px;padding:12px 14px 12px 16px;border-radius:12px;"
 "background:var(--card);border:1px solid var(--line);border-left:3px solid "
 "var(--acc);color:var(--fg);box-shadow:var(--sh)}"
 "#msg:empty,#note:empty{display:none}"
@@ -553,18 +548,15 @@ static const char *const PAGE_HTML =
  * green, and sticky — the message is at the top of the document and the button
  * that produced it may be a scroll away. */
 "#msg{position:sticky;top:8px;z-index:5}"
-/* #out is in the selector list because the update check reports there, and its
- * four ways to fail deserve the same red as everything else. Written with the
- * ids and not as a bare .err, which would lose to the id-carrying base rule
- * above it and repaint nothing at all. */
-"#msg.err,#out.err{background:var(--errbg);border-color:var(--errl);"
+/* Written with the id and not as a bare .err, which would lose to the
+ * id-carrying base rule above it and repaint nothing at all. */
+"#msg.err{background:var(--errbg);border-color:var(--errl);"
 "border-left-color:var(--errf);color:var(--errf);font-weight:600}"
 "#msg.ok{background:var(--okbg);border-color:var(--okl);"
 "border-left-color:var(--okf);color:var(--okf)}"
 /* The device's own line, and it is only ever written when something did not go
  * the way it was asked, so it wears the warning tint outright. */
 "#note{background:var(--tint);border-color:var(--tintl);color:var(--tintf)}"
-"#out p{margin-top:.9rem}"
 /* The card illustration — the real card front, inlined as a data URI so it costs
  * no request on a captive portal. Beside its paragraph rather than above it: the
  * picture is only there to say "this object", so it earns a thumbnail's worth of
@@ -596,9 +588,9 @@ static const char *const PAGE_HTML =
 "#s_pend h2::before{display:none}#s_pend h2{padding-left:0}"
 "#pend{font-weight:700;word-break:break-all}"
 /* Finishing is the one green moment in the flow; ui.cpp's COL_SUCCESS. */
-"#s_done{background:var(--okbg);border-color:var(--okl)}"
-"#s_done h2,#s_done p{color:var(--okf)}"
-"#s_done h2::before{background:var(--okf)}"
+"#s_final{background:var(--okbg);border-color:var(--okl)}"
+"#s_final h2,#s_final p{color:var(--okf)}"
+"#s_final h2::before{background:var(--okf)}"
 "#nav{background:none;border:0;padding:0;box-shadow:none}"
 "</style></head><body>"
 
@@ -734,20 +726,36 @@ static const char *const PAGE_HTML =
 "<button id=go_wifi>Join this network</button>"
 "<button class=alt id=go_rescan>Scan again</button></section>"
 
+/* No "check for updates" button: this page is served on the terminal's own
+ * SoftAP with nothing behind it, so the browser reading it cannot reach a
+ * release list. Download the image on something that has internet, bring it
+ * here. The native file input is hidden behind our own button so the control
+ * reads like the rest of the page — and it says Browse, because picking the
+ * file is all it does; the terminal's own screen is where it gets installed. */
 "<section id=s_fw hidden><h2>Firmware</h2>"
-"<p>Your browser fetches the release list and the firmware itself, then hands "
-"the file to the terminal &mdash; the terminal never connects to the internet "
-"for this. So this needs <i>this browser</i> to have internet access.</p>"
-"<button id=chk>Check for updates</button><div id=out></div>"
-"<h2>Or install a file</h2>"
-"<p>For a terminal on a network with no internet: download the firmware "
-"anywhere, then pick the <code>.bin</code> here.</p>"
-"<input type=file id=file accept='.bin'>"
-"<button class=alt id=up>Install this file</button></section>"
+"<p>Download the signed <code>.bin</code> on a device that has internet, then "
+"hand it to the terminal here &mdash; the terminal never connects to the "
+"internet for this. It checks the signature itself, and nothing is installed "
+"until somebody accepts the version on its screen.</p>"
+"<input type=file id=file accept='.bin' hidden>"
+"<button class=alt id=up>Browse</button>"
+"<p id=fwfile></p></section>"
 
-"<section id=s_done hidden><h2>All set</h2>"
-"<p>Thank you &mdash; the terminal is configured and ready to take payments. "
-"Press <b>Finish</b> on its screen to start.</p></section>"
+/* Where the wizard ends, and the last thing this phone will be shown: joining
+ * the venue network moves the terminal's radio off this setup network, so the
+ * page is about to lose the device it is talking to. Said as a finished job
+ * rather than as a dropped connection — and it replaces the whole page, because
+ * every form behind it is now addressed to something that is not there.
+ *
+ * It is not the last word, though: if the join fails the terminal comes back on
+ * this same setup network, the phone rejoins it by itself, and the poll below
+ * puts the Wi-Fi step back with the reason on it. */
+"<section id=s_final hidden><h2>Configuration complete</h2>"
+"<p>Please follow the instructions on the terminal's screen.</p>"
+"<div class=wait><span class=spin></span>"
+"<b>You can close this page. If the terminal could not join that network it "
+"will reopen this one, and this page will come back by itself.</b></div>"
+"</section>"
 
 "<section id=nav hidden><button id=go_next>Continue</button></section>"
 "</main>";
@@ -757,7 +765,12 @@ static const char *const PAGE_HTML =
 static const char *const PAGE_JS =
 "<script>"
 "var $=function(i){return document.getElementById(i)};"
-"var T='',S={},G=-1,asked=false;"
+"var T='',S={},G=-1,asked=false,fin=false;"
+/* Every section render() can show, so the finished screen can be made exclusive
+ * by construction rather than by adding `&&!fin` to every show() line — and
+ * so a section added later without a thought for the end of the wizard is hidden
+ * there rather than left on screen addressed to a terminal that has gone. */
+"var SEC=['s_auth','waiting','s_pend','s_addr','s_ct','s_wifi','s_fw','nav'];"
 /* Three kinds, because "that is not a valid Ethereum address" and "it is stored"
  * in the same grey box is how a refusal gets read as a success. 'err' is the one
  * that matters, so it is what a bare say() rejection handler produces: every
@@ -786,6 +799,8 @@ static const char *const PAGE_JS =
 "var w=(S.mode=='wizard'),st=S.step||'idle',a=!!S.authed,p=!!S.pending;"
 "$('ver').textContent=S.version||'?';"
 "$('note').textContent=S.note||'';"
+"show('s_final',fin);"
+"if(fin){SEC.forEach(function(i){show(i,false)});return}"
 "show('s_auth',!a);show('waiting',!a&&!!S.auth_pending);"
 "show('s_pend',a&&p);"
 /* In the wizard one section at a time, in the order of the flow. In admin mode
@@ -794,13 +809,12 @@ static const char *const PAGE_JS =
 "show('s_ct',  a&&!p&&!w);"
 "show('s_wifi',a&&!p&&(w?st=='wifi':true));"
 "show('s_fw',  a&&!p&&!w);"
-"show('s_done',w&&st=='done');"
 /* Continue exists to leave the address step. There is nothing after the Wi-Fi one
  * to continue to — joining is what ends the wizard — so it is not offered there. */
 "show('nav',   a&&!p&&w&&st=='addr');"
-"$('wifi_note').textContent=w?'This page will disconnect: the terminal has one "
-"radio, so joining your network drops this setup network. Watch the terminal "
-"screen for the result.':'Scanning briefly interrupts this page - it comes "
+"$('wifi_note').textContent=w?'This is the last step here: the terminal has one "
+"radio, so joining your network drops this setup network, and the rest is on the "
+"terminal screen.':'Scanning briefly interrupts this page - it comes "
 "back. Changing network drops it for good, on the old address.';"
 "if(a){$('cur_eth').textContent=S.pay_eth||'not set';"
 "$('cur_trx').textContent=S.pay_trx||'not set';"
@@ -832,7 +846,16 @@ static const char *const PAGE_JS =
  * session, and the page sits on "Authorise this browser" with no way out. */
 "function poll(){fetch('/api/state',{headers:{'X-Prov-Token':T},"
 "cache:'no-store'})"
-".then(function(r){return r.json()}).then(function(j){S=j;render();"
+".then(function(r){return r.json()}).then(function(j){S=j;"
+/* The poll that keeps running after the wizard's last screen is what waits for
+ * the device to come back. It answers again while the join is being attempted —
+ * the radio serves both networks for those few seconds — so an answer alone is
+ * not the terminal returning. Something to report is: the terminal writes a note
+ * when the network would not take it, and nothing else brings the wizard back to
+ * a step it can act on. Either way the operator loses nothing by looking at the
+ * panel, which is what the final screen tells them to do. */
+"if(fin&&(S.note||(S.step&&S.step!='wifi')))fin=false;"
+"render();"
 "if(!S.authed&&!S.auth_pending&&!asked)ask()})"
 ".catch(function(){})}"
 
@@ -860,7 +883,13 @@ static const char *const PAGE_JS =
 "$('go_wifi').onclick=function(){var s=$('ssid').value;"
 "if(!s){say('Pick a network first.');return}"
 "post('/api/wifi',enc({ssid:s,pass:$('wpass').value})).then(function(m){"
-"$('wpass').value='';good(m)},say)};"
+"$('wpass').value='';"
+/* In the wizard, handing over the network is the end of this page's job: the
+ * terminal moves its radio to that network and this setup network goes with it.
+ * So the page stops being a form and becomes a finished screen, rather than
+ * leaving the operator on a Wi-Fi step whose buttons now reach nothing. In admin
+ * mode the terminal is only changing networks, so the ordinary message stands. */
+"if(S.mode=='wizard'){say('');fin=true;render()}else{good(m)}},say)};"
 "$('go_rescan').onclick=function(){info('Scanning\\u2026');"
 "post('/api/rescan').then(function(){},say)};"
 "$('go_next').onclick=function(){post('/api/next').then(function(){},say)};"
@@ -868,71 +897,36 @@ static const char *const PAGE_JS =
 /* XHR, not fetch: this is the leg that can stall with the flash half written,
  * and only XHR reports upload progress. */
 "function send(buf){return new Promise(function(res,rej){"
-"var x=new XMLHttpRequest();x.open('POST','/api/ota');"
+"var x=new XMLHttpRequest(),sent=false;x.open('POST','/api/ota');"
 "x.setRequestHeader('Content-Type','application/octet-stream');"
 "x.setRequestHeader('X-Prov-Token',T);"
 "x.upload.onprogress=function(e){if(e.lengthComputable)"
 "info('Sending to the terminal: '+Math.round(e.loaded/e.total*100)+'%')};"
+"x.upload.onload=function(){sent=true};"
 "x.onload=function(){x.status==200?res(x.responseText):"
 "rej(x.responseText||('HTTP '+x.status))};"
-"x.onerror=function(){rej('the connection to the terminal dropped')};"
+/* Two different events wearing one word. A drop with bytes still to send really
+ * did lose the image. A drop after the last byte went out lost only the answer —
+ * the terminal has the whole file and is verifying it, and saying "not installed"
+ * about a version that is at that moment on the panel waiting to be accepted is
+ * how an operator uploads the same firmware three times. */
+"x.onerror=function(){rej(sent?'the file went across but the terminal did not "
+"answer - if a version is showing on its screen it arrived, accept it there'"
+":'the connection to the terminal dropped')};"
 "x.send(buf)})}"
 
-/* Mirrors ota_version_cmp() in ota_version.h: dotted numbers, one optional
- * leading v, anything after the numbers ignored. The device makes the same
- * comparison for the panel, and does not trust this one. */
-"function parts(v){var m=String(v||'').replace(/^[vV]/,'').match(/^\\d+(\\.\\d+)*/);"
-"return (m?m[0]:'0').split('.').map(Number)}"
-"function cmp(a,b){var x=parts(a),y=parts(b);"
-"for(var i=0;i<4;i++){var d=(x[i]||0)-(y[i]||0);if(d)return d}return 0}"
-
-"function install(url){$('chk').disabled=$('up').disabled=true;"
-/* ponytail: no download progress — arrayBuffer() does not report any and nothing
- * has been written to the terminal yet, so a slow bar here is only cosmetic.
- * Stream it with a reader if operators start power-cycling. */
-"info('Downloading the firmware\\u2026');"
-"fetch(url).then(function(r){"
-"if(!r.ok)throw 'the download answered HTTP '+r.status;return r.arrayBuffer()})"
-".then(function(b){info('Sending to the terminal\\u2026');return send(b)})"
-".then(good).catch(function(e){say('Not installed: '+e)})"
-".then(function(){$('chk').disabled=$('up').disabled=false})}"
-
-/* Four different things go wrong here — no internet, a host that refuses the
- * cross-origin read, a manifest that was never published, and a manifest that is
- * not JSON — and reporting them all as "this browser has no internet" sends
- * whoever hit the likeliest one off to debug their network instead of their
- * release. A thrown string is this page's own diagnosis; anything else is the
- * browser's, and only that case gets the generic advice. */
-"$('chk').onclick=function(){var o=$('out');o.className='';"
-"o.textContent='Checking\\u2026';"
-"fetch('" OTA_MANIFEST_URL "',{cache:'no-store'}).then(function(r){"
-"if(!r.ok)throw 'the release list answered HTTP '+r.status+'. Check that "
-"firmware.json is published at that address.';return r.text()})"
-".then(function(t){var m;try{m=JSON.parse(t)}catch(_){"
-"throw 'the release list is not valid JSON.'}"
-"if(!m.version)throw 'the release list has no \"version\" field.';"
-"o.textContent='';"
-"var d=cmp(m.version,S.version),p=document.createElement('p');"
-"p.textContent=d>0?('Version '+m.version+' is available.'):"
-"(d===0?'The terminal is up to date.':"
-"('The published version ('+m.version+') is OLDER than the one running.'));"
-"o.appendChild(p);"
-"if(m.notes){var n=document.createElement('pre');n.textContent=m.notes;"
-"o.appendChild(n)}"
-"if(d!==0&&m.url){var b=document.createElement('button');"
-"b.textContent=(d>0?'Install ':'Go back to ')+m.version;"
-"b.onclick=function(){install(m.url)};o.appendChild(b)}})"
-".catch(function(e){o.className='alert err';"
-"o.textContent='Could not check for updates: '+"
-"(typeof e=='string'?e:'this browser could not reach the release list at all. "
-"It needs internet access, and the host has to allow cross-origin requests. "
-"Use the file picker below instead.')})};"
-
-"$('up').onclick=function(){var f=$('file').files[0];"
-"if(!f){say('Pick a .bin file first.');return}"
-"$('chk').disabled=$('up').disabled=true;"
+/* The button drives the hidden native picker, and picking is what starts the
+ * transfer — there is no second "install this file" step, because nothing this
+ * page does installs anything: the terminal verifies the signature and the
+ * version is accepted on its own screen. A confirm button in front of that would
+ * guard a transfer, not an installation. */
+"$('up').onclick=function(){$('file').click()};"
+"$('file').onchange=function(){var el=this,f=el.files[0];if(!f)return;"
+"$('fwfile').textContent=f.name;$('up').disabled=true;"
 "f.arrayBuffer().then(send).then(good,function(e){say('Not installed: '+e)})"
-".then(function(){$('chk').disabled=$('up').disabled=false})};"
+/* Clear it, or picking the same file again is not a change event and the button
+ * looks broken on a retry. */
+".then(function(){$('up').disabled=false;el.value=''})};"
 
 "setInterval(poll,1500);poll();"
 "</script></body></html>";
@@ -1222,12 +1216,11 @@ static esp_err_t wifi_post(httpd_req_t *req)
     ESP_LOGI(TAG, "Wi-Fi '%s' submitted from the config page", ssid);
 
     /* Answer BEFORE the event: in wizard mode the connect attempt takes the radio
-     * down and this response would never reach the phone otherwise. */
-    const esp_err_t sent = ok(req,
-        (s_mode == PROV_MODE_WIZARD)
-        ? "Trying that network now. This setup network is about to drop - watch "
-          "the terminal screen."
-        : "Trying that network now. Watch the terminal screen.");
+     * down and this response would never reach the phone otherwise. One sentence
+     * for both modes — the wizard's page does not show this message at all any
+     * more, it replaces itself with its own finished screen. */
+    const esp_err_t sent = ok(req, "Trying that network now. Watch the terminal "
+                                   "screen.");
     if (s_cb != NULL) { s_cb(UI_EVENT_WIFI_TRY, 0); }
     return sent;
 }
@@ -1275,14 +1268,24 @@ static esp_err_t ota_post(httpd_req_t *req)
 
     const size_t len = req->content_len;
     size_t       got = 0U;
+    unsigned     stalls = 0U;
     bool         good = true;
     while (good && (got < len)) {
         const size_t want = ((len - got) < UPLOAD_CHUNK) ? (len - got) : UPLOAD_CHUNK;
         const int    n    = httpd_req_recv(req, reinterpret_cast<char *>(s_upload),
                                            want);
         if (n == HTTPD_SOCK_ERR_TIMEOUT) {
-            continue;   /* slow uplink, not a dead one — keep waiting */
+            /* A slow uplink is not a dead one — keep waiting, but not for ever:
+             * this loop is what the portal's deadline now waits behind. */
+            if (++stalls >= UPLOAD_MAX_STALLS) {
+                ESP_LOGW(TAG, "upload stalled at %u/%u bytes - giving up",
+                         static_cast<unsigned>(got), static_cast<unsigned>(len));
+                good = false;
+                break;
+            }
+            continue;
         }
+        stalls = 0U;
         if (n <= 0) {
             ESP_LOGW(TAG, "upload aborted at %u/%u bytes",
                      static_cast<unsigned>(got), static_cast<unsigned>(len));
@@ -1303,13 +1306,19 @@ static esp_err_t ota_post(httpd_req_t *req)
     if (!ota_end(ver, sizeof(ver), &err)) {
         return reply(req, "400 Bad Request", err);
     }
-    if (s_cb != NULL) { s_cb(UI_EVENT_OTA_STAGED, 0); }
 
     char msg[144];
     (void)snprintf(msg, sizeof(msg),
                    "Version %s received and verified. Accept it on the terminal "
                    "screen to install it and reboot.", ver);
-    return ok(req, msg);
+    /* Answer BEFORE the event, as wifi_post() does and for the same reason: what
+     * the event leads to is a modal on the panel whose Install button reboots this
+     * device, and a browser that was still waiting for this line reports a
+     * successful update as a dropped connection. The image is already staged and
+     * ota.h's rules do not depend on the order of these two. */
+    const esp_err_t sent = ok(req, msg);
+    if (s_cb != NULL) { s_cb(UI_EVENT_OTA_STAGED, 0); }
+    return sent;
 }
 
 /******************************************************************
@@ -1531,10 +1540,20 @@ void prov_stop(void)
      * displaced — so closing the admin page puts a working terminal back online. */
     net_ap_stop();
 
-    /* An upload half-received, or an image nobody accepted, does not outlive the
-     * page it arrived through. */
+    /* An upload half-received does not outlive the page it arrived through.
+     *
+     * An image that is already *staged* does, and that is deliberate: it has been
+     * verified, it is on the panel waiting for somebody to accept it, and
+     * installing it needs no page at all. This used to call ota_forget() here, and
+     * it was the bug that made "the update did not install" reproducible — a
+     * 1.9 MB upload over the SoftAP eats minutes of the 15-minute admin window, so
+     * the window routinely expired while the operator was reading the Install
+     * button, prov_stop() withdrew the offer from under them, and the tap then did
+     * nothing at all. Nothing about that made the device safer: an image can only
+     * be here at all if it carries a signature from the key this firmware trusts,
+     * and the panel is still the only thing that can install it. Discard on the
+     * panel is what drops a staged image (ota_commit(false)). */
     ota_abort();
-    ota_forget();
 
     s_authed       = false;
     s_auth_pending = false;

@@ -209,8 +209,28 @@ bool ota_end(char *ver_out, size_t ver_n, const char **err)
  * 5. Slot handling
  ******************************************************************/
 
+bool ota_last_update_failed(void)
+{
+    const esp_partition_t *idle = esp_ota_get_next_update_partition(NULL);
+    if (idle == NULL) { return false; }
+
+    esp_ota_img_states_t st = ESP_OTA_IMG_UNDEFINED;
+    if (esp_ota_get_state_partition(idle, &st) != ESP_OK) { return false; }
+    return (st == ESP_OTA_IMG_ABORTED) || (st == ESP_OTA_IMG_INVALID);
+}
+
 void ota_mark_valid(void)
 {
+    /* Before the early returns below, because this is the one call that happens
+     * once per boot with bring-up behind it — and a terminal that reverted to its
+     * old firmware overnight is exactly the thing whose log line nobody has. */
+    if (ota_last_update_failed()) {
+        ESP_LOGE(TAG, "the last update did NOT stick: the new image booted and "
+                      "never confirmed itself, so this terminal rolled back to %s. "
+                      "Install it again and leave it alone until 'Ready'.",
+                 ota_running_version());
+    }
+
     const esp_partition_t *run = esp_ota_get_running_partition();
     if (run == NULL) { return; }
 
@@ -254,16 +274,6 @@ bool ota_staged(char *version, size_t version_n, bool *older)
     }
     (void)xSemaphoreGive(s_lock);
     return staged;
-}
-
-void ota_forget(void)
-{
-    if (s_lock == NULL) { return; }
-    if (xSemaphoreTake(s_lock, pdMS_TO_TICKS(100)) != pdTRUE) { return; }
-    if (s_staged) { ESP_LOGI(TAG, "staged image withdrawn - nobody accepted it"); }
-    s_staged        = false;
-    s_staged_ver[0] = '\0';
-    (void)xSemaphoreGive(s_lock);
 }
 
 bool ota_commit(bool install)

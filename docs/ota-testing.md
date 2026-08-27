@@ -248,12 +248,13 @@ cp build/cryptnox_pos.bin /tmp/1.0.1.bin
 echo 1.0.0 > version.txt        # keep 1.0.0 around for the downgrade check
 ```
 
-### 3.1 File picker — the path that needs no internet
+### 3.1 The file picker — the only path there is
 
-1. Open Update on the panel, then scan the QR code (or type the `https://` URL)
-   into a browser on the same network, accepting the certificate warning.
-2. The panel asks for the admin code — enter it *there*. Then pick
-   `/tmp/1.0.1.bin` and press **Install this file**.
+1. Open Update on the panel, then scan the QR code to join the terminal's own
+   setup network; the page opens itself.
+2. The panel asks for the admin code — enter it *there*. Then press **Browse**
+   and pick `/tmp/1.0.1.bin`. Picking it starts the transfer: there is no second
+   confirm button.
 3. Watch the percentage climb. Expect `receiving 1653... bytes into 'ota_1'`.
 4. Browser says *"Version 1.0.1 received and verified. Accept it on the terminal
    screen…"*; log says `staged 1.0.1 in 'ota_1' - awaiting on-screen accept`.
@@ -307,36 +308,19 @@ between an operator and being talked into a build with a known fault.
 
 Install it and confirm the terminal comes back on `1.0.0`, then go forward again.
 
-### 3.5 Check for updates — the manifest path
+### 3.5 The answer that never arrives
 
-Publish a `firmware.json` (shape in [`docs/ota.md`](ota.md)) at
-`OTA_MANIFEST_URL`, pointing at `1.0.1.bin`, and host both somewhere that sends
-`Access-Control-Allow-Origin: *`.
+The upload is the one request that takes minutes over a SoftAP, so it is the one
+that can lose its answer. Pull the phone out of range (or turn its Wi-Fi off)
+*after* the progress line reaches 100% but before the browser says anything.
 
-```bash
-curl -sI -H "Origin: https://192.168.1.34" <manifest url> | grep -i access-control
-```
-
-**Pass:** `Access-Control-Allow-Origin: *` *before* you try the browser. Then tap
-**Check for updates**:
-
-| Manifest `version` | Expected |
-|---|---|
-| `1.0.1`, terminal on `1.0.0` | "Version 1.0.1 is available." + release notes + an **Install 1.0.1** button |
-| same as running | "The terminal is up to date." and no button |
-| older than running | "The published version … is OLDER than the one running." + a **Go back to** button |
-
-Then the failure modes, both of which must produce the same friendly message and
-never a blank screen:
-
-1. Turn off the browser's internet (leave it on the terminal's network) → *"Could
-   not reach the release list. This browser needs internet access…"*
-2. Move the manifest to a host with no CORS header → the fetch is refused by the
-   browser, same message. This is why §3.5 starts with `curl -I`.
-
-**Also worth doing once:** a phone joined to the terminal's *setup* AP. Expect
-"Check" to fail and the file picker to work. That combination is documented as
-unsupported, not broken.
+**Pass:** *"Not installed: the file went across but the terminal did not answer -
+if a version is showing on its screen it arrived, accept it there"* — and the
+panel is indeed showing 1.0.1 waiting to be accepted. Kill the connection
+*during* the transfer instead and the message is the flat *"the connection to the
+terminal dropped"*, with nothing on the panel. Two different events, two
+different sentences: an operator told "not installed" about firmware that is at
+that moment on the panel uploads the same image three times.
 
 ---
 

@@ -15,7 +15,7 @@ bad()  { printf '  FAIL  %s\n' "$1"; fail=1; }
 
 step "host unit tests"
 TESTS="test_eth_addr test_hardening test_tron_tx test_prov_form test_addr_check
-       test_json_out test_ota_version"
+       test_json_out test_ota_version test_card_status"
 out=$(mktemp -d)
 for t in $TESTS; do
   if g++ -std=c++14 -Wall -Imain -Icryptnox-sdk-esp32/cryptnox-sdk-cpp \
