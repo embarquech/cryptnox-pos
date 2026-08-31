@@ -260,8 +260,15 @@ eth_rpc_parity_result_t eth_rpc_ecrecover_parity(const uint8_t hash[32],
 }
 
 bool eth_rpc_send_raw_tx(const uint8_t *tx, size_t tx_len,
-                          char *tx_hash_out, size_t tx_hash_max)
+                          char *tx_hash_out, size_t tx_hash_max,
+                          char *err_out, size_t err_max)
 {
+    /* Cleared up front so every failure path below leaves a defined value: the
+     * caller distinguishes "the node said why" from "we never got that far" by
+     * whether this is empty, and a stale message from a previous sale would be
+     * worse than none at all. */
+    if ((err_out != NULL) && (err_max > 0U)) { err_out[0] = '\0'; }
+
     /* "0x" + 2 hex chars per byte + NUL */
     size_t hex_str_size = 2U + tx_len * HEX_PER_BYTE + 1U;
     char *tx_hex = static_cast<char *>(malloc(hex_str_size));
@@ -294,6 +301,12 @@ bool eth_rpc_send_raw_tx(const uint8_t *tx, size_t tx_len,
     char result[RESULT_STR_MAX];
     if (!eth_json_result_string(resp, result, sizeof(result))) {
         ESP_LOGE(TAG, "send_raw_tx: no result in: %.*s", RESP_LOG_MAX, resp);
+        /* A refusal, as opposed to a malformed body, carries the node's reason —
+         * the one thing that tells an operator whether to top up gas, lower the
+         * amount or just try again. Hand it back rather than log it and forget. */
+        if ((err_out != NULL) && (err_max > 0U)) {
+            (void)eth_json_error_message(resp, err_out, err_max);
+        }
         return false;
     }
     if (strncmp(result, "0x", 2U) != 0) {

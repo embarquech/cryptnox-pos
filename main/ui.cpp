@@ -372,17 +372,30 @@ enum BtnAction {
     ACT_PROV_OK, ACT_PROV_NO, ACT_PROV_FINISH,
     ACT_RESET, ACT_RESET_CONFIRM, ACT_MODAL_CLOSE,
     /* Asset selector (amount screen and the Tx tab): network, then the coin. */
-    ACT_NET_PICK, ACT_NET_ETH, ACT_NET_TRON,
-    ACT_CHAIN_ETH, ACT_CHAIN_TRON, ACT_CHAIN_TRON_USDT,
+    ACT_NET_PICK, ACT_NET_ETH, ACT_NET_POLY, ACT_NET_TRON,
     /* The admin web page: open it (QR to scan), close it, resolve an upload. */
     ACT_PORTAL, ACT_PORTAL_CLOSE, ACT_OTA_OK, ACT_OTA_NO,
+    /* One action per chain, contiguous, so an action's offset from here IS its
+     * pos_chain_t (ACT_CHAIN_OF below, decoded in btn_event_cb). Seven assets
+     * would otherwise be seven enumerators and a seven-armed switch that says
+     * nothing the picker's own table does not already say. KEEP LAST: the block
+     * runs to POS_CHAIN__COUNT and nothing may share its numbers. */
+    ACT_CHAIN_BASE,
 };
+
+/** The action that selects @p chain. */
+#define ACT_CHAIN_OF(chain) \
+    static_cast<BtnAction>(ACT_CHAIN_BASE + static_cast<int>(chain))
 
 /* Settings — defined in section 7 (uses the widget helpers). */
 static void settings_persist(void);
 static void open_reset_confirm(void);
+/* The three networks the picker offers. Not pos_chain_t: step 1 of the picker is
+ * a network, and several chains share one (USDC and USDT are both Ethereum). */
+typedef enum { UI_NET_ETH = 0, UI_NET_POLY, UI_NET_TRON } ui_net_t;
+
 static void open_network_picker(void);
-static void open_coin_picker(bool tron);
+static void open_coin_picker(ui_net_t net);
 static void open_portal_window(void);
 static void open_ota_gone(void);
 static void close_modal(void);
@@ -403,29 +416,42 @@ static uint16_t s_settings_tab = 0U;
  * the picker pill and main's signing path all ask the same question, so there is
  * no UI-side copy to keep in sync. */
 static bool chain_is_tron(void) {
-    return settings_get_chain() != POS_CHAIN_ETH_SEPOLIA;
+    return pos_chain_is_tron(settings_get_chain());
 }
 
 /** Ticker of the asset being charged, for the selector and the amount screens. */
 static const char *asset_name(void) {
     switch (settings_get_chain()) {
-        case POS_CHAIN_TRON_NILE: return "TRX";
-        case POS_CHAIN_TRON_USDT: return "USDT";
-        default:                  return "USDC";
+        case POS_CHAIN_TRON_NILE:  return "TRX";
+        case POS_CHAIN_ETH_NATIVE: return "ETH";
+        case POS_CHAIN_POLY_NATIVE:return "POL";
+        case POS_CHAIN_TRON_USDT:
+        case POS_CHAIN_ETH_USDT:
+        case POS_CHAIN_POLY_USDT:  return "USDT";
+        default:                   return "USDC";
     }
 }
 
 /** Which network that asset lives on — the selector's subtitle. */
 static const char *asset_network(void) {
-    return chain_is_tron() ? "Tron Nile" : "Ethereum Sepolia";
+    if (chain_is_tron()) { return "Tron Nile"; }
+    return pos_chain_is_polygon(settings_get_chain()) ? "Polygon Amoy"
+                                                      : "Ethereum Sepolia";
 }
 
 /** Caption for the address row above "Send to": TRX has no contract to show. */
 static const char *asset_caption(void) {
     switch (settings_get_chain()) {
-        case POS_CHAIN_TRON_NILE: return "Asset";
-        case POS_CHAIN_TRON_USDT: return "Token contract";
-        default:                  return "USDC contract";
+        /* A network's own coin has no contract to show, so the row names the
+         * asset instead — the same thing TRX has always done. */
+        case POS_CHAIN_TRON_NILE:
+        case POS_CHAIN_ETH_NATIVE:
+        case POS_CHAIN_POLY_NATIVE: return "Asset";
+        case POS_CHAIN_TRON_USDT:
+        case POS_CHAIN_TRON_USDC:   return "Token contract";
+        case POS_CHAIN_ETH_USDT:
+        case POS_CHAIN_POLY_USDT:   return "USDT contract";
+        default:                    return "USDC contract";
     }
 }
 
@@ -450,6 +476,22 @@ static void format_amount(uint64_t units, char *out, size_t n) {
 }
 
 #define AMOUNT_CENTS_MAX  9999999ULL   /* 99999.99 */
+/* 18.44 — POS_AMOUNT_UNITS_MAX_NATIVE expressed in the keypad's cents. */
+#define AMOUNT_CENTS_MAX_NATIVE  (POS_AMOUNT_UNITS_MAX_NATIVE / 10000ULL)
+
+/**
+ * Ceiling on what the keypad will accept, for the asset currently selected.
+ *
+ * ETH and POL are 18-decimal and the signed value is a uint64 of wei, so a sale
+ * stops at 18.44 of either (see POS_AMOUNT_UNITS_MAX_NATIVE). Enforced here, on
+ * the way in, rather than at the confirm step: an operator who can key 99999.99
+ * and only then be told no has been allowed to make a mistake the keypad could
+ * simply have declined, in front of a customer.
+ */
+static uint64_t amount_cents_max(void) {
+    return pos_chain_is_native_evm(settings_get_chain()) ? AMOUNT_CENTS_MAX_NATIVE
+                                                         : AMOUNT_CENTS_MAX;
+}
 
 /* From 100.00 up, the cents move to the small font. Five figures and cents in
  * montserrat_28 is ~150 of 240 pixels, and the asset button now shares the row —
@@ -506,14 +548,15 @@ static void amount_kbd_cb(lv_event_t *e) {
     const char *txt = lv_btnmatrix_get_btn_text(bm, lv_btnmatrix_get_selected_btn(bm));
     if (txt == NULL) { return; }
 
+    const uint64_t cap = amount_cents_max();
     if (strcmp(txt, LV_SYMBOL_BACKSPACE) == 0) {
         s_amount_cents /= 10ULL;
     } else if (strcmp(txt, "00") == 0) {
         uint64_t n = s_amount_cents * 100ULL;
-        s_amount_cents = (n > AMOUNT_CENTS_MAX) ? AMOUNT_CENTS_MAX : n;
+        s_amount_cents = (n > cap) ? cap : n;
     } else if ((txt[0] >= '0') && (txt[0] <= '9') && (txt[1] == '\0')) {
         uint64_t n = (s_amount_cents * 10ULL) + static_cast<uint64_t>(txt[0] - '0');
-        if (n <= AMOUNT_CENTS_MAX) { s_amount_cents = n; }
+        if (n <= cap) { s_amount_cents = n; }
     }
     amount_update_display();
 }
@@ -523,6 +566,28 @@ static void amount_kbd_cb(lv_event_t *e) {
 static void btn_event_cb(lv_event_t *e) {
     BtnAction act = static_cast<BtnAction>(
         reinterpret_cast<intptr_t>(lv_event_get_user_data(e)));
+
+    /* The coin rows carry their chain in the action itself, so adding an asset is
+     * a row in the picker's table and nothing here. */
+    if ((act >= ACT_CHAIN_BASE) && (act < ACT_CHAIN_OF(POS_CHAIN__COUNT))) {
+        settings_set_chain(static_cast<pos_chain_t>(act - ACT_CHAIN_BASE));
+        /* The entered amount outlives the picker, so switching from a 6-decimal
+         * token to an 18-decimal coin can leave a figure on screen that the new
+         * asset cannot carry. Clamp it to the new ceiling here — the alternative
+         * is a keypad showing 500.00 that refuses every further digit. */
+        if (s_amount_cents > amount_cents_max()) {
+            s_amount_cents = amount_cents_max();
+        }
+        close_modal();
+        /* Rebuild whatever screen the picker was opened from — the amount
+         * screen's selector and ticker name the chain, and so do the Tx tab's
+         * asset row, contract address and fee rows. s_req_screen is that screen:
+         * a modal is drawn over the current one, never instead of it. The entered
+         * amount survives either way; it lives in s_amount_cents, not in the
+         * widgets. */
+        request_screen(s_req_screen);
+        return;
+    }
 
     switch (act) {
         case ACT_CONFIRM:
@@ -697,25 +762,15 @@ static void btn_event_cb(lv_event_t *e) {
             open_network_picker();
             break;
         case ACT_NET_ETH:
+        case ACT_NET_POLY:
         case ACT_NET_TRON:
             /* Step 2: which coin on the network just picked. */
-            open_coin_picker(act == ACT_NET_TRON);
+            open_coin_picker((act == ACT_NET_TRON) ? UI_NET_TRON :
+                             (act == ACT_NET_POLY) ? UI_NET_POLY : UI_NET_ETH);
             break;
-        case ACT_CHAIN_ETH:
-        case ACT_CHAIN_TRON:
-        case ACT_CHAIN_TRON_USDT:
-            settings_set_chain(
-                (act == ACT_CHAIN_TRON)      ? POS_CHAIN_TRON_NILE :
-                (act == ACT_CHAIN_TRON_USDT) ? POS_CHAIN_TRON_USDT
-                                             : POS_CHAIN_ETH_SEPOLIA);
-            close_modal();
-            /* Rebuild whatever screen the picker was opened from — the amount
-             * screen's selector and ticker name the chain, and so do the Tx tab's
-             * asset row, contract address and fee rows. s_req_screen is that
-             * screen: a modal is drawn over the current one, never instead of it.
-             * The entered amount survives either way; it lives in s_amount_cents,
-             * not in the widgets. */
-            request_screen(s_req_screen);
+        case ACT_CHAIN_BASE:
+            /* Unreachable — the chain block above returns. Named only so -Wswitch
+             * keeps checking that every other action still has a case here. */
             break;
     }
 }
@@ -855,8 +910,17 @@ static lv_obj_t *make_icon_box(lv_obj_t *parent, const lv_img_dsc_t *coin_src,
  * stacked on the network's own logo. */
 static lv_obj_t *make_asset_badge(lv_obj_t *parent, pos_chain_t chain) {
     switch (chain) {
+        /* The network's own coin wears its network mark and no chip: a chip says
+         * "this token, on that network", and there is no second thing to say when
+         * the asset IS the network. */
         case POS_CHAIN_TRON_NILE: return make_icon_box(parent, &icon_tron, NULL);
+        case POS_CHAIN_ETH_NATIVE: return make_icon_box(parent, &icon_eth, NULL);
+        case POS_CHAIN_POLY_NATIVE:return make_icon_box(parent, &icon_poly, NULL);
         case POS_CHAIN_TRON_USDT: return make_icon_box(parent, &icon_usdt, &chip_tron);
+        case POS_CHAIN_TRON_USDC: return make_icon_box(parent, &icon_usdc, &chip_tron);
+        case POS_CHAIN_ETH_USDT:  return make_icon_box(parent, &icon_usdt, &chip_eth);
+        case POS_CHAIN_POLY_USDC: return make_icon_box(parent, &icon_usdc, &chip_poly);
+        case POS_CHAIN_POLY_USDT: return make_icon_box(parent, &icon_usdt, &chip_poly);
         default:                  return make_icon_box(parent, &icon_usdc, &chip_eth);
     }
 }
@@ -906,8 +970,10 @@ static void asset_btn_set_compact(bool compact) {
 
 /* The bare network mark, for the network picker's own rows — no coin is chosen
  * at that step, so there is nothing to badge it with. */
-static lv_obj_t *make_net_badge(lv_obj_t *parent, bool tron) {
-    return make_icon_box(parent, tron ? &icon_tron : &icon_eth, NULL);
+static lv_obj_t *make_net_badge(lv_obj_t *parent, ui_net_t net) {
+    return make_icon_box(parent,
+                         (net == UI_NET_TRON) ? &icon_tron :
+                         (net == UI_NET_POLY) ? &icon_poly : &icon_eth, NULL);
 }
 
 /* "Tap here" mark — the four widening arcs every contactless reader wears, drawn
@@ -1344,6 +1410,19 @@ static void build_settings(void) {
         s_maxfee_lbl = build_fee_row(t_tx, "Max fee (Gwei)",      196, 0, 1);
         s_prio_lbl   = build_fee_row(t_tx, "Priority fee (Gwei)", 264, 2, 3);
         fee_update_labels();
+        /* Say it here rather than let the numbers lie: these two are shared with
+         * Ethereum, and on Polygon the firmware lifts the tip to its floor
+         * (config.h) because Amoy drops anything under ~25 Gwei. Without this row
+         * the tab shows 20 while the signed transaction carries 30. */
+        if (pos_chain_is_polygon(settings_get_chain())) {
+            lv_obj_t *n = make_label(t_tx,
+                                     "On Polygon the tip is raised to at least "
+                                     "the config.h floor (30 Gwei).",
+                                     COL_DIM, &lv_font_montserrat_14,
+                                     LV_ALIGN_TOP_LEFT, 0, 332);
+            lv_label_set_long_mode(n, LV_LABEL_LONG_WRAP);
+            lv_obj_set_width(n, 200);
+        }
     }
 
     /* ── About tab: small C logo, name, version, info ── */
@@ -1389,8 +1468,9 @@ static void build_settings(void) {
                  LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
 
     lv_obj_t *about = make_label(t_about,
-                                 "USDC (Sepolia), TRX and USDT\n"
-                                 "TRC-20 (Tron Nile) terminal\n"
+                                 "ETH, POL, TRX, USDC and USDT\n"
+                                 "terminal on Ethereum Sepolia,\n"
+                                 "Polygon Amoy and Tron Nile,\n"
                                  "for Cryptnox cards\n\n"
                                  "Based on cryptnox-sdk-esp32 1.0.0\n"
                                  "(c) Cryptnox 2026 - Educational use only\n\n"
@@ -1714,27 +1794,34 @@ static void pill_disable(lv_obj_t *p) {
 
 /** Step 1 — the network. */
 static void open_network_picker(void) {
-    lv_obj_t *card = open_modal(228, 194);
+    static const struct {
+        const char *name;
+        const char *sub;
+        ui_net_t    net;    /* which network mark to draw */
+        BtnAction   act;
+    } NETS[] = {
+        { "Ethereum", "Sepolia testnet", UI_NET_ETH,  ACT_NET_ETH  },
+        { "Polygon",  "Amoy testnet",    UI_NET_POLY, ACT_NET_POLY },
+        { "Tron",     "Nile testnet",    UI_NET_TRON, ACT_NET_TRON },
+    };
+    const size_t n = sizeof(NETS) / sizeof(NETS[0]);
+
+    /* Same growth rule as step 2 — header + rows + the Cancel button — now that
+     * there are three networks and a hardcoded height would clip one. */
+    lv_obj_t *card = open_modal(228,
+        static_cast<lv_coord_t>(86 + (n * (PILL_H + 2))));
 
     make_label(card, "Network", COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_MID, 0, 2);
 
-    static const struct {
-        const char *name;
-        const char *sub;
-        bool        tron;   /* which network mark to draw */
-        BtnAction   act;
-    } NETS[] = {
-        { "Ethereum", "Sepolia testnet", false, ACT_NET_ETH  },
-        { "Tron",     "Nile testnet",    true,  ACT_NET_TRON },
-    };
-
-    for (size_t i = 0; i < (sizeof(NETS) / sizeof(NETS[0])); i++) {
+    for (size_t i = 0; i < n; i++) {
         /* A network with no payout address of its own is not offered. Otherwise a
          * terminal set up for Ethereum and interrupted before Tron would quietly
          * take Tron payments to the compile-time recipient — somebody else's
          * address — and look entirely normal doing it. */
-        const bool have = settings_has_payout(NETS[i].tron);
+        /* Polygon spends the Ethereum payout address — same EVM account, so the
+         * one the operator stored works on both networks. */
+        const bool have = settings_has_payout(NETS[i].net == UI_NET_TRON);
         lv_coord_t y = static_cast<lv_coord_t>(22 + (i * (PILL_H + 2)));
         /* "No payout address" measured 133px against this pill's
          * PICK_W - PILL_TEXT_X - PILL_TEXT_PAD_R = 130px cap, so the one row
@@ -1742,7 +1829,7 @@ static void open_network_picker(void) {
         lv_obj_t  *p = make_pill(card, NETS[i].name,
                                  have ? NETS[i].sub : "No payout set",
                                  PICK_W, y, NETS[i].act);
-        lv_obj_align(make_net_badge(p, NETS[i].tron),
+        lv_obj_align(make_net_badge(p, NETS[i].net),
                      LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
         if (!have) { pill_disable(p); }
     }
@@ -1753,43 +1840,67 @@ static void open_network_picker(void) {
 }
 
 /** Step 2 — the coin on the network chosen in step 1. */
-static void open_coin_picker(bool tron) {
-    static const struct {
+static void open_coin_picker(ui_net_t net) {
+    /* One row type and one table per network, picked below — a third network was
+     * what made the pair of `tron ? A[i].x : B[i].x` lines untenable. No action
+     * column: the chain is the action (ACT_CHAIN_OF). */
+    typedef struct {
         const char *name;
         const char *sub;
         pos_chain_t chain;
-        BtnAction   act;
-    } ETH_COINS[] = {
-        { "USDC", "ERC-20", POS_CHAIN_ETH_SEPOLIA, ACT_CHAIN_ETH },
+    } coin_t;
+    /* Native coin first on every network, as Tron has always listed TRX. */
+    static const coin_t ETH_COINS[] = {
+        { "ETH",  "Native coin", POS_CHAIN_ETH_NATIVE  },
+        { "USDC", "ERC-20",      POS_CHAIN_ETH_SEPOLIA },
+        { "USDT", "ERC-20",      POS_CHAIN_ETH_USDT    },
     };
-    static const struct {
-        const char *name;
-        const char *sub;
-        pos_chain_t chain;
-        BtnAction   act;
-    } TRON_COINS[] = {
-        { "TRX",  "Native coin", POS_CHAIN_TRON_NILE, ACT_CHAIN_TRON      },
-        { "USDT", "TRC-20",      POS_CHAIN_TRON_USDT, ACT_CHAIN_TRON_USDT },
+    static const coin_t POLY_COINS[] = {
+        { "POL",  "Native coin", POS_CHAIN_POLY_NATIVE },
+        { "USDC", "ERC-20",      POS_CHAIN_POLY_USDC   },
+        { "USDT", "ERC-20",      POS_CHAIN_POLY_USDT   },
     };
-    const size_t n = tron ? (sizeof(TRON_COINS) / sizeof(TRON_COINS[0]))
-                          : (sizeof(ETH_COINS)  / sizeof(ETH_COINS[0]));
+    static const coin_t TRON_COINS[] = {
+        { "TRX",  "Native coin", POS_CHAIN_TRON_NILE },
+        { "USDT", "TRC-20",      POS_CHAIN_TRON_USDT },
+        { "USDC", "TRC-20",      POS_CHAIN_TRON_USDC },
+    };
+
+    const coin_t *coins;
+    size_t        n;
+    const char   *title;
+    switch (net) {
+        case UI_NET_TRON:
+            coins = TRON_COINS;
+            n     = sizeof(TRON_COINS) / sizeof(TRON_COINS[0]);
+            title = "Coin on Tron";
+            break;
+        case UI_NET_POLY:
+            coins = POLY_COINS;
+            n     = sizeof(POLY_COINS) / sizeof(POLY_COINS[0]);
+            title = "Coin on Polygon";
+            break;
+        case UI_NET_ETH:
+        default:
+            coins = ETH_COINS;
+            n     = sizeof(ETH_COINS) / sizeof(ETH_COINS[0]);
+            title = "Coin on Ethereum";
+            break;
+    }
 
     /* Card grows with the row count: header + rows + the Back button. */
     lv_obj_t *card = open_modal(228,
         static_cast<lv_coord_t>(86 + (n * (PILL_H + 2))));
 
-    make_label(card, tron ? "Coin on Tron" : "Coin on Ethereum", COL_DIM,
+    make_label(card, title, COL_DIM,
                &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0, 2);
 
     for (size_t i = 0; i < n; i++) {
-        const char *name  = tron ? TRON_COINS[i].name  : ETH_COINS[i].name;
-        const char *sub   = tron ? TRON_COINS[i].sub   : ETH_COINS[i].sub;
-        pos_chain_t chain = tron ? TRON_COINS[i].chain : ETH_COINS[i].chain;
-        BtnAction   act   = tron ? TRON_COINS[i].act   : ETH_COINS[i].act;
-
         lv_coord_t y = static_cast<lv_coord_t>(22 + (i * (PILL_H + 2)));
-        lv_obj_t  *p = make_pill(card, name, sub, PICK_W, y, act, true /* leaf */);
-        lv_obj_align(make_asset_badge(p, chain), LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
+        lv_obj_t  *p = make_pill(card, coins[i].name, coins[i].sub, PICK_W, y,
+                                 ACT_CHAIN_OF(coins[i].chain), true /* leaf */);
+        lv_obj_align(make_asset_badge(p, coins[i].chain),
+                     LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
     }
 
     /* Back, not Cancel: step 2 of two, so the way out is step 1. */

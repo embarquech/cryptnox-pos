@@ -21,10 +21,19 @@ ESP32-2432S028 "Cheap Yellow Display" (CYD). It also serves as a reference
 **dev kit** showing how to integrate the [`cryptnox-sdk-esp32`](https://github.com/embarquech/cryptnox-sdk-esp32)
 into a real-world end-user product.
 
-The user selects a USDC amount on the touchscreen, taps a **Cryptnox smart
-card** on the attached PN532 reader, and the terminal signs and broadcasts an
-EIP-1559 transfer on Ethereum Sepolia via a JSON-RPC endpoint (PublicNode by
-default), then waits for the on-chain receipt before showing **Approved**.
+The user selects an amount on the touchscreen, taps a **Cryptnox smart card** on
+the attached PN532 reader, and the terminal signs and broadcasts an EIP-1559
+transfer via a JSON-RPC endpoint (PublicNode by default), then waits for the
+on-chain receipt before showing **Approved**. The asset is picked on the device —
+ETH, USDC or USDT on Ethereum Sepolia, POL, USDC or USDT on Polygon Amoy, and
+TRX, USDT or USDC on Tron Nile.
+
+> [!NOTE]
+> The keypad enters two decimal places of whatever asset is selected, and a
+> native-coin amount is signed as a `uint64` of wei — so **ETH and POL sales are
+> capped at 18.44**. The keypad stops there rather than letting an operator key a
+> figure the transaction cannot carry. The stablecoins are 6-decimal and keep the
+> full 99999.99 range.
 
 > [!WARNING]
 > **Reference / educational dev kit — not a tamper-resistant terminal.**
@@ -144,7 +153,11 @@ and fill in:
 | `ADDR_FROM` | Ethereum address of the **card** (`m/44'/60'/0'/0/0`) — used to fetch the nonce and validate the ecrecover parity |
 | `ADDR_TO` | **Fallback** destination address, used until an operator sets one on the device. **Use the EIP-55 mixed-case checksum form** — the firmware verifies the checksum at boot and refuses to start on a mismatch. All-lowercase is accepted but bypasses that typo protection (and warns at boot) |
 | `ADDR_USDC` | **Fallback** USDC ERC-20 contract address on the target chain (Sepolia testnet by default). Same EIP-55 rule as `ADDR_TO` |
+| `ADDR_USDT` | USDT ERC-20 contract on Sepolia. Not settable on the device — the one NVS contract slot is USDC's — and not fatal if unset: USDT on Ethereum is then refused at the confirm step. Its `decimals()` **must be 6**. Same EIP-55 rule as `ADDR_TO` |
+| `POLY_RPC_URL`, `CHAIN_ID_AMOY`, `POLY_ADDR_USDC`, `POLY_ADDR_USDT` | Polygon Amoy endpoint, chain id and the two token contracts on that network. Polygon reuses the whole Ethereum path — same card key, same payout address — so only these differ. `POLY_CA_CERT_PEM` pins its certificate; `POLY_MIN_PRIORITY_FEE_GWEI` (default 30) is the tip floor, since Amoy drops anything under ~25 Gwei and the fee steppers are shared with Ethereum |
+| `TRON_ADDR_USDC` | USDC TRC-20 contract on Nile. Config-only and non-fatal, like `ADDR_USDT`. Testnet only: Circle wound USDC on Tron down in 2024–25, so there is no mainnet asset to graduate to |
 | `CHAIN_ID_SEPOLIA`, `MAX_PRIORITY_FEE`, `MAX_FEE`, `GAS_LIMIT_ERC20` | Chain ID and EIP-1559 gas parameters (the fees are first-boot defaults, editable at run time in the settings) |
+| `GAS_LIMIT_NATIVE` | Gas for a plain ETH/POL transfer — exactly 21000, since no contract runs. Optional; defaults to 21000 |
 
 **Not in `config.h`** — set on the device, never baked into the firmware:
 - **Wi-Fi** — chosen during setup from a list the terminal scans, in a browser (stored in NVS).

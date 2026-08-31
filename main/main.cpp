@@ -73,6 +73,7 @@ extern "C" {
 #include "hardening.h"
 #include "eth_rlp.h"
 #include "eth_rpc.h"
+#include "rpc_error.h"     /* a node's refusal -> a line the operator can act on */
 #include "tron_rpc.h"
 #include "tron_tx.h"
 #include "net.h"
@@ -86,6 +87,39 @@ extern "C" {
  * rather than breaking the build of a config that predates it. */
 #ifndef TRON_ADDR_USDT
 #define TRON_ADDR_USDT  ""
+#endif
+/* Same story for every asset added since: an empty contract fails its parse at
+ * boot and only that one asset is refused, so a config.h written before it
+ * existed still builds and still charges in whatever it was set up for. */
+#ifndef TRON_ADDR_USDC
+#define TRON_ADDR_USDC  ""
+#endif
+#ifndef ADDR_USDT
+#define ADDR_USDT  ""
+#endif
+#ifndef POLY_ADDR_USDC
+#define POLY_ADDR_USDC  ""
+#endif
+#ifndef POLY_ADDR_USDT
+#define POLY_ADDR_USDT  ""
+#endif
+/* Polygon needs an endpoint and a chain id of its own. A config.h that predates
+ * Polygon support falls back to the Ethereum ones, which is harmless: its assets
+ * have no contract either, so they are refused before anything is signed. */
+#ifndef POLY_RPC_URL
+#define POLY_RPC_URL  RPC_URL
+#endif
+#ifndef CHAIN_ID_AMOY
+#define CHAIN_ID_AMOY  CHAIN_ID_SEPOLIA
+#endif
+#ifndef POLY_MIN_PRIORITY_FEE_GWEI
+#define POLY_MIN_PRIORITY_FEE_GWEI  30U
+#endif
+/* A plain value transfer to an account costs exactly 21000 gas — no contract
+ * runs — so GAS_LIMIT_ERC20's allowance for a token's storage writes is not
+ * merely generous here, it is the wrong number. */
+#ifndef GAS_LIMIT_NATIVE
+#define GAS_LIMIT_NATIVE  21000ULL
 #endif
 #ifndef TRON_TRC20_FEE_LIMIT_SUN
 #define TRON_TRC20_FEE_LIMIT_SUN  100000000ULL
@@ -159,7 +193,53 @@ static void tron_addr_to_hex(const uint8_t *addr21, char *out, size_t n)
 
 /** @brief true when the operator has switched the terminal to Tron. */
 static bool chain_is_tron(void) {
-    return settings_get_chain() != POS_CHAIN_ETH_SEPOLIA;
+    return pos_chain_is_tron(settings_get_chain());
+}
+
+/** @brief true when the terminal is charging on Polygon rather than Ethereum. */
+static bool chain_is_polygon(void) {
+    return pos_chain_is_polygon(settings_get_chain());
+}
+
+/** @brief true when charging in the network's own coin (ETH / POL), not a token. */
+static bool chain_is_native_evm(void) {
+    return pos_chain_is_native_evm(settings_get_chain());
+}
+
+/**
+ * @brief Point eth_rpc at the endpoint for the selected EVM network.
+ *
+ * Called at boot and again at the top of every payment: the operator switches
+ * networks from the settings menu while the main task is parked on its queue, and
+ * a Polygon transfer broadcast to the Sepolia endpoint is a transaction the card
+ * has already signed. All three settings are re-applied every time, because
+ * eth_rpc keeps the URL, the credentials and the pinned certificate in separate
+ * statics — leaving Infura's Basic Auth or Sepolia's pinned cert attached to a
+ * Polygon request is how "it works on Ethereum" turns into a TLS failure nobody
+ * can place.
+ */
+static void eth_rpc_select(void) {
+    if (chain_is_polygon()) {
+        eth_rpc_init(POLY_RPC_URL, "0x" ADDR_FROM);
+        eth_rpc_set_auth(NULL, NULL);
+#ifdef POLY_CA_CERT_PEM
+        eth_rpc_set_ca_cert(POLY_CA_CERT_PEM);
+#else
+        eth_rpc_set_ca_cert(NULL);
+#endif
+    } else {
+        eth_rpc_init(RPC_URL, "0x" ADDR_FROM);
+#if defined(RPC_PROJECT_ID) && defined(RPC_API_SECRET)
+        eth_rpc_set_auth(RPC_PROJECT_ID, RPC_API_SECRET);
+#else
+        eth_rpc_set_auth(NULL, NULL);
+#endif
+#ifdef RPC_CA_CERT_PEM
+        eth_rpc_set_ca_cert(RPC_CA_CERT_PEM);
+#else
+        eth_rpc_set_ca_cert(NULL);
+#endif
+    }
 }
 
 /**
@@ -178,6 +258,14 @@ typedef struct {
 /* Points at s_contract_trx, filled from settings at boot — the operator can set the
  * contract from the config page, and config.h is only the fallback. */
 static trc20_asset_t s_trc20_usdt = { NULL, {}, false };
+
+/* USDC on Tron, from config.h alone: the config page has one TRC-20 slot and USDT
+ * has it. The literal is fine as the b58 pointer — it lives in the signed app
+ * image for the life of the program, which is exactly what the NVS-backed one
+ * needs a buffer to imitate.
+ * ponytail: config.h only; give it an NVS slot and a config-page row if a second
+ * settable TRC-20 is ever wanted. */
+static trc20_asset_t s_trc20_usdc = { TRON_ADDR_USDC, {}, false };
 
 /**
  * @brief Decode a token's configured base58 contract into its dual store.
@@ -205,7 +293,11 @@ static bool trc20_load(trc20_asset_t *a, CW_CryptoProvider &crypto) {
 
 /** @brief The selected TRC-20 token, or NULL for native TRX / Ethereum. */
 static trc20_asset_t *active_trc20(void) {
-    return (settings_get_chain() == POS_CHAIN_TRON_USDT) ? &s_trc20_usdt : NULL;
+    switch (settings_get_chain()) {
+        case POS_CHAIN_TRON_USDT: return &s_trc20_usdt;
+        case POS_CHAIN_TRON_USDC: return &s_trc20_usdc;
+        default:                  return NULL;
+    }
 }
 
 /* The recipient and contract strings the dual stores are built from: whatever the
@@ -219,6 +311,53 @@ static char s_payout_tron[SETTINGS_PAYOUT_MAX]  = "";
 static char s_contract_eth[SETTINGS_PAYOUT_MAX] = "";
 static char s_contract_trx[SETTINGS_PAYOUT_MAX] = "";
 
+/* The ERC-20s that config.h alone names — the config page has one ERC-20 slot and
+ * USDC-on-Ethereum has it. One entry per (token, network) pair, never one per
+ * token: the same USDT on Sepolia and on Amoy is two different deployments, and
+ * pointing one network's terminal at the other's contract calls an address that
+ * holds nothing.
+ * ponytail: config.h only; give them NVS slots and config-page rows when these
+ * stop being testnet assets. */
+typedef struct {
+    char       str[SETTINGS_PAYOUT_MAX];  /**< "0x…" as configured; shown on screen */
+    pos_addr_t addr;                      /**< dual-stored 20 bytes                 */
+    bool       ok;                        /**< false until it parsed twice          */
+} erc20_token_t;
+
+static erc20_token_t s_usdt_eth;
+static erc20_token_t s_usdc_poly;
+static erc20_token_t s_usdt_poly;
+
+/**
+ * @brief The config.h-named ERC-20 for the selection, or NULL for the NVS one.
+ *
+ * NULL means USDC on Ethereum, which is the asset the operator can point
+ * somewhere else from the config page and therefore the one that lives in
+ * s_usdc / s_contract_eth rather than in a table here.
+ */
+static erc20_token_t *active_erc20_token(void) {
+    switch (settings_get_chain()) {
+        case POS_CHAIN_ETH_USDT:  return &s_usdt_eth;
+        case POS_CHAIN_POLY_USDC: return &s_usdc_poly;
+        case POS_CHAIN_POLY_USDT: return &s_usdt_poly;
+        default:                  return NULL;
+    }
+}
+
+/**
+ * @brief Parse a config.h contract into a token's dual store.
+ *
+ * Non-fatal by design, exactly like @ref trc20_load: a placeholder or a typo
+ * leaves @c ok false and that one asset is refused, rather than stopping a
+ * terminal that charges in something else from booting.
+ */
+static bool erc20_load(erc20_token_t *t, const char *hex_no_0x) {
+    (void)snprintf(t->str, sizeof(t->str), "0x%s", hex_no_0x);
+    t->ok = eth_addr_parse(t->str, t->addr.addr) &&
+            eth_addr_parse(t->str, t->addr.addr_echo);
+    return t->ok;
+}
+
 /**
  * @brief Point the UI's address rows at the selected chain.
  *
@@ -231,8 +370,13 @@ static void ui_refresh_addresses(void) {
         ui_set_addresses(token->b58, s_payout_tron);
     } else if (chain_is_tron()) {
         ui_set_addresses("Native TRX (no contract)", s_payout_tron);
+    } else if (chain_is_native_evm()) {
+        ui_set_addresses(chain_is_polygon() ? "Native POL (no contract)"
+                                            : "Native ETH (no contract)",
+                         s_payout_eth);
     } else {
-        ui_set_addresses(s_contract_eth, s_payout_eth);
+        const erc20_token_t *erc = active_erc20_token();
+        ui_set_addresses((erc != NULL) ? erc->str : s_contract_eth, s_payout_eth);
     }
 }
 
@@ -263,6 +407,17 @@ static pos_addr_t s_tron_dest;
  * same dual store and the same reconciles. The Tron token contract already had one
  * (trc20_asset_t). */
 static pos_addr_t s_usdc;
+
+/* The config.h-named ERC-20s each get their own dual store (erc20_token_t above)
+ * rather than sharing this one: they all pay the same recipient on the same
+ * network, and the contract is the ONLY thing that decides which of them the
+ * customer is actually charged in. */
+
+/** @brief The reconciled ERC-20 contract to call for the selected asset. */
+static const pos_addr_t *active_erc20(void) {
+    const erc20_token_t *t = active_erc20_token();
+    return (t != NULL) ? &t->addr : &s_usdc;
+}
 
 /** @brief The reconciled recipient for the chain currently selected. */
 static const pos_addr_t *active_dest(void) {
@@ -493,19 +648,49 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
                                 char *tx_hash_out, size_t tx_hash_max,
                                 char *err_out, size_t err_max)
 {
+    /* Which asset is selected, read once: the operator can switch between sales
+     * but never inside one, and what this signs must be what the confirm screen
+     * showed. `native` picks a different transaction, not a different network —
+     * the recipient goes in `to`, the amount in `value`, and nothing is called. */
+    const bool native = chain_is_native_evm();
+    const pos_addr_t *const token = native ? NULL : active_erc20();
+    const bool polygon = chain_is_polygon();
+
+    /* Endpoint first: the nonce below has to come from the network this will be
+     * broadcast to, and the chain id signed into the transaction is what stops it
+     * being replayed on the other one. */
+    eth_rpc_select();
+
     /* Reconcile amount + recipient + contract right before they enter the calldata
-     * (§3.2/§7.1); a mismatch means the working copy was corrupted. */
+     * (§3.2/§7.1); a mismatch means the working copy was corrupted. A native
+     * transfer has no contract to reconcile — the recipient is the whole of it,
+     * which is why `to` is checked on both paths. */
     if (!IS_TRUE32(amount_consistent(amount)) ||
         !IS_TRUE32(address_consistent(to)) ||
-        !IS_TRUE32(address_consistent(&s_usdc))) {
+        ((token != NULL) && !IS_TRUE32(address_consistent(token)))) {
         pos_handle_anomaly("pre-calldata reconcile");
         (void)snprintf(err_out, err_max, "Integrity check failed");
         return false;
     }
     const uint64_t amount_units = amount->amount_minor;
 
+    /* 6-decimal keypad units -> wei, for the 18-decimal coins only. Re-checked
+     * here rather than trusted from the keypad's cap: this is the last place the
+     * number is still ours, and a wrapped multiply signs a value nobody entered
+     * (see POS_AMOUNT_UNITS_MAX_NATIVE). */
+    uint64_t native_wei = 0U;
+    if (native) {
+        if (amount_units > POS_AMOUNT_UNITS_MAX_NATIVE) {
+            (void)snprintf(err_out, err_max, "Amount too large for this asset");
+            return false;
+        }
+        native_wei = amount_units * 1000000000000ULL;
+    }
+
     uint8_t calldata[USDC_CALLDATA_LEN];
-    build_usdc_calldata(calldata, to->addr, amount_units);
+    if (!native) {
+        build_usdc_calldata(calldata, to->addr, amount_units);
+    }
 
     uint64_t nonce = 0U;
     if (!eth_rpc_get_nonce(&nonce)) {
@@ -515,7 +700,7 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
 
     eth_tx_t tx;
     CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(&tx), sizeof(tx));
-    tx.chain_id          = CHAIN_ID_SEPOLIA;
+    tx.chain_id          = polygon ? CHAIN_ID_AMOY : CHAIN_ID_SEPOLIA;
     tx.nonce             = nonce;
     /* Fees come from the settings menu (defaulting to the config.h values on
      * first boot); config.h still owns the gas limit. The user edits Gwei, so
@@ -523,17 +708,32 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
     uint64_t max_fee_wei  = (uint64_t)settings_get_max_fee_gwei()      * 1000000000ULL;
     uint64_t prio_fee_wei = (uint64_t)settings_get_priority_fee_gwei() * 1000000000ULL;
     if (prio_fee_wei > max_fee_wei) { prio_fee_wei = max_fee_wei; }
+    /* Polygon drops a transfer whose tip is under ~25 Gwei, and the fee knobs are
+     * shared with Ethereum where 20 is right. Raise the floor here rather than
+     * asking the operator to retune the Tx tab every time they switch networks —
+     * and lift the cap with it, or the clamp above would only put it back. */
+    if (polygon) {
+        const uint64_t floor_wei =
+            (uint64_t)POLY_MIN_PRIORITY_FEE_GWEI * 1000000000ULL;
+        if (prio_fee_wei < floor_wei) { prio_fee_wei = floor_wei; }
+        if (max_fee_wei  < prio_fee_wei) { max_fee_wei = prio_fee_wei; }
+    }
     tx.max_priority_fee  = prio_fee_wei;
     tx.max_fee           = max_fee_wei;
-    tx.gas_limit         = GAS_LIMIT_ERC20;
-    tx.eth_value         = 0U;
-    tx.calldata          = calldata;
-    tx.calldata_len      = sizeof(calldata);
-    /* From the reconciled store, not from a literal or from NVS at this moment:
-     * this is the address the transaction calls, so it comes from the copy that was
-     * validated at boot and has just been checked against its echo. */
+    /* The two shapes of transfer. A token call carries the amount in its calldata
+     * and pays the contract's storage writes; the coin's own transfer carries the
+     * amount in `value`, calls nothing, and costs the flat 21000.
+     *
+     * `to` differs the same way, and this is the line that decides who is paid:
+     * from the reconciled store on both paths, never a literal or a fresh NVS
+     * read, so it is the copy validated at boot and just checked against its
+     * echo. Getting this backwards would pay the token contract. */
+    tx.gas_limit         = native ? GAS_LIMIT_NATIVE : GAS_LIMIT_ERC20;
+    tx.eth_value         = native ? native_wei : 0U;
+    tx.calldata          = native ? NULL : calldata;
+    tx.calldata_len      = native ? 0U   : sizeof(calldata);
     (void)CW_Utils::safe_memcpy(tx.to, sizeof(tx.to),
-                                s_usdc.addr, ETH_ADDR_LEN);
+                                native ? to->addr : token->addr, ETH_ADDR_LEN);
 
     uint8_t unsigned_tx[TX_BUF_SIZE];
     size_t  unsigned_len = eth_rlp_encode_unsigned(&tx, unsigned_tx, sizeof(unsigned_tx));
@@ -578,7 +778,7 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
      * calldata (§3.2/§7.1). */
     if (!IS_TRUE32(amount_consistent(amount)) ||
         !IS_TRUE32(address_consistent(to)) ||
-        !IS_TRUE32(address_consistent(&s_usdc))) {
+        ((token != NULL) && !IS_TRUE32(address_consistent(token)))) {
         pos_handle_anomaly("pre-sign reconcile");
         (void)snprintf(err_out, err_max, "Integrity check failed");
         return false;
@@ -642,8 +842,14 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
         return false;
     }
 
-    if (!eth_rpc_send_raw_tx(signed_tx, signed_len, tx_hash_out, tx_hash_max)) {
-        (void)snprintf(err_out, err_max, "Broadcast failed");
+    /* Roomier than err_out so the node's sentence arrives whole and is clipped
+     * once, at the point that knows the panel's width. */
+    char node_err[128] = "";
+    if (!eth_rpc_send_raw_tx(signed_tx, signed_len, tx_hash_out, tx_hash_max,
+                             node_err, sizeof(node_err))) {
+        ESP_LOGE(TAG, "broadcast refused: %s",
+                 (node_err[0] != '\0') ? node_err : "(no message)");
+        rpc_error_text(node_err, native, polygon, err_out, err_max);
         return false;
     }
 
@@ -1470,6 +1676,20 @@ extern "C" void app_main(void)
         ui_show_tx_status(UI_TX_STATE_FAILED, "Bad ADDR_USDC in config");
         return;
     }
+    /* The config.h-only ERC-20s, parsed twice each into their own stores. Non-fatal,
+     * like the TRC-20 ones and for the same reason: a terminal that only charges in
+     * USDC on Ethereum leaves these unset, and it must still boot — selecting the
+     * asset is what gets refused. */
+    if (!erc20_load(&s_usdt_eth, ADDR_USDT)) {
+        ESP_LOGW(TAG, "ADDR_USDT not usable - USDT on Ethereum disabled");
+    }
+    if (!erc20_load(&s_usdc_poly, POLY_ADDR_USDC)) {
+        ESP_LOGW(TAG, "POLY_ADDR_USDC not usable - USDC on Polygon disabled");
+    }
+    if (!erc20_load(&s_usdt_poly, POLY_ADDR_USDT)) {
+        ESP_LOGW(TAG, "POLY_ADDR_USDT not usable - USDT on Polygon disabled");
+    }
+
     /* Warn if the recipient carries no EIP-55 checksum (no upper-case hex
      * letter) — the boot-time typo check above is a no-op on an all-lowercase
      * address. Skip the "0x" so the 'x' is never read as hex. */
@@ -1570,6 +1790,12 @@ extern "C" void app_main(void)
         ESP_LOGW(TAG, "TRON_ADDR_USDT not usable - USDT on Tron disabled");
     }
 
+    /* USDC on Tron: config.h only, so there is no stored value to try first. Same
+     * non-fatal treatment — an unset contract disables that one asset. */
+    if (!trc20_load(&s_trc20_usdc, cryptoProvider)) {
+        ESP_LOGW(TAG, "TRON_ADDR_USDC not usable - USDC on Tron disabled");
+    }
+
     /* Refuse to come up selling an asset whose payout address nobody set.
      *
      * The picker will not let an operator *switch* to such a network, but that is
@@ -1608,15 +1834,12 @@ extern "C" void app_main(void)
     }
 
     /* ── WiFi + RPC ────────────────────────────────────────────── */
-    eth_rpc_init(RPC_URL, "0x" ADDR_FROM);
+    /* URL, credentials and any pinned certificate for whichever EVM network is
+     * selected. Re-applied at the top of each payment (eth_rpc_select), so the
+     * only thing this boot call decides is where the readiness probe below asks
+     * for its nonce. */
+    eth_rpc_select();
     tron_rpc_init(TRON_URL);
-#if defined(RPC_PROJECT_ID) && defined(RPC_API_SECRET)
-    eth_rpc_set_auth(RPC_PROJECT_ID, RPC_API_SECRET);
-#endif
-#ifdef RPC_CA_CERT_PEM
-    /* pin the RPC endpoint's certificate instead of the CA bundle. */
-    eth_rpc_set_ca_cert(RPC_CA_CERT_PEM);
-#endif
 #ifdef TRON_CA_CERT_PEM
     /* Same for the Tron endpoint. Optional because the node is not trusted on
      * this path either way — every transaction it serialises is re-derived and
@@ -1773,9 +1996,11 @@ extern "C" void app_main(void)
                     break;
                 }
                 const trc20_asset_t *tok = active_trc20();
+                const erc20_token_t *erc = active_erc20_token();
                 /* Say so here rather than after the customer has tapped a card:
                  * a placeholder contract means this asset was never set up. */
-                if ((tok != NULL) && !tok->ok) {
+                if (((tok != NULL) && !tok->ok) ||
+                    ((erc != NULL) && !erc->ok)) {
                     ui_show_tx_status(UI_TX_STATE_FAILED,
                                       "Token contract not configured");
                     pos_amount_set(&pending_amount, 0U);
@@ -1886,8 +2111,16 @@ extern "C" void app_main(void)
                         ESP_LOGE(TAG, "Integrity gate failed post-receipt: %s", tx_hash);
                         ui_show_tx_status(UI_TX_STATE_FAILED, "Integrity check failed");
                     } else if (rc == ETH_RPC_RECEIPT_REVERTED) {
+                        /* A transfer that the node accepted and the chain then
+                         * rejected is, for a till, almost always the card not
+                         * holding enough of the token — the node cannot know a
+                         * balance at broadcast time, so this is where that shows
+                         * up. Say where to look rather than only what happened.
+                         * ponytail: a guess, not a reason. Reading the revert
+                         * data back needs an eth_call replay at the mined block. */
                         ESP_LOGE(TAG, "Tx reverted on-chain: %s", tx_hash);
-                        ui_show_tx_status(UI_TX_STATE_FAILED, "Payment reverted");
+                        ui_show_tx_status(UI_TX_STATE_FAILED,
+                                          "Reverted - check the card's balance");
                     } else {
                         ESP_LOGE(TAG, "Tx not confirmed after 120 s: %s", tx_hash);
                         ui_show_tx_status(UI_TX_STATE_FAILED,

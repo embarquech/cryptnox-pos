@@ -14,6 +14,8 @@ can never drift from the firmware and no build system is required.
 | `test_json_out`    | `main/json_out.h` — escaping an SSID into a JSON response |
 | `test_ota_version` | `main/ota_version.h` — update vs downgrade ordering |
 | `test_card_status` | `main/card_status.h` — is the tapped card initialised and seeded |
+| `test_chain`       | `main/settings.h` — which chain selections are Tron, which Polygon |
+| `test_rpc_error`   | `main/rpc_error.h` — a node's refusal turned into an operator instruction |
 
 Run all of them, plus the config portal page checks, with:
 
@@ -25,7 +27,8 @@ Or one at a time, from the repo root (any C++14 compiler):
 
 ```sh
 for t in test_eth_addr test_hardening test_tron_tx test_prov_form test_addr_check \
-         test_json_out test_ota_version test_card_status; do
+         test_json_out test_ota_version test_card_status test_chain \
+         test_rpc_error; do
   g++ -std=c++14 -Wall -Imain -Icryptnox-sdk-esp32/cryptnox-sdk-cpp \
       tests/units/$t.cpp -o $t && ./$t || exit 1
 done

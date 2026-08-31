@@ -46,6 +46,25 @@ typedef enum {
 bool eth_json_result_string(const char *resp, char *out, size_t out_size);
 
 /**
+ * @brief Extract the JSON-RPC @c error.message from a response body.
+ *
+ * The counterpart to @ref eth_json_result_string, and the only place a node
+ * ever says *why* it refused a transaction: "insufficient funds for gas * price
+ * + value", "nonce too low", "transaction underpriced". Dropping it on the
+ * floor is what turns every one of those into an identical "Broadcast failed"
+ * on the panel, which tells an operator nothing they can act on.
+ *
+ * A message longer than @p out_size is truncated rather than rejected — half a
+ * reason beats none, and the caller's buffer is a panel line, not a log.
+ *
+ * @param[in]  resp     NUL-terminated response body.
+ * @param[out] out      NUL-terminated message on success; untouched otherwise.
+ * @param[in]  out_size Capacity of @p out.
+ * @return true if the body parsed and carried a non-empty error message.
+ */
+bool eth_json_error_message(const char *resp, char *out, size_t out_size);
+
+/**
  * @brief Classify an @c eth_getTransactionReceipt response body.
  *
  * Parses the JSON and inspects the top-level @c result: null means the tx is

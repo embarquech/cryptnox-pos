@@ -73,6 +73,14 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     /* Same body through the receipt classifier — the other network JSON path. */
     (void)eth_json_receipt_status(json);
 
+    /* And through the error extractor, which is reached by exactly the bodies
+     * result_string rejects — a node's refusal. It truncates rather than
+     * refusing an oversized value, so it is the one of the three doing its own
+     * length arithmetic, on attacker-supplied prose. Deliberately a smaller
+     * buffer than result[]: the panel's is 64. */
+    char err[64];
+    (void)eth_json_error_message(json, err, sizeof err);
+
     free(json);
     return 0;
 }

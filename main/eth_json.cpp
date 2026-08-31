@@ -36,6 +36,36 @@ bool eth_json_result_string(const char *resp, char *out, size_t out_size)
     return ok;
 }
 
+bool eth_json_error_message(const char *resp, char *out, size_t out_size)
+{
+    if ((out == NULL) || (out_size == 0U)) { return false; }
+
+    bool ok = false;
+    cJSON *root = cJSON_Parse(resp);
+    if (root == NULL) {
+        return false;
+    }
+    const cJSON *err = cJSON_GetObjectItemCaseSensitive(root, "error");
+    if (cJSON_IsObject(err)) {
+        const cJSON *msg = cJSON_GetObjectItemCaseSensitive(err, "message");
+        if (cJSON_IsString(msg) && (msg->valuestring != NULL) &&
+            (msg->valuestring[0] != '\0')) {
+            /* Truncate, unlike result_string: that one carries a tx hash, where
+             * a short copy would be a different hash and must be refused. This
+             * one carries prose for a human, and a clipped sentence is still
+             * worth more than the generic message it replaces. */
+            size_t len = strlen(msg->valuestring);
+            if (len > (out_size - 1U)) { len = out_size - 1U; }
+            ok = CW_Utils::safe_memcpy(
+                reinterpret_cast<uint8_t *>(out), out_size,
+                reinterpret_cast<const uint8_t *>(msg->valuestring), len);
+            if (ok) { out[len] = '\0'; }
+        }
+    }
+    cJSON_Delete(root);
+    return ok;
+}
+
 eth_json_receipt_t eth_json_receipt_status(const char *resp)
 {
     eth_json_receipt_t verdict = ETH_JSON_RECEIPT_ERROR;

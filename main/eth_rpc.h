@@ -127,11 +127,18 @@ eth_rpc_parity_result_t eth_rpc_ecrecover_parity(const uint8_t hash[32],
  * @param[out] tx_hash_out "0x..."-prefixed tx hash on success; must be at
  *                         least 68 bytes (2 + 64 + NUL).
  * @param[in]  tx_hash_max Capacity of @p tx_hash_out.
+ * @param[out] err_out     On failure, the node's own @c error.message when it
+ *                         sent one ("insufficient funds for gas * price +
+ *                         value", "nonce too low", …), truncated to fit;
+ *                         set to "" when the failure was a transport or parse
+ *                         error with no message to report. May be NULL.
+ * @param[in]  err_max     Capacity of @p err_out.
  * @return true on success, false on transport error, JSON-RPC error
  *         response, or undersized @p tx_hash_out.
  */
 bool eth_rpc_send_raw_tx(const uint8_t *tx, size_t tx_len,
-                          char *tx_hash_out, size_t tx_hash_max);
+                          char *tx_hash_out, size_t tx_hash_max,
+                          char *err_out, size_t err_max);
 
 /**
  * @brief Poll the receipt of a broadcast transaction (one shot).

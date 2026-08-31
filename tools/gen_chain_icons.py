@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # Copyright (c) 2026 Cryptnox SA
-"""Draw the chain/asset marks as LVGL images: USDC, TRON, Tether and Ethereum.
+"""Draw the chain/asset marks as LVGL images: USDC, TRON, Tether, Ethereum, Polygon.
 
-TRON, Tether and Ethereum are geometry, not artwork files — simple enough to
-draw (a faceted triangle, a crossed stem, a stretched octahedron) that shipping
-source beats vendoring three PNGs. USDC keeps Circle's own artwork. Everything
-is rendered at SS x supersampling and downsampled, so the 16px chips still have
-clean edges.
+TRON, Tether, Ethereum and Polygon are geometry, not artwork files — simple
+enough to draw (a faceted triangle, a crossed stem, a stretched octahedron, a
+hexagon ring) that shipping source beats vendoring four PNGs. USDC keeps Circle's
+own artwork. Everything is rendered at SS x supersampling and downsampled, so the
+16px chips still have clean edges.
 
 Output is LV_IMG_CF_TRUE_COLOR_ALPHA (RGB565 LE + 1 alpha byte). The alpha is
 the point: these discs sit on a grey pill AND on the white amount screen, and
@@ -18,7 +18,9 @@ square on the pill — hence one generator and one format for all four.
 Run from repo root:  python tools/gen_chain_icons.py [--preview]
 """
 
+import math
 import sys
+
 from PIL import Image, ImageDraw
 
 USDC_SRC = "assets/circle_usdc_logo.svg.png"
@@ -30,6 +32,7 @@ SS    = 8                      # supersampling factor
 TRON_RED  = (0xE7, 0x39, 0x2E)
 USDT_GRN  = (0x26, 0xA1, 0x7B)
 ETH_BLUE  = (0x62, 0x7E, 0xEA)
+POLY_PURP = (0x82, 0x47, 0xE5)   # Polygon brand purple
 WHITE     = (0xFF, 0xFF, 0xFF)
 
 COIN = 30      # asset mark in a pill's icon slot
@@ -107,6 +110,26 @@ def eth(px, ring=False, k=1.0):
     return img
 
 
+def _hexagon(r):
+    """Pointy-top regular hexagon of radius r about the disc centre."""
+    return [(0.5 + r * math.cos(math.radians(a)),
+             0.5 + r * math.sin(math.radians(a))) for a in range(30, 360, 60)]
+
+
+def polygon(px, ring=False, hollow=True, k=1.0):
+    """Polygon: a hexagon ring on the brand purple — the shape the name is.
+
+    The chip asks for hollow=False for the same reason TRON's asks for
+    facets=False: at 16px inside a ring the cut-out closes up into a blurred
+    donut, and a solid hexagon is the shape that survives the downsample."""
+    img, d = _canvas(px)
+    _disc(d, px, POLY_PURP, ring)
+    _poly(d, px, _fit(_hexagon(0.34), k), WHITE + (255,))
+    if hollow:
+        _poly(d, px, _fit(_hexagon(0.20), k), POLY_PURP + (255,))
+    return img
+
+
 def usdc(px):
     """Circle's own mark, alpha preserved. Already a filled disc, so no ring."""
     img = Image.open(USDC_SRC).convert("RGBA")
@@ -130,8 +153,10 @@ ICONS = [
     ("icon_tron", COIN, lambda: tron(COIN)),
     ("icon_usdt", COIN, lambda: usdt(COIN)),
     ("icon_eth",  COIN, lambda: eth(COIN)),
+    ("icon_poly", COIN, lambda: polygon(COIN)),
     ("chip_tron", CHIP, lambda: tron(CHIP, ring=True, facets=False, k=0.60)),
     ("chip_eth",  CHIP, lambda: eth(CHIP, ring=True, k=0.62)),
+    ("chip_poly", CHIP, lambda: polygon(CHIP, ring=True, hollow=False, k=0.66)),
 ]
 
 HDR = ("/*\n * SPDX-License-Identifier: LGPL-3.0-or-later\n"

@@ -96,6 +96,59 @@
  * checksum verification. */
 #define ADDR_USDC         "<USDC_CONTRACT_ADDRESS_EIP55>"
 
+/* USDT ERC-20 contract on Sepolia (no 0x, EIP-55). Not settable on the device —
+ * the one NVS contract slot is USDC's — and not fatal if unset or malformed:
+ * USDT on Ethereum is then refused at the confirm step and the rest of the
+ * terminal boots.
+ *
+ * CHECK ITS decimals() IS 6 before using it. Mainnet USDT is 6, but Sepolia has
+ * no canonical deployment — you are picking somebody's faucet token — and the
+ * keypad and the calldata encoder assume 6 throughout, so an 18-decimal token
+ * would move a millionth of a millionth of what the screen says. Read it with:
+ *   cast call <contract> "decimals()(uint8)" --rpc-url <RPC_URL>
+ * Same rule as ADDR_TO for the checksum form, and as TRON_ADDR_USDT below for
+ * the decimals. */
+#define ADDR_USDT         "<USDT_CONTRACT_ADDRESS_EIP55>"
+
+/* =========================
+ * Polygon (Amoy testnet)
+ * ========================= */
+/* Polygon is EVM, so the whole Ethereum path is reused — same card key, same
+ * derivation path, same payout address, same RLP — and only these things change:
+ * the endpoint, the chain id and the token contracts.
+ *
+ * PublicNode's Amoy endpoint needs no API key. It answered eth_chainId 0x13882
+ * (80002) on 2026-08-28. */
+#define POLY_RPC_URL      "https://polygon-amoy-bor-rpc.publicnode.com"
+#define CHAIN_ID_AMOY     80002
+
+/* Optional, same form and same reasoning as RPC_CA_CERT_PEM: pin the Polygon
+ * endpoint's certificate instead of trusting the whole CA bundle. Kept separate
+ * from the Ethereum pin because it is a different host — the firmware installs
+ * whichever belongs to the network being charged on, and the CA bundle for the
+ * one that has no pin.
+ *
+ * #define POLY_CA_CERT_PEM  "-----BEGIN CERTIFICATE-----\n...\n" \
+ *                           "-----END CERTIFICATE-----\n"
+ */
+
+/* The two ERC-20s on Amoy (no 0x, EIP-55). One entry per token per network, never
+ * one per token: the same USDT on Sepolia and on Amoy is two different
+ * deployments, and pointing this at Sepolia's calls an address that holds
+ * nothing. decimals() MUST be 6, as everywhere else. Non-fatal if unset: that
+ * asset is refused, the terminal boots. */
+#define POLY_ADDR_USDC    "<USDC_CONTRACT_ADDRESS_EIP55>"
+#define POLY_ADDR_USDT    "<USDT_CONTRACT_ADDRESS_EIP55>"
+
+/* Floor, in Gwei, under the priority fee on Polygon. Amoy's validators drop a
+ * transaction whose tip is below ~25 Gwei with "transaction underpriced", and the
+ * fee knobs on the settings Tx tab are shared with Ethereum, where 20 is a
+ * sensible tip and 25 is wasteful. So Ethereum keeps the operator's number and
+ * Polygon raises it to this when it is lower — one clamp instead of a second pair
+ * of NVS settings and a second pair of steppers to explain. Raise it if Amoy
+ * starts dropping transactions again. */
+#define POLY_MIN_PRIORITY_FEE_GWEI  30U
+
 /* =========================
  * Tron (Nile testnet)
  * ========================= */
@@ -138,11 +191,19 @@
  *
  * Checksum-decoded at boot. Unlike TRON_ADDR_TO this is NOT fatal: a bad value
  * only disables the asset in the picker, so a terminal that charges in TRX or
- * on Sepolia still boots.
- *
- * There is deliberately no USDC-on-Tron entry — Circle stopped minting it in
- * February 2024 and closed redemptions in February 2025. */
+ * on Sepolia still boots. */
 #define TRON_ADDR_USDT    "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf"
+
+/* USDC on Nile, base58 "T...". Unlike TRON_ADDR_USDT this one has no NVS slot —
+ * the config page's single TRC-20 field is USDT's — so config.h is the only place
+ * it can be set. Same non-fatal handling, same mandatory decimals() == 6 check
+ * against a Nile node (see the curl in main/config.h, or nile.tronscan.org).
+ *
+ * Testnet only, and it will stay that way: Circle stopped minting USDC on Tron in
+ * February 2024 and closed redemptions in February 2025, so there is no mainnet
+ * asset for this selection to graduate to. It exists because the TRC-20 path is
+ * generic and somebody asked to charge in it on Nile. */
+#define TRON_ADDR_USDC    "<USDC_TRC20_CONTRACT_BASE58>"
 
 /* Ceiling, in sun, on the TRX a TRC-20 call may burn when the card's account
  * has no energy staked. A transfer to an address that has never held the token
@@ -163,5 +224,14 @@
 #define MAX_PRIORITY_FEE  20000000000ULL   /* 20 Gwei — tip to the validator   */
 #define MAX_FEE           80000000000ULL   /* 80 Gwei — absolute cap           */
 #define GAS_LIMIT_ERC20   100000ULL
+
+/* Gas for a plain ETH / POL transfer to an account: exactly 21000, because no
+ * contract runs. Optional — the firmware defaults to this if it is not set.
+ *
+ * Note the ceiling on those two assets: they are 18-decimal and the signed value
+ * is a uint64 of wei, so a single sale stops at 18.446744 ETH or POL. The keypad
+ * enforces it on the way in; the payment path re-checks it. The 6-decimal
+ * stablecoins are unaffected and keep the full 99999.99 range. */
+#define GAS_LIMIT_NATIVE  21000ULL
 
 #endif // CONFIG_H

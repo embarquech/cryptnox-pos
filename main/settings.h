@@ -23,17 +23,91 @@
 extern "C" {
 #endif
 
-/** @brief Which chain (and therefore which asset) the terminal charges in. */
+/**
+ * @brief Which chain (and therefore which asset) the terminal charges in.
+ *
+ * The numbers are persisted in NVS, so existing ones never move — a terminal
+ * that stored 2 before this list grew must still come up charging in USDT on
+ * Tron. New assets are appended, and settings.cpp rejects anything at or past
+ * @ref POS_CHAIN__COUNT, so a downgrade falls back to the default rather than
+ * charging in whatever an unknown number would have meant.
+ */
 typedef enum {
     POS_CHAIN_ETH_SEPOLIA = 0,  /**< USDC on Ethereum Sepolia (the default). */
     POS_CHAIN_TRON_NILE   = 1,  /**< Native TRX on the Tron Nile testnet.    */
     POS_CHAIN_TRON_USDT   = 2,  /**< USDT (TRC-20) on Tron Nile.             */
-    /* No USDC on Tron: Circle stopped minting it in Feb 2024 and closed
-     * redemptions a year later, so there is no mainnet asset to graduate to.
-     * The TRC-20 code path is generic — re-add an enumerator here and a
-     * trc20_asset_t in main.cpp if another token is ever wanted. */
+    POS_CHAIN_ETH_USDT    = 3,  /**< USDT (ERC-20) on Ethereum Sepolia.      */
+    POS_CHAIN_POLY_USDC   = 4,  /**< USDC (ERC-20) on Polygon Amoy.          */
+    POS_CHAIN_POLY_USDT   = 5,  /**< USDT (ERC-20) on Polygon Amoy.          */
+    POS_CHAIN_TRON_USDC   = 6,  /**< USDC (TRC-20) on Tron Nile.             */
+    /* USDC on Tron is a testnet-only selection: Circle stopped minting it on
+     * Tron in Feb 2024 and closed redemptions a year later, so there is no
+     * mainnet asset for it to graduate to. The TRC-20 path is generic, so it
+     * costs a contract in config.h and nothing else. */
+    POS_CHAIN_ETH_NATIVE  = 7,  /**< Native ETH on Ethereum Sepolia.         */
+    POS_CHAIN_POLY_NATIVE = 8,  /**< Native POL on Polygon Amoy.             */
     POS_CHAIN__COUNT            /**< Sentinel — keep last, not a selection.  */
 } pos_chain_t;
+
+/**
+ * @brief true for the Tron chains; every other selection is on an EVM network.
+ *
+ * Here rather than once per file. While Sepolia was the only Ethereum chain,
+ * "not Sepolia" meant Tron, and main.cpp and ui.cpp each said so in their own
+ * one-liner. Polygon made that wrong in two places at once, which is exactly the
+ * shape of bug that sends an Ethereum payment down the Tron path — so the
+ * question is asked in one place and tested in tests/units/test_chain.cpp.
+ */
+static inline bool pos_chain_is_tron(pos_chain_t c) {
+    return (c == POS_CHAIN_TRON_NILE) ||
+           (c == POS_CHAIN_TRON_USDT) ||
+           (c == POS_CHAIN_TRON_USDC);
+}
+
+/**
+ * @brief true for the Polygon chains.
+ *
+ * Polygon is EVM, so it shares the whole Ethereum signing path — the RLP, the
+ * derivation path, the payout address, the card. What differs is the endpoint,
+ * the chain id in the signed transaction and the token contract, which is why
+ * this is a question of its own rather than a second meaning for "not Tron".
+ */
+static inline bool pos_chain_is_polygon(pos_chain_t c) {
+    return (c == POS_CHAIN_POLY_USDC) ||
+           (c == POS_CHAIN_POLY_USDT) ||
+           (c == POS_CHAIN_POLY_NATIVE);
+}
+
+/**
+ * @brief true for the EVM networks' own coins — ETH and POL — not their tokens.
+ *
+ * A different transaction, not a different network: no contract is called, the
+ * recipient goes in @c to instead of the token's address, the amount goes in
+ * @c value instead of the calldata, and 21000 gas is enough. It is also the only
+ * pair of selections carrying 18 decimals rather than 6, which is why
+ * @ref POS_AMOUNT_UNITS_MAX_NATIVE exists.
+ *
+ * Native TRX is deliberately not in here: Tron is a wholly separate signing
+ * path, and asking "is this a native coin" on the Ethereum side of the fork is
+ * the only place the question means anything.
+ */
+static inline bool pos_chain_is_native_evm(pos_chain_t c) {
+    return (c == POS_CHAIN_ETH_NATIVE) || (c == POS_CHAIN_POLY_NATIVE);
+}
+
+/**
+ * @brief Ceiling on a native-coin sale, in the keypad's 6-decimal base units.
+ *
+ * ETH and POL are 18-decimal, so wei = units * 10^12, and eth_tx_t::eth_value is
+ * a uint64 — 2^64-1 wei is 18.446744073709551615 of the coin. Past that the
+ * multiply wraps and the card would sign a value nobody entered, so the keypad
+ * stops at 18.44 and the payment path re-checks it.
+ *
+ * ponytail: uint64 wei, 18.44 ETH/POL a sale. Widening means carrying
+ * eth_value as a 32-byte big-endian buffer through eth_rlp and its two
+ * encoders — worth it only if somebody actually needs to charge more.
+ */
+#define POS_AMOUNT_UNITS_MAX_NATIVE  18446744ULL
 
 /** @brief Selected chain, or @ref POS_CHAIN_ETH_SEPOLIA if never set. */
 pos_chain_t settings_get_chain(void);
@@ -180,9 +254,13 @@ bool settings_set_payout(bool tron, const char *addr);
  * reason: the contract decides which asset moves, so a half-written string in NVS
  * must not be able to point the terminal at a different token.
  *
- * There is one contract per network — USDC on Ethereum, USDT on Tron. Native TRX
- * has none, and asking for one on a chain that has no token is the caller's
- * mistake; @p tron selects the network, not the chain.
+ * There is one settable contract per network — USDC on Ethereum, USDT on Tron.
+ * Native TRX has none, and asking for one on a chain that has no token is the
+ * caller's mistake; @p tron selects the network, not the chain.
+ *
+ * The other assets (USDT on Ethereum, both on Polygon, USDC on Tron) are named
+ * by config.h alone and have no NVS slot — see erc20_token_t in main.cpp for
+ * why that is deliberate rather than an omission.
  *
  * @param[in]  tron true for the Tron TRC-20 contract, false for the ERC-20 one.
  * @param[out] out  Buffer, >= @ref SETTINGS_PAYOUT_MAX. Ethereum contracts are
