@@ -17,6 +17,7 @@
 
 #include <atomic>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "freertos/FreeRTOS.h"
@@ -75,6 +76,13 @@ static const char AP_PASS_ALPHABET[] = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 /* Keys nothing writes any more; erased on sight. See ap_pass_load(). */
 #define K_TLS_CRT     "tls_crt"
 #define K_TLS_KEY     "tls_key"
+
+/* Gas-cap bounds, in Gwei. The numbers the panel's +/- steppers used to enforce
+ * before the fees moved to this page — kept identical so a value stored here is
+ * one the terminal has always been able to hold. The page's own min/max attributes
+ * say the same thing to the browser; these are what actually decide. */
+#define PROV_FEE_MIN_GWEI  1UL
+#define PROV_FEE_MAX_GWEI  500UL
 
 /* Read this much of an upload at a time. 4 KB is a flash page-erase unit and one
  * lwIP window's worth, and it lives in .bss rather than on the httpd task's
@@ -666,6 +674,24 @@ static const char *const PAGE_HTML =
 "<input id=in_ctt placeholder='T...' autocapitalize=off autocomplete=off>"
 "<button class=alt id=go_ctt>Propose TRC-20 contract</button></section>"
 
+/* Gas caps. They used to be two +/- steppers on the terminal's Tx tab; they live
+ * here because every other stored setting does, and a fee typed on a keyboard beats
+ * forty taps on a resistive panel. Not proposed like an address either: a cap
+ * cannot send money anywhere, so the worst a wrong one does is price a sale out of
+ * a block, which the terminal reports the moment it tries. Tron is absent on
+ * purpose — a transfer there is paid in bandwidth and the token's energy cap is
+ * compile-time, so there is nothing to set. */
+"<section id=s_fee hidden><h2>Gas fees</h2>"
+"<p>What the terminal is willing to pay per unit of gas on Ethereum and Polygon, "
+"in Gwei. The tip is capped by the max fee, and applies to the next sale.</p>"
+"<label for=in_fmax>Max fee &mdash; currently "
+"<code id=cur_fmax>&hellip;</code></label>"
+"<input id=in_fmax type=number min=1 max=500 step=1 inputmode=numeric>"
+"<label for=in_fprio>Priority fee (tip) &mdash; currently "
+"<code id=cur_fprio>&hellip;</code></label>"
+"<input id=in_fprio type=number min=1 max=500 step=1 inputmode=numeric>"
+"<button class=alt id=go_fee>Save gas fees</button></section>"
+
 /* One section, two ways in. Reading a card and typing an address answer the same
  * question — where do takings go — so they were two cards headed "Card addresses"
  * and "Send to", which made the operator choose between two settings before
@@ -770,7 +796,8 @@ static const char *const PAGE_JS =
  * by construction rather than by adding `&&!fin` to every show() line — and
  * so a section added later without a thought for the end of the wizard is hidden
  * there rather than left on screen addressed to a terminal that has gone. */
-"var SEC=['s_auth','waiting','s_pend','s_addr','s_ct','s_wifi','s_fw','nav'];"
+"var SEC=['s_auth','waiting','s_pend','s_addr','s_ct','s_fee','s_wifi','s_fw',"
+"'nav'];"
 /* Three kinds, because "that is not a valid Ethereum address" and "it is stored"
  * in the same grey box is how a refusal gets read as a success. 'err' is the one
  * that matters, so it is what a bare say() rejection handler produces: every
@@ -807,6 +834,7 @@ static const char *const PAGE_JS =
  * everything at once — it is a settings page, not a sequence. */
 "show('s_addr',a&&!p&&(w?st=='addr':true));"
 "show('s_ct',  a&&!p&&!w);"
+"show('s_fee', a&&!p&&!w);"
 "show('s_wifi',a&&!p&&(w?st=='wifi':true));"
 "show('s_fw',  a&&!p&&!w);"
 /* Continue exists to leave the address step. There is nothing after the Wi-Fi one
@@ -820,6 +848,12 @@ static const char *const PAGE_JS =
 "$('cur_trx').textContent=S.pay_trx||'not set';"
 "$('cur_cte').textContent=S.ct_eth||'not set';"
 "$('cur_ctt').textContent=S.ct_trx||'not set';"
+"$('cur_fmax').textContent=S.fee_max;"
+"$('cur_fprio').textContent=S.fee_prio;"
+/* Seeded, not overwritten: the poll runs every couple of seconds, and writing
+ * these every tick would take a digit out from under whoever is typing. */
+"if(!$('in_fmax').value)$('in_fmax').value=S.fee_max;"
+"if(!$('in_fprio').value)$('in_fprio').value=S.fee_prio;"
 "$('cur_ssid').textContent=S.ssid||'not set';"
 "$('pend').textContent=S.pending||'';"
 "if(S.scan_gen!==G){G=S.scan_gen;scan()}}}"
@@ -875,6 +909,10 @@ static const char *const PAGE_JS =
 "$('go_trx').onclick=function(){propose('/api/payout','tron','in_trx')};"
 "$('go_cte').onclick=function(){propose('/api/contract','eth','in_cte')};"
 "$('go_ctt').onclick=function(){propose('/api/contract','tron','in_ctt')};"
+
+"$('go_fee').onclick=function(){"
+"post('/api/fees',enc({max:$('in_fmax').value,prio:$('in_fprio').value}))"
+".then(good,say)};"
 
 "$('eye').onclick=function(){var p=$('wpass'),r=(p.type=='password');"
 "p.type=r?'text':'password';this.setAttribute('aria-pressed',r);"
@@ -1025,11 +1063,14 @@ static esp_err_t state_get(httpd_req_t *req)
                        "\"pay_eth\":\"%s\",\"pay_trx\":\"%s\","
                        "\"ct_eth\":\"%s\",\"ct_trx\":\"%s\","
                        "\"ssid\":\"%s\",\"pending\":\"%s\",\"note\":\"%s\","
+                       "\"fee_max\":%u,\"fee_prio\":%u,"
                        "\"scan_gen\":%u,\"win\":%u}",
                        (s_mode == PROV_MODE_WIZARD) ? "wizard" : "admin",
                        step_name(s_step), ota_running_version(),
                        pay_eth, pay_trx, ct_eth, ct_trx, ssid_json,
                        ask_label(ask), s_note,
+                       static_cast<unsigned>(settings_get_max_fee_gwei()),
+                       static_cast<unsigned>(settings_get_priority_fee_gwei()),
                        static_cast<unsigned>(s_scan_gen.load()),
                        prov_window_left_min());
     }
@@ -1172,6 +1213,60 @@ static esp_err_t value_post(httpd_req_t *req, bool contract)
 
 static esp_err_t payout_post(httpd_req_t *req)   { return value_post(req, false); }
 static esp_err_t contract_post(httpd_req_t *req) { return value_post(req, true);  }
+
+/**
+ * @brief Store the EIP-1559 gas caps (Gwei).
+ *
+ * The one setting this page writes straight through instead of proposing it on the
+ * panel. An address decides *who* gets the money and so has to be read back by a
+ * human; a fee cap only decides how much gas the terminal will pay for its own
+ * transaction, and a wrong one is self-announcing — the sale is priced out of a
+ * block and the panel says so. Bounds are the ones the panel's steppers used to
+ * enforce, so a stored value cannot become something the old UI could not express.
+ */
+static esp_err_t fees_post(httpd_req_t *req)
+{
+    esp_err_t rc;
+    if (!gate(req, &rc)) { return rc; }
+
+    char body[96] = { 0 };
+    if (!read_body(req, body, sizeof(body))) {
+        return reply(req, "400 Bad Request", "Bad request.");
+    }
+
+    char max_s[12] = { 0 };
+    char prio_s[12] = { 0 };
+    (void)form_field(body, "max", max_s, sizeof(max_s));
+    (void)form_field(body, "prio", prio_s, sizeof(prio_s));
+
+    /* strtoul on its own answers 0 for "abc", which would then be refused as
+     * out of range anyway — but check the terminator too, so "20x" is a typo
+     * that gets reported rather than silently stored as 20. */
+    char    *end_max  = NULL;
+    char    *end_prio = NULL;
+    const unsigned long max_gwei  = strtoul(max_s,  &end_max,  10);
+    const unsigned long prio_gwei = strtoul(prio_s, &end_prio, 10);
+    if ((max_s[0] == '\0') || (prio_s[0] == '\0') ||
+        (*end_max != '\0') || (*end_prio != '\0')) {
+        return reply(req, "400 Bad Request", "Both fees have to be whole numbers "
+                                             "of Gwei.");
+    }
+    if ((max_gwei < PROV_FEE_MIN_GWEI) || (max_gwei > PROV_FEE_MAX_GWEI) ||
+        (prio_gwei < PROV_FEE_MIN_GWEI) || (prio_gwei > PROV_FEE_MAX_GWEI)) {
+        return reply(req, "400 Bad Request",
+                     "Each fee has to be between 1 and 500 Gwei.");
+    }
+    if (prio_gwei > max_gwei) {
+        return reply(req, "400 Bad Request",
+                     "The tip cannot be higher than the max fee.");
+    }
+
+    settings_set_max_fee_gwei(static_cast<uint32_t>(max_gwei));
+    settings_set_priority_fee_gwei(static_cast<uint32_t>(prio_gwei));
+    ESP_LOGI(TAG, "gas caps set from the config page: max %lu, tip %lu Gwei",
+             max_gwei, prio_gwei);
+    return ok(req, "Gas fees stored. They apply to the next sale.");
+}
 
 /** @brief The browser asks the terminal to read the addresses off a card. */
 static esp_err_t card_post(httpd_req_t *req)
@@ -1411,6 +1506,7 @@ static void register_handlers(void)
         { "/api/auth",     HTTP_POST, auth_post,     NULL },
         { "/api/payout",   HTTP_POST, payout_post,   NULL },
         { "/api/contract", HTTP_POST, contract_post, NULL },
+        { "/api/fees",     HTTP_POST, fees_post,     NULL },
         { "/api/card",     HTTP_POST, card_post,     NULL },
         { "/api/wifi",     HTTP_POST, wifi_post,     NULL },
         { "/api/rescan",   HTTP_POST, rescan_post,   NULL },

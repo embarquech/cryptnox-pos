@@ -165,7 +165,7 @@ const page = sandbox.__out;
  * new section added to the page with no case here fails every scenario at once,
  * rather than silently defaulting to visible.
  */
-const SECTIONS = ['s_auth', 's_pend', 's_addr', 's_ct', 's_wifi',
+const SECTIONS = ['s_auth', 's_pend', 's_addr', 's_ct', 's_fee', 's_wifi',
   's_fw', 's_final', 'nav'];
 
 const CASES = [
@@ -222,8 +222,9 @@ const CASES = [
       mode: 'admin', step: 'admin', authed: true,
       pay_eth: '0xAAA', pay_trx: 'TBBB', ct_eth: '0xCCC', ct_trx: 'TDDD',
       ssid: 'My Cafe', version: '1.0.1', scan_gen: 0,
+      fee_max: 40, fee_prio: 3,
     },
-    on: ['s_addr', 's_ct', 's_wifi', 's_fw'],
+    on: ['s_addr', 's_ct', 's_fee', 's_wifi', 's_fw'],
     also: () => {
       assert.strictEqual(els.get('cur_eth').textContent, '0xAAA');
       assert.strictEqual(els.get('cur_trx').textContent, 'TBBB');
@@ -231,6 +232,13 @@ const CASES = [
       assert.strictEqual(els.get('cur_ctt').textContent, 'TDDD');
       assert.strictEqual(els.get('cur_ssid').textContent, 'My Cafe');
       assert.strictEqual(els.get('ver').textContent, '1.0.1');
+      /* The gas caps are the settings the panel no longer edits, so this page is
+       * the only place they can be changed — and a field that never shows the
+       * stored number is one an operator overwrites blind. */
+      assert.strictEqual(els.get('cur_fmax').textContent, 40);
+      assert.strictEqual(els.get('cur_fprio').textContent, 3);
+      assert.strictEqual(els.get('in_fmax').value, 40, 'the max fee should be seeded');
+      assert.strictEqual(els.get('in_fprio').value, 3, 'the tip should be seeded');
     },
   },
   {
@@ -386,7 +394,7 @@ const flush = async () => { for (let i = 0; i < 20; i++) { await new Promise(r =
     assert.strictEqual(page.getS().authed, true,
       'the page never saw the grant — is the token being sent on /api/state?');
     assert.strictEqual(els.get('s_auth').hidden, true, 'auth section should be gone');
-    for (const id of ['s_addr', 's_ct', 's_wifi', 's_fw']) {
+    for (const id of ['s_addr', 's_ct', 's_fee', 's_wifi', 's_fw']) {
       assert.strictEqual(els.get(id).hidden, false, `${id} should be visible in admin mode`);
     }
     assert.strictEqual(els.get('cur_ssid').textContent, 'Lucky_2.4G');

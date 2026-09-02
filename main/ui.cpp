@@ -351,13 +351,6 @@ static const char *s_addr_dest = NULL;
 static lv_obj_t *s_reset_btn = NULL;
 static lv_obj_t *s_close_btn = NULL;
 
-/* Tx-tab gas fees (Gwei). Loaded from settings on build, edited via +/- steppers,
- * persisted on close. */
-static lv_obj_t *s_maxfee_lbl  = NULL;
-static lv_obj_t *s_prio_lbl    = NULL;
-static uint32_t  s_maxfee_gwei = 0U;
-static uint32_t  s_prio_gwei   = 0U;
-
 /******************************************************************
  * 6. Button actions
  ******************************************************************/
@@ -1162,17 +1155,15 @@ static void clear_screen(void) {
     s_admin_note_lbl = NULL;
     s_reset_btn    = NULL;
     s_close_btn    = NULL;
-    s_maxfee_lbl   = NULL;
-    s_prio_lbl     = NULL;
 }
 
 /******************************************************************
  * 7b. Settings — full-screen page (burger menu)
  ******************************************************************/
+/* Brightness only. It is the one setting this page still changes — the fee caps
+ * moved to the config page, which writes them itself. */
 static void settings_persist(void) {
     settings_set_brightness(s_brightness);
-    settings_set_max_fee_gwei(s_maxfee_gwei);
-    settings_set_priority_fee_gwei(s_prio_gwei);
 }
 
 static void brightness_event_cb(lv_event_t *e) {
@@ -1215,87 +1206,6 @@ static void tab_change_cb(lv_event_t *e) {
     if (sel >= SETTINGS_TAB_COUNT) { return; }
     s_settings_tab = sel;
     settings_bottom_bar(sel);
-}
-
-/* Gas-fee stepper bounds (Gwei). */
-#define FEE_MIN_GWEI   1U
-#define FEE_MAX_GWEI   500U
-#define FEE_STEP_GWEI  5U
-
-static void fee_update_labels(void) {
-    char b[12];
-    if (s_maxfee_lbl != NULL) {
-        snprintf(b, sizeof(b), "%u", static_cast<unsigned>(s_maxfee_gwei));
-        lv_label_set_text(s_maxfee_lbl, b);
-    }
-    if (s_prio_lbl != NULL) {
-        snprintf(b, sizeof(b), "%u", static_cast<unsigned>(s_prio_gwei));
-        lv_label_set_text(s_prio_lbl, b);
-    }
-}
-
-/* user_data encodes which fee and direction: 0 max-, 1 max+, 2 prio-, 3 prio+. */
-static void fee_step_cb(lv_event_t *e) {
-    intptr_t code = reinterpret_cast<intptr_t>(lv_event_get_user_data(e));
-    uint32_t *v   = (code < 2) ? &s_maxfee_gwei : &s_prio_gwei;
-    bool inc      = (code & 1) != 0;
-
-    if (inc) {
-        *v = (*v + FEE_STEP_GWEI > FEE_MAX_GWEI) ? FEE_MAX_GWEI : *v + FEE_STEP_GWEI;
-    } else {
-        *v = (*v < FEE_MIN_GWEI + FEE_STEP_GWEI) ? FEE_MIN_GWEI : *v - FEE_STEP_GWEI;
-    }
-    /* The tip can never exceed the cap. */
-    if (s_prio_gwei > s_maxfee_gwei) { s_prio_gwei = s_maxfee_gwei; }
-    fee_update_labels();
-}
-
-/* One "caption  [-] value [+]" row in the Tx tab; returns the value label. */
-static lv_obj_t *build_fee_row(lv_obj_t *parent, const char *cap, lv_coord_t y,
-                               intptr_t dec_code, intptr_t inc_code) {
-    make_label(parent, cap, COL_DIM, &lv_font_montserrat_14,
-               LV_ALIGN_TOP_LEFT, 0, y);
-
-    lv_obj_t *minus = lv_btn_create(parent);
-    lv_obj_set_size(minus, 40, 34);
-    lv_obj_align(minus, LV_ALIGN_TOP_LEFT, 0, y + 20);
-    lv_obj_set_style_bg_color(minus, COL_SURFACE, LV_PART_MAIN);
-    lv_obj_set_style_bg_grad_dir(minus, LV_GRAD_DIR_NONE, LV_PART_MAIN);
-    lv_obj_set_style_radius(minus, 8, LV_PART_MAIN);
-    lv_obj_set_style_border_width(minus, 1, LV_PART_MAIN);
-    lv_obj_set_style_border_color(minus, COL_BORDER, LV_PART_MAIN);
-    lv_obj_set_style_shadow_width(minus, 0, LV_PART_MAIN);
-    lv_obj_add_event_cb(minus, fee_step_cb, LV_EVENT_CLICKED,
-                        reinterpret_cast<void *>(dec_code));
-    lv_obj_t *ml = lv_label_create(minus);
-    lv_label_set_text(ml, "-");
-    lv_obj_set_style_text_color(ml, COL_TEXT, LV_PART_MAIN);
-    lv_obj_set_style_text_font(ml, &lv_font_montserrat_20, LV_PART_MAIN);
-    lv_obj_center(ml);
-
-    lv_obj_t *val = make_label(parent, "0", COL_TEXT, &lv_font_montserrat_20,
-                               LV_ALIGN_TOP_LEFT, 52, y + 24);
-    lv_obj_set_width(val, 78);
-    lv_obj_set_style_text_align(val, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-
-    lv_obj_t *plus = lv_btn_create(parent);
-    lv_obj_set_size(plus, 40, 34);
-    lv_obj_align(plus, LV_ALIGN_TOP_LEFT, 140, y + 20);
-    lv_obj_set_style_bg_color(plus, COL_SURFACE, LV_PART_MAIN);
-    lv_obj_set_style_bg_grad_dir(plus, LV_GRAD_DIR_NONE, LV_PART_MAIN);
-    lv_obj_set_style_radius(plus, 8, LV_PART_MAIN);
-    lv_obj_set_style_border_width(plus, 1, LV_PART_MAIN);
-    lv_obj_set_style_border_color(plus, COL_BORDER, LV_PART_MAIN);
-    lv_obj_set_style_shadow_width(plus, 0, LV_PART_MAIN);
-    lv_obj_add_event_cb(plus, fee_step_cb, LV_EVENT_CLICKED,
-                        reinterpret_cast<void *>(inc_code));
-    lv_obj_t *pl = lv_label_create(plus);
-    lv_label_set_text(pl, "+");
-    lv_obj_set_style_text_color(pl, COL_TEXT, LV_PART_MAIN);
-    lv_obj_set_style_text_font(pl, &lv_font_montserrat_20, LV_PART_MAIN);
-    lv_obj_center(pl);
-
-    return val;
 }
 
 static void build_settings(void) {
@@ -1411,10 +1321,15 @@ static void build_settings(void) {
     lv_obj_align(make_glyph_disc(cpill, LV_SYMBOL_SETTINGS, COL_ACCENT, COIN_SZ),
                  LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
 
-    /* ── Transaction tab: which asset, what it will call, and where the funds go.
-     * The asset can be switched from here as well as from the amount screen: the
-     * operator needs it there during a shift, and an administrator setting the
-     * terminal up expects to find it with the other transaction settings. ── */
+    /* ── Transaction tab: which asset, what it will call, where the funds go and
+     * what gas it will pay.
+     *
+     * Everything here is read-only *except* the asset selector at the top. The
+     * stored settings — contract, payout address, fee caps — are proposed from the
+     * config page in AP mode and accepted on this panel, because a resistive screen
+     * is the wrong place to retype an address. The asset is a different kind of
+     * thing: which one a sale is charged in is a shift-time choice made with a
+     * customer waiting, so it stays a tap away both here and on the amount row. ── */
     const bool tron = chain_is_tron();
     /* Ticker over network, not "Asset" over "USDC on Ethereum Sepolia": that line
      * measured ~178px against make_pill's 140px cap, so the row that says which
@@ -1459,45 +1374,42 @@ static void build_settings(void) {
         lv_obj_align_to(w, a_dest, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 4);
     }
 
-    /* Load the fees whether or not the steppers are built — settings_persist()
-     * writes these back on Close, and zeroes would break the Ethereum path. */
-    s_maxfee_gwei = settings_get_max_fee_gwei();
-    s_prio_gwei   = settings_get_priority_fee_gwei();
-    if (s_prio_gwei > s_maxfee_gwei) { s_prio_gwei = s_maxfee_gwei; }
-    if (tron) {
-        /* Tron pays for a transfer in bandwidth and energy, not in a fee the
-         * operator sets — the TRC-20 fee cap is compile-time (config.h), so
-         * there is still nothing to tune here. */
-        lv_obj_t *n = make_label(t_tx,
-                                 (settings_get_chain() == POS_CHAIN_TRON_NILE)
-                                 ? "TRX transfers are paid in bandwidth - "
-                                   "no gas fee to set."
-                                 : "Token transfers burn the card's energy, "
-                                   "capped in config.h - no gas fee to set.",
-                                 COL_DIM, &lv_font_montserrat_14,
-                                 LV_ALIGN_TOP_LEFT, 0, 200);
-        lv_label_set_long_mode(n, LV_LABEL_LONG_WRAP);
-        lv_obj_set_width(n, 200);
-    } else {
-        /* Pushed down by the asset row added above; the tab scrolls, so the only
-         * thing these offsets have to do is not overlap. */
-        s_maxfee_lbl = build_fee_row(t_tx, "Max fee (Gwei)",      196, 0, 1);
-        s_prio_lbl   = build_fee_row(t_tx, "Priority fee (Gwei)", 264, 2, 3);
-        fee_update_labels();
-        /* Say it here rather than let the numbers lie: these two are shared with
-         * Ethereum, and on Polygon the firmware lifts the tip to its floor
-         * (config.h) because Amoy drops anything under ~25 Gwei. Without this row
-         * the tab shows 20 while the signed transaction carries 30. */
-        if (pos_chain_is_polygon(settings_get_chain())) {
-            lv_obj_t *n = make_label(t_tx,
-                                     "On Polygon the tip is raised to at least "
-                                     "the config.h floor (30 Gwei).",
-                                     COL_DIM, &lv_font_montserrat_14,
-                                     LV_ALIGN_TOP_LEFT, 0, 332);
-            lv_label_set_long_mode(n, LV_LABEL_LONG_WRAP);
-            lv_obj_set_width(n, 200);
-        }
+    /* The gas the terminal is willing to pay, reported as two more read-only rows.
+     * Tron has no such setting at all — a transfer there is paid in bandwidth and
+     * the token's energy cap is compile-time — so on Tron the rows are simply not
+     * there, rather than a paragraph explaining an absent control. */
+    if (!tron) {
+        char fee[16];
+        make_label(t_tx, "Max fee (Gwei)", COL_DIM, &lv_font_montserrat_14,
+                   LV_ALIGN_TOP_LEFT, 0, 196);
+        snprintf(fee, sizeof(fee), "%u",
+                 static_cast<unsigned>(settings_get_max_fee_gwei()));
+        make_label(t_tx, fee, COL_TEXT, &lv_font_montserrat_14,
+                   LV_ALIGN_TOP_LEFT, 0, 216);
+
+        make_label(t_tx, "Priority fee (Gwei)", COL_DIM, &lv_font_montserrat_14,
+                   LV_ALIGN_TOP_LEFT, 0, 244);
+        snprintf(fee, sizeof(fee), "%u",
+                 static_cast<unsigned>(settings_get_priority_fee_gwei()));
+        make_label(t_tx, fee, COL_TEXT, &lv_font_montserrat_14,
+                   LV_ALIGN_TOP_LEFT, 0, 264);
     }
+
+    /* The way out of a read-only tab. Without it the fees above are two numbers an
+     * operator can see and has no way to reach — "set it from the Configure page"
+     * is only an instruction if the page is one tap from the rows it is about.
+     * Same action as the Wi-Fi tab's row and the About tab's Update: one config
+     * page, reachable from wherever somebody went looking for the setting.
+     *
+     * The subtitle names the fees on the chains that have them, because that is
+     * what this row was added for; on Tron there are none, so it falls back to
+     * saying where it goes. Both sit inside make_pill's 140px subtitle cap — "Set
+     * fees in a browser" does not, and arrived dot-elided. */
+    lv_obj_t *tpill = make_pill(t_tx, "Configure",
+                                tron ? "Open in a browser" : "Fees in a browser",
+                                TAB_W, tron ? 200 : 300, ACT_PORTAL);
+    lv_obj_align(make_glyph_disc(tpill, LV_SYMBOL_SETTINGS, COL_ACCENT, COIN_SZ),
+                 LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
 
     /* ── About tab: small C logo, name, version, info ── */
     lv_obj_t *blogo = lv_img_create(t_about);
@@ -1541,10 +1453,12 @@ static void build_settings(void) {
     lv_obj_align(make_glyph_disc(upill, LV_SYMBOL_DOWNLOAD, COL_ACCENT, COIN_SZ),
                  LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
 
+    /* Deliberately says nothing about which assets or which networks. That list
+     * changes with the firmware and this label cannot be edited from anywhere, so
+     * a terminal a year from now would be reading out a stale one — and the Tx tab
+     * already answers the question from the live settings. */
     lv_obj_t *about = make_label(t_about,
-                                 "ETH, POL, TRX, USDC and USDT\n"
-                                 "terminal on Ethereum Sepolia,\n"
-                                 "Polygon Amoy and Tron Nile,\n"
+                                 "Crypto payment terminal\n"
                                  "for Cryptnox cards\n\n"
                                  "Based on cryptnox-sdk-esp32 1.0.0\n"
                                  "(c) Cryptnox 2026 - Educational use only\n\n"

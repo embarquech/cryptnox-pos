@@ -206,6 +206,31 @@ looking entirely normal. Three things changed:
 *resolvable* — the `config.h` fallback still supplies the value, it just no longer
 counts as configured.
 
+## Every setting is changed here, not on the panel
+
+The panel is a 2.8" resistive screen behind an admin code; this page is a keyboard.
+So the terminal's own settings screen **reports** and does not edit — brightness is
+the single exception, because it is a property of the screen you are looking at and
+nothing else can judge it. The Tx tab shows the asset, the token contract, the
+payout address and the two gas caps as read-only rows; the gas caps were `+`/`-`
+steppers there until they moved to this page.
+
+Three panel controls are deliberately *not* settings, and stay where they are:
+
+* the asset selector — on the amount row and at the top of the Tx tab. Which asset
+  a sale is charged in is a shift-time choice made with a customer waiting, not
+  something an administrator sets once;
+* the factory reset on the About tab — the recovery path, which has to work when
+  this page cannot be reached at all;
+* the Wi-Fi picker the terminal raises by itself when it cannot re-join, for the
+  same reason.
+
+A gas cap is stored straight from this page rather than proposed on the panel like
+an address: an address decides *who* gets the money and has to be read back by a
+human, while a cap only decides how much gas the terminal pays for its own
+transaction — and a wrong one announces itself by pricing the next sale out of a
+block.
+
 ## Endpoints
 
 Everything except `GET /` and `GET /api/state` requires the session token.
@@ -213,11 +238,12 @@ Everything except `GET /` and `GET /api/state` requires the session token.
 | | |
 |---|---|
 | `GET /` | the page — HTML then JS, two strings in `provision.cpp` |
-| `GET /api/state` | mode, step, `authed`, version; and once authorised the addresses, contracts, SSID, pending value, note, scan generation |
+| `GET /api/state` | mode, step, `authed`, version; and once authorised the addresses, contracts, SSID, pending value, note, gas caps, scan generation |
 | `GET /api/scan` | the device's last Wi-Fi scan |
 | `POST /api/auth` | ask to be authorised → returns the token; the panel decides (except the Wi-Fi-only wizard, which grants it) |
 | `POST /api/payout` | `net=eth\|tron`, `addr=…` → proposed, panel confirms |
 | `POST /api/contract` | same shape, for the ERC-20 / TRC-20 contract |
+| `POST /api/fees` | `max=…`, `prio=…` in Gwei → stored directly, 1&ndash;500 each and the tip no higher than the max |
 | `POST /api/card` | read the payout addresses off a Cryptnox card |
 | `POST /api/wifi` | `ssid=…`, `pass=…` |
 | `POST /api/rescan` | ask the device to scan again |
