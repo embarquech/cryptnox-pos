@@ -921,14 +921,19 @@ static const char *const PAGE_JS =
  * version is accepted on its own screen. A confirm button in front of that would
  * guard a transfer, not an installation. */
 "$('up').onclick=function(){$('file').click()};"
+/* The poll stops for the transfer. Every tick is another connection, the terminal
+ * has a handful of sockets, and the upload is the one request that must not be the
+ * casualty when they run out (see prov_start). Nothing is lost by pausing: the
+ * progress line comes from the XHR itself, and the poll resumes in time to show
+ * whatever the panel decides. */
 "$('file').onchange=function(){var el=this,f=el.files[0];if(!f)return;"
-"$('fwfile').textContent=f.name;$('up').disabled=true;"
+"$('fwfile').textContent=f.name;$('up').disabled=true;clearInterval(PT);"
 "f.arrayBuffer().then(send).then(good,function(e){say('Not installed: '+e)})"
 /* Clear it, or picking the same file again is not a change event and the button
  * looks broken on a retry. */
-".then(function(){$('up').disabled=false;el.value=''})};"
+".then(function(){$('up').disabled=false;el.value='';PT=setInterval(poll,1500)})};"
 
-"setInterval(poll,1500);poll();"
+"var PT=setInterval(poll,1500);poll();"
 "</script></body></html>";
 
 static esp_err_t page_get(httpd_req_t *req)
@@ -1263,6 +1268,15 @@ static esp_err_t ota_post(httpd_req_t *req)
 
     const char *err = "";
     if (!ota_begin(req->content_len, &err)) {
+        /* One of these refusals is a dead end unless the panel is asked again: an
+         * image already staged is only reachable through the card that
+         * UI_EVENT_OTA_STAGED raised, staging lives in RAM, and an operator who
+         * dismissed that card without deciding has no way back to it. So raise it
+         * again — then "accept or discard it there first" is an instruction the
+         * operator can actually follow. */
+        if (ota_staged(NULL, 0U, NULL) && (s_cb != NULL)) {
+            s_cb(UI_EVENT_OTA_STAGED, 0);
+        }
         return reply(req, ota_receiving() ? "409 Conflict" : "400 Bad Request", err);
     }
 
@@ -1303,7 +1317,17 @@ static esp_err_t ota_post(httpd_req_t *req)
     }
 
     char ver[48] = "?";
-    if (!ota_end(ver, sizeof(ver), &err)) {
+    const bool ended = ota_end(ver, sizeof(ver), &err);
+
+    /* The one measurement that matters on this task: ota_end() has just run the
+     * signature verification, which is this stack's high-water mark by a wide
+     * margin (it is what used to overflow the default 4 KB). Logged either way —
+     * a rejection verifies too. If this number ever gets close to zero, raise
+     * cfg.stack_size in prov_start() rather than finding out from a panic. */
+    ESP_LOGI(TAG, "httpd stack: %u bytes still free after verification",
+             static_cast<unsigned>(uxTaskGetStackHighWaterMark(NULL)));
+
+    if (!ended) {
         return reply(req, "400 Bad Request", err);
     }
 
@@ -1471,7 +1495,50 @@ bool prov_start(prov_mode_t mode, ui_event_cb_t cb)
 
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
     cfg.max_uri_handlers  = 24;
-    cfg.lru_purge_enable  = true;
+
+    /* 16 KB, not the default 4 KB, and the firmware upload is the only reason.
+     *
+     * esp_ota_end() verifies the image it has just written, and on a Secure Boot
+     * build that means an RSA-3072 PSS verification inside mbedTLS — which needs
+     * several KB of stack and runs on whichever task called it. That is this one,
+     * the httpd task serving /api/ota, so a completed upload ended in
+     *
+     *   secure_boot_v2: Verifying with RSA-PSS...
+     *   ***ERROR*** A stack overflow in task httpd has been detected.
+     *
+     * and a reboot: the file arrived, the signature was genuine, and the terminal
+     * panicked between the two every single time. Nothing was ever staged, and from
+     * the browser it looked like the connection dropped, because it had.
+     *
+     * 16 KB is the size the UI task already runs at, and it does the same
+     * verification from esp_ota_set_boot_partition() when Install is tapped.
+     *
+     * Measured, not guessed: a 1.0.2 image verified with 11684 of these 16384 bytes
+     * still free, so the peak is ~4.7 KB and the old default was about 600 bytes
+     * short — which is why it failed every time rather than occasionally. Do not
+     * trim this to the measurement: mbedTLS's RSA path is the tallest thing either
+     * task does, and ~11 KB of headroom on a transient server is cheaper than
+     * another panic between a verified image and the operator's screen. ota_post
+     * logs the figure after every upload if it ever needs checking again. */
+    cfg.stack_size        = 16384;
+
+    /* The upload is one request that holds a socket for minutes, and LRU purge
+     * picks the least recently used socket — which is exactly that one, since its
+     * request began before every poll and captive-portal probe that followed. A PC
+     * is the case that shows it: Windows probes for internet the whole time it is on
+     * an AP that has none, and each probe is another connection. First the socket
+     * table ran dry (87 x "error in accept (23)" = ENFILE in one session), then the
+     * upload was sacrificed for the next probe and stalled at 33%.
+     *
+     * So: no purging, and TCP keepalive to reap what purging used to. A dead peer is
+     * dropped in ~20s, a live upload is never dropped, and a probe that finds the
+     * table full is refused — which costs a Windows machine nothing it was going to
+     * get anyway. The page also stops its 1.5s poll while sending (PAGE_JS). */
+    cfg.lru_purge_enable  = false;
+    cfg.keep_alive_enable = true;
+    cfg.keep_alive_idle     = 5;
+    cfg.keep_alive_interval = 5;
+    cfg.keep_alive_count    = 3;
     /* Port 80 is not optional: a captive-portal probe fetches a bare http:// URL
      * and will not follow us anywhere else. Plain HTTP over WPA2 is the whole
      * transport story now — see provision.h. */

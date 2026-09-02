@@ -282,6 +282,10 @@ W (nnnn) ota: installing 1.0.1 from 'ota_1' - rebooting
 
 **Pass, after the reboot:**
 
+- The panel greets you — the welcome screen, reading **Updated to 1.0.1.** — and
+  **Start** opens the amount screen. Power-cycle from there and the greeting must
+  *not* come back: it is the first boot on a new image that earns it, not every
+  boot.
 - About tab reads `1.0.1`.
 - `curl -sk -H "$H" $T/api/state` → `"version":"1.0.1","slot":"ota_1"` — the slot has
   flipped.

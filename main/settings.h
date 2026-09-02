@@ -140,7 +140,12 @@ bool settings_get_wifi(char *ssid, size_t ssid_n, char *pass, size_t pass_n);
 void settings_set_wifi(const char *ssid, const char *pass);
 
 /**
- * @brief true once an admin code exists, i.e. first-run setup is done.
+ * @brief true once an admin code exists.
+ *
+ * NOT the same as "configured": a terminal whose setup was interrupted has a code
+ * and no payout address, and that one is not a till (see the boot sequence in
+ * main.cpp, which runs setup on either being missing). Use
+ * @ref settings_has_payout for "can this unit take money".
  *
  * Cleared by @ref settings_factory_reset, so a reset device asks for a new code.
  */

@@ -1438,7 +1438,19 @@ static bool run_wizard(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
                         break;
                     }
                     prov_set_note("");
-                    enter_step(PROV_STEP_WIFI);
+                    /* A terminal that already has a network is finished here: the
+                     * addresses were the only thing missing, which is the case a
+                     * firmware update leaves behind, and asking for a venue
+                     * passphrase that is already stored is the busywork the
+                     * wifi_only flow exists to avoid — in the other direction.
+                     * The AP goes down with the portal either way; the last word is
+                     * on the panel, as it is on the Wi-Fi path below. */
+                    if (settings_has_wifi()) {
+                        prov_stop();
+                        ui_show_prov(PROV_STEP_DONE);
+                    } else {
+                        enter_step(PROV_STEP_WIFI);
+                    }
                 } else {
                     /* Nowhere left to go, but the panel may still be showing the
                      * QR code: this is also how the Wi-Fi-only flow reports that a
@@ -1814,13 +1826,14 @@ extern "C" void app_main(void)
             settings_set_chain(to);
             ui_refresh_addresses();
         } else {
-            /* Neither network is configured. Nothing to switch to, so the terminal
-             * comes up but will not sell: the amount screen takes an entry and the
-             * confirm step refuses it (see UI_EVENT_AMOUNT_CONFIRMED). Said here as
-             * well as on the Tx tab, because this is the log somebody reads when a
-             * terminal "won't take payments" after a reset. */
-            ESP_LOGW(TAG, "no payout address configured - payments will be "
-                          "refused; set one from the config page");
+            /* Neither network is configured. Nothing to switch to — and nothing to
+             * sell either: the amount screen takes an entry and the confirm step
+             * refuses it (see UI_EVENT_AMOUNT_CONFIRMED). So this is not a state to
+             * come up in, and the setup below is what stops it: the address step
+             * runs before the main loop is ever reached. Logged all the same,
+             * because this is the line somebody reads when a terminal "won't take
+             * payments" and the setup was skipped for some other reason. */
+            ESP_LOGW(TAG, "no payout address configured - running setup");
         }
     }
     Pn532NfcTransport   nfcTransport(&nfc, logger);
@@ -1847,12 +1860,26 @@ extern "C" void app_main(void)
      * attacker has to beat both that check and TLS rather than just the one. */
     tron_rpc_set_ca_cert(TRON_CA_CERT_PEM);
 #endif
-    /* ── First run: greet, take the admin code, then hand over to the browser ──
+    /* ── Not configured: greet, take the admin code, then hand over to the browser ──
      *
-     * A missing admin code means a virgin or factory-reset terminal, since the
-     * reset erases it too. Greet before the setup steps start asking for a
-     * network and a code — it is the one moment we have the operator's attention
-     * and nothing to demand of them yet.
+     * Two things have to be there for this to be a till, and either one missing
+     * runs setup:
+     *
+     *   - the admin code. Missing means a virgin or factory-reset terminal, since
+     *     the reset erases it too. That gets the greeting and the code screen.
+     *   - a payout address. Missing means a *half*-configured terminal, which is
+     *     the worse state of the two: it looks entirely normal, boots to the
+     *     amount screen, and refuses every sale with the config page the only way
+     *     out and nothing on the panel saying so. A firmware update is where this
+     *     turns up, because NVS survives one — so the admin code is still stored,
+     *     and testing "is there a code" was enough to skip the whole wizard on a
+     *     terminal that had never been given an address to pay out to.
+     *
+     * Greet before the setup steps start asking for a network and a code — it is
+     * the one moment we have the operator's attention and nothing to demand of them
+     * yet. Only on a terminal with no code, though: one that is only missing its
+     * addresses has been greeted already, and the browser flow is about to ask it
+     * for the code it does have.
      *
      * The admin code is the one step that stays on this panel. Not for tidiness:
      * its entire value is that it is never on a network, and it also has to exist
@@ -1865,15 +1892,21 @@ extern "C" void app_main(void)
      * run_wizard() does not return: it ends in a restart, which is what applies
      * the addresses. It only comes back if the portal could not be raised at all,
      * and then the panel picker below is the fallback. */
-    const bool first_run = !settings_has_admin_code();
-    if (first_run) {
-        ui_show_welcome();
+    const bool no_code   = !settings_has_admin_code();
+    const bool no_payout = !settings_has_payout(false) && !settings_has_payout(true);
+    const bool setup_run = no_code || no_payout;
+    if (no_code) {
+        ESP_LOGI(TAG, "no admin code - first-run setup");
+        ui_show_welcome(NULL);      /* first-run wording */
         wait_for_ui_event(UI_EVENT_WELCOME_DONE);
 
-        ESP_LOGI(TAG, "no admin code - first-run setup");
         ui_show_admin_set();
         wait_for_ui_event(UI_EVENT_ADMIN_SET);
-
+    } else if (no_payout) {
+        ESP_LOGW(TAG, "admin code stored but no payout address - setup resumes at "
+                      "the addresses");
+    }
+    if (setup_run) {
         (void)run_wizard(wallet, nfcTransport, cryptoProvider, false);
     }
 
@@ -1891,8 +1924,8 @@ extern "C" void app_main(void)
      * venue passphrase on this panel is exactly what the browser flow exists to
      * avoid, so the panel picker is only reached when the SoftAP would not come up. */
     bool        try_saved  = true;
-    /* first_run already ran the full wizard, so it has had its turn. */
-    bool        offer_setup = !first_run;
+    /* The block above already ran the full wizard, so it has had its turn. */
+    bool        offer_setup = !setup_run;
     const char *net_note   = NULL;
     while (true) {
         if (!(try_saved && wifi_try_saved())) {
@@ -1965,7 +1998,23 @@ extern "C" void app_main(void)
      * this line, any reset would have sent the bootloader back to the previous
      * slot, which is exactly what should happen to a build that cannot get
      * here. See ota.h. */
-    ota_mark_valid();
+    const bool fresh_update = ota_mark_valid();
+
+    /* An update is installed from a browser and finishes by itself, so the first
+     * boot on a new image is the one boot nobody has confirmed: the panel would
+     * otherwise come up on the amount screen, indistinguishable from a terminal
+     * that was merely power-cycled, and the operator has no way to tell the update
+     * landed — or that this till is the one they were updating.
+     *
+     * So greet and name the version: one tap on Start, and the operator has seen
+     * which terminal came back and on which firmware. */
+    if (fresh_update) {
+        char greeting[48];
+        (void)snprintf(greeting, sizeof(greeting), "Updated to %s.",
+                       ota_running_version());
+        ui_show_welcome(greeting);
+        wait_for_ui_event(UI_EVENT_WELCOME_DONE);
+    }
 
     /* ── Main interaction loop ────────────────────────────────── */
     ui_show_amount_entry();

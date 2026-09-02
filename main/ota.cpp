@@ -76,18 +76,31 @@ static bool lock_ready(void)
  * 4. Receiving an image
  ******************************************************************/
 
+/**
+ * @brief Refuse an upload, saying so to the browser AND to the log.
+ *
+ * Five of these refusals used to be silent on the serial side, which left an
+ * operator reporting "it says not installed" with nothing to match it against —
+ * and the reasons are not interchangeable: a stale staging, a file of the wrong
+ * size and a slot that would not erase want three different things done.
+ */
+static bool refuse(const char **err, const char *msg)
+{
+    *err = msg;
+    ESP_LOGW(TAG, "upload refused: %s", msg);
+    return false;
+}
+
 bool ota_begin(size_t len, const char **err)
 {
     static const char *ignored = "";
     if (err == NULL) { err = &ignored; }
 
     if (!lock_ready()) {
-        *err = "The terminal is out of memory.";
-        return false;
+        return refuse(err, "The terminal is out of memory.");
     }
     if (s_receiving) {
-        *err = "Another upload is in progress.";
-        return false;
+        return refuse(err, "Another upload is in progress.");
     }
 
     bool staged = false;
@@ -96,9 +109,8 @@ bool ota_begin(size_t len, const char **err)
         (void)xSemaphoreGive(s_lock);
     }
     if (staged) {
-        *err = "An update is already waiting to be accepted on the terminal "
-               "screen. Accept or discard it there first.";
-        return false;
+        return refuse(err, "An update is already waiting to be accepted on the "
+                           "terminal screen. Accept or discard it there first.");
     }
 
     s_dst = esp_ota_get_next_update_partition(NULL);
@@ -106,25 +118,22 @@ bool ota_begin(size_t len, const char **err)
         /* Single-app partition table: this unit predates OTA support and cannot
          * be updated over the air at all. Say which, or it reads as a bug. */
         ESP_LOGE(TAG, "no OTA slot - unit needs a serial reflash first");
-        *err = "This terminal has no second firmware slot. It has to be "
-               "reflashed over USB once before it can take updates.";
-        return false;
+        return refuse(err, "This terminal has no second firmware slot. It has to "
+                           "be reflashed over USB once before it can take "
+                           "updates.");
     }
     if (len < OTA_MIN_IMAGE) {
-        *err = "That file is too small to be firmware.";
-        return false;
+        return refuse(err, "That file is too small to be firmware.");
     }
     if (len > s_dst->size) {
-        *err = "That file is larger than the firmware slot.";
-        return false;
+        return refuse(err, "That file is larger than the firmware slot.");
     }
 
     /* Passing the real length erases only the pages that will be written. */
     const esp_err_t rc = esp_ota_begin(s_dst, len, &s_handle);
     if (rc != ESP_OK) {
         ESP_LOGE(TAG, "esp_ota_begin: %s", esp_err_to_name(rc));
-        *err = "The terminal could not prepare its firmware slot.";
-        return false;
+        return refuse(err, "The terminal could not prepare its firmware slot.");
     }
 
     s_receiving = true;
@@ -219,7 +228,7 @@ bool ota_last_update_failed(void)
     return (st == ESP_OTA_IMG_ABORTED) || (st == ESP_OTA_IMG_INVALID);
 }
 
-void ota_mark_valid(void)
+bool ota_mark_valid(void)
 {
     /* Before the early returns below, because this is the one call that happens
      * once per boot with bring-up behind it — and a terminal that reverted to its
@@ -232,11 +241,11 @@ void ota_mark_valid(void)
     }
 
     const esp_partition_t *run = esp_ota_get_running_partition();
-    if (run == NULL) { return; }
+    if (run == NULL) { return false; }
 
     esp_ota_img_states_t st = ESP_OTA_IMG_UNDEFINED;
-    if (esp_ota_get_state_partition(run, &st) != ESP_OK) { return; }
-    if (st != ESP_OTA_IMG_PENDING_VERIFY) { return; }   /* not a fresh update */
+    if (esp_ota_get_state_partition(run, &st) != ESP_OK) { return false; }
+    if (st != ESP_OTA_IMG_PENDING_VERIFY) { return false; }  /* not a fresh update */
 
     if (esp_ota_mark_app_valid_cancel_rollback() == ESP_OK) {
         ESP_LOGW(TAG, "update to %s confirmed - rollback cancelled",
@@ -246,6 +255,9 @@ void ota_mark_valid(void)
          * works right now and will silently be a different version tomorrow. */
         ESP_LOGE(TAG, "could not confirm this image - it WILL roll back");
     }
+    /* Fresh either way: the image did boot. Whether it also managed to cancel its
+     * rollback changes nothing for the operator standing in front of it. */
+    return true;
 }
 
 const char *ota_running_version(void)

@@ -43,8 +43,20 @@ The port defaults to COM3 in both scripts. `idf-monitor.bat` wraps
 
 ### Getting into first-run setup
 
-The wizard runs on a virgin or factory-reset terminal — the trigger is
-`!settings_has_admin_code()`. Two ways in:
+The wizard runs on a terminal that is not configured, and there are two ways to be
+unconfigured:
+
+* **no admin code** (`!settings_has_admin_code()`) — a virgin or factory-reset
+  unit. Welcome screen, admin code on the panel, then the browser flow.
+* **no payout address** (neither `settings_has_payout(false)` nor `(true)`) — a
+  half-configured unit, which is what a firmware update leaves behind if setup was
+  never finished: NVS survives the update, so the admin code is still there. No
+  welcome and no new code — it opens straight on the QR code and asks for the code
+  the unit already has. If a network is already saved the wizard ends at the
+  addresses rather than asking for a venue passphrase it already knows, so the path
+  is `2 → 3 → 4 → 6`.
+
+Two ways to get back to the first of those:
 
 | Method | What it costs | When |
 |---|---|---|
@@ -439,7 +451,7 @@ the connectivity probes.
 4. **Pass:** the page immediately says it is waiting for the admin code, and the
    panel is *already* asking for it — nothing to press in the browser first.
 5. **Pass:** once the code is accepted, the panel drops the QR code and the AP
-   passphrase and says the phone is connected. A code still on screen at the payout
+   passphrase and says it is connected. A code still on screen at the payout
    step reads as "scan me again", which is the one thing that cannot help.
 6. Walk the addresses and Wi-Fi steps from the phone. The address step is one
    **Payout addresses** card: the card-read button first, then **Or type an
@@ -458,7 +470,7 @@ range) and power-cycle it.
 phone** — no admin-code screen, no Step numbers, no payout step. The phone joins,
 the page opens on the Wi-Fi card alone, and the log says
 `W (nnnn) prov: browser let in without a code (Wi-Fi-only re-join)`. The panel then
-replaces the QR code with "your phone is connected".
+replaces the QR code with "Connected - the setup page is open in the browser".
 
 **Fail:** being asked for the admin code, or being shown the payout addresses.
 
@@ -493,7 +505,7 @@ in first-run:
 
 | Check | Expected |
 |---|---|
-| Boot with no stored payout address | `no payout address configured - payments will be refused`, and confirming an amount is refused (§5.3) |
+| Boot with no stored payout address | `no payout address configured - running setup`, and the wizard opens on the QR code instead of the amount screen — a unit that was never told where the money goes must not come up as a till (§5.3) |
 | Boot after storing an Ethereum address | Confirm screen **To** row shows the stored one |
 | Boot with a stored ERC-20 contract | Confirm screen contract row shows it; a corrupt one logs `stored ERC-20 contract rejected - using config.h` |
 | Factory reset, then boot | back to the `config.h` recipient and contract |
@@ -560,9 +572,16 @@ still hands out the `config.h` recipient (it has to — every caller needs a par
 address), so a sale that gets past this guard pays a stranger and looks normal.
 
 The cost of this rule: a `config.h`-only unit must be configured once, by card or by
-the **Payout addresses** fields, before it can charge. That is intended. Check it explicitly on
-a unit built with a `config.h` recipient and an empty NVS — it must refuse, not fall
-back.
+the **Payout addresses** fields, before it can charge. That is intended.
+
+There is no longer a cold-boot route to this screen, and that is the point: a unit
+with no stored address runs setup instead of the main loop (see "Getting into
+first-run setup"), and one with a single address is moved off the chain it cannot
+pay (`selected chain has no payout address - switching to N`) and cannot be moved
+back by the picker. So this guard is now the third layer. Test it by making it fire
+deliberately — flip the condition to `true` in a scratch build, or store an address
+for one chain only and select the other from a build with the picker's refusal
+removed — because it is what holds if either layer above it is ever changed.
 
 ### 5.2 Corruption fallback
 

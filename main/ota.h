@@ -64,8 +64,12 @@ extern "C" {
  *
  * No-op on a build without CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE, and on a boot
  * that is not the first after an update.
+ *
+ * @return true if this boot was the first on a freshly installed image, i.e. the
+ *         probation was real and has just been lifted. The caller uses it to greet
+ *         the operator once after an update; every later boot returns false.
  */
-void ota_mark_valid(void);
+bool ota_mark_valid(void);
 
 /**
  * @brief The running firmware's version, from the image header.

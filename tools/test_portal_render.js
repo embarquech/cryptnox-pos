@@ -143,6 +143,9 @@ const sandbox = {
   fetch: fakeFetch,
   XMLHttpRequest: function () { this.open = this.setRequestHeader = this.send = () => {}; this.upload = {}; },
   setInterval: () => 0,
+  /* The upload stops the state poll for its duration — see the socket budget in
+   * prov_start(). Stubbed so evaluating the page does not throw. */
+  clearInterval: () => {},
   Promise, Math, JSON, String, Number, encodeURIComponent, console,
 };
 

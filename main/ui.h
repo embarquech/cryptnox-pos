@@ -208,12 +208,16 @@ void ui_show_wifi_connecting(const char *ssid);
 void ui_set_boot_status(const char *step);
 
 /**
- * @brief Greet the operator at the start of first-run setup.
+ * @brief Greet the operator at the start of first-run setup, or after an update.
  *
  * Shown on a virgin or factory-reset terminal, before the Wi-Fi and admin-code
- * steps. Emits @ref UI_EVENT_WELCOME_DONE when Start is tapped.
+ * steps, and again on the first boot of a freshly installed image. Emits
+ * @ref UI_EVENT_WELCOME_DONE when Start is tapped.
+ *
+ * @param[in] sub Line under the product name, copied internally. NULL keeps the
+ *                first-run wording ("Let's configure your terminal.").
  */
-void ui_show_welcome(void);
+void ui_show_welcome(const char *sub);
 
 /**
  * @brief Run the first-run admin-code creation (enter, then confirm).

@@ -111,16 +111,10 @@ static XPT2046_Touchscreen touch(T_CS, T_IRQ);
 #define ASSET_BTN_W_SM  52     /* 8 pad + 36 badge + 8 pad, no chevron */
 #define ASSET_BTN_H     42
 #define ASSET_BTN_X     (-6)   /* right edge inset                     */
-#define ASSET_BTN_Y     47     /* centred on the amount's row (y=50)   */
-/* The figure's row: shares the selector's line, clear of the keypad at 90.
- *
- * Nudged left of the screen's centre by half the narrowed pill's footprint
- * (52 + 6 inset), because the row now carries the ticker as well: at its widest —
- * 99999, small cents and " USDT", ~165px — a screen-centred row would have run
- * into the pill at x=182. Centred in what is left of the line instead, which is
- * also what the figure and its unit read as: a price, with the selector after it. */
-#define AMOUNT_ROW_Y    50
-#define AMOUNT_ROW_X    (-29)
+#define ASSET_BTN_Y     47     /* the figure's row is centred on THIS  */
+/* The figure's row shares the selector's line, clear of the keypad at 90 — but
+ * neither of its offsets is a constant any more, because both depend on what has
+ * been typed. See amount_row_place(). */
 #define ASSET_BTN_PAD   8      /* badge inset from the left edge       */
 #define TAB_PAD         12     /* settings tab page padding           */
 #define TAB_W           (SCR_W - (2 * TAB_PAD))   /* usable tab width */
@@ -268,6 +262,9 @@ static lv_obj_t *s_amount_cents_label = NULL;
 /* The ticker beside the figure, empty while the figure is 0.00 — "0.00 USDC" is
  * not a price, it is a placeholder wearing a unit. */
 static lv_obj_t *s_amount_ticker_label = NULL;
+/* The flex row the three of them sit in — kept because its placement is not
+ * fixed: see amount_row_place(). */
+static lv_obj_t *s_amount_row = NULL;
 static uint64_t  s_amount_cents = 0;      /* amount entered, in cents          */
 
 /* The asset selector on the amount row, and the chevron it drops when it has to
@@ -329,6 +326,7 @@ static char          s_admin_first[ADMIN_CODE_MAX + 1] = {0};  /* 1st of 2 passe
 static char          s_admin_note[48] = {0};
 static bool          s_admin_confirming = false;   /* 2nd pass of the creation */
 static bool          s_welcome_sent     = false;   /* Start already reported */
+static char          s_welcome_sub[48]  = {0};     /* line under the brand */
 /* Penalty clock, monotonic since boot (lv_tick_elaps handles the wrap). The
  * attempt count itself lives in NVS, so power-cycling shortens the current wait
  * but never resets the escalation. */
@@ -500,6 +498,77 @@ static uint64_t amount_cents_max(void) {
  * like a typographic tic. */
 #define AMOUNT_SMALL_CENTS_FROM  10000ULL   /* 100.00 in cents */
 
+/* Air between the figure and the selector, so they read as two things. */
+#define AMOUNT_ROW_GAP  8
+
+/**
+ * Place the figure's row: on the screen's centre line, and on the coin's.
+ *
+ * Vertically: the row's measured height against the selector's 42, so the two
+ * boxes share a centre line and the digits' middle IS the coin's. The y used to be
+ * that sum written out by hand and it was wrong — 50 against a 30px line box put
+ * the figure's middle at 64 against the coin's 67. Measured now, so it also
+ * survives a change of font. (Centring the label's box centres the digits:
+ * montserrat_28 puts the baseline 25 into a 30px box and draws '0' 20 tall, so the
+ * ink runs 5..25 and its middle is the box's. True of this font, not a rule — a
+ * font with a deeper descender would want the ink measured instead.)
+ *
+ * Horizontally: the screen's centre, the same one the keypad and the Charge button
+ * below already sit on. An earlier cut centred the row in the line *left of the
+ * selector* instead, which is collision-proof but puts the figure 41px left of
+ * everything under it, and a till whose amount does not line up with its own keypad
+ * looks broken in a way no measurement will talk you out of.
+ *
+ * Which leaves the collision to handle, because a screen-centred row runs out of
+ * room before the digits do: "99999" with small cents and a ticker measures ~173px
+ * and a centred row has ~108px before the selector. So the fit is measured, not
+ * predicted, and what gives way is chosen to keep the flicker out of the common
+ * case:
+ *
+ * What gives way is the centring, by as little as it takes. Measured on the panel:
+ * "0.00" lands on 119 of 120, a typical amount with its ticker on 116, and it
+ * drifts left from there as the figure grows — 94 at nine characters, and 1px off
+ * the left edge at 99999.99, which is where sliding runs out.
+ *
+ * The ticker does NOT give way. An earlier cut dropped it to protect the centring
+ * and it vanished as the amount grew, which is the one thing on this row that must
+ * not happen: the figure is money and the ticker says which money. The clamp below
+ * only stops the row clipping off the left edge, and no ticker this build can show
+ * reaches it.
+ */
+static void amount_row_place(void) {
+    if (s_amount_row == NULL) { return; }
+
+    /* The selector narrows once there is an amount to read (asset_btn_set_compact),
+     * so where it starts depends on the value too. */
+    const lv_coord_t pill = (s_amount_cents != 0ULL) ? ASSET_BTN_W_SM : ASSET_BTN_W;
+    const lv_coord_t stop = SCR_W + ASSET_BTN_X - pill - AMOUNT_ROW_GAP;
+
+    /* Centred, then measured there — whether it fits is a question about the string
+     * that was just set, not about arithmetic. */
+    lv_obj_align(s_amount_row, LV_ALIGN_TOP_MID, 0, ASSET_BTN_Y);
+    lv_obj_update_layout(s_amount_row);
+
+    lv_area_t   r;
+    lv_obj_get_coords(s_amount_row, &r);
+    lv_coord_t  x = (r.x2 > stop) ? (stop - r.x2) : 0;
+
+    /* Last resort, and only against clipping: a row that would start off-screen
+     * gives up its ticker rather than draw a half figure. "" rather than the hidden
+     * flag, the same way amount_update_display drops it at 0.00 — an empty label
+     * measures zero and the row re-centres itself, and the next update_display puts
+     * it back. */
+    if (((r.x1 + x) < 0) && (s_amount_ticker_label != NULL)) {
+        lv_label_set_text(s_amount_ticker_label, "");
+        lv_obj_update_layout(s_amount_row);
+        lv_obj_get_coords(s_amount_row, &r);
+        x = (r.x2 > stop) ? (stop - r.x2) : 0;
+    }
+
+    lv_obj_align(s_amount_row, LV_ALIGN_TOP_MID, x,
+                 ASSET_BTN_Y + ((ASSET_BTN_H - lv_area_get_height(&r)) / 2));
+}
+
 static void amount_update_display(void) {
     char buf[24];
     const bool split = (s_amount_cents >= AMOUNT_SMALL_CENTS_FROM);
@@ -537,6 +606,10 @@ static void amount_update_display(void) {
             lv_label_set_text(s_amount_ticker_label, "");
         }
     }
+
+    /* Last: the pill has just changed width and the labels have just changed text,
+     * and the row is placed against both. */
+    amount_row_place();
 
     s_amount_units = s_amount_cents * 10000ULL;   /* cents -> 6-decimal base units */
 }
@@ -1077,6 +1150,7 @@ static void clear_screen(void) {
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, LV_PART_MAIN);
     s_amount_label = NULL;
     s_amount_cents_label = NULL;
+    s_amount_row   = NULL;
     s_asset_btn    = NULL;
     s_asset_arrow  = NULL;
     s_amount_ticker_label = NULL;
@@ -1651,10 +1725,11 @@ static void open_portal_window(void) {
 
     lv_obj_t *card = open_modal(OTA_CARD_W, 300);
 
-    lv_obj_t *cap = ota_text(card, NULL, "Scan this with your phone",
-                             COL_DIM, &lv_font_montserrat_14);
-
-    /* The same "WIFI:..." code the setup screen shows: the page is on the
+    /* No caption over the code. A QR code on a payment terminal does not need to be
+     * told to a person holding a phone, and the line was the one thing on the card
+     * that named a device: the credentials underneath are equally for a laptop.
+     *
+     * The same "WIFI:..." code the setup screen shows: the page is on the
      * terminal's own AP, so joining it is the whole journey and a camera does that
      * from the code directly. 104 px is 26 modules at 4 px, which holds the SSID
      * and the passphrase. The white quiet zone is not optional: a code drawn hard
@@ -1665,8 +1740,9 @@ static void open_portal_window(void) {
         (void)lv_qrcode_update(qr, payload, strlen(payload));
         lv_obj_set_style_border_color(qr, COL_BG, LV_PART_MAIN);
         lv_obj_set_style_border_width(qr, 4, LV_PART_MAIN);
-        lv_obj_update_layout(card);
-        lv_obj_align_to(qr, cap, LV_ALIGN_OUT_BOTTOM_MID, 0, OTA_GAP);
+        /* Top of the card, where the caption used to start — same 4px inset
+         * ota_text() gives a first block. */
+        lv_obj_align(qr, LV_ALIGN_TOP_MID, 0, 4);
     }
 
     /* The credentials in text too — a laptop has no camera to point, and a code
@@ -1674,12 +1750,11 @@ static void open_portal_window(void) {
     char creds[80];
     snprintf(creds, sizeof(creds), "SSID: %s\nPassword: %s",
              prov_ap_ssid(), prov_ap_pass());
-    lv_obj_t *url = ota_text(card, (qr != NULL) ? qr : cap, creds,
-                             COL_TEXT, &lv_font_montserrat_14);
+    lv_obj_t *url = ota_text(card, qr, creds, COL_TEXT, &lv_font_montserrat_14);
 
     /* Two short lines, broken by hand, because the card cannot grow: 304px is
-     * ota_fit_card's ceiling, and the caption, the 112px code, the credentials and
-     * the Done button leave about 45px of it — three lines at most. The paragraph
+     * ota_fit_card's ceiling, and the 112px code, the credentials and the Done
+     * button leave about 45px of it — three lines at most. The paragraph
      * that used to sit here ran to nine and simply stopped mid-sentence at the
      * card's edge. Each line is kept under OTA_TEXT_W (200px, ~27 characters at
      * montserrat_14) so neither wraps into a fourth. What was dropped is not lost:
@@ -2007,7 +2082,7 @@ static void build_welcome(void) {
      * sits within a few pixels of the wrap threshold at 216 px, so an absolute
      * offset would give a different gap depending on whether it takes one line
      * or two. Width and long mode first, so the measurement sees them. */
-    lv_obj_t *sub = make_label(lv_scr_act(), "Let's configure your terminal.",
+    lv_obj_t *sub = make_label(lv_scr_act(), s_welcome_sub,
                                COL_DIM, &lv_font_montserrat_14,
                                LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_width(sub, SCR_W - 24);
@@ -2142,8 +2217,8 @@ static void build_prov(void) {
                    LV_ALIGN_TOP_MID, 0, 212);
     } else {
         lv_obj_t *on = make_label(lv_scr_act(),
-                                  "Your phone is connected and has the setup "
-                                  "page open.",
+                                  "Connected - the setup page is open in the "
+                                  "browser.",
                                   COL_DIM, &lv_font_montserrat_14,
                                   LV_ALIGN_TOP_MID, 0, 110);
         lv_obj_set_width(on, SCR_W - 40);
@@ -2153,8 +2228,12 @@ static void build_prov(void) {
     }
 
     /* Where the bottom button used to be. A spinner instead: past the QR code the
-     * operator is meant to be looking at their phone, and this is the only thing
-     * on the panel that says the terminal is still with them. */
+     * operator is meant to be looking at the browser they joined from, and this is
+     * the only thing on the panel that says the terminal is still with them.
+     *
+     * "a connection", not "your phone": the AP takes a laptop typing the SSID and
+     * passphrase just as happily as a camera that scanned them, and a panel naming
+     * the wrong device reads as "this will not work from here". */
     lv_obj_t *sp = lv_spinner_create(lv_scr_act(), 1000, 60);
     lv_obj_set_size(sp, 24, 24);
     lv_obj_align(sp, LV_ALIGN_BOTTOM_MID, 0, -34);
@@ -2162,7 +2241,7 @@ static void build_prov(void) {
     lv_obj_set_style_arc_width(sp, 3, LV_PART_INDICATOR);
     lv_obj_set_style_arc_color(sp, COL_SURFACE, LV_PART_MAIN);
     lv_obj_set_style_arc_color(sp, COL_ACCENT, LV_PART_INDICATOR);
-    make_label(lv_scr_act(), "Waiting for your phone", COL_DIM,
+    make_label(lv_scr_act(), "Waiting for a connection", COL_DIM,
                &lv_font_montserrat_14, LV_ALIGN_BOTTOM_MID, 0, -10);
 }
 
@@ -2295,10 +2374,11 @@ static void build_amount(void) {
      * heading for it instead.
      *
      * The figure carries its ticker (see amount_update_display), so the group is
-     * centred in the line minus the pill rather than on the screen — AMOUNT_ROW_X.
-     * At the widest it will ever be — 99999 in montserrat_28, small cents and
-     * " USDT", ~165px — it still stops short of the narrowed pill, and the pill is
-     * only wide while the amount is "0.00" and the ticker is blank.
+     * centred in the line minus the pill rather than on the screen — and it is
+     * re-centred whenever either changes, see amount_row_place(). At the widest it
+     * will ever be — 99999 in montserrat_28, small cents and " USDT", ~165px — it
+     * still stops short of the narrowed pill, and the pill is only wide while the
+     * amount is "0.00" and the ticker is blank.
      *
      * The 320px column is fully spoken for: keypad 90..266 and the Charge button
      * 266..312 below it, so the amount's row is paid for out of the keypad's
@@ -2308,9 +2388,10 @@ static void build_amount(void) {
     /* Figure, small cents and ticker in one content-sized flex row, so the group
      * centres itself whatever the fonts measure — nothing here has to know how
      * wide montserrat_28 draws a 5, and the ticker appearing does not shove the
-     * digits off centre by hand. Bottom-aligned across the row: the small cents
-     * and the ticker sit on the big font's baseline, near enough (its descender is
-     * a pixel or two, and a real baseline align is not on offer in LVGL 8). */
+     * digits off centre by hand. Bottom-aligned across the row, which puts the
+     * small cents on the big font's baseline, near enough (its descender is a pixel
+     * or two, and a real baseline align is not on offer in LVGL 8). The ticker opts
+     * out of that a few lines below. */
     lv_obj_t *row = lv_obj_create(lv_scr_act());
     lv_obj_remove_style_all(row);
     lv_obj_set_size(row, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
@@ -2318,7 +2399,7 @@ static void build_amount(void) {
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_END,
                           LV_FLEX_ALIGN_CENTER);
-    lv_obj_align(row, LV_ALIGN_TOP_MID, AMOUNT_ROW_X, AMOUNT_ROW_Y);
+    s_amount_row = row;   /* placed by amount_update_display below */
 
     s_amount_label = make_label(row, "0.00", COL_TEXT,
                                 &lv_font_montserrat_28, LV_ALIGN_DEFAULT, 0, 0);
@@ -2326,6 +2407,22 @@ static void build_amount(void) {
                                       &lv_font_montserrat_20, LV_ALIGN_DEFAULT, 0, 0);
     s_amount_ticker_label = make_label(row, "", COL_TEXT,
                                        &lv_font_montserrat_20, LV_ALIGN_DEFAULT, 0, 0);
+
+    /* The ticker on the figure's centre line, which is what "USDC" beside a price
+     * wants: its 22px box is 8px shorter than the figure's 30px one, and the row
+     * bottom-aligns everything, so it was drawn 4px low. Drawn back up by half the
+     * difference — the small cents stay where they are, because those belong to the
+     * number and a cent off the figure's baseline is a typo, not a unit.
+     *
+     * translate, not padding or a cross-align of its own: it moves the glyphs
+     * without touching what the row measures, so the fit arithmetic in
+     * amount_row_place() still sees the real width. Taken from the fonts rather
+     * than written as 4, so it follows a change of either. */
+    lv_obj_set_style_translate_y(
+        s_amount_ticker_label,
+        -(lv_coord_t)((lv_font_montserrat_28.line_height -
+                       lv_font_montserrat_20.line_height) / 2),
+        LV_PART_MAIN);
 
     /* Numeric keypad: digits, double-zero, backspace (cents entry). */
     static const char *amap[] = {
@@ -3232,7 +3329,12 @@ extern "C" void ui_show_boot_error(ui_boot_err_t kind, const char *detail) {
     request_screen(UI_SCREEN_BOOT_ERROR);
 }
 
-extern "C" void ui_show_welcome(void) {
+extern "C" void ui_show_welcome(const char *sub) {
+    strncpy(s_welcome_sub,
+            ((sub != NULL) && (sub[0] != '\0')) ? sub
+                                                : "Let's configure your terminal.",
+            sizeof(s_welcome_sub) - 1U);
+    s_welcome_sub[sizeof(s_welcome_sub) - 1U] = '\0';
     s_welcome_sent = false;
     request_screen(UI_SCREEN_WELCOME);
 }
