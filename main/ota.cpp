@@ -260,6 +260,22 @@ bool ota_mark_valid(void)
     return true;
 }
 
+bool ota_image_confirmed(void)
+{
+    const esp_partition_t *run = esp_ota_get_running_partition();
+    if (run == NULL) { return true; }
+
+    esp_ota_img_states_t st = ESP_OTA_IMG_UNDEFINED;
+    if (esp_ota_get_state_partition(run, &st) != ESP_OK) {
+        /* No otadata entry for this slot — a cable flash, not an OTA. There is
+         * no rollback pending, so there is nothing to wait for. */
+        return true;
+    }
+    /* Confirmed unless it is explicitly still on probation. Anything else is a
+     * slot the bootloader will not revert. */
+    return (st != ESP_OTA_IMG_PENDING_VERIFY);
+}
+
 const char *ota_running_version(void)
 {
     if (s_running_ver[0] == '\0') {

@@ -72,6 +72,23 @@ extern "C" {
 bool ota_mark_valid(void);
 
 /**
+ * @brief Whether the running slot is one the bootloader will not revert.
+ *
+ * @ref ota_mark_valid reports that a fresh image booted, not that it managed to
+ * cancel its rollback — it returns true on both branches, deliberately, because
+ * the difference changes nothing for the operator standing in front of a
+ * terminal that works. It changes everything for anything destructive: a reset
+ * after a failed cancel goes back to the previous slot, so an action taken on
+ * the strength of "we are the new firmware now" would be carried out by, or
+ * inherited by, firmware that is about to disappear.
+ *
+ * True for a cable flash, which has no rollback pending in the first place.
+ *
+ * @return false only when the running partition is still PENDING_VERIFY.
+ */
+bool ota_image_confirmed(void);
+
+/**
  * @brief The running firmware's version, from the image header.
  *
  * @return Version string ("1.0.0"), never NULL. Valid for the program lifetime.

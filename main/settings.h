@@ -287,6 +287,46 @@ bool settings_set_contract(bool tron, const char *addr);
 /** @brief Erase all stored settings (brightness, auto, Wi-Fi creds, fees). */
 void settings_factory_reset(void);
 
+/**
+ * @brief Carry out a wipe armed by the previous boot, if there is one.
+ *
+ * Call once, immediately after @c nvs_flash_init() and before anything opens
+ * NVS — @c nvs_flash_erase() cannot run with handles outstanding, and by the
+ * time the decision is taken (see @ref settings_arm_wipe_if_new_firmware) the
+ * Wi-Fi driver holds its own. Splitting the two is what lets each half run where
+ * it is legal. Handles its own re-init and re-stamps the running image.
+ *
+ * Erases the whole partition, not just this module's namespace: a new image is
+ * meant to start on a unit with no history, so the Wi-Fi driver's namespace and
+ * provision.cpp's go with it. The terminal therefore comes up in first-run setup
+ * — an operator has to re-enter the venue network and re-accept the payout
+ * address, and until they do, the unit is unowned in front of whoever is
+ * standing at it.
+ */
+void settings_apply_pending_wipe(void);
+
+/**
+ * @brief Note that the running firmware is new, so the next boot should wipe.
+ *
+ * Identity is the running image's ELF SHA-256. That one test covers both ways
+ * firmware arrives — an update installed from the browser and an `idf.py flash`
+ * over the cable — because both end with a different image executing, and
+ * neither can be told apart from the other by the time this runs. A plain
+ * power-cycle re-reads the same hash and changes nothing.
+ *
+ * Call only once the running image has cancelled its rollback (@c
+ * ota_mark_valid). Earlier is unsafe: setup ends in a restart, so a wipe before
+ * the image is confirmed sends the bootloader back to the previous slot, which
+ * then sees a stamp it does not recognise and wipes the operator's re-entered
+ * settings a second time.
+ *
+ * An unstamped unit (factory-fresh, or updated from a build without this check)
+ * is adopted rather than wiped — there is no previous firmware to clear after.
+ *
+ * @return true if a wipe was armed; the caller should restart to apply it.
+ */
+bool settings_arm_wipe_if_new_firmware(void);
+
 #ifdef __cplusplus
 }
 #endif

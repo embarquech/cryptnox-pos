@@ -189,6 +189,16 @@ void ui_show_boot_error(ui_boot_err_t kind, const char *detail);
 void ui_set_addresses(const char *token_contract, const char *dest_addr);
 
 /**
+ * @brief Implemented by main: repoint those two rows at the selected chain.
+ *
+ * The asset picker switches the chain on the UI task and rebuilds the page
+ * immediately, so it asks for the new pair here rather than posting an event
+ * and racing its own redraw. main owns the per-chain contract and payout
+ * strings; this only reads them.
+ */
+void ui_refresh_addresses(void);
+
+/**
  * @brief Show a "Connecting to <ssid>…" screen while main associates.
  *
  * Interactive picker only; unattended boot reports through
@@ -293,6 +303,21 @@ void ui_show_prov_auth(void);
  * or @ref UI_EVENT_CONFIRM_CANCEL if the operator backs out.
  */
 void ui_show_card_pin(void);
+
+/**
+ * @brief Put a failure line on the setup screen, in red under the step title.
+ *
+ * For the card read: a refused card, a wrong PIN or sixty seconds with no tap
+ * all end with the panel back on the step it started from, and without a reason
+ * there that reads as the terminal having reset itself mid-read. The browser
+ * gets the same sentence through @c prov_set_note — this is the copy for the
+ * person actually holding the card.
+ *
+ * Cleared by @ref ui_show_card_pin, so each attempt starts clean.
+ *
+ * @param[in] msg Message, copied. NULL or "" clears it.
+ */
+void ui_set_prov_note(const char *msg);
 
 /**
  * @brief "Hold your card to the reader" while the address is read.

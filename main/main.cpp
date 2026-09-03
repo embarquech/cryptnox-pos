@@ -362,9 +362,10 @@ static bool erc20_load(erc20_token_t *t, const char *hex_no_0x) {
  * @brief Point the UI's address rows at the selected chain.
  *
  * Called on every entry to the confirm screen, not once at boot: the chain is
- * switched from the settings menu while this task is parked on its queue.
+ * switched from the settings menu while this task is parked on its queue. The
+ * UI calls it directly from the asset picker for the same reason — see ui.h.
  */
-static void ui_refresh_addresses(void) {
+extern "C" void ui_refresh_addresses(void) {
     const trc20_asset_t *token = active_trc20();
     if (token != NULL) {
         ui_set_addresses(token->b58, s_payout_tron);
@@ -764,6 +765,21 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
         ui_show_tx_status(UI_TX_STATE_SIGNING, NULL);
     }
 
+    /* Verify the PIN before signing rather than reading it back out of the sign
+     * status byte. The card sets CW_SIGN_PIN_INCORRECT only for a PIN this
+     * keypad cannot produce — under four digits, refused in ui.cpp — so a real
+     * mistyped PIN comes back from the sign APDU as a generic failure, and the
+     * person who fat-fingered one digit is shown "Sign error 0x81" and sent
+     * looking for a broken reader. The Tron path already verifies first because
+     * it needs the public key to build the transaction; this one spends the
+     * extra round trip purely to be able to say the same thing. */
+    if (!wallet.verifyPin(session, reinterpret_cast<const uint8_t *>(pin),
+                          static_cast<uint8_t>(pin_chars))) {
+        wallet.disconnect(session);
+        (void)snprintf(err_out, err_max, "Wrong PIN");
+        return false;
+    }
+
     CW_SignRequest req(session,
                        CW_SIGN_DERIVE_K1,
                        CW_SIGN_SIG_ECDSA_LOW_S,
@@ -801,8 +817,18 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
     CW_Utils::secure_wipe(req.pin, sizeof(req.pin));
 
     if (result.errorCode != CW_OK) {
-        (void)snprintf(err_out, err_max, "Sign error 0x%02X",
-                       static_cast<unsigned int>(result.errorCode));
+        /* Name the one failure the person holding the card can do something
+         * about. SIGN carries the PIN itself (CW_SIGN_WITH_PIN), so a mistyped
+         * one arrives here as a status byte — and on the Ethereum path, which
+         * has no verifyPin ahead of it, that is the *only* place it shows up.
+         * "Sign error 0x82" sends an operator looking for a broken reader
+         * instead of retyping four digits. */
+        if (result.errorCode == CW_SIGN_PIN_INCORRECT) {
+            (void)snprintf(err_out, err_max, "Wrong PIN");
+        } else {
+            (void)snprintf(err_out, err_max, "Sign error 0x%02X",
+                           static_cast<unsigned int>(result.errorCode));
+        }
         return false;
     }
 
@@ -1013,8 +1039,18 @@ static bool sign_and_broadcast_tron(CryptnoxWallet &wallet,
     CW_Utils::secure_wipe(req.pin, sizeof(req.pin));
 
     if (result.errorCode != CW_OK) {
-        (void)snprintf(err_out, err_max, "Sign error 0x%02X",
-                       static_cast<unsigned int>(result.errorCode));
+        /* Name the one failure the person holding the card can do something
+         * about. SIGN carries the PIN itself (CW_SIGN_WITH_PIN), so a mistyped
+         * one arrives here as a status byte — and on the Ethereum path, which
+         * has no verifyPin ahead of it, that is the *only* place it shows up.
+         * "Sign error 0x82" sends an operator looking for a broken reader
+         * instead of retyping four digits. */
+        if (result.errorCode == CW_SIGN_PIN_INCORRECT) {
+            (void)snprintf(err_out, err_max, "Wrong PIN");
+        } else {
+            (void)snprintf(err_out, err_max, "Sign error 0x%02X",
+                           static_cast<unsigned int>(result.errorCode));
+        }
         return false;
     }
 
@@ -1489,6 +1525,7 @@ static bool run_wizard(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
                 ui_show_prov(prov_step());   /* back to the QR/step screen */
                 if (!got) {
                     prov_set_note(err);
+                    ui_set_prov_note(err);   /* and on the panel they tapped */
                     break;
                 }
                 prov_set_note("Accept each address on the terminal screen.");
@@ -1643,6 +1680,12 @@ extern "C" void app_main(void)
         nvs_ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(nvs_ret);
+
+    /* Before the UI task, before the Wi-Fi driver, before the recipient is
+     * resolved: erasing the partition needs every NVS handle shut, and this is
+     * the last moment that is true. Only carries out a wipe the previous boot
+     * decided on — see settings.h. */
+    settings_apply_pending_wipe();
 
     /* ── UI: splash visible while the rest boots ───────── */
     s_ui_queue = xQueueCreate(8, sizeof(ui_msg_t));
@@ -2008,12 +2051,36 @@ extern "C" void app_main(void)
      *
      * So greet and name the version: one tap on Start, and the operator has seen
      * which terminal came back and on which firmware. */
-    if (fresh_update) {
-        char greeting[48];
-        (void)snprintf(greeting, sizeof(greeting), "Updated to %s.",
-                       ota_running_version());
+    /* Only now is a wipe safe to decide on. ota_mark_valid() above has cancelled
+     * the rollback, so the image that is about to erase this unit's settings is
+     * the image that will still be here afterwards. Deciding at boot instead put
+     * the wipe in front of first-run setup, whose own restart happens long before
+     * this line — so the bootloader reverted the update, and the reverted image
+     * then read the new one's stamp and wiped the operator's re-entered settings
+     * a second time. The erase itself waits for the next boot, where no NVS
+     * handle is open; see settings.h. */
+    /* ota_mark_valid() returns true for any fresh image, including one whose
+     * rollback it could NOT cancel — and the restart below is exactly the reset
+     * that would send such a slot back to the previous firmware, which would
+     * then find the flag and erase the operator's settings on behalf of an
+     * update that never stuck. Ask what the partition state actually is. */
+    const bool wiping = ota_image_confirmed() &&
+                        settings_arm_wipe_if_new_firmware();
+
+    if (fresh_update || wiping) {
+        char greeting[96];
+        (void)snprintf(greeting, sizeof(greeting), "Updated to %s.%s",
+                       ota_running_version(),
+                       wiping ? " Settings are cleared - set the terminal up again."
+                              : "");
         ui_show_welcome(greeting);
         wait_for_ui_event(UI_EVENT_WELCOME_DONE);
+    }
+    if (wiping) {
+        ESP_LOGW(TAG, "restarting to clear settings for the new firmware");
+        ui_set_boot_status("Clearing settings");
+        vTaskDelay(pdMS_TO_TICKS(600));
+        esp_restart();
     }
 
     /* ── Main interaction loop ────────────────────────────────── */
@@ -2244,22 +2311,27 @@ extern "C" void app_main(void)
                                                    c_tron, sizeof(c_tron),
                                                    err, sizeof(err));
                 CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(pin), sizeof(pin));
-                ui_show_amount_entry();
                 if (!got) {
+                    /* Mid-shift there is no setup screen to write on, and dropping
+                     * straight back to the amount keypad says nothing about a card
+                     * that was refused or a PIN that was wrong. The failure screen
+                     * already exists for exactly this — a reason and a way out. */
                     prov_set_note(err);
-                } else {
-                    /* One at a time here too. Unlike the wizard this loop does not
-                     * park waiting for the second, because accepting the first
-                     * restarts the terminal — so the operator taps the card again
-                     * for the other network, which is a fair trade for not having
-                     * two ways to store an address. */
-                    prov_set_note("Accept the address on the terminal screen. "
-                                  "Tap the card again for the other network.");
-                    if (c_eth[0] != '\0') {
-                        (void)prov_propose(PROV_ASK_PAYOUT_ETH, c_eth);
-                    } else if (c_tron[0] != '\0') {
-                        (void)prov_propose(PROV_ASK_PAYOUT_TRON, c_tron);
-                    }
+                    ui_show_tx_status(UI_TX_STATE_FAILED, err);
+                    break;
+                }
+                ui_show_amount_entry();
+                /* One at a time here too. Unlike the wizard this loop does not
+                 * park waiting for the second, because accepting the first
+                 * restarts the terminal — so the operator taps the card again
+                 * for the other network, which is a fair trade for not having
+                 * two ways to store an address. */
+                prov_set_note("Accept the address on the terminal screen. "
+                              "Tap the card again for the other network.");
+                if (c_eth[0] != '\0') {
+                    (void)prov_propose(PROV_ASK_PAYOUT_ETH, c_eth);
+                } else if (c_tron[0] != '\0') {
+                    (void)prov_propose(PROV_ASK_PAYOUT_TRON, c_tron);
                 }
                 break;
             }

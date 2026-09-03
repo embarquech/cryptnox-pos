@@ -304,6 +304,12 @@ static volatile bool s_boot_step_dirty   = false;
  * same reason ui_show_prov takes one — provision.h includes ui.h. Both are
  * written by the main task and read by the UI task, like the splash line above. */
 static volatile int  s_prov_step         = 0;
+/* Why the last card read came to nothing, shown on the setup screen. The reason
+ * also goes to the browser (prov_set_note), but the person who just tapped is
+ * looking at the panel — and without this the panel simply snapped back to the
+ * step it came from, which reads as the terminal resetting mid-read. Cleared
+ * whenever a fresh read starts. */
+static char          s_prov_msg[64]      = "";
 static volatile bool s_addr_modal_dirty  = false;
 /* Firmware uploaded from a browser and waiting to be accepted here. Same
  * handoff as the address modal above: the HTTP task never touches LVGL. */
@@ -645,6 +651,11 @@ static void btn_event_cb(lv_event_t *e) {
             s_amount_cents = amount_cents_max();
         }
         close_modal();
+        /* The contract and payout strings belong to the chain, not to the
+         * widgets, so repoint them before the rebuild reads them — otherwise the
+         * Tx tab redraws with the previous asset's contract and, across the
+         * Ethereum/Tron divide, the previous network's payout address. */
+        ui_refresh_addresses();
         /* Rebuild whatever screen the picker was opened from — the amount
          * screen's selector and ticker name the chain, and so do the Tx tab's
          * asset row, contract address and fee rows. s_req_screen is that screen:
@@ -2139,6 +2150,19 @@ static void build_prov(void) {
         lv_label_set_long_mode(on, LV_LABEL_LONG_WRAP);
         lv_obj_set_style_text_align(on, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
         lv_obj_align(on, LV_ALIGN_TOP_MID, 0, 110);
+
+        /* Only in this branch: a card is read from the browser's setup page, so
+         * there is no route to a failed read that is not already past the QR
+         * code. */
+        if (s_prov_msg[0] != '\0') {
+            lv_obj_t *m = make_label(lv_scr_act(), s_prov_msg, COL_DANGER,
+                                     &lv_font_montserrat_14,
+                                     LV_ALIGN_TOP_MID, 0, 154);
+            lv_obj_set_width(m, SCR_W - 40);
+            lv_label_set_long_mode(m, LV_LABEL_LONG_WRAP);
+            lv_obj_set_style_text_align(m, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+            lv_obj_align(m, LV_ALIGN_TOP_MID, 0, 154);
+        }
     }
 
     /* Where the bottom button used to be. A spinner instead: past the QR code the
@@ -3305,7 +3329,13 @@ extern "C" void ui_show_prov_auth(void) {
 
 extern "C" void ui_show_card_pin(void) {
     s_pin_for_card = true;
+    s_prov_msg[0]  = '\0';   /* a new attempt starts; drop the last one's reason */
     request_screen(UI_SCREEN_PIN);
+}
+
+extern "C" void ui_set_prov_note(const char *msg) {
+    strncpy(s_prov_msg, (msg != NULL) ? msg : "", sizeof(s_prov_msg) - 1);
+    s_prov_msg[sizeof(s_prov_msg) - 1] = '\0';
 }
 
 extern "C" void ui_show_card_wait(const char *note) {
