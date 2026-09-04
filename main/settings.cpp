@@ -32,6 +32,15 @@ extern "C" {
 #ifndef TRON_ADDR_USDT
 #define TRON_ADDR_USDT  ""
 #endif
+/* And the mainnet halves of both pairs, for a config.h written before the
+ * production networks were selectable. Empty means the asset is refused on
+ * mainnet and works on the testnet exactly as it did. */
+#ifndef TRON_ADDR_USDT_MAIN
+#define TRON_ADDR_USDT_MAIN  ""
+#endif
+#ifndef ADDR_USDC_MAIN
+#define ADDR_USDC_MAIN  ""
+#endif
 
 static const char *const TAG = "settings";
 
@@ -45,6 +54,7 @@ static const char *const TAG = "settings";
 #define K_ADMIN_HASH  "adm_hash"
 #define K_ADMIN_FAILS "adm_fails"
 #define K_CHAIN       "chain"
+#define K_MAINNET     "mainnet"
 /* Which firmware last ran on this unit, and whether the next boot owes it a
  * wipe — see settings_arm_wipe_if_new_firmware. */
 #define K_FW_SHA      "fw_sha"
@@ -54,11 +64,17 @@ static const char *const TAG = "settings";
 #define K_PAY_ETH2    "pay_eth_e"
 #define K_PAY_TRX     "pay_trx"
 #define K_PAY_TRX2    "pay_trx_e"
-/* Token contracts, same treatment — see settings_get_contract. */
+/* Token contracts, same treatment — see settings_get_contract. One pair of keys
+ * per network per deployment: the mainnet USDC and the Sepolia one are different
+ * addresses, and sharing a slot would carry one across a network switch. */
 #define K_CT_ETH      "ct_eth"
 #define K_CT_ETH2     "ct_eth_e"
 #define K_CT_TRX      "ct_trx"
 #define K_CT_TRX2     "ct_trx_e"
+#define K_CT_ETH_M    "ct_eth_m"
+#define K_CT_ETH_M2   "ct_eth_me"
+#define K_CT_TRX_M    "ct_trx_m"
+#define K_CT_TRX_M2   "ct_trx_me"
 
 #define ADMIN_SALT_LEN    16U
 #define ADMIN_HASH_LEN    32U
@@ -101,6 +117,39 @@ void settings_set_chain(pos_chain_t chain)
     } else {
         ESP_LOGW(TAG, "chain: nvs_open failed");
     }
+}
+
+bool settings_get_mainnet(void)
+{
+    /* Defaults true, and the read is written so that every way of not knowing —
+     * no key, an unopenable namespace, a factory-fresh unit — lands on the
+     * production networks. A terminal that guesses "testnet" takes a shift's
+     * worth of payments that settle nowhere and reports each one as done. */
+    uint8_t stored = 1U;
+    nvs_handle_t h;
+    if (nvs_open(NS_SETTINGS, NVS_READONLY, &h) == ESP_OK) {
+        (void)nvs_get_u8(h, K_MAINNET, &stored);
+        nvs_close(h);
+    }
+    return (stored != 0U);
+}
+
+void settings_set_mainnet(bool mainnet)
+{
+    nvs_handle_t h;
+    if (nvs_open(NS_SETTINGS, NVS_READWRITE, &h) == ESP_OK) {
+        (void)nvs_set_u8(h, K_MAINNET, mainnet ? 1U : 0U);
+        (void)nvs_commit(h);
+        nvs_close(h);
+        ESP_LOGW(TAG, "network set to %s", mainnet ? "mainnet" : "testnet");
+    } else {
+        ESP_LOGW(TAG, "mainnet: nvs_open failed");
+    }
+}
+
+const char *settings_net_str(const char *testnet, const char *mainnet)
+{
+    return settings_get_mainnet() ? mainnet : testnet;
 }
 
 uint8_t settings_get_brightness(void)
@@ -453,16 +502,24 @@ bool settings_set_payout(bool tron, const char *addr)
 
 bool settings_get_contract(bool tron, char *out, size_t n)
 {
+    const bool m = settings_get_mainnet();
     return tron
-        ? dual_get(K_CT_TRX, K_CT_TRX2, TRON_ADDR_USDT, "contract(tron)", out, n)
-        : dual_get(K_CT_ETH, K_CT_ETH2, "0x" ADDR_USDC, "contract(eth)",  out, n);
+        ? dual_get(m ? K_CT_TRX_M : K_CT_TRX, m ? K_CT_TRX_M2 : K_CT_TRX2,
+                   m ? TRON_ADDR_USDT_MAIN : TRON_ADDR_USDT,
+                   "contract(tron)", out, n)
+        : dual_get(m ? K_CT_ETH_M : K_CT_ETH, m ? K_CT_ETH_M2 : K_CT_ETH2,
+                   m ? "0x" ADDR_USDC_MAIN : "0x" ADDR_USDC,
+                   "contract(eth)",  out, n);
 }
 
 bool settings_set_contract(bool tron, const char *addr)
 {
+    const bool m = settings_get_mainnet();
     return tron
-        ? dual_set(K_CT_TRX, K_CT_TRX2, true,  "contract(tron)", addr)
-        : dual_set(K_CT_ETH, K_CT_ETH2, false, "contract(eth)",  addr);
+        ? dual_set(m ? K_CT_TRX_M : K_CT_TRX, m ? K_CT_TRX_M2 : K_CT_TRX2,
+                   true,  "contract(tron)", addr)
+        : dual_set(m ? K_CT_ETH_M : K_CT_ETH, m ? K_CT_ETH_M2 : K_CT_ETH2,
+                   false, "contract(eth)",  addr);
 }
 
 /** @brief Write the running image's identity into the settings namespace. */

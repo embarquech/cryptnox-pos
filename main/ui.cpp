@@ -101,14 +101,17 @@ static XPT2046_Touchscreen touch(T_CS, T_IRQ);
  * it read as a heading for it; beside it, it reads as the currency of the figure,
  * which is what somebody about to charge 12.50 is looking for.
  *
- * Sized off the 36px badge it carries: 8 pad + 36 badge + 12 gap + 10 arrow + 10
- * pad = 76 wide, and 3px of air above and below the badge = 42 tall. (BADGE_SZ is
- * defined with the icon helpers, further down — kept numeric here so the metrics
- * read as one block.) The narrow width is the same minus the chevron and its gap:
- * once digits are on screen they get the room, because "this opens something" is
- * worth less than the amount being legible. */
-#define ASSET_BTN_W     76
-#define ASSET_BTN_W_SM  52     /* 8 pad + 36 badge + 8 pad, no chevron */
+ * It carries the ticker, and the figure beside it is a bare number. The ticker
+ * used to ride on the figure instead, which put the currency in two places at
+ * once — a mark on the pill and a word on the amount — and neither said which one
+ * you tap to change it. One says both now: what is being charged, and that it is
+ * a control.
+ *
+ * No fixed width any more, because the ticker's is not fixed: the pill is
+ * content-sized flex, and amount_row_place() measures what it came out as rather
+ * than being told. Written as constants, a four-letter ticker in a pill sized for
+ * three is a dot-elided "USD…" on the row that says which money. 42 tall is 3px of
+ * air above and below the 36px badge (BADGE_SZ, with the icon helpers below). */
 #define ASSET_BTN_H     42
 #define ASSET_BTN_X     (-6)   /* right edge inset                     */
 #define ASSET_BTN_Y     47     /* the figure's row is centred on THIS  */
@@ -259,10 +262,7 @@ static char          s_tx_info[64] = "";
  * that they stay in the main label and this one holds "". */
 static lv_obj_t *s_amount_label = NULL;
 static lv_obj_t *s_amount_cents_label = NULL;
-/* The ticker beside the figure, empty while the figure is 0.00 — "0.00 USDC" is
- * not a price, it is a placeholder wearing a unit. */
-static lv_obj_t *s_amount_ticker_label = NULL;
-/* The flex row the three of them sit in — kept because its placement is not
+/* The flex row the two of them sit in — kept because its placement is not
  * fixed: see amount_row_place(). */
 static lv_obj_t *s_amount_row = NULL;
 static uint64_t  s_amount_cents = 0;      /* amount entered, in cents          */
@@ -287,6 +287,7 @@ static char          s_wifi_pass[65] = {0};   /* entered passphrase (handoff) */
 static char          s_wifi_note[64] = {0};   /* why the picker reopened (may be empty) */
 static lv_obj_t     *s_wifi_pass_ta  = NULL;
 static lv_obj_t     *s_wifi_eye_lbl  = NULL;   /* glyph swapped on reveal/hide */
+static lv_obj_t     *s_pin_eye_lbl   = NULL;   /* same, on the card-PIN keypad */
 
 /* Progress screen (UI_SCREEN_WIFI_CONNECTING), two pieces rather than one
  * preformatted line: the name is stored raw so the label elides it by real
@@ -362,7 +363,7 @@ static lv_obj_t *s_close_btn = NULL;
  ******************************************************************/
 enum BtnAction {
     ACT_CONFIRM, ACT_CANCEL, ACT_SEND, ACT_NEW,
-    ACT_SETTINGS, ACT_CLOSE, ACT_PIN_CANCEL,
+    ACT_SETTINGS, ACT_CLOSE, ACT_PIN_CANCEL, ACT_PIN_REVEAL,
     ACT_WIFI, ACT_WIFI_CANCEL, ACT_WIFI_PASS_REVEAL,
     ACT_ADMIN_CANCEL, ACT_WELCOME_OK,
     /* Config portal: accept/reject a proposed value, finish the wizard. */
@@ -429,11 +430,20 @@ static const char *asset_name(void) {
     }
 }
 
-/** Which network that asset lives on — the selector's subtitle. */
+/**
+ * Which network that asset lives on — the selector's subtitle.
+ *
+ * Names the deployment, not just the family: "Ethereum" and "Ethereum Sepolia"
+ * differ by the only thing that decides whether a sale settles in money, and this
+ * subtitle is where an operator finds out which one the terminal is on. The
+ * mainnet names carry no suffix on purpose — a production terminal should not be
+ * shouting a word nobody needs, and the testnet ones then stand out.
+ */
 static const char *asset_network(void) {
-    if (chain_is_tron()) { return "Tron Nile"; }
-    return pos_chain_is_polygon(settings_get_chain()) ? "Polygon Amoy"
-                                                      : "Ethereum Sepolia";
+    if (chain_is_tron()) { return settings_net_str("Tron Nile", "Tron"); }
+    return pos_chain_is_polygon(settings_get_chain())
+             ? settings_net_str("Polygon Amoy", "Polygon")
+             : settings_net_str("Ethereum Sepolia", "Ethereum");
 }
 
 /** Caption for the address row above "Send to": TRX has no contract to show. */
@@ -519,50 +529,33 @@ static uint64_t amount_cents_max(void) {
  * looks broken in a way no measurement will talk you out of.
  *
  * Which leaves the collision to handle, because a screen-centred row runs out of
- * room before the digits do: "99999" with small cents and a ticker measures ~173px
- * and a centred row has ~108px before the selector. So the fit is measured, not
- * predicted, and what gives way is chosen to keep the flicker out of the common
- * case:
+ * room before the digits do. What gives way is the centring, by as little as it
+ * takes: the row slides left only far enough to clear the selector, so a typical
+ * amount stays centred and a five-figure one drifts. Both ends of that sum are
+ * measured rather than predicted — the digits because the font decides them, and
+ * the selector because its ticker and its chevron both change its width.
  *
- * What gives way is the centring, by as little as it takes. Measured on the panel:
- * "0.00" lands on 119 of 120, a typical amount with its ticker on 116, and it
- * drifts left from there as the figure grows — 94 at nine characters, and 1px off
- * the left edge at 99999.99, which is where sliding runs out.
- *
- * The ticker does NOT give way. An earlier cut dropped it to protect the centring
- * and it vanished as the amount grew, which is the one thing on this row that must
- * not happen: the figure is money and the ticker says which money. The clamp below
- * only stops the row clipping off the left edge, and no ticker this build can show
- * reaches it.
+ * Nothing on this row is ever dropped to make it fit. The figure is money; the
+ * ticker that says which money lives on the selector, where it does not have to
+ * compete with the digits for the same 240 pixels.
  */
 static void amount_row_place(void) {
     if (s_amount_row == NULL) { return; }
 
-    /* The selector narrows once there is an amount to read (asset_btn_set_compact),
-     * so where it starts depends on the value too. */
-    const lv_coord_t pill = (s_amount_cents != 0ULL) ? ASSET_BTN_W_SM : ASSET_BTN_W;
-    const lv_coord_t stop = SCR_W + ASSET_BTN_X - pill - AMOUNT_ROW_GAP;
-
-    /* Centred, then measured there — whether it fits is a question about the string
-     * that was just set, not about arithmetic. */
+    /* Centred, then measured there — whether it fits is a question about the pill
+     * and the string that were just set, not about arithmetic. Both are
+     * content-sized, so both are measured: the pill drops its chevron once there is
+     * an amount, and the ticker inside it is 3 or 4 characters wide. */
     lv_obj_align(s_amount_row, LV_ALIGN_TOP_MID, 0, ASSET_BTN_Y);
     lv_obj_update_layout(s_amount_row);
+
+    const lv_coord_t pill = (s_asset_btn != NULL) ? lv_obj_get_width(s_asset_btn)
+                                                  : 0;
+    const lv_coord_t stop = SCR_W + ASSET_BTN_X - pill - AMOUNT_ROW_GAP;
 
     lv_area_t   r;
     lv_obj_get_coords(s_amount_row, &r);
     lv_coord_t  x = (r.x2 > stop) ? (stop - r.x2) : 0;
-
-    /* Last resort, and only against clipping: a row that would start off-screen
-     * gives up its ticker rather than draw a half figure. "" rather than the hidden
-     * flag, the same way amount_update_display drops it at 0.00 — an empty label
-     * measures zero and the row re-centres itself, and the next update_display puts
-     * it back. */
-    if (((r.x1 + x) < 0) && (s_amount_ticker_label != NULL)) {
-        lv_label_set_text(s_amount_ticker_label, "");
-        lv_obj_update_layout(s_amount_row);
-        lv_obj_get_coords(s_amount_row, &r);
-        x = (r.x2 > stop) ? (stop - r.x2) : 0;
-    }
 
     lv_obj_align(s_amount_row, LV_ALIGN_TOP_MID, x,
                  ASSET_BTN_Y + ((ASSET_BTN_H - lv_area_get_height(&r)) / 2));
@@ -590,21 +583,10 @@ static void amount_update_display(void) {
     }
 
     /* Nothing entered yet: the selector is the only thing to do on the screen, so
-     * it keeps its chevron. Once there is an amount, it gets out of its way — and
-     * the figure takes its unit beside it, which is the room the chevron freed.
-     *
-     * Leading space instead of the row's pad_column, which would also push the
-     * small cents off the digits they belong to. The row is content-sized flex, so
-     * it re-centres the three labels itself — nothing here places anything. */
+     * it keeps its chevron. Once there is an amount, it gets out of its way and the
+     * digits take the room back. The ticker stays either way — it is on the pill,
+     * not on the figure, so it costs the digits nothing. */
     asset_btn_set_compact(s_amount_cents != 0ULL);
-    if (s_amount_ticker_label != NULL) {
-        if (s_amount_cents != 0ULL) {
-            snprintf(buf, sizeof(buf), " %s", asset_name());
-            lv_label_set_text(s_amount_ticker_label, buf);
-        } else {
-            lv_label_set_text(s_amount_ticker_label, "");
-        }
-    }
 
     /* Last: the pill has just changed width and the labels have just changed text,
      * and the row is placed against both. */
@@ -631,6 +613,27 @@ static void amount_kbd_cb(lv_event_t *e) {
         if (n <= cap) { s_amount_cents = n; }
     }
     amount_update_display();
+}
+
+/**
+ * Flip a masked field between hidden and shown, and swap its eye glyph to match.
+ *
+ * Toggled in place, never via request_screen(): rebuilding the screen would
+ * discard what has been typed, which on the PIN keypad costs the operator an
+ * attempt the card is counting. The glyph shows what the next tap does.
+ *
+ * Both callers may pass NULL — the action can only be raised from the screen that
+ * built the field, but that is a fact about two files agreeing rather than
+ * something the compiler checks.
+ */
+static void code_field_reveal(lv_obj_t *ta, lv_obj_t *eye_lbl) {
+    if (ta == NULL) { return; }
+    const bool masked = lv_textarea_get_password_mode(ta);
+    lv_textarea_set_password_mode(ta, !masked);
+    if (eye_lbl != NULL) {
+        lv_label_set_text(eye_lbl, masked ? LV_SYMBOL_EYE_CLOSE
+                                          : LV_SYMBOL_EYE_OPEN);
+    }
 }
 
 /* Runs on the UI task (inside lv_timer_handler), so touching shared state and
@@ -765,18 +768,10 @@ static void btn_event_cb(lv_event_t *e) {
             request_screen(UI_SCREEN_AMOUNT);
             break;
         case ACT_WIFI_PASS_REVEAL:
-            /* Toggled in place, never via request_screen() — rebuilding the
-             * screen would discard what the operator has typed. */
-            if (s_wifi_pass_ta != NULL) {
-                bool masked = lv_textarea_get_password_mode(s_wifi_pass_ta);
-                lv_textarea_set_password_mode(s_wifi_pass_ta, !masked);
-                if (s_wifi_eye_lbl != NULL) {
-                    /* Glyph shows what the next tap does. */
-                    lv_label_set_text(s_wifi_eye_lbl,
-                                      masked ? LV_SYMBOL_EYE_CLOSE
-                                             : LV_SYMBOL_EYE_OPEN);
-                }
-            }
+            code_field_reveal(s_wifi_pass_ta, s_wifi_eye_lbl);
+            break;
+        case ACT_PIN_REVEAL:
+            code_field_reveal(s_pin_ta, s_pin_eye_lbl);
             break;
         case ACT_RESET:
             open_reset_confirm();            /* ask before wiping */
@@ -1003,46 +998,58 @@ static lv_obj_t *make_asset_badge(lv_obj_t *parent, pos_chain_t chain) {
 }
 
 /* The asset selector itself: the badge above turned into a tappable pill, at the
- * right-hand end of the amount's row. Wordless — the ticker is spelled out on the
- * picker it opens, on the Tx tab and on the confirm screen, and a compact mark
- * leaves the amount the biggest thing on the screen. (A pill carrying the ticker
- * as well does not fit beside a five-figure amount on 240px, which is what put it
- * on a line of its own in the first place.)
+ * right-hand end of the amount's row — mark, ticker, chevron.
  *
- * Mark hard left, arrow hard right — aligned, never measured: the box has no
- * width until LVGL runs a layout pass, and asking anyway put the icon on the
- * wrong side of the button. A chipped box is 6px wider than a bare one, so its
- * mark starts 3px further in; not worth a per-chain constant. */
+ * A flex row at LV_SIZE_CONTENT rather than three aligned children in a fixed box.
+ * The ticker is 3 or 4 characters depending on the asset, so the pill's width is
+ * not a number this file can know; LVGL measures it, the align keeps the right
+ * edge pinned, and amount_row_place() reads back what it came out as. The old
+ * fixed widths existed because the pill was wordless and every one of its children
+ * was a known size. */
 static lv_obj_t *make_asset_button(void) {
-    /* make_button carries the fill/press/border/event wiring; this one is an
-     * icon row, so its label is pushed right to serve as the arrow. */
-    s_asset_btn = make_button(lv_scr_act(), LV_SYMBOL_RIGHT, COL_SURFACE,
-                              COL_TEXT, ASSET_BTN_W, ASSET_BTN_H,
-                              LV_ALIGN_TOP_RIGHT, ASSET_BTN_X, ASSET_BTN_Y,
-                              ACT_NET_PICK, &lv_font_montserrat_14);
+    s_asset_btn = lv_btn_create(lv_scr_act());
+    lv_obj_set_size(s_asset_btn, LV_SIZE_CONTENT, ASSET_BTN_H);
+    lv_obj_align(s_asset_btn, LV_ALIGN_TOP_RIGHT, ASSET_BTN_X, ASSET_BTN_Y);
+    lv_obj_set_style_bg_color(s_asset_btn, COL_SURFACE, LV_PART_MAIN);
+    lv_obj_set_style_bg_grad_dir(s_asset_btn, LV_GRAD_DIR_NONE, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(s_asset_btn, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_radius(s_asset_btn, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-    /* Zero the theme's button padding first, exactly as make_pill does. Child
-     * aligns are relative to the CONTENT area, so the default ~12px inset shoved
-     * the badge inward until it sat on top of the arrow — and the badge is added
-     * last, so it wins the draw order and the arrow simply vanished. */
-    lv_obj_set_style_pad_all(s_asset_btn, 0, LV_PART_MAIN);
-    s_asset_arrow = lv_obj_get_child(s_asset_btn, 0);
-    lv_obj_align(s_asset_arrow, LV_ALIGN_RIGHT_MID, -10, 0);
-    lv_obj_align(make_asset_badge(s_asset_btn, settings_get_chain()),
-                 LV_ALIGN_LEFT_MID, ASSET_BTN_PAD, 0);
+    lv_obj_set_style_border_width(s_asset_btn, 0, LV_PART_MAIN);
+    lv_obj_set_style_shadow_width(s_asset_btn, 0, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(s_asset_btn,
+                              lv_color_mix(lv_color_black(), COL_SURFACE, 20),
+                              LV_PART_MAIN | LV_STATE_PRESSED);
+    lv_obj_add_event_cb(s_asset_btn, btn_event_cb, LV_EVENT_CLICKED,
+                        reinterpret_cast<void *>(
+                            static_cast<intptr_t>(ACT_NET_PICK)));
+
+    /* Pads and gap written out: the theme's button padding is what used to shove
+     * the badge on top of the chevron, and a flex row obeys them rather than
+     * ignoring them the way aligned children did. */
+    lv_obj_set_flex_flow(s_asset_btn, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(s_asset_btn, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(s_asset_btn, ASSET_BTN_PAD, LV_PART_MAIN);
+    lv_obj_set_style_pad_column(s_asset_btn, 5, LV_PART_MAIN);
+    lv_obj_clear_flag(s_asset_btn, LV_OBJ_FLAG_SCROLLABLE);
+
+    (void)make_asset_badge(s_asset_btn, settings_get_chain());
+    make_label(s_asset_btn, asset_name(), COL_TEXT, &lv_font_montserrat_14,
+               LV_ALIGN_DEFAULT, 0, 0);
+    s_asset_arrow = make_label(s_asset_btn, LV_SYMBOL_RIGHT, COL_DIM,
+                               &lv_font_montserrat_14, LV_ALIGN_DEFAULT, 0, 0);
     return s_asset_btn;
 }
 
-/* Chevron off and the pill narrowed to its badge, so a five-figure amount has
- * the middle of the screen. Right-aligned, so only the left edge moves — the
- * thing under the thumb stays where it was. */
+/* Chevron off once there is an amount to read, so the digits get its width back.
+ * The ticker stays: it is the one thing on this row that says which money, and it
+ * only becomes worth reading once there is a figure beside it. Hidden rather than
+ * deleted, and the pill re-measures itself — right-aligned, so only the left edge
+ * moves and the thing under the thumb stays where it was. */
 static void asset_btn_set_compact(bool compact) {
-    if (s_asset_btn == NULL) { return; }   /* not the amount screen */
-    lv_obj_set_width(s_asset_btn, compact ? ASSET_BTN_W_SM : ASSET_BTN_W);
-    if (s_asset_arrow != NULL) {
-        if (compact) { lv_obj_add_flag(s_asset_arrow, LV_OBJ_FLAG_HIDDEN); }
-        else         { lv_obj_clear_flag(s_asset_arrow, LV_OBJ_FLAG_HIDDEN); }
-    }
+    if (s_asset_arrow == NULL) { return; }   /* not the amount screen */
+    if (compact) { lv_obj_add_flag(s_asset_arrow, LV_OBJ_FLAG_HIDDEN); }
+    else         { lv_obj_clear_flag(s_asset_arrow, LV_OBJ_FLAG_HIDDEN); }
 }
 
 /* The bare network mark, for the network picker's own rows — no coin is chosen
@@ -1157,8 +1164,8 @@ static void clear_screen(void) {
     s_amount_row   = NULL;
     s_asset_btn    = NULL;
     s_asset_arrow  = NULL;
-    s_amount_ticker_label = NULL;
     s_pin_ta       = NULL;   /* deleted by lv_obj_clean — drop the dangling ref */
+    s_pin_eye_lbl  = NULL;
     s_wifi_pass_ta = NULL;
     s_wifi_eye_lbl   = NULL;
     s_boot_step_lbl  = NULL;
@@ -1685,9 +1692,18 @@ static void open_portal_window(void) {
      * montserrat_14) so neither wraps into a fourth. What was dropped is not lost:
      * "the admin code is typed here, never there" is the first thing the browser
      * page itself says, to the person who needs to read it. */
-    char note[64];
+    /* The address, and it earns its line: joining the AP makes the phone open the
+     * page by itself, in the Wi-Fi sign-in window — and that window cannot pick a
+     * file, so the firmware update is the one job on the page it will not do. This
+     * is what the operator opens in a real browser when that happens, and also the
+     * answer when the page does not pop up at all.
+     *
+     * Three lines is what the card has left under the code and the credentials
+     * (see ota_fit_card's ceiling); this is the third, so anything added here has
+     * to replace one. */
+    char note[96];
     snprintf(note, sizeof(note),
-             "Venue Wi-Fi off while open\nCloses in %u min",
+             "Or open 192.168.4.1\nVenue Wi-Fi off while open\nCloses in %u min",
              prov_window_left_min());
     lv_obj_t *n = ota_text(card, url, note, COL_DIM, &lv_font_montserrat_14);
     ota_fit_card(card, n, 42);
@@ -1794,15 +1810,21 @@ static void pill_disable(lv_obj_t *p) {
 
 /** Step 1 — the network. */
 static void open_network_picker(void) {
-    static const struct {
+    /* Not static: the subtitles name the deployment, which is read from NVS. A
+     * function-local static would be initialised on the first pass and then keep
+     * saying "Sepolia testnet" on a terminal that had been switched. */
+    const struct {
         const char *name;
         const char *sub;
         ui_net_t    net;    /* which network mark to draw */
         BtnAction   act;
     } NETS[] = {
-        { "Ethereum", "Sepolia testnet", UI_NET_ETH,  ACT_NET_ETH  },
-        { "Polygon",  "Amoy testnet",    UI_NET_POLY, ACT_NET_POLY },
-        { "Tron",     "Nile testnet",    UI_NET_TRON, ACT_NET_TRON },
+        { "Ethereum", settings_net_str("Sepolia testnet", "Mainnet"),
+          UI_NET_ETH,  ACT_NET_ETH  },
+        { "Polygon",  settings_net_str("Amoy testnet", "Mainnet"),
+          UI_NET_POLY, ACT_NET_POLY },
+        { "Tron",     settings_net_str("Nile testnet", "Mainnet"),
+          UI_NET_TRON, ACT_NET_TRON },
     };
     const size_t n = sizeof(NETS) / sizeof(NETS[0]);
 
@@ -2201,41 +2223,49 @@ static void build_prov_confirm(void) {
     const bool contract = (kind == PROV_ASK_CONTRACT_ETH) ||
                           (kind == PROV_ASK_CONTRACT_TRON);
 
-    lv_obj_t *card = open_modal(228, 276);
+    /* Stacked and measured, not placed at four hand-written offsets — the same
+     * ota_text/ota_fit_card pattern the update modals in this file already use, and
+     * for the reason written there: nothing on this card has a known height.
+     *
+     * Three of the four blocks vary. The address wraps to two lines or three
+     * depending on the network and the glyphs it happens to contain; the label runs
+     * from "ERC-20 token contract" to "Ethereum / Polygon payout address"; and the
+     * warning is a sentence. The old layout put the warning at a fixed y=118 and the
+     * buttons at a fixed offset off the bottom of a fixed 276px card, so a block
+     * that came out one line taller than the strings it was measured on ran under
+     * the Accept button — which is the one control on this screen that must be
+     * legible, on the one screen that decides where a merchant's takings go.
+     *
+     * The label wraps now instead of dot-eliding. It was elided to fit one line,
+     * and "Ethereum / Polygon payout add…" is a poor thing to read on the screen
+     * that asks you to check an address character by character. */
+    lv_obj_t *card = open_modal(OTA_CARD_W, 276);
 
-    make_label(card, contract ? "Set token contract?" : "Set payout address?",
-               COL_TEXT, &lv_font_montserrat_20, LV_ALIGN_TOP_MID, 0, 2);
-    /* Elided by width: the labels run to "TRC-20 token contract", which is longer
-     * than the 16-character network name this row used to carry. */
-    lv_obj_t *l = make_label(card, label, COL_DIM, &lv_font_montserrat_14,
-                             LV_ALIGN_TOP_MID, 0, 28);
-    lv_obj_set_width(l, 204);
-    lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
-    lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_align(l, LV_ALIGN_TOP_MID, 0, 28);
-
-    lv_obj_t *a = make_label(card, addr, COL_TEXT, &lv_font_montserrat_14,
-                             LV_ALIGN_TOP_LEFT, 4, 50);
-    lv_obj_set_width(a, 204);
-    lv_label_set_long_mode(a, LV_LABEL_LONG_WRAP);
-
-    lv_obj_t *warn = make_label(card,
-                                contract
-                                ? "This decides which token is charged. A wrong "
-                                  "contract moves a different asset."
-                                : "Takings will be sent here. Check it against "
-                                  "your own records before accepting.",
-                                COL_DIM, &lv_font_montserrat_14,
-                                LV_ALIGN_TOP_LEFT, 4, 118);
-    lv_obj_set_width(warn, 204);
-    lv_label_set_long_mode(warn, LV_LABEL_LONG_WRAP);
+    lv_obj_t *t = ota_text(card, NULL,
+                           contract ? "Set token contract?"
+                                    : "Set payout address?",
+                           COL_TEXT, &lv_font_montserrat_20);
+    lv_obj_t *l = ota_text(card, t, label, COL_DIM, &lv_font_montserrat_14);
+    lv_obj_t *a = ota_text(card, l, addr, COL_TEXT, &lv_font_montserrat_14);
+    /* Both cut to the sentence that changes a decision. The card grows to whatever
+     * it is given, but only up to ota_fit_card's ceiling of one screen — past that
+     * the buttons come back up over the text, which is the failure this rewrite is
+     * fixing. A line that only restates the button under it ("...before
+     * accepting") is the first thing to spend. */
+    lv_obj_t *warn = ota_text(card, a,
+                              contract
+                              ? "A wrong contract charges a different asset."
+                              : "Takings will be sent here. Check it against "
+                                "your own records.",
+                              COL_DIM, &lv_font_montserrat_14);
+    ota_fit_card(card, warn, 86);   /* two 40px buttons at -46 and -2 */
 
     /* Reject is the wide, plainly-labelled one and Accept is the deliberate tap:
      * the safe answer to "a stranger's address appeared on my terminal" is no. */
-    (void)make_button(card, "Accept", COL_ACCENT, COL_BG, 206, 40,
+    (void)make_button(card, "Accept", COL_ACCENT, COL_BG, OTA_TEXT_W, 40,
                       LV_ALIGN_BOTTOM_MID, 0, -46, ACT_PROV_OK,
                       &lv_font_montserrat_20);
-    (void)make_button(card, "Reject", COL_SURFACE, COL_TEXT, 206, 40,
+    (void)make_button(card, "Reject", COL_SURFACE, COL_TEXT, OTA_TEXT_W, 40,
                       LV_ALIGN_BOTTOM_MID, 0, -2, ACT_PROV_NO,
                       &lv_font_montserrat_20);
 }
@@ -2311,25 +2341,20 @@ static void build_amount(void) {
      * together, and a selector centred on its own line above the figure was a
      * heading for it instead.
      *
-     * The figure carries its ticker (see amount_update_display), so the group is
-     * centred in the line minus the pill rather than on the screen — and it is
-     * re-centred whenever either changes, see amount_row_place(). At the widest it
-     * will ever be — 99999 in montserrat_28, small cents and " USDT", ~165px — it
-     * still stops short of the narrowed pill, and the pill is only wide while the
-     * amount is "0.00" and the ticker is blank.
+     * The pill carries the ticker, so the figure is a bare number: the group is
+     * centred in the line minus the pill rather than on the screen, and both are
+     * re-measured whenever either changes — see amount_row_place().
      *
      * The 320px column is fully spoken for: keypad 90..266 and the Charge button
      * 266..312 below it, so the amount's row is paid for out of the keypad's
      * height (196 -> 176, keys 44 tall — still a comfortable target). */
     make_asset_button();
 
-    /* Figure, small cents and ticker in one content-sized flex row, so the group
-     * centres itself whatever the fonts measure — nothing here has to know how
-     * wide montserrat_28 draws a 5, and the ticker appearing does not shove the
-     * digits off centre by hand. Bottom-aligned across the row, which puts the
-     * small cents on the big font's baseline, near enough (its descender is a pixel
-     * or two, and a real baseline align is not on offer in LVGL 8). The ticker opts
-     * out of that a few lines below. */
+    /* Figure and small cents in one content-sized flex row, so the group centres
+     * itself whatever the fonts measure — nothing here has to know how wide
+     * montserrat_28 draws a 5. Bottom-aligned across the row, which puts the small
+     * cents on the big font's baseline, near enough (its descender is a pixel or
+     * two, and a real baseline align is not on offer in LVGL 8). */
     lv_obj_t *row = lv_obj_create(lv_scr_act());
     lv_obj_remove_style_all(row);
     lv_obj_set_size(row, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
@@ -2343,24 +2368,6 @@ static void build_amount(void) {
                                 &lv_font_montserrat_28, LV_ALIGN_DEFAULT, 0, 0);
     s_amount_cents_label = make_label(row, "", COL_TEXT,
                                       &lv_font_montserrat_20, LV_ALIGN_DEFAULT, 0, 0);
-    s_amount_ticker_label = make_label(row, "", COL_TEXT,
-                                       &lv_font_montserrat_20, LV_ALIGN_DEFAULT, 0, 0);
-
-    /* The ticker on the figure's centre line, which is what "USDC" beside a price
-     * wants: its 22px box is 8px shorter than the figure's 30px one, and the row
-     * bottom-aligns everything, so it was drawn 4px low. Drawn back up by half the
-     * difference — the small cents stay where they are, because those belong to the
-     * number and a cent off the figure's baseline is a typo, not a unit.
-     *
-     * translate, not padding or a cross-align of its own: it moves the glyphs
-     * without touching what the row measures, so the fit arithmetic in
-     * amount_row_place() still sees the real width. Taken from the fonts rather
-     * than written as 4, so it follows a change of either. */
-    lv_obj_set_style_translate_y(
-        s_amount_ticker_label,
-        -(lv_coord_t)((lv_font_montserrat_28.line_height -
-                       lv_font_montserrat_20.line_height) / 2),
-        LV_PART_MAIN);
 
     /* Numeric keypad: digits, double-zero, backspace (cents entry). */
     static const char *amap[] = {
@@ -2480,8 +2487,33 @@ static void pin_kbd_cb(lv_event_t *e) {
 }
 
 /* Masked one-line code field, centred, with no soft-keyboard popup — the on-screen
- * keypad is the only input. Shared by the card PIN and the admin code. */
-static lv_obj_t *make_code_field(uint32_t max_len, lv_coord_t y) {
+ * keypad is the only input. Shared by the card PIN and the admin code.
+ *
+ * Reveal is offered on the PIN only, by the caller: the field is 160px centred, so
+ * an eye beside it has 30px of margin to sit in either way, but the two screens
+ * are not the same question. The card PIN is the one people mistype and cannot
+ * check — the card locks after a few tries — and the operator holding the card is
+ * the person entitled to see it. The admin code is entered by the same person into
+ * the same panel and is not worth the button. */
+/* Show the hint while the field is empty, hide it the moment anything is typed.
+ * Driven by the textarea's own VALUE_CHANGED, which LVGL sends from all four
+ * mutating calls (add_char, add_text, del_char, set_text) — so backspacing back to
+ * empty brings it back, and the reset in build_pin/admin_submit does too, with no
+ * caller having to remember. */
+static void code_hint_cb(lv_event_t *e) {
+    lv_obj_t *ta   = lv_event_get_target(e);
+    lv_obj_t *hint = static_cast<lv_obj_t *>(lv_event_get_user_data(e));
+    const char *txt = lv_textarea_get_text(ta);
+    if (hint == NULL) { return; }
+    if ((txt != NULL) && (txt[0] != '\0')) {
+        lv_obj_add_flag(hint, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_clear_flag(hint, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+static lv_obj_t *make_code_field(uint32_t max_len, lv_coord_t x, lv_coord_t y,
+                                 const char *hint) {
     lv_obj_t *ta = lv_textarea_create(lv_scr_act());
     lv_textarea_set_password_mode(ta, true);
     /* Echo each digit briefly so the operator can confirm the keypress, then
@@ -2492,11 +2524,32 @@ static lv_obj_t *make_code_field(uint32_t max_len, lv_coord_t y) {
     lv_textarea_set_text(ta, "");
     lv_obj_clear_flag(ta, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_width(ta, 160);
-    lv_obj_align(ta, LV_ALIGN_TOP_MID, 0, y);
+    lv_obj_align(ta, LV_ALIGN_TOP_MID, x, y);
     lv_obj_set_style_text_align(ta, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_obj_set_style_bg_color(ta, COL_SURFACE, LV_PART_MAIN);
     lv_obj_set_style_text_color(ta, COL_TEXT, LV_PART_MAIN);
     lv_obj_set_style_border_color(ta, COL_BORDER, LV_PART_MAIN);
+
+    /* What to type, in the box it is typed into. The panel's own screens are a
+     * title, an empty box and a keypad, and a title naming the OUTCOME —
+     * "Authorise browser" — left the operator with nothing on screen saying the
+     * thing wanted was their admin code.
+     *
+     * A label of our own, NOT lv_textarea's placeholder. The placeholder cannot be
+     * centred in a one-line textarea: draw_placeholder() sets LV_TEXT_FLAG_EXPAND
+     * for one_line fields, which tells the renderer to ignore the area's width, and
+     * a centre alignment inside an area of ignored width is a left alignment. So it
+     * drew hard against the left inset while the digits it labels are centred —
+     * which is what this reads as on the panel, a caption belonging to something
+     * else. Aligned to the field itself, so it follows a field the caller has
+     * shifted (the PIN screen moves its box left to make room for the eye). */
+    if (hint != NULL) {
+        lv_obj_t *l = make_label(lv_scr_act(), hint, COL_DIM,
+                                 &lv_font_montserrat_14, LV_ALIGN_DEFAULT, 0, 0);
+        lv_obj_update_layout(ta);
+        lv_obj_align_to(l, ta, LV_ALIGN_CENTER, 0, 0);
+        lv_obj_add_event_cb(ta, code_hint_cb, LV_EVENT_VALUE_CHANGED, l);
+    }
     return ta;
 }
 
@@ -2537,7 +2590,23 @@ static void build_pin(void) {
     /* Back (cancel) icon, top-left like the burger on other screens. */
     (void)make_icon_button(LV_SYMBOL_LEFT, ACT_PIN_CANCEL);
 
-    s_pin_ta = make_code_field(9U, 48);
+    /* Field and eye centred as a pair, not the field alone: the button is 42 wide
+     * with a 6px gap, so the field gives up half of that and the group's middle
+     * stays on the keypad's centre line. Centring the field itself would put the
+     * eye 8px off the right edge of a 240px panel. Passed in rather than re-aligned
+     * afterwards, so the hint inside the box is placed against the final position. */
+    s_pin_ta = make_code_field(9U, -(MENU_BTN_W + 6) / 2, 48, "Card PIN");
+
+    /* Same reveal the Wi-Fi passphrase has, and for the same reason: a PIN typed
+     * blind on a resistive panel and refused tells the operator nothing about which
+     * of the two got it wrong — except that here the card counts the attempt, and
+     * runs out of them. Masked by default, because this screen faces the customer.
+     * make_icon_button() places itself top-left for the burger; move it beside the
+     * field, and keep the label handle so the glyph can be swapped in place. */
+    lv_obj_t *eye = make_icon_button(LV_SYMBOL_EYE_OPEN, ACT_PIN_REVEAL);
+    lv_obj_align_to(eye, s_pin_ta, LV_ALIGN_OUT_RIGHT_MID, 6, 0);
+    s_pin_eye_lbl = lv_obj_get_child(eye, 0);
+
     (void)make_numeric_keypad(pin_kbd_cb);
 }
 
@@ -2691,14 +2760,15 @@ static void admin_kbd_cb(lv_event_t *e) {
 }
 
 /* Shared body of both admin screens; only the title and the way out differ. */
-static void build_admin_screen(const char *title, bool allow_cancel) {
+static void build_admin_screen(const char *title, bool allow_cancel,
+                               const char *hint) {
     clear_screen();
     (void)make_title(title, allow_cancel);
     if (allow_cancel) {
         (void)make_icon_button(LV_SYMBOL_LEFT, ACT_ADMIN_CANCEL);
     }
 
-    s_admin_ta = make_code_field(ADMIN_CODE_MAX, 44);
+    s_admin_ta = make_code_field(ADMIN_CODE_MAX, 0, 44, hint);
 
     /* Note band above the keypad: wrong code, mismatch, or the remaining wait. */
     s_admin_note_lbl = make_label(lv_scr_act(), s_admin_note, COL_DANGER,
@@ -2710,14 +2780,20 @@ static void build_admin_set(void) {
     /* No way out: first-run setup is mandatory, since the whole menu — including
      * the factory reset — hides behind this code. */
     build_admin_screen(s_admin_confirming ? "Confirm code" : "Set admin code",
-                       false);
+                       false,
+                       s_admin_confirming ? "Type it again" : "New admin code");
 }
 
 static void build_admin_unlock(void) {
     /* Same screen either way — the escalating lockout, the note band and the
-     * keypad are what this is, and only the door it opens differs. */
+     * keypad are what this is, and only the door it opens differs.
+     *
+     * The hint does not differ, and that is the point: the title says which door,
+     * the box says what the key is. "Authorise browser" over an empty field named
+     * the outcome and left the operator to guess that the terminal wanted the
+     * admin code — the one thing on that screen they had to know. */
     build_admin_screen(s_admin_for_portal ? "Authorise browser" : "Admin code",
-                       true);
+                       true, "Admin code");
 }
 
 /* Header with a back arrow (to amount entry) instead of the burger. */
@@ -2819,7 +2895,8 @@ static void build_wifi_pass(void) {
     lv_obj_set_style_text_color(s_wifi_pass_ta, COL_TEXT, LV_PART_MAIN);
 
     /* make_icon_button() places itself top-left for the burger; move it beside
-     * the field. Keep the label handle so the glyph can be swapped in place. */
+     * the field. Keep the label handle so the glyph can be swapped in place. Same
+     * pair on the card-PIN screen — see build_pin(). */
     lv_obj_t *eye = make_icon_button(LV_SYMBOL_EYE_OPEN, ACT_WIFI_PASS_REVEAL);
     lv_obj_align_to(eye, s_wifi_pass_ta, LV_ALIGN_OUT_RIGHT_MID, 6, 0);
     s_wifi_eye_lbl = lv_obj_get_child(eye, 0);

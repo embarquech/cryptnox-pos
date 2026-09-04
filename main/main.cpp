@@ -124,6 +124,44 @@ extern "C" {
 #ifndef TRON_TRC20_FEE_LIMIT_SUN
 #define TRON_TRC20_FEE_LIMIT_SUN  100000000ULL
 #endif
+/* The production networks. A config.h written before they were selectable falls
+ * back to its testnet values everywhere, so such a build keeps working exactly as
+ * it did — the switch on the config page then moves nothing, which is the right
+ * answer for a file that names no mainnet to move to. The empty contracts are the
+ * usual "this asset was never set up": refused, with the rest still working. */
+#ifndef RPC_URL_MAIN
+#define RPC_URL_MAIN  RPC_URL
+#endif
+#ifndef POLY_RPC_URL_MAIN
+#define POLY_RPC_URL_MAIN  POLY_RPC_URL
+#endif
+#ifndef TRON_URL_MAIN
+#define TRON_URL_MAIN  TRON_URL
+#endif
+#ifndef CHAIN_ID_MAINNET
+#define CHAIN_ID_MAINNET  CHAIN_ID_SEPOLIA
+#endif
+#ifndef CHAIN_ID_POLYGON
+#define CHAIN_ID_POLYGON  CHAIN_ID_AMOY
+#endif
+#ifndef ADDR_USDC_MAIN
+#define ADDR_USDC_MAIN  ""
+#endif
+#ifndef ADDR_USDT_MAIN
+#define ADDR_USDT_MAIN  ""
+#endif
+#ifndef POLY_ADDR_USDC_MAIN
+#define POLY_ADDR_USDC_MAIN  ""
+#endif
+#ifndef POLY_ADDR_USDT_MAIN
+#define POLY_ADDR_USDT_MAIN  ""
+#endif
+#ifndef TRON_ADDR_USDT_MAIN
+#define TRON_ADDR_USDT_MAIN  ""
+#endif
+#ifndef TRON_ADDR_USDC_MAIN
+#define TRON_ADDR_USDC_MAIN  ""
+#endif
 
 /******************************************************************
  * 2. Configuration guards and constants
@@ -220,7 +258,8 @@ static bool chain_is_native_evm(void) {
  */
 static void eth_rpc_select(void) {
     if (chain_is_polygon()) {
-        eth_rpc_init(POLY_RPC_URL, "0x" ADDR_FROM);
+        eth_rpc_init(settings_net_str(POLY_RPC_URL, POLY_RPC_URL_MAIN),
+                     "0x" ADDR_FROM);
         eth_rpc_set_auth(NULL, NULL);
 #ifdef POLY_CA_CERT_PEM
         eth_rpc_set_ca_cert(POLY_CA_CERT_PEM);
@@ -228,7 +267,7 @@ static void eth_rpc_select(void) {
         eth_rpc_set_ca_cert(NULL);
 #endif
     } else {
-        eth_rpc_init(RPC_URL, "0x" ADDR_FROM);
+        eth_rpc_init(settings_net_str(RPC_URL, RPC_URL_MAIN), "0x" ADDR_FROM);
 #if defined(RPC_PROJECT_ID) && defined(RPC_API_SECRET)
         eth_rpc_set_auth(RPC_PROJECT_ID, RPC_API_SECRET);
 #else
@@ -262,10 +301,11 @@ static trc20_asset_t s_trc20_usdt = { NULL, {}, false };
 /* USDC on Tron, from config.h alone: the config page has one TRC-20 slot and USDT
  * has it. The literal is fine as the b58 pointer — it lives in the signed app
  * image for the life of the program, which is exactly what the NVS-backed one
- * needs a buffer to imitate.
+ * needs a buffer to imitate. Which literal depends on the network setting, and
+ * NVS is not readable this early, so the pointer is set at boot instead.
  * ponytail: config.h only; give it an NVS slot and a config-page row if a second
  * settable TRC-20 is ever wanted. */
-static trc20_asset_t s_trc20_usdc = { TRON_ADDR_USDC, {}, false };
+static trc20_asset_t s_trc20_usdc = { NULL, {}, false };
 
 /**
  * @brief Decode a token's configured base58 contract into its dual store.
@@ -701,7 +741,13 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
 
     eth_tx_t tx;
     CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(&tx), sizeof(tx));
-    tx.chain_id          = polygon ? CHAIN_ID_AMOY : CHAIN_ID_SEPOLIA;
+    /* Network family from the selected chain, deployment from the settings flag —
+     * and this is the field that stops a mainnet-signed transfer being replayable
+     * on the testnet it was built against, so it is read from the same setting the
+     * endpoint above was. */
+    tx.chain_id          = settings_get_mainnet()
+                             ? (polygon ? CHAIN_ID_POLYGON : CHAIN_ID_MAINNET)
+                             : (polygon ? CHAIN_ID_AMOY    : CHAIN_ID_SEPOLIA);
     tx.nonce             = nonce;
     /* Fees come from the settings menu (defaulting to the config.h values on
      * first boot); config.h still owns the gas limit. The user edits Gwei, so
@@ -1723,7 +1769,8 @@ extern "C" void app_main(void)
     if (settings_get_contract(false, s_contract_eth, sizeof(s_contract_eth)) &&
         !eth_addr_parse(s_contract_eth, s_usdc.addr)) {
         ESP_LOGE(TAG, "stored ERC-20 contract rejected - using config.h");
-        (void)snprintf(s_contract_eth, sizeof(s_contract_eth), "0x%s", ADDR_USDC);
+        (void)snprintf(s_contract_eth, sizeof(s_contract_eth), "0x%s",
+                       settings_net_str(ADDR_USDC, ADDR_USDC_MAIN));
     }
     if (!eth_addr_parse(s_contract_eth, s_usdc.addr) ||
         !eth_addr_parse(s_contract_eth, s_usdc.addr_echo)) {
@@ -1735,13 +1782,17 @@ extern "C" void app_main(void)
      * like the TRC-20 ones and for the same reason: a terminal that only charges in
      * USDC on Ethereum leaves these unset, and it must still boot — selecting the
      * asset is what gets refused. */
-    if (!erc20_load(&s_usdt_eth, ADDR_USDT)) {
+    ESP_LOGI(TAG, "networks: %s",
+             settings_get_mainnet() ? "PRODUCTION" : "test");
+    if (!erc20_load(&s_usdt_eth, settings_net_str(ADDR_USDT, ADDR_USDT_MAIN))) {
         ESP_LOGW(TAG, "ADDR_USDT not usable - USDT on Ethereum disabled");
     }
-    if (!erc20_load(&s_usdc_poly, POLY_ADDR_USDC)) {
+    if (!erc20_load(&s_usdc_poly,
+                    settings_net_str(POLY_ADDR_USDC, POLY_ADDR_USDC_MAIN))) {
         ESP_LOGW(TAG, "POLY_ADDR_USDC not usable - USDC on Polygon disabled");
     }
-    if (!erc20_load(&s_usdt_poly, POLY_ADDR_USDT)) {
+    if (!erc20_load(&s_usdt_poly,
+                    settings_net_str(POLY_ADDR_USDT, POLY_ADDR_USDT_MAIN))) {
         ESP_LOGW(TAG, "POLY_ADDR_USDT not usable - USDT on Polygon disabled");
     }
 
@@ -1839,14 +1890,17 @@ extern "C" void app_main(void)
     s_trc20_usdt.b58 = s_contract_trx;
     if (!trc20_load(&s_trc20_usdt, cryptoProvider)) {
         ESP_LOGW(TAG, "stored TRC-20 contract not usable - trying config.h");
-        (void)snprintf(s_contract_trx, sizeof(s_contract_trx), "%s", TRON_ADDR_USDT);
+        (void)snprintf(s_contract_trx, sizeof(s_contract_trx), "%s",
+                       settings_net_str(TRON_ADDR_USDT, TRON_ADDR_USDT_MAIN));
     }
     if (!s_trc20_usdt.ok && !trc20_load(&s_trc20_usdt, cryptoProvider)) {
         ESP_LOGW(TAG, "TRON_ADDR_USDT not usable - USDT on Tron disabled");
     }
 
     /* USDC on Tron: config.h only, so there is no stored value to try first. Same
-     * non-fatal treatment — an unset contract disables that one asset. */
+     * non-fatal treatment — an unset contract disables that one asset, which is
+     * what mainnet gets: Circle no longer issues USDC on Tron. */
+    s_trc20_usdc.b58 = settings_net_str(TRON_ADDR_USDC, TRON_ADDR_USDC_MAIN);
     if (!trc20_load(&s_trc20_usdc, cryptoProvider)) {
         ESP_LOGW(TAG, "TRON_ADDR_USDC not usable - USDC on Tron disabled");
     }
@@ -1895,7 +1949,7 @@ extern "C" void app_main(void)
      * only thing this boot call decides is where the readiness probe below asks
      * for its nonce. */
     eth_rpc_select();
-    tron_rpc_init(TRON_URL);
+    tron_rpc_init(settings_net_str(TRON_URL, TRON_URL_MAIN));
 #ifdef TRON_CA_CERT_PEM
     /* Same for the Tron endpoint. Optional because the node is not trusted on
      * this path either way — every transaction it serialises is re-derived and

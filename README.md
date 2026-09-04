@@ -25,8 +25,11 @@ The user selects an amount on the touchscreen, taps a **Cryptnox smart card** on
 the attached PN532 reader, and the terminal signs and broadcasts an EIP-1559
 transfer via a JSON-RPC endpoint (PublicNode by default), then waits for the
 on-chain receipt before showing **Approved**. The asset is picked on the device —
-ETH, USDC or USDT on Ethereum Sepolia, POL, USDC or USDT on Polygon Amoy, and
-TRX, USDT or USDC on Tron Nile.
+ETH, USDC or USDT on Ethereum, POL, USDC or USDT on Polygon, and TRX or USDT on
+Tron. Whether those are the production networks or their test deployments
+(Sepolia, Amoy, Nile) is a runtime setting on the config page; it defaults to
+**production**, and the terminal restarts to apply a change. USDC on Tron is a
+testnet-only selection — Circle wound it down in 2024&ndash;25.
 
 > [!NOTE]
 > The keypad enters two decimal places of whatever asset is selected, and a
@@ -156,6 +159,7 @@ and fill in:
 | `ADDR_USDT` | USDT ERC-20 contract on Sepolia. Not settable on the device — the one NVS contract slot is USDC's — and not fatal if unset: USDT on Ethereum is then refused at the confirm step. Its `decimals()` **must be 6**. Same EIP-55 rule as `ADDR_TO` |
 | `POLY_RPC_URL`, `CHAIN_ID_AMOY`, `POLY_ADDR_USDC`, `POLY_ADDR_USDT` | Polygon Amoy endpoint, chain id and the two token contracts on that network. Polygon reuses the whole Ethereum path — same card key, same payout address — so only these differ. `POLY_CA_CERT_PEM` pins its certificate; `POLY_MIN_PRIORITY_FEE_GWEI` (default 30) is the tip floor, since Amoy drops anything under ~25 Gwei and the fee steppers are shared with Ethereum |
 | `TRON_ADDR_USDC` | USDC TRC-20 contract on Nile. Config-only and non-fatal, like `ADDR_USDT`. Testnet only: Circle wound USDC on Tron down in 2024–25, so there is no mainnet asset to graduate to |
+| `RPC_URL_MAIN`, `POLY_RPC_URL_MAIN`, `TRON_URL_MAIN`, `CHAIN_ID_MAINNET`, `CHAIN_ID_POLYGON`, `ADDR_USDC_MAIN`, `ADDR_USDT_MAIN`, `POLY_ADDR_USDC_MAIN`, `POLY_ADDR_USDT_MAIN`, `TRON_ADDR_USDT_MAIN`, `TRON_ADDR_USDC_MAIN` | The production half of every pair above, selected at run time from the config page's Network section (default: production). Same rules throughout — EIP-55 form, `decimals()` **must be 6**, unset means that asset is refused rather than the terminal failing to boot. `tests/units/test_networks.cpp` checks each one parses; **verify against a block explorer** that it is the right contract before taking real money. A TLS pin applies to the production endpoint too, so it has to cover whichever network the terminal is switched to |
 | `CHAIN_ID_SEPOLIA`, `MAX_PRIORITY_FEE`, `MAX_FEE`, `GAS_LIMIT_ERC20` | Chain ID and EIP-1559 gas parameters (the fees are first-boot defaults, editable at run time in the settings) |
 | `GAS_LIMIT_NATIVE` | Gas for a plain ETH/POL transfer — exactly 21000, since no contract runs. Optional; defaults to 21000 |
 

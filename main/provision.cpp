@@ -36,6 +36,7 @@
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_random.h"
+#include "esp_system.h"   /* esp_restart — the network switch reboots to apply */
 #include "esp_timer.h"
 #include "nvs.h"
 
@@ -504,11 +505,23 @@ static const char *const PAGE_HTML =
 "input:not([type]){font-family:ui-monospace,SFMono-Regular,Menlo,monospace;"
 "font-size:.9rem}"
 "input::placeholder{color:var(--dim)}"
+/* Provenance under a value — "built into this firmware" and the like. Grey and a
+ * size down, so the address above it stays the thing being read. */
+"small{display:inline-block;margin-top:3px;color:var(--dim);font-size:.82rem}"
 ":focus-visible{outline:2px solid var(--acc);outline-offset:2px}"
 "input[type=file]{padding:10px}"
 "input[type=file]::file-selector-button{font:inherit;margin-right:10px;"
 "padding:7px 12px;border:1px solid var(--line);border-radius:8px;"
 "background:var(--card);color:var(--fg)}"
+
+/* The file input is driven by the Browse button beside it, so it is taken out of
+ * the flow rather than removed from it. It used to carry `hidden`, and a
+ * display:none input is one iOS Safari will not open from a scripted .click() —
+ * the button did nothing at all on a phone, which is the one device this page is
+ * designed to be used from. Present, laid out, and invisible: clip-path over
+ * width/height:0 so the element still has a box for the picker to hang off. */
+".sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;border:0;"
+"overflow:hidden;clip-path:inset(50%);white-space:nowrap}"
 
 /* 48px so it is a thumb target, not a mouse one. */
 "button{min-height:48px;margin-top:10px;border:0;background:var(--acc);"
@@ -664,13 +677,47 @@ static const char *const PAGE_HTML =
 "<p><span id=pend></span> is on the terminal screen now. Compare it there, "
 "character by character, and accept it on the terminal.</p></section>"
 
+/* Production or test, for all three networks at once. Not per-network: "Ethereum
+ * mainnet with Tron on Nile" is not a configuration anybody wants, it is a
+ * terminal half of whose sales settle in nothing.
+ *
+ * Written straight through like the gas fees rather than proposed on the panel,
+ * and then the terminal restarts itself — the endpoints, chain ids and token
+ * contracts are resolved once at boot into the stores that are reconciled before
+ * every signature, and there is no honest way to swap those under a running
+ * payment. The restart is the mechanism, not an inconvenience around one.
+ *
+ * The stored token contracts are per-network, so switching does not carry a
+ * Sepolia address onto mainnet; the payout addresses are shared, because a card's
+ * address is the same account on either. */
+"<section id=s_net hidden><h2>Network</h2>"
+"<p>Currently <code id=cur_net>&hellip;</code>. Test networks move worthless "
+"tokens and are for trying the terminal out; production settles real money.</p>"
+"<label><input type=radio name=net value=main id=net_main> "
+"Production (Ethereum, Polygon, Tron)</label>"
+"<label><input type=radio name=net value=test id=net_test> "
+"Test (Sepolia, Amoy, Nile)</label>"
+"<p><b>The terminal restarts when this changes.</b> Check the asset on its Tx "
+"tab afterwards &mdash; a token you set by hand is stored per network, so the "
+"other one falls back to the firmware's own contract.</p>"
+"<button class=alt id=go_net>Switch network</button></section>"
+
+/* Nothing here needs doing on a working terminal, and the section has to open by
+ * saying so. It used to report a contract nobody had overridden as "not set",
+ * which beside a USDC selection that charges perfectly well reads as a fault —
+ * and the obvious repair for a fault is to paste something over an address that
+ * was already right. The terminal ships knowing these; this is the override. */
 "<section id=s_ct hidden><h2>Token contracts</h2>"
-"<p>Which token the terminal charges in. Accepted on the terminal screen like a "
-"payout address &mdash; a wrong contract moves a different asset.</p>"
-"<p>ERC-20 on Ethereum &mdash; currently <code id=cur_cte>&hellip;</code></p>"
+"<p>Which contract the terminal calls for USDC and USDT. It already has one for "
+"each, built into the firmware &mdash; <b>leave these alone unless you know the "
+"deployment has moved</b>. A wrong contract moves a different asset, so a new one "
+"is accepted on the terminal screen like a payout address.</p>"
+"<p>ERC-20 on Ethereum &mdash; using <code id=cur_cte>&hellip;</code>"
+"<br><small id=src_cte></small></p>"
 "<input id=in_cte placeholder='0x...' autocapitalize=off autocomplete=off>"
 "<button class=alt id=go_cte>Propose ERC-20 contract</button>"
-"<p>TRC-20 on Tron &mdash; currently <code id=cur_ctt>&hellip;</code></p>"
+"<p>TRC-20 on Tron &mdash; using <code id=cur_ctt>&hellip;</code>"
+"<br><small id=src_ctt></small></p>"
 "<input id=in_ctt placeholder='T...' autocapitalize=off autocomplete=off>"
 "<button class=alt id=go_ctt>Propose TRC-20 contract</button></section>"
 
@@ -702,7 +749,12 @@ static const char *const PAGE_HTML =
 "<p>Where takings are sent &mdash; the merchant's own address. Either way this "
 "only <i>proposes</i> it: the terminal shows it on its own screen and somebody "
 "has to accept it there.</p>"
-"<p>Ethereum &mdash; currently <code id=cur_eth>&hellip;</code><br>"
+/* Two addresses, three networks. Polygon is EVM — same card key, same derivation
+ * path, same 0x address — so it spends the Ethereum one, and saying so here is
+ * what stops an operator hunting for a Polygon field that will never exist and
+ * concluding the terminal cannot take Polygon payments. */
+"<p>Ethereum &mdash; also used for Polygon &mdash; currently "
+"<code id=cur_eth>&hellip;</code><br>"
 "Tron &mdash; currently <code id=cur_trx>&hellip;</code></p>"
 /* Which card, and what to do with it. The instruction below says "tap a Cryptnox
  * card" to somebody who may never have seen one, so show them the actual card
@@ -715,7 +767,7 @@ static const char *const PAGE_HTML =
 "asks for that card's PIN, then shows each address for acceptance.</p></div>"
 "<button class=alt id=go_card>Read from a Cryptnox card</button>"
 "<h2>Or type an address</h2>"
-"<p>Ethereum</p>"
+"<p>Ethereum <i>(and Polygon &mdash; one address serves both)</i></p>"
 "<input id=in_eth placeholder='0x...' autocapitalize=off autocomplete=off>"
 "<button id=go_eth>Propose Ethereum address</button>"
 "<p>Tron</p>"
@@ -763,9 +815,36 @@ static const char *const PAGE_HTML =
 "hand it to the terminal here &mdash; the terminal never connects to the "
 "internet for this. It checks the signature itself, and nothing is installed "
 "until somebody accepts the version on its screen.</p>"
-"<input type=file id=file accept='.bin' hidden>"
+/* No accept= filter. It said '.bin', and iOS maps an accept list to file types it
+ * knows — an extension it does not recognise leaves every file in the picker
+ * greyed out, so the operator gets a file browser that will not let them pick the
+ * file they came to send. The terminal is the wrong place to be lax about what it
+ * accepts and it is not being lax: the image is SHA-256'd and signature-checked
+ * before anything is staged, and a version has to be accepted on the panel. A
+ * filename filter never protected any of that. */
+"<input type=file id=file class=sr>"
 "<button class=alt id=up>Browse</button>"
-"<p id=fwfile></p></section>"
+"<p id=fwfile></p>"
+
+/* The one thing on this page that a captive portal cannot do.
+ *
+ * Joining the terminal's AP makes the phone pop this page up by itself, in the
+ * Wi-Fi sign-in window — Android's CaptivePortalLogin activity, iOS's equivalent
+ * sheet. That window is a cut-down WebView, and neither platform wires up a file
+ * chooser in it: the input is there, the tap reaches it, and nothing opens. No
+ * markup fixes that, because the missing piece is on the other side of the
+ * WebView. Everything else on this page works there, which is precisely why it
+ * reads as the button being broken rather than as the window being the wrong one.
+ *
+ * So the section says so, in the place the operator is standing when it happens,
+ * and gives them the address to open in a real browser. Shown to everybody rather
+ * than sniffed for from the user agent: the WebView markers are undocumented and
+ * change, and a sentence that is merely unnecessary on a laptop is cheaper than a
+ * detection that is silently wrong on a handset. */
+"<div class=wait><b>Browse does nothing?</b> You are in the Wi-Fi sign-in "
+"window your phone opened, and neither Android nor iOS lets that window pick "
+"files. Stay on this network, open <code>" PORTAL_URL "</code> in your normal "
+"browser, and use the Firmware section there.</div></section>"
 
 /* Where the wizard ends, and the last thing this phone will be shown: joining
  * the venue network moves the terminal's radio off this setup network, so the
@@ -796,8 +875,8 @@ static const char *const PAGE_JS =
  * by construction rather than by adding `&&!fin` to every show() line — and
  * so a section added later without a thought for the end of the wizard is hidden
  * there rather than left on screen addressed to a terminal that has gone. */
-"var SEC=['s_auth','waiting','s_pend','s_addr','s_ct','s_fee','s_wifi','s_fw',"
-"'nav'];"
+"var SEC=['s_auth','waiting','s_pend','s_addr','s_net','s_ct','s_fee','s_wifi',"
+"'s_fw','nav'];"
 /* Three kinds, because "that is not a valid Ethereum address" and "it is stored"
  * in the same grey box is how a refusal gets read as a success. 'err' is the one
  * that matters, so it is what a bare say() rejection handler produces: every
@@ -833,6 +912,11 @@ static const char *const PAGE_JS =
 /* In the wizard one section at a time, in the order of the flow. In admin mode
  * everything at once — it is a settings page, not a sequence. */
 "show('s_addr',a&&!p&&(w?st=='addr':true));"
+/* Admin mode only, like the contracts and the fees. During the wizard the
+ * terminal is being set up on whatever network it shipped configured for, and a
+ * switch there would restart the device mid-setup — out of the wizard, and away
+ * from the phone that was walking somebody through it. */
+"show('s_net', a&&!p&&!w);"
 "show('s_ct',  a&&!p&&!w);"
 "show('s_fee', a&&!p&&!w);"
 "show('s_wifi',a&&!p&&(w?st=='wifi':true));"
@@ -846,8 +930,22 @@ static const char *const PAGE_JS =
 "back. Changing network drops it for good, on the old address.';"
 "if(a){$('cur_eth').textContent=S.pay_eth||'not set';"
 "$('cur_trx').textContent=S.pay_trx||'not set';"
-"$('cur_cte').textContent=S.ct_eth||'not set';"
-"$('cur_ctt').textContent=S.ct_trx||'not set';"
+/* The contract in use, and where it came from on the line under it. Two elements
+ * rather than one string, so "built into this firmware" is small grey prose and
+ * the address stays the monospace thing you compare against the panel. */
+"$('cur_cte').textContent=S.ct_eth||'none configured';"
+"$('cur_ctt').textContent=S.ct_trx||'none configured';"
+"$('src_cte').textContent=S.ct_eth?(S.ct_eth_own?'Set by an operator on this "
+"terminal.':'Built into this firmware - nothing to do.'):'This firmware names no "
+"contract for it, so that asset is refused.';"
+"$('src_ctt').textContent=S.ct_trx?(S.ct_trx_own?'Set by an operator on this "
+"terminal.':'Built into this firmware - nothing to do.'):'This firmware names no "
+"contract for it, so that asset is refused.';"
+"$('cur_net').textContent=S.mainnet?'production':'test networks';"
+/* Checked from the device once, then left alone — the poll runs every couple of
+ * seconds and would otherwise put the radio back under whoever had just moved it. */
+"if(!$('net_main').checked&&!$('net_test').checked)"
+"$(S.mainnet?'net_main':'net_test').checked=true;"
 "$('cur_fmax').textContent=S.fee_max;"
 "$('cur_fprio').textContent=S.fee_prio;"
 /* Seeded, not overwritten: the poll runs every couple of seconds, and writing
@@ -902,13 +1000,29 @@ static const char *const PAGE_JS =
 "post('/api/card').then(function(){info('Tap your Cryptnox card on the terminal "
 "when it asks, then accept each address on its screen.')},say)};"
 
+/* An empty field is not a failure, it is a step not taken yet — so the answer says
+ * what to do next instead of reporting that nothing happened. "Nothing to
+ * propose." was read as the terminal refusing the address rather than as never
+ * having been given one, and there is no way to tell those apart from a red line
+ * that describes the page's own internal state. Named per field, because this is
+ * the same button four times over and the operator has to know which one. */
 "function propose(u,net,el){var v=$(el).value.trim();"
-"if(!v){say('Nothing to propose.');return}"
+"if(!v){info('That box is empty - type the address into it first.');"
+"$(el).focus();return}"
 "post(u,enc({net:net,addr:v})).then(function(m){$(el).value='';good(m)},say)}"
 "$('go_eth').onclick=function(){propose('/api/payout','eth','in_eth')};"
 "$('go_trx').onclick=function(){propose('/api/payout','tron','in_trx')};"
 "$('go_cte').onclick=function(){propose('/api/contract','eth','in_cte')};"
 "$('go_ctt').onclick=function(){propose('/api/contract','tron','in_ctt')};"
+
+/* The device reboots on this one, so the answer is the last thing this page will
+ * hear from it: stop the poll and say so, rather than leaving the operator
+ * watching a page that quietly stops updating. */
+"$('go_net').onclick=function(){"
+"var m=$('net_main').checked;"
+"if(m==!!S.mainnet){info('Already on that network.');return}"
+"post('/api/network',enc({net:m?'main':'test'})).then(function(t){"
+"clearInterval(PT);good(t)},say)};"
 
 "$('go_fee').onclick=function(){"
 "post('/api/fees',enc({max:$('in_fmax').value,prio:$('in_fprio').value}))"
@@ -993,7 +1107,10 @@ static esp_err_t page_get(httpd_req_t *req)
 static const char *ask_label(prov_ask_t k)
 {
     switch (k) {
-        case PROV_ASK_PAYOUT_ETH:    return "Ethereum payout address";
+        /* Polygon is EVM and spends this same address, and the panel is where an
+         * operator decides whether to accept it — so it says so there too, not
+         * only in the browser. */
+        case PROV_ASK_PAYOUT_ETH:    return "Ethereum / Polygon payout address";
         case PROV_ASK_PAYOUT_TRON:   return "Tron payout address";
         case PROV_ASK_CONTRACT_ETH:  return "ERC-20 token contract";
         case PROV_ASK_CONTRACT_TRON: return "TRC-20 token contract";
@@ -1018,6 +1135,11 @@ static const char *step_name(prov_step_t s)
  * and a quote in one turns this response into something the page cannot parse. Host
  * test: tests/units/test_json_out.cpp. */
 
+/* Defined with the proposal handlers in §10, where it belongs — the report below
+ * borrows it so the page cannot describe as usable a contract it would itself
+ * refuse if somebody pasted it in. */
+static bool addr_plausible(bool tron, const char *addr);
+
 static esp_err_t state_get(httpd_req_t *req)
 {
     prov_ask_t ask = PROV_ASK_NONE;
@@ -1027,7 +1149,7 @@ static esp_err_t state_get(httpd_req_t *req)
      * business learning the payout addresses or the venue's network name. The
      * firmware version it can see, because the update page is useless without it
      * and it is stamped on the About screen anyway. */
-    char body[768];
+    char body[928];
     if (!authed(req)) {
         (void)snprintf(body, sizeof(body),
                        "{\"mode\":\"%s\",\"step\":\"%s\",\"authed\":false,"
@@ -1041,14 +1163,41 @@ static esp_err_t state_get(httpd_req_t *req)
         char pay_trx[SETTINGS_PAYOUT_MAX] = "";
         char ct_eth[SETTINGS_PAYOUT_MAX]  = "";
         char ct_trx[SETTINGS_PAYOUT_MAX]  = "";
-        /* The stored value only. A browser asking "what is configured" must not
+        /* Payout: the stored value only. A browser asking "who gets paid" must not
          * be shown the compile-time fallback as though somebody had chosen it —
          * that is exactly the confusion that leaves a terminal quietly paying an
-         * address its operator never saw. */
+         * address its operator never saw, and an unset one refuses every sale.
+         * Empty means empty, and the page says "not set" because it is. */
         if (!settings_get_payout(false, pay_eth, sizeof(pay_eth))) { pay_eth[0] = '\0'; }
         if (!settings_get_payout(true,  pay_trx, sizeof(pay_trx))) { pay_trx[0] = '\0'; }
-        if (!settings_get_contract(false, ct_eth, sizeof(ct_eth))) { ct_eth[0]  = '\0'; }
-        if (!settings_get_contract(true,  ct_trx, sizeof(ct_trx))) { ct_trx[0]  = '\0'; }
+
+        /* Contracts: the value actually in use, plus whether an operator chose it.
+         *
+         * The same "stored only" rule was applied here and it was the wrong rule.
+         * A terminal with no stored contract is not uncontracted — it charges
+         * against the one built into the firmware, which is a real address doing a
+         * real job and is on the panel's own Tx tab. Reporting that as "not set"
+         * beside a working USDC selection reads as a fault, and the obvious repair
+         * is to paste something over a contract that was already correct.
+         *
+         * The reason the payout rule exists does not carry across: a fallback
+         * recipient is somebody else's address and the terminal refuses to spend to
+         * it, while a fallback contract is the asset the operator picked. So the
+         * page shows it and labels where it came from — which is the distinction
+         * the original comment was protecting, said out loud instead of by
+         * omission. Nothing is disclosed: the contract is in the signed image, on
+         * the panel, and public on-chain, and this body only reaches a browser that
+         * has already had the admin code typed on the terminal. */
+        const bool ct_eth_own = settings_get_contract(false, ct_eth, sizeof(ct_eth));
+        const bool ct_trx_own = settings_get_contract(true,  ct_trx, sizeof(ct_trx));
+        /* An asset the build never configured falls back to the placeholder still
+         * sitting in config.h, which is a string and not an address. main.cpp
+         * refuses that asset over it; showing it here as the contract in use would
+         * be the page contradicting the terminal. Same plausibility test the
+         * proposals are held to, so the page cannot report as usable an address it
+         * would itself have rejected. */
+        if (!addr_plausible(false, ct_eth)) { ct_eth[0] = '\0'; }
+        if (!addr_plausible(true,  ct_trx)) { ct_trx[0] = '\0'; }
 
         char ssid[33] = "";
         char pass[65] = "";
@@ -1062,13 +1211,17 @@ static esp_err_t state_get(httpd_req_t *req)
                        "\"auth_pending\":false,\"version\":\"%s\","
                        "\"pay_eth\":\"%s\",\"pay_trx\":\"%s\","
                        "\"ct_eth\":\"%s\",\"ct_trx\":\"%s\","
+                       "\"ct_eth_own\":%s,\"ct_trx_own\":%s,"
                        "\"ssid\":\"%s\",\"pending\":\"%s\",\"note\":\"%s\","
-                       "\"fee_max\":%u,\"fee_prio\":%u,"
+                       "\"mainnet\":%s,\"fee_max\":%u,\"fee_prio\":%u,"
                        "\"scan_gen\":%u,\"win\":%u}",
                        (s_mode == PROV_MODE_WIZARD) ? "wizard" : "admin",
                        step_name(s_step), ota_running_version(),
-                       pay_eth, pay_trx, ct_eth, ct_trx, ssid_json,
-                       ask_label(ask), s_note,
+                       pay_eth, pay_trx, ct_eth, ct_trx,
+                       ct_eth_own ? "true" : "false",
+                       ct_trx_own ? "true" : "false",
+                       ssid_json, ask_label(ask), s_note,
+                       settings_get_mainnet() ? "true" : "false",
                        static_cast<unsigned>(settings_get_max_fee_gwei()),
                        static_cast<unsigned>(settings_get_priority_fee_gwei()),
                        static_cast<unsigned>(s_scan_gen.load()),
@@ -1266,6 +1419,62 @@ static esp_err_t fees_post(httpd_req_t *req)
     ESP_LOGI(TAG, "gas caps set from the config page: max %lu, tip %lu Gwei",
              max_gwei, prio_gwei);
     return ok(req, "Gas fees stored. They apply to the next sale.");
+}
+
+/**
+ * @brief Switch the terminal between the production and the test networks.
+ *
+ * Written straight through and followed by a restart, which is the whole of the
+ * mechanism: the RPC endpoints, the chain ids and the token contracts are
+ * resolved once at boot into the dual stores that every signature is reconciled
+ * against, so there is no point at which a running terminal can be moved between
+ * networks without a boot. Trying would mean a payment whose nonce came from one
+ * chain and whose contract came from the other.
+ *
+ * Not proposed on the panel like an address, for the reason the gas caps are not:
+ * this cannot send money anywhere. It decides where the operator's own payout
+ * address is paid — the same address on both — and it announces itself loudly, on
+ * the Tx tab and in the asset picker, the moment the terminal comes back up. It is
+ * behind the admin code either way, like everything else on this page.
+ *
+ * The answer goes out before the reboot, with a pause long enough for it to reach
+ * the browser: the phone is on this device's own AP, so a restart with the reply
+ * still queued reads to the operator as the page having crashed.
+ */
+static esp_err_t network_post(httpd_req_t *req)
+{
+    esp_err_t rc;
+    if (!gate(req, &rc)) { return rc; }
+
+    char body[48] = { 0 };
+    if (!read_body(req, body, sizeof(body))) {
+        return reply(req, "400 Bad Request", "Bad request.");
+    }
+
+    char net[8] = { 0 };
+    (void)form_field(body, "net", net, sizeof(net));
+
+    const bool main_wanted = (strcmp(net, "main") == 0);
+    if (!main_wanted && (strcmp(net, "test") != 0)) {
+        return reply(req, "400 Bad Request", "Pick production or test.");
+    }
+    if (main_wanted == settings_get_mainnet()) {
+        return reply(req, "409 Conflict", "The terminal is already on that "
+                                          "network.");
+    }
+
+    settings_set_mainnet(main_wanted);
+    ESP_LOGW(TAG, "network switched to %s from the config page - restarting",
+             main_wanted ? "PRODUCTION" : "test");
+
+    const esp_err_t sent = ok(req, main_wanted
+        ? "Switched to the production networks. The terminal is restarting - "
+          "check the asset on its Tx tab when it comes back."
+        : "Switched to the test networks. The terminal is restarting - check the "
+          "asset on its Tx tab when it comes back.");
+    vTaskDelay(pdMS_TO_TICKS(1500));
+    esp_restart();
+    return sent;   /* not reached */
 }
 
 /** @brief The browser asks the terminal to read the addresses off a card. */
@@ -1507,6 +1716,7 @@ static void register_handlers(void)
         { "/api/payout",   HTTP_POST, payout_post,   NULL },
         { "/api/contract", HTTP_POST, contract_post, NULL },
         { "/api/fees",     HTTP_POST, fees_post,     NULL },
+        { "/api/network",  HTTP_POST, network_post,  NULL },
         { "/api/card",     HTTP_POST, card_post,     NULL },
         { "/api/wifi",     HTTP_POST, wifi_post,     NULL },
         { "/api/rescan",   HTTP_POST, rescan_post,   NULL },

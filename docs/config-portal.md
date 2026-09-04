@@ -206,6 +206,13 @@ looking entirely normal. Three things changed:
 *resolvable* — the `config.h` fallback still supplies the value, it just no longer
 counts as configured.
 
+There are two payout addresses for three networks. Polygon is EVM — same card key,
+same `m/44'/60'/0'/0/0` derivation, same `0x` address — so it spends the Ethereum
+one, and `settings_has_payout(false)` is what the Polygon row in the picker asks.
+The page and the panel both say so where the address is entered and where it is
+accepted; without that, an operator hunts for a Polygon field that will never exist
+and concludes the terminal cannot take Polygon payments.
+
 ## Every setting is changed here, not on the panel
 
 The panel is a 2.8" resistive screen behind an admin code; this page is a keyboard.
@@ -231,6 +238,42 @@ human, while a cap only decides how much gas the terminal pays for its own
 transaction — and a wrong one announces itself by pricing the next sale out of a
 block.
 
+### Production or test networks
+
+The Network section switches all three networks at once between their production
+and their test deployments — Ethereum/Sepolia, Polygon/Amoy, Tron/Nile. Not one
+per network: "Ethereum mainnet with Tron on Nile" is not a configuration anybody
+wants, it is a terminal half of whose sales settle in nothing. A terminal that has
+never been told otherwise is on **production**; a unit somebody bought to take
+money with must not come up settling nothing.
+
+Stored straight through like the gas caps and for the same reason — it cannot send
+money anywhere, it only decides where the operator's own payout address is paid —
+and then **the terminal restarts**. That restart is the mechanism, not an
+inconvenience around one: the RPC endpoints, the chain ids and the token contracts
+are resolved once at boot into the dual stores that every signature is reconciled
+against, and there is no honest way to move those under a running payment.
+
+Two things are stored per network and one is not:
+
+* **token contracts** are per network. The same USDC on mainnet and on Sepolia are
+  different deployments, so one slot would carry a testnet address onto mainnet —
+  an address that holds nothing, under a name that says it holds money. Switching
+  therefore falls back to the firmware's own contract for the network you arrive
+  on until somebody sets one there;
+* **payout addresses** are shared. A card's address is the same account on either
+  deployment, so switching does not send the operator back through setup.
+
+The names on the panel follow: the Tx tab and the asset picker read "Ethereum
+Sepolia" on a test terminal and plain "Ethereum" on a production one. The mainnet
+names carry no suffix on purpose — a production terminal should not be shouting a
+word nobody needs, and the testnet ones then stand out.
+
+The addresses themselves live in `config.h`, one pair per asset, and
+`tests/units/test_networks.cpp` checks every one of them parses with a correct
+EIP-55 checksum. What no test can check is that an address is the *right*
+contract; that is a block explorer's job before a terminal takes real money.
+
 ## Endpoints
 
 Everything except `GET /` and `GET /api/state` requires the session token.
@@ -238,12 +281,13 @@ Everything except `GET /` and `GET /api/state` requires the session token.
 | | |
 |---|---|
 | `GET /` | the page — HTML then JS, two strings in `provision.cpp` |
-| `GET /api/state` | mode, step, `authed`, version; and once authorised the addresses, contracts, SSID, pending value, note, gas caps, scan generation |
+| `GET /api/state` | mode, step, `authed`, version; and once authorised the addresses, contracts, SSID, pending value, note, `mainnet`, gas caps, scan generation |
 | `GET /api/scan` | the device's last Wi-Fi scan |
 | `POST /api/auth` | ask to be authorised → returns the token; the panel decides (except the Wi-Fi-only wizard, which grants it) |
 | `POST /api/payout` | `net=eth\|tron`, `addr=…` → proposed, panel confirms |
 | `POST /api/contract` | same shape, for the ERC-20 / TRC-20 contract |
 | `POST /api/fees` | `max=…`, `prio=…` in Gwei → stored directly, 1&ndash;500 each and the tip no higher than the max |
+| `POST /api/network` | `net=main\|test` → stored directly, then the terminal restarts to apply it |
 | `POST /api/card` | read the payout addresses off a Cryptnox card |
 | `POST /api/wifi` | `ssid=…`, `pass=…` |
 | `POST /api/rescan` | ask the device to scan again |

@@ -49,6 +49,7 @@ function makeEl(id) {
     textContent: '',
     value: '',
     type: '',
+    checked: false,
     disabled: false,
     onclick: null,
     files: [],
@@ -58,6 +59,7 @@ function makeEl(id) {
     appendChild(c) { this.children.push(c); return c; },
     setAttribute(k, v) { this.attrs[k] = String(v); },
     click() { this.clicked++; },
+    focus() { this.focused = true; },
   };
 }
 
@@ -165,8 +167,8 @@ const page = sandbox.__out;
  * new section added to the page with no case here fails every scenario at once,
  * rather than silently defaulting to visible.
  */
-const SECTIONS = ['s_auth', 's_pend', 's_addr', 's_ct', 's_fee', 's_wifi',
-  's_fw', 's_final', 'nav'];
+const SECTIONS = ['s_auth', 's_pend', 's_addr', 's_net', 's_ct', 's_fee',
+  's_wifi', 's_fw', 's_final', 'nav'];
 
 const CASES = [
   {
@@ -222,14 +224,20 @@ const CASES = [
       mode: 'admin', step: 'admin', authed: true,
       pay_eth: '0xAAA', pay_trx: 'TBBB', ct_eth: '0xCCC', ct_trx: 'TDDD',
       ssid: 'My Cafe', version: '1.0.1', scan_gen: 0,
-      fee_max: 40, fee_prio: 3,
+      fee_max: 40, fee_prio: 3, mainnet: true, ct_eth_own: true,
     },
-    on: ['s_addr', 's_ct', 's_fee', 's_wifi', 's_fw'],
+    on: ['s_addr', 's_net', 's_ct', 's_fee', 's_wifi', 's_fw'],
     also: () => {
       assert.strictEqual(els.get('cur_eth').textContent, '0xAAA');
       assert.strictEqual(els.get('cur_trx').textContent, 'TBBB');
       assert.strictEqual(els.get('cur_cte').textContent, '0xCCC');
       assert.strictEqual(els.get('cur_ctt').textContent, 'TDDD');
+      /* A contract nobody overrode is not a missing one — it is the firmware's
+       * own, doing its job. Reporting that as "not set" beside a working USDC
+       * selection is how an operator comes to paste over an address that was
+       * already right, so the line under each says where it came from. */
+      assert.match(els.get('src_cte').textContent, /Set by an operator/);
+      assert.match(els.get('src_ctt').textContent, /Built into this firmware/);
       assert.strictEqual(els.get('cur_ssid').textContent, 'My Cafe');
       assert.strictEqual(els.get('ver').textContent, '1.0.1');
       /* The gas caps are the settings the panel no longer edits, so this page is
@@ -239,6 +247,33 @@ const CASES = [
       assert.strictEqual(els.get('cur_fprio').textContent, 3);
       assert.strictEqual(els.get('in_fmax').value, 40, 'the max fee should be seeded');
       assert.strictEqual(els.get('in_fprio').value, 3, 'the tip should be seeded');
+      /* Which networks a sale settles on is the one setting on this page whose
+       * wrong value costs a whole shift's takings, so the page has to report it
+       * from the device rather than from whatever the radio happened to be on. */
+      assert.strictEqual(els.get('cur_net').textContent, 'production');
+      assert.strictEqual(els.get('net_main').checked, true,
+        'the radio should be seeded from the device');
+      assert.strictEqual(els.get('net_test').checked, false);
+    },
+  },
+  {
+    /* The same page against a test-network terminal. Its own case rather than a
+     * second assertion on the one above: the seeding runs once and only once, and
+     * a bug that always ticks "production" passes every check that never renders
+     * a terminal on a testnet. */
+    name: 'admin, on the test networks',
+    state: {
+      mode: 'admin', step: 'admin', authed: true,
+      pay_eth: '0xAAA', pay_trx: 'TBBB', ssid: 'My Cafe', scan_gen: 0,
+      fee_max: 40, fee_prio: 3, mainnet: false,
+    },
+    on: ['s_addr', 's_net', 's_ct', 's_fee', 's_wifi', 's_fw'],
+    also: () => {
+      assert.strictEqual(els.get('cur_net').textContent, 'test networks');
+      assert.strictEqual(els.get('cur_cte').textContent, 'none configured');
+      assert.match(els.get('src_cte').textContent, /refused/);
+      assert.strictEqual(els.get('net_test').checked, true);
+      assert.strictEqual(els.get('net_main').checked, false);
     },
   },
   {
@@ -252,6 +287,10 @@ let failures = 0;
 for (const c of CASES) {
   /* Reset every section, so a case can only pass by being shown by render(). */
   for (const id of SECTIONS.concat(['waiting'])) { els.get(id).hidden = null; }
+  /* And the network radios, because render() seeds them once and then leaves
+   * them alone — a page the operator has touched must not have its choice taken
+   * back by the next poll. Each case is a fresh page load, so clear them. */
+  for (const id of ['net_main', 'net_test']) { els.get(id).checked = false; }
   page.setS(c.state);
   try {
     page.render();
@@ -318,6 +357,31 @@ try {
   console.log('  ok    the typed send-to fields stay open');
 } catch (e) {
   console.log(`  FAIL  the typed send-to fields stay open\n        ${e.message}`);
+  failures++;
+}
+
+/* ── Proposing an empty field ───────────────────────────────────────────────
+ * The button is the same four times over and the field it reads is off-screen on
+ * a phone by the time you have scrolled to it, so pressing it with nothing typed
+ * has to say which box is empty and take the operator there. It used to answer
+ * "Nothing to propose." in the red error style, which reads as the terminal
+ * having refused the address rather than never having been given one.
+ */
+try {
+  els.get('in_eth').value = '';
+  els.get('in_eth').focused = false;
+  els.get('msg').className = '';
+  els.get('go_eth').onclick.call(els.get('go_eth'));
+  assert.notStrictEqual(els.get('msg').className, 'err',
+    'an empty box is a step not taken, not an error');
+  assert.match(els.get('msg').textContent, /empty/,
+    'the message should say the box is empty');
+  assert.strictEqual(els.get('in_eth').focused, true,
+    'the empty field should be focused, so the operator lands on it');
+  console.log('  ok    proposing an empty address says which box and goes there');
+} catch (e) {
+  console.log(`  FAIL  proposing an empty address says which box and goes there
+        ${e.message}`);
   failures++;
 }
 
@@ -394,7 +458,7 @@ const flush = async () => { for (let i = 0; i < 20; i++) { await new Promise(r =
     assert.strictEqual(page.getS().authed, true,
       'the page never saw the grant — is the token being sent on /api/state?');
     assert.strictEqual(els.get('s_auth').hidden, true, 'auth section should be gone');
-    for (const id of ['s_addr', 's_ct', 's_fee', 's_wifi', 's_fw']) {
+    for (const id of ['s_addr', 's_net', 's_ct', 's_fee', 's_wifi', 's_fw']) {
       assert.strictEqual(els.get(id).hidden, false, `${id} should be visible in admin mode`);
     }
     assert.strictEqual(els.get('cur_ssid').textContent, 'Lucky_2.4G');

@@ -326,6 +326,102 @@ terminal dropped"*, with nothing on the panel. Two different events, two
 different sentences: an operator told "not installed" about firmware that is at
 that moment on the panel uploads the same image three times.
 
+### 3.6 The settings wipe
+
+New firmware clears the terminal's stored settings, so a unit that has just been
+updated is an unowned unit: no admin code, no Wi-Fi, no payout address, and the
+setup wizard in front of whoever is standing at it.
+
+**What counts as "new" is the running image's ELF SHA-256, not a version string
+or a build id.** Every rebuild produces a different one, so this fires for a
+cable `flash` exactly as it does for a browser update — by the time the check
+runs, the two are indistinguishable and neither should be treated as a
+power-cycle.
+
+#### Why it looks untestable the first time
+
+The wipe only happens between two *stamped* images. Arriving from firmware that
+predates this check there is no stamp to compare against, so the first boot
+**adopts** the running image and wipes nothing:
+
+```
+I (nnn) settings: firmware not stamped yet - adopting it, no wipe
+```
+
+That is deliberate — there is no previous firmware to clear up after, and wiping
+there would erase the setup the operator has just finished, on a boot that setup
+itself ends with. It is also one-time. Once a unit has been stamped, every update
+after it wipes, and the test below works from that point on.
+
+So: **flash once to stamp the unit, configure it, and start the test from
+there.** A unit that has taken any update since this check shipped is already
+stamped.
+
+#### The test
+
+1. Configure the terminal fully — admin code, Wi-Fi, payout address — and take a
+   payment, so there is something to lose.
+2. Install a new build (§3.3, or a cable flash; bump the version so About tells
+   you which is running).
+3. Watch the first boot on the new image.
+
+**Pass — with no cable, on the panel alone:**
+
+- The welcome screen reads **"Updated to 1.0.1. Settings are cleared &mdash; set
+  the terminal up again."** &mdash; the second sentence appears *only* when a wipe
+  is armed.
+- Tapping **Start** does not open the amount screen. The splash reads **"Clearing
+  settings"** and the terminal restarts by itself. Two boots, not one.
+- After that restart it is in first-run setup: it asks for a new admin code. The
+  Wi-Fi tab reads *Not configured*, and the Tx tab shows the built-in payout
+  address under the red *"this terminal cannot take payments"* line.
+
+**Pass — on the serial log:**
+
+```
+W (nnnnn) settings: firmware changed - arming an NVS wipe for the next boot
+W (nnnnn) cryptnox_pos: restarting to clear settings for the new firmware
+        ... reboot ...
+W (nnn)   settings: wipe armed by the last boot - erasing NVS
+```
+
+Note the order: the arming happens *late*, after the image has cancelled its
+rollback, and the erase happens on the **next** boot, before anything has opened
+NVS. Two boots is the mechanism, not a glitch.
+
+#### The negative control, which matters as much
+
+Power-cycle the terminal without flashing anything.
+
+**Pass:** neither wipe line appears, and the terminal comes straight up on its
+stored Wi-Fi with the operator's payout address &mdash; not the `config.h`
+fallback. Check the Tron recipient in the log against the one you configured; if
+it has reverted to the compile-time address, settings were erased when they
+should not have been.
+
+```
+I (nnnn) cryptnox_pos: Tron recipient: TWm7PCMn...   <- yours, not config.h's
+I (nnnn) cryptnox_pos: Wi-Fi 'Lucky_2.4G': attempt 1/3
+I (nnnn) cryptnox_pos: Ready
+```
+
+**Fail:** a wipe on every boot is a loop &mdash; the stamp is not being written
+back. A terminal that re-runs setup after each power cut is worse than one that
+never wipes at all.
+
+#### The failure path
+
+If the erase itself fails, the flag stays armed and the next boot retries. If it
+fails twice the firmware gives up loudly rather than looping forever:
+
+```
+E (nnn) settings: a wipe is armed but the erase failed - not retrying
+```
+
+The terminal then keeps working with its old settings. That is the intended
+answer: a unit that still takes payments beats a brick, and the panel is not left
+insisting the settings were cleared when they were not.
+
 ---
 
 ## 4. Rollback — the test that decides whether this ships

@@ -61,7 +61,10 @@
  *   #define RPC_CA_CERT_PEM "-----BEGIN CERTIFICATE-----\n" \
  *                           "MIIB...\n" \
  *                           "-----END CERTIFICATE-----\n"
- * Note: pinning ties the build to that endpoint — update it if you change RPC. */
+ * Note: pinning ties the build to that endpoint — update it if you change RPC.
+ * It is applied on the production endpoint (RPC_URL_MAIN) too, so a pin has to
+ * cover whichever network the terminal is switched to, or the mainnet side fails
+ * TLS with nothing on screen to say why. */
 
 /* The card PIN is NOT set here — the operator types it on the touchscreen
  * keypad at sign time, and it is scrubbed from RAM right after signing.
@@ -212,6 +215,65 @@
  * 100 TRX is the usual wallet default. */
 #define TRON_TRC20_FEE_LIMIT_SUN  100000000ULL
 
+
+/* =========================
+ * Production networks
+ * =========================
+ * The mainnet half of every pair above. Which half is used is a runtime setting
+ * (Network, on the config page) and it defaults to PRODUCTION — a terminal
+ * somebody bought to take money with must not come up settling nothing.
+ *
+ * Every constant here has a testnet twin above and is read through exactly the
+ * same code path, so nothing below changes how a payment is built. What it
+ * changes is where it settles, which is why the addresses want checking against a
+ * block explorer rather than trusting this file: they are the canonical
+ * deployments as of 2026-09, and a wrong one moves real money into the wrong
+ * asset. All must have decimals() == 6, as everywhere else.
+ *
+ * An address whose EIP-55 case is wrong fails its parse at boot and disables that
+ * one asset with a log line — so a typo here is a refusal, never a wrong charge.
+ *
+ * A network switch takes effect on a restart: the endpoints and contracts are
+ * resolved once at boot into the dual stores, and the config page restarts the
+ * terminal after writing the setting. The stored token contracts are kept in
+ * separate NVS slots per deployment, so the two never bleed into each other. */
+
+/* Ethereum mainnet. PublicNode, no API key — the same provider as Option A
+ * above; swap in Infura by defining the credentials the same way. */
+#define RPC_URL_MAIN      "https://ethereum-rpc.publicnode.com"
+#define CHAIN_ID_MAINNET  1
+
+/* Circle's USDC and Tether's USDT on Ethereum mainnet (no 0x, EIP-55). Both 6
+ * decimals. Verify on etherscan.io before taking money with them. */
+#define ADDR_USDC_MAIN    "A0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+#define ADDR_USDT_MAIN    "dAC17F958D2ee523a2206206994597C13D831ec7"
+
+/* Polygon PoS mainnet. Same PublicNode arrangement; POLY_MIN_PRIORITY_FEE_GWEI
+ * above applies here too — mainnet Polygon drops an underpriced tip exactly as
+ * Amoy does. */
+#define POLY_RPC_URL_MAIN "https://polygon-bor-rpc.publicnode.com"
+#define CHAIN_ID_POLYGON  137
+
+/* USDC and USDT on Polygon PoS (no 0x, EIP-55), both 6 decimals. The USDC here is
+ * Circle's *native* issuance, NOT the bridged USDC.e at 0x2791Bca1… — they are
+ * two different tokens with the same name on the same network, which is the one
+ * mistake on this list a customer would notice. Verify on polygonscan.com. */
+#define POLY_ADDR_USDC_MAIN  "3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+#define POLY_ADDR_USDT_MAIN  "c2132D05D31c914a87C6611C10748AEb04B58e8F"
+
+/* Tron mainnet. TronGrid's public endpoint needs no API key for these calls,
+ * though it rate-limits harder than Nile does — set TRON_CA_CERT_PEM above and
+ * consider a keyed endpoint for a busy terminal. */
+#define TRON_URL_MAIN     "https://api.trongrid.io"
+
+/* USDT (TRC-20) on Tron mainnet, base58 — 6 decimals. Verify on tronscan.org. */
+#define TRON_ADDR_USDT_MAIN  "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
+
+/* USDC on Tron mainnet — NOT SET, and it stays that way: Circle stopped minting
+ * USDC on Tron in February 2024 and closed redemptions a year later. Unset means
+ * that one selection is refused on mainnet, exactly as an unconfigured asset is
+ * anywhere else; USDC on Nile still works. */
+#define TRON_ADDR_USDC_MAIN  "<USDC_TRC20_CONTRACT_BASE58>"
 
 /* =========================
  * Transaction Parameters

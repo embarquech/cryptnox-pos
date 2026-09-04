@@ -115,6 +115,36 @@ pos_chain_t settings_get_chain(void);
 /** @brief Persist the selected chain. */
 void settings_set_chain(pos_chain_t chain);
 
+/**
+ * @brief true when the terminal is on the production networks.
+ *
+ * Which *deployment* of each network the selected chain means: Ethereum mainnet
+ * or Sepolia, Polygon or Amoy, Tron mainnet or Nile. Orthogonal to
+ * @ref pos_chain_t, which says which asset on which family — so switching this
+ * does not change what the operator is charging in, only where it settles.
+ *
+ * Defaults to true. A terminal that has never been told otherwise is a terminal
+ * somebody bought to take money with, and coming up on a testnet means every
+ * sale reports success and settles nothing.
+ *
+ * The endpoints, chain ids and token contracts are read through this at boot and
+ * baked into the dual stores, so @ref settings_set_mainnet only takes effect on a
+ * restart — the caller does the restarting.
+ */
+bool settings_get_mainnet(void);
+
+/** @brief Persist the production/test network choice. */
+void settings_set_mainnet(bool mainnet);
+
+/**
+ * @brief Pick the string belonging to the network the terminal is on.
+ *
+ * One question asked in one place, for the dozen config.h pairs — RPC URLs, token
+ * contracts, the names the panel shows. Written out per site it is a dozen
+ * chances to leave a mainnet sale pointed at a testnet contract.
+ */
+const char *settings_net_str(const char *testnet, const char *mainnet);
+
 /** @brief Backlight level in percent, or 80 if never set. */
 uint8_t settings_get_brightness(void);
 
@@ -262,6 +292,12 @@ bool settings_set_payout(bool tron, const char *addr);
  * There is one settable contract per network — USDC on Ethereum, USDT on Tron.
  * Native TRX has none, and asking for one on a chain that has no token is the
  * caller's mistake; @p tron selects the network, not the chain.
+ *
+ * Stored separately for the production and test networks (see
+ * @ref settings_get_mainnet): the same token is a different deployment on each,
+ * so one slot would leave a terminal switched to mainnet calling the Sepolia
+ * contract an operator had set — an address that holds nothing, under a name that
+ * says it holds money.
  *
  * The other assets (USDT on Ethereum, both on Polygon, USDC on Tron) are named
  * by config.h alone and have no NVS slot — see erc20_token_t in main.cpp for
