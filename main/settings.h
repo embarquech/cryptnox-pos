@@ -324,13 +324,40 @@ bool settings_set_contract(bool tron, const char *addr);
 void settings_factory_reset(void);
 
 /**
- * @brief Carry out a wipe armed by the previous boot, if there is one.
+ * @brief Release identity of this image. **Bump at every release.**
  *
- * Call once, immediately after @c nvs_flash_init() and before anything opens
- * NVS — @c nvs_flash_erase() cannot run with handles outstanding, and by the
- * time the decision is taken (see @ref settings_arm_wipe_if_new_firmware) the
- * Wi-Fi driver holds its own. Splitting the two is what lets each half run where
- * it is legal. Handles its own re-init and re-stamps the running image.
+ * A plain counter rather than a hash or a version string: it is the one thing
+ * that survives every route firmware takes onto a unit — browser update, cable
+ * `idf.py flash`, factory image. See @ref settings_wipe_if_new_build.
+ */
+#define BUILD_ID  2U
+
+/**
+ * @brief Erase NVS unless this exact build is the one that wrote it.
+ *
+ * Call once at the very top of @c app_main, immediately after @c
+ * nvs_flash_init() and before anything else opens NVS — @c nvs_flash_erase()
+ * cannot run with handles outstanding. Handles its own re-init and stamps @ref
+ * BUILD_ID before returning.
+ *
+ * A security control, not housekeeping. The firmware is open source, so an image
+ * that is not this one can be built by anyone and can write anything it likes
+ * into NVS — a payout address of its own, above all — for whatever runs next to
+ * inherit. So the test is equality: a stamp that is not @ref BUILD_ID means the
+ * stored settings were last written by a different image, and this one erases
+ * them rather than acting on them. Newer, older and absent all fail it.
+ *
+ * What it does NOT do, and cannot: a stamp in NVS does not authenticate itself.
+ * An image that runs on the device can write @ref BUILD_ID's own value and be
+ * inherited from. What stops a foreign image from running at all is Secure Boot
+ * (and Flash Encryption in RELEASE mode, so the key cannot be read out); this
+ * check is the layer under them, for state left by an image that was never
+ * hostile — an older release, an engineering build, a factory image.
+ *
+ * Because the test is equality rather than ordering, a failed update that rolls
+ * back erases a second time, on the way back down. That is the intended trade:
+ * the rollback is a different image again, and settings are cheaper to re-enter
+ * than a payout address is to lose.
  *
  * Erases the whole partition, not just this module's namespace: a new image is
  * meant to start on a unit with no history, so the Wi-Fi driver's namespace and
@@ -338,30 +365,10 @@ void settings_factory_reset(void);
  * — an operator has to re-enter the venue network and re-accept the payout
  * address, and until they do, the unit is unowned in front of whoever is
  * standing at it.
+ *
+ * @return true if the settings were erased, so the caller can say so on the panel.
  */
-void settings_apply_pending_wipe(void);
-
-/**
- * @brief Note that the running firmware is new, so the next boot should wipe.
- *
- * Identity is the running image's ELF SHA-256. That one test covers both ways
- * firmware arrives — an update installed from the browser and an `idf.py flash`
- * over the cable — because both end with a different image executing, and
- * neither can be told apart from the other by the time this runs. A plain
- * power-cycle re-reads the same hash and changes nothing.
- *
- * Call only once the running image has cancelled its rollback (@c
- * ota_mark_valid). Earlier is unsafe: setup ends in a restart, so a wipe before
- * the image is confirmed sends the bootloader back to the previous slot, which
- * then sees a stamp it does not recognise and wipes the operator's re-entered
- * settings a second time.
- *
- * An unstamped unit (factory-fresh, or updated from a build without this check)
- * is adopted rather than wiped — there is no previous firmware to clear after.
- *
- * @return true if a wipe was armed; the caller should restart to apply it.
- */
-bool settings_arm_wipe_if_new_firmware(void);
+bool settings_wipe_if_new_build(void);
 
 #ifdef __cplusplus
 }

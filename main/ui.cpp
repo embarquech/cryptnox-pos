@@ -301,6 +301,15 @@ static char          s_boot_step[40]     = {0};
 static lv_obj_t     *s_boot_step_lbl     = NULL;
 static volatile bool s_boot_step_dirty   = false;
 
+/* The Tx tab's two gas rows, same hand-off again. The caps are written straight
+ * through from the config page on the HTTP task, and the page is reached from a
+ * card raised OVER this screen — so the rows are retexted where they stand
+ * rather than by rebuilding the screen, which would take that card down with it
+ * while the operator is still reading the address off it. */
+static lv_obj_t     *s_fee_max_lbl       = NULL;
+static lv_obj_t     *s_fee_prio_lbl      = NULL;
+static volatile bool s_fees_dirty        = false;
+
 /* Phone setup (UI_SCREEN_PROV). The step is an int, not a prov_step_t, for the
  * same reason ui_show_prov takes one — provision.h includes ui.h. Both are
  * written by the main task and read by the UI task, like the splash line above. */
@@ -1169,6 +1178,8 @@ static void clear_screen(void) {
     s_wifi_pass_ta = NULL;
     s_wifi_eye_lbl   = NULL;
     s_boot_step_lbl  = NULL;
+    s_fee_max_lbl    = NULL;
+    s_fee_prio_lbl   = NULL;
     s_admin_ta       = NULL;
     s_admin_note_lbl = NULL;
     s_reset_btn    = NULL;
@@ -1402,15 +1413,15 @@ static void build_settings(void) {
                    LV_ALIGN_TOP_LEFT, 0, 196);
         snprintf(fee, sizeof(fee), "%u",
                  static_cast<unsigned>(settings_get_max_fee_gwei()));
-        make_label(t_tx, fee, COL_TEXT, &lv_font_montserrat_14,
-                   LV_ALIGN_TOP_LEFT, 0, 216);
+        s_fee_max_lbl = make_label(t_tx, fee, COL_TEXT, &lv_font_montserrat_14,
+                                   LV_ALIGN_TOP_LEFT, 0, 216);
 
         make_label(t_tx, "Priority fee (Gwei)", COL_DIM, &lv_font_montserrat_14,
                    LV_ALIGN_TOP_LEFT, 0, 244);
         snprintf(fee, sizeof(fee), "%u",
                  static_cast<unsigned>(settings_get_priority_fee_gwei()));
-        make_label(t_tx, fee, COL_TEXT, &lv_font_montserrat_14,
-                   LV_ALIGN_TOP_LEFT, 0, 264);
+        s_fee_prio_lbl = make_label(t_tx, fee, COL_TEXT, &lv_font_montserrat_14,
+                                    LV_ALIGN_TOP_LEFT, 0, 264);
     }
 
     /* The way out of a read-only tab. Without it the fees above are two numbers an
@@ -3213,6 +3224,21 @@ static void ui_task(void *arg) {
                 lv_label_set_text(s_boot_step_lbl, s_boot_step);
             }
         }
+        /* Gas caps stored from the config page. The two labels only exist while
+         * the Tx tab is built and not on Tron, so a NULL pair is the ordinary
+         * case — every other screen reads the caps when it is next built. */
+        if (s_fees_dirty) {
+            s_fees_dirty = false;
+            if ((s_fee_max_lbl != NULL) && (s_fee_prio_lbl != NULL)) {
+                char f[16];
+                snprintf(f, sizeof(f), "%u",
+                         static_cast<unsigned>(settings_get_max_fee_gwei()));
+                lv_label_set_text(s_fee_max_lbl, f);
+                snprintf(f, sizeof(f), "%u",
+                         static_cast<unsigned>(settings_get_priority_fee_gwei()));
+                lv_label_set_text(s_fee_prio_lbl, f);
+            }
+        }
         /* A value proposed from the config page. Built here, on the UI task, and
          * after the screen render above — a modal raised straight from the main or
          * HTTP task would be touching LVGL from two tasks at once. */
@@ -3331,6 +3357,10 @@ extern "C" void ui_set_boot_status(const char *step) {
     strncpy(s_boot_step, (step != NULL) ? step : "", sizeof(s_boot_step) - 1);
     s_boot_step[sizeof(s_boot_step) - 1] = '\0';
     s_boot_step_dirty = true;   /* applied by the UI task — LVGL is single-thread */
+}
+
+extern "C" void ui_fees_changed(void) {
+    s_fees_dirty = true;   /* applied by the UI task — LVGL is single-thread */
 }
 
 extern "C" void ui_show_boot_error(ui_boot_err_t kind, const char *detail) {

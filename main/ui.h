@@ -218,6 +218,19 @@ void ui_show_wifi_connecting(const char *ssid);
 void ui_set_boot_status(const char *step);
 
 /**
+ * @brief Note that the stored gas caps have changed, so the Tx tab can catch up.
+ *
+ * The caps are the one setting the config page writes straight through, and that
+ * page is opened from a card raised over the settings screen — so the two gas
+ * rows underneath keep the values they were built with until the operator leaves
+ * the screen and comes back. This retexts them in place.
+ *
+ * Safe from the HTTP task: applied by the UI task on its next pass, and a no-op
+ * when the rows are not on screen (any other screen, or Tron, which has no caps).
+ */
+void ui_fees_changed(void);
+
+/**
  * @brief Greet the operator at the start of first-run setup, or after an update.
  *
  * Shown on a virgin or factory-reset terminal, before the Wi-Fi and admin-code

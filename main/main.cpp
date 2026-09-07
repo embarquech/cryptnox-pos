@@ -1729,9 +1729,9 @@ extern "C" void app_main(void)
 
     /* Before the UI task, before the Wi-Fi driver, before the recipient is
      * resolved: erasing the partition needs every NVS handle shut, and this is
-     * the last moment that is true. Only carries out a wipe the previous boot
-     * decided on — see settings.h. */
-    settings_apply_pending_wipe();
+     * the last moment that is true. Wipes only when this image's BUILD_ID is
+     * newer than the one that last ran here — see settings.h. */
+    const bool wiped = settings_wipe_if_new_build();
 
     /* ── UI: splash visible while the rest boots ───────── */
     s_ui_queue = xQueueCreate(8, sizeof(ui_msg_t));
@@ -2105,36 +2105,16 @@ extern "C" void app_main(void)
      *
      * So greet and name the version: one tap on Start, and the operator has seen
      * which terminal came back and on which firmware. */
-    /* Only now is a wipe safe to decide on. ota_mark_valid() above has cancelled
-     * the rollback, so the image that is about to erase this unit's settings is
-     * the image that will still be here afterwards. Deciding at boot instead put
-     * the wipe in front of first-run setup, whose own restart happens long before
-     * this line — so the bootloader reverted the update, and the reverted image
-     * then read the new one's stamp and wiped the operator's re-entered settings
-     * a second time. The erase itself waits for the next boot, where no NVS
-     * handle is open; see settings.h. */
-    /* ota_mark_valid() returns true for any fresh image, including one whose
-     * rollback it could NOT cancel — and the restart below is exactly the reset
-     * that would send such a slot back to the previous firmware, which would
-     * then find the flag and erase the operator's settings on behalf of an
-     * update that never stuck. Ask what the partition state actually is. */
-    const bool wiping = ota_image_confirmed() &&
-                        settings_arm_wipe_if_new_firmware();
-
-    if (fresh_update || wiping) {
+    /* The wipe itself already happened at the top of this function; say so here,
+     * where there is an operator looking at the panel. */
+    if (fresh_update || wiped) {
         char greeting[96];
         (void)snprintf(greeting, sizeof(greeting), "Updated to %s.%s",
                        ota_running_version(),
-                       wiping ? " Settings are cleared - set the terminal up again."
-                              : "");
+                       wiped ? " Settings are cleared - set the terminal up again."
+                             : "");
         ui_show_welcome(greeting);
         wait_for_ui_event(UI_EVENT_WELCOME_DONE);
-    }
-    if (wiping) {
-        ESP_LOGW(TAG, "restarting to clear settings for the new firmware");
-        ui_set_boot_status("Clearing settings");
-        vTaskDelay(pdMS_TO_TICKS(600));
-        esp_restart();
     }
 
     /* ── Main interaction loop ────────────────────────────────── */

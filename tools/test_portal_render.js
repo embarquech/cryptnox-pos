@@ -360,6 +360,31 @@ try {
   failures++;
 }
 
+/* ── An emptied gas field stays empty ───────────────────────────────────────
+ * The two fee boxes are seeded with the stored caps, because the form posts both
+ * and changing only the tip should not mean retyping the max. That seeding used
+ * to run on any poll that found a box empty — and empty is exactly where you are
+ * the instant you backspace one to retype it, so the old number went straight
+ * back in under the cursor, every second and a half.
+ */
+try {
+  page.setS({ mode: 'admin', step: 'admin', authed: true, scan_gen: 0,
+              fee_max: 40, fee_prio: 3 });
+  page.render();
+  els.get('in_fmax').value = '';
+  els.get('in_fprio').value = '5';
+  page.render();
+  assert.strictEqual(els.get('in_fmax').value, '',
+    'a poll refilled a gas field the operator had just cleared');
+  assert.strictEqual(els.get('in_fprio').value, '5',
+    'a poll overwrote a retyped tip');
+  console.log('  ok    an emptied gas field is not refilled by the next poll');
+} catch (e) {
+  console.log('  FAIL  an emptied gas field is not refilled by the next poll\n'
+              + `        ${e.message}`);
+  failures++;
+}
+
 /* ── Proposing an empty field ───────────────────────────────────────────────
  * The button is the same four times over and the field it reads is off-screen on
  * a phone by the time you have scrolled to it, so pressing it with nothing typed

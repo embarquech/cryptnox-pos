@@ -332,93 +332,98 @@ New firmware clears the terminal's stored settings, so a unit that has just been
 updated is an unowned unit: no admin code, no Wi-Fi, no payout address, and the
 setup wizard in front of whoever is standing at it.
 
-**What counts as "new" is the running image's ELF SHA-256, not a version string
-or a build id.** Every rebuild produces a different one, so this fires for a
-cable `flash` exactly as it does for a browser update — by the time the check
-runs, the two are indistinguishable and neither should be treated as a
-power-cycle.
+**What counts as "new" is `BUILD_ID` in `main/settings.h`, a counter bumped at
+every release.** The running build stamps it into NVS; a boot that finds any
+*other* value there — or none — erases the partition, first thing in
+`app_main()`, before anything has opened NVS. It therefore fires the same way
+however the firmware arrived: browser update, cable `flash`, factory image.
 
-#### Why it looks untestable the first time
+**The test is equality, not ordering, and that is a security decision.** This
+firmware is open source. Anyone can build an image, install it, and have it write
+a payout address of their own into NVS for the official firmware to inherit and
+pay out to — so state that was last written by a *different* image is state this
+one refuses to act on, whether that image called itself newer or older. An
+earlier version of this check compared `<`, and a hostile image only had to stamp
+a large number to be waved through as a rollback.
 
-The wipe only happens between two *stamped* images. Arriving from firmware that
-predates this check there is no stamp to compare against, so the first boot
-**adopts** the running image and wipes nothing:
+The counter cannot do this on its own, and is not asked to: a stamp in NVS does
+not authenticate itself, and an image that gets to run can write `BUILD_ID`'s own
+value. What keeps a foreign image off the device is Secure Boot, with Flash
+Encryption in RELEASE mode so the key cannot be read back out. This check is the
+layer beneath them, and it covers the case that is not an attack at all — an
+older release, an engineering build, a factory image, all of which leave settings
+behind that the next firmware has no business trusting.
 
-```
-I (nnn) settings: firmware not stamped yet - adopting it, no wipe
-```
-
-That is deliberate — there is no previous firmware to clear up after, and wiping
-there would erase the setup the operator has just finished, on a boot that setup
-itself ends with. It is also one-time. Once a unit has been stamped, every update
-after it wipes, and the test below works from that point on.
-
-So: **flash once to stamp the unit, configure it, and start the test from
-there.** A unit that has taken any update since this check shipped is already
-stamped.
+**Bump `BUILD_ID` when you cut a release.** Forget, and the update installs and
+keeps the old settings; two releases sharing an id are indistinguishable to the
+terminal. A rebuild during development does *not* wipe as long as the id is
+unchanged — to force one, `Factory reset` on the config page.
 
 #### The test
 
 1. Configure the terminal fully — admin code, Wi-Fi, payout address — and take a
    payment, so there is something to lose.
-2. Install a new build (§3.3, or a cable flash; bump the version so About tells
-   you which is running).
+2. Bump `BUILD_ID`, and the version so About tells you which is running. Install
+   the new build (§3.3, or a cable flash).
 3. Watch the first boot on the new image.
 
 **Pass — with no cable, on the panel alone:**
 
+- It comes up in first-run setup: it asks for a new admin code. The Wi-Fi tab
+  reads *Not configured*, and the Tx tab shows the built-in payout address under
+  the red *"this terminal cannot take payments"* line.
 - The welcome screen reads **"Updated to 1.0.1. Settings are cleared &mdash; set
-  the terminal up again."** &mdash; the second sentence appears *only* when a wipe
-  is armed.
-- Tapping **Start** does not open the amount screen. The splash reads **"Clearing
-  settings"** and the terminal restarts by itself. Two boots, not one.
-- After that restart it is in first-run setup: it asks for a new admin code. The
-  Wi-Fi tab reads *Not configured*, and the Tx tab shows the built-in payout
-  address under the red *"this terminal cannot take payments"* line.
+  the terminal up again."** &mdash; the second sentence appears *only* when the
+  wipe ran.
 
 **Pass — on the serial log:**
 
 ```
-W (nnnnn) settings: firmware changed - arming an NVS wipe for the next boot
-W (nnnnn) cryptnox_pos: restarting to clear settings for the new firmware
-        ... reboot ...
-W (nnn)   settings: wipe armed by the last boot - erasing NVS
+W (nnn) settings: stamped 1, running build 2 - erasing NVS
 ```
 
-Note the order: the arming happens *late*, after the image has cancelled its
-rollback, and the erase happens on the **next** boot, before anything has opened
-NVS. Two boots is the mechanism, not a glitch.
+One boot, not two: the erase happens before the UI task and the Wi-Fi driver
+exist, so there is no handle to close first and nothing to restart for.
+
+#### Downgrade, which wipes too
+
+Install the *older* build back over the new one. It wipes again — `stamped 2,
+running build 1` — because a lower id is still a different image, and the whole
+point is that state from a different image is not trusted. Don't read the second
+wipe as a fault; a firmware that came back down is exactly the case the check
+exists for.
 
 #### The negative control, which matters as much
 
 Power-cycle the terminal without flashing anything.
 
-**Pass:** neither wipe line appears, and the terminal comes straight up on its
-stored Wi-Fi with the operator's payout address &mdash; not the `config.h`
+**Pass:** no wipe line, the kept line instead, and the terminal comes straight up
+on its stored Wi-Fi with the operator's payout address &mdash; not the `config.h`
 fallback. Check the Tron recipient in the log against the one you configured; if
 it has reverted to the compile-time address, settings were erased when they
 should not have been.
 
 ```
+I (nnn)  settings: build 2 - settings written by this build, kept
 I (nnnn) cryptnox_pos: Tron recipient: TWm7PCMn...   <- yours, not config.h's
 I (nnnn) cryptnox_pos: Wi-Fi 'Lucky_2.4G': attempt 1/3
 I (nnnn) cryptnox_pos: Ready
 ```
 
-**Fail:** a wipe on every boot is a loop &mdash; the stamp is not being written
-back. A terminal that re-runs setup after each power cut is worse than one that
-never wipes at all.
+**Fail:** a wipe on every boot is a loop &mdash; the new `BUILD_ID` is not being
+written back after the erase. A terminal that re-runs setup after each power cut
+is worse than one that never wipes at all.
 
 #### The failure path
 
-If the erase itself fails, the flag stays armed and the next boot retries. If it
-fails twice the firmware gives up loudly rather than looping forever:
+If the erase itself fails, nothing is written, so the next boot still sees the
+older stored id and tries again:
 
 ```
-E (nnn) settings: a wipe is armed but the erase failed - not retrying
+E (nnn) settings: NVS erase failed (ESP_ERR_...) - settings kept
 ```
 
-The terminal then keeps working with its old settings. That is the intended
+The terminal meanwhile keeps working with its old settings. That is the intended
 answer: a unit that still takes payments beats a brick, and the panel is not left
 insisting the settings were cleared when they were not.
 

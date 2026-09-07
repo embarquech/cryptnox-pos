@@ -505,6 +505,19 @@ static const char *const PAGE_HTML =
 "input:not([type]){font-family:ui-monospace,SFMono-Regular,Menlo,monospace;"
 "font-size:.9rem}"
 "input::placeholder{color:var(--dim)}"
+/* Radio rows. The shared rule above stretches every control to the card width,
+ * which on a phone turns each radio into a full-width box with its own label
+ * stranded on the line below it — two options that read as four things. The row
+ * is the target instead: the label is the box, the radio keeps its intrinsic
+ * size beside the text, and a name too long for the width wraps under itself
+ * rather than under the button. */
+".opt{display:flex;align-items:center;gap:12px;min-height:48px;"
+"margin:8px 0 0;padding:10px 14px;border:1px solid var(--line);"
+"border-radius:11px;background:var(--soft);color:var(--fg);cursor:pointer}"
+"input[type=radio]{width:auto;flex:none;margin:0;padding:0;"
+"accent-color:var(--acc)}"
+/* The networks under each name, not trailing off the end of it. */
+".opt small{display:block;margin-top:1px}"
 /* Provenance under a value — "built into this firmware" and the like. Grey and a
  * size down, so the address above it stays the thing being read. */
 "small{display:inline-block;margin-top:3px;color:var(--dim);font-size:.82rem}"
@@ -596,6 +609,11 @@ static const char *const PAGE_HTML =
 ".wait{display:flex;align-items:center;gap:12px;padding:14px 16px;"
 "border-radius:12px;background:var(--tint);border:1px solid var(--tintl);"
 "color:var(--tintf);font-size:.92rem}"
+/* The same tinted box holding a paragraph instead of a spinner and a line. Flex
+ * makes every run of text its own item, so "Browse does nothing?" and the
+ * sentence explaining it were laid out as two columns and squeezed against each
+ * other on a phone — which is the width this particular note is always read at. */
+".wait.prose{display:block}"
 ".spin{flex:0 0 18px;width:18px;height:18px;border:2px solid currentColor;"
 "border-top-color:transparent;border-radius:50%;animation:sp .8s linear infinite}"
 "@keyframes sp{to{transform:rotate(360deg)}}"
@@ -608,6 +626,10 @@ static const char *const PAGE_HTML =
 "#s_pend h2,#s_pend p{color:var(--tintf)}"
 "#s_pend h2::before{display:none}#s_pend h2{padding-left:0}"
 "#pend{font-weight:700;word-break:break-all}"
+/* A chosen .bin's name, straight off the operator's filesystem: it has no spaces
+ * to break at, so without this a long one widens the card and takes the page's
+ * horizontal scrollbar with it. */
+"#fwfile{word-break:break-all}"
 /* Finishing is the one green moment in the flow; ui.cpp's COL_SUCCESS. */
 "#s_final{background:var(--okbg);border-color:var(--okl)}"
 "#s_final h2,#s_final p{color:var(--okf)}"
@@ -693,10 +715,10 @@ static const char *const PAGE_HTML =
 "<section id=s_net hidden><h2>Network</h2>"
 "<p>Currently <code id=cur_net>&hellip;</code>. Test networks move worthless "
 "tokens and are for trying the terminal out; production settles real money.</p>"
-"<label><input type=radio name=net value=main id=net_main> "
-"Production (Ethereum, Polygon, Tron)</label>"
-"<label><input type=radio name=net value=test id=net_test> "
-"Test (Sepolia, Amoy, Nile)</label>"
+"<label class=opt><input type=radio name=net value=main id=net_main> "
+"<span>Production <small>Ethereum, Polygon, Tron</small></span></label>"
+"<label class=opt><input type=radio name=net value=test id=net_test> "
+"<span>Test <small>Sepolia, Amoy, Nile</small></span></label>"
 "<p><b>The terminal restarts when this changes.</b> Check the asset on its Tx "
 "tab afterwards &mdash; a token you set by hand is stored per network, so the "
 "other one falls back to the firmware's own contract.</p>"
@@ -841,7 +863,7 @@ static const char *const PAGE_HTML =
  * than sniffed for from the user agent: the WebView markers are undocumented and
  * change, and a sentence that is merely unnecessary on a laptop is cheaper than a
  * detection that is silently wrong on a handset. */
-"<div class=wait><b>Browse does nothing?</b> You are in the Wi-Fi sign-in "
+"<div class='wait prose'><b>Browse does nothing?</b> You are in the Wi-Fi sign-in "
 "window your phone opened, and neither Android nor iOS lets that window pick "
 "files. Stay on this network, open <code>" PORTAL_URL "</code> in your normal "
 "browser, and use the Firmware section there.</div></section>"
@@ -870,7 +892,7 @@ static const char *const PAGE_HTML =
 static const char *const PAGE_JS =
 "<script>"
 "var $=function(i){return document.getElementById(i)};"
-"var T='',S={},G=-1,asked=false,fin=false;"
+"var T='',S={},G=-1,asked=false,fin=false,seeded=false;"
 /* Every section render() can show, so the finished screen can be made exclusive
  * by construction rather than by adding `&&!fin` to every show() line — and
  * so a section added later without a thought for the end of the wizard is hidden
@@ -948,10 +970,13 @@ static const char *const PAGE_JS =
 "$(S.mainnet?'net_main':'net_test').checked=true;"
 "$('cur_fmax').textContent=S.fee_max;"
 "$('cur_fprio').textContent=S.fee_prio;"
-/* Seeded, not overwritten: the poll runs every couple of seconds, and writing
- * these every tick would take a digit out from under whoever is typing. */
-"if(!$('in_fmax').value)$('in_fmax').value=S.fee_max;"
-"if(!$('in_fprio').value)$('in_fprio').value=S.fee_prio;"
+/* Seeded once, on the first state that carries them, and never written again:
+ * the poll runs every couple of seconds, and writing these every tick would take
+ * a digit out from under whoever is typing. Keyed on a flag rather than on the
+ * field being empty, because empty is where you are the instant you backspace
+ * one to retype it — that put the old number straight back, mid-edit. */
+"if(!seeded&&S.fee_max){seeded=true;"
+"$('in_fmax').value=S.fee_max;$('in_fprio').value=S.fee_prio}"
 "$('cur_ssid').textContent=S.ssid||'not set';"
 "$('pend').textContent=S.pending||'';"
 "if(S.scan_gen!==G){G=S.scan_gen;scan()}}}"
@@ -1416,6 +1441,10 @@ static esp_err_t fees_post(httpd_req_t *req)
 
     settings_set_max_fee_gwei(static_cast<uint32_t>(max_gwei));
     settings_set_priority_fee_gwei(static_cast<uint32_t>(prio_gwei));
+    /* The panel is very likely showing the Tx tab's two gas rows right now, with
+     * this page's card over them. Without this they stay on the old numbers until
+     * the operator leaves the settings screen and comes back. */
+    ui_fees_changed();
     ESP_LOGI(TAG, "gas caps set from the config page: max %lu, tip %lu Gwei",
              max_gwei, prio_gwei);
     return ok(req, "Gas fees stored. They apply to the next sale.");

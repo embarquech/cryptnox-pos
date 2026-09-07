@@ -13,8 +13,7 @@
 #include <stdio.h>    /* snprintf — payout address normalisation */
 #include <string.h>
 #include "nvs.h"
-#include "nvs_flash.h"    /* settings_wipe_if_new_firmware — erases the partition */
-#include "esp_app_desc.h" /* the running image's ELF SHA-256, its identity here */
+#include "nvs_flash.h"    /* settings_wipe_if_new_build — erases the partition */
 #include "esp_log.h"
 #include "esp_random.h"
 
@@ -55,10 +54,9 @@ static const char *const TAG = "settings";
 #define K_ADMIN_FAILS "adm_fails"
 #define K_CHAIN       "chain"
 #define K_MAINNET     "mainnet"
-/* Which firmware last ran on this unit, and whether the next boot owes it a
- * wipe — see settings_arm_wipe_if_new_firmware. */
-#define K_FW_SHA      "fw_sha"
-#define K_WIPE        "fw_wipe"
+/* BUILD_ID of the newest firmware that has run on this unit — see
+ * settings_wipe_if_new_build. */
+#define K_BUILD_ID    "build_id"
 /* Payout addresses, each stored twice — see settings_get_payout. */
 #define K_PAY_ETH     "pay_eth"
 #define K_PAY_ETH2    "pay_eth_e"
@@ -522,101 +520,57 @@ bool settings_set_contract(bool tron, const char *addr)
                    false, "contract(eth)",  addr);
 }
 
-/** @brief Write the running image's identity into the settings namespace. */
-static void fw_stamp_write(const esp_app_desc_t *d)
+bool settings_wipe_if_new_build(void)
 {
     nvs_handle_t h;
-    if (nvs_open(NS_SETTINGS, NVS_READWRITE, &h) == ESP_OK) {
-        (void)nvs_set_blob(h, K_FW_SHA, d->app_elf_sha256,
-                           sizeof(d->app_elf_sha256));
-        (void)nvs_commit(h);
-        nvs_close(h);
-    }
-}
-
-void settings_apply_pending_wipe(void)
-{
-    nvs_handle_t h;
-    uint8_t      armed = 0U;
-    if (nvs_open(NS_SETTINGS, NVS_READONLY, &h) != ESP_OK) { return; }
-    const bool pending = (nvs_get_u8(h, K_WIPE, &armed) == ESP_OK) && (armed != 0U);
-    nvs_close(h);
-    if (!pending) { return; }
-
-    ESP_LOGW(TAG, "wipe armed by the last boot - erasing NVS");
-    esp_err_t err = nvs_flash_erase();
-    if (err == ESP_OK) { err = nvs_flash_init(); }
-    if (err != ESP_OK) {
-        /* The flag is only cleared by the erase itself, so a failure here leaves
-         * it armed and the next boot tries again rather than recording a
-         * half-done wipe as finished. */
-        ESP_LOGE(TAG, "NVS erase failed (%s) - settings kept", esp_err_to_name(err));
-        return;
-    }
-
-    /* The erase took the flag and the stamp with it. Re-stamp, or the check below
-     * would arm another wipe on the very next boot and loop. */
-    const esp_app_desc_t *d = esp_app_get_description();
-    if (d != NULL) { fw_stamp_write(d); }
-}
-
-bool settings_arm_wipe_if_new_firmware(void)
-{
-    const esp_app_desc_t *d = esp_app_get_description();
-    if (d == NULL) { return false; }   /* nothing to compare against */
-
-    uint8_t     stored[sizeof(d->app_elf_sha256)] = { 0 };
-    size_t      n = sizeof(stored);
-    nvs_handle_t h;
-    bool         have  = false;
-    bool         same  = false;
+    uint32_t     stored = 0U;    /* no key yet reads as 0, i.e. older than any build */
     if (nvs_open(NS_SETTINGS, NVS_READONLY, &h) == ESP_OK) {
-        have = (nvs_get_blob(h, K_FW_SHA, stored, &n) == ESP_OK) &&
-               (n == sizeof(stored));
-        same = have && (memcmp(stored, d->app_elf_sha256, n) == 0);
+        (void)nvs_get_u32(h, K_BUILD_ID, &stored);
         nvs_close(h);
     }
-    if (same) { return false; }   /* same image as last boot — a power-cycle */
-
-    /* A flag still set at this point means settings_apply_pending_wipe() ran
-     * this boot and its erase failed. Re-arming would restart into the same
-     * failure and never reach the main loop, so the terminal would stop taking
-     * payments entirely — and the panel would be insisting the settings were
-     * cleared when they were not. Give up loudly instead and carry on: a unit
-     * that keeps working with its old settings beats a brick. */
-    uint8_t stale = 0U;
-    if ((nvs_open(NS_SETTINGS, NVS_READONLY, &h) == ESP_OK)) {
-        const bool armed = (nvs_get_u8(h, K_WIPE, &stale) == ESP_OK) && (stale != 0U);
-        nvs_close(h);
-        if (armed) {
-            ESP_LOGE(TAG, "a wipe is armed but the erase failed - not retrying");
-            return false;
-        }
-    }
-
-    if (!have) {
-        /* No stamp: a factory unit, or a unit updated from a build that predates
-         * this check. There is no "previous firmware" to clear after, and wiping
-         * here would erase the setup the operator has just finished on this very
-         * boot — which, since setup ends in a restart, would loop. Adopt the
-         * running image instead; every update after this one clears. */
-        ESP_LOGI(TAG, "firmware not stamped yet - adopting it, no wipe");
-        fw_stamp_write(d);
+    /* Equal, and only equal, keeps the settings: that is a power-cycle of the
+     * image that wrote them. Everything else — a newer build, an older one, no
+     * stamp at all — means this NVS was last written by a different image, and
+     * the firmware is open source, so "a different image" includes one somebody
+     * built to leave a payout address behind for the official firmware to find
+     * and pay out to. State from an image that is not this one is not state this
+     * one may act on.
+     *
+     * Ordering was the earlier rule and it was wrong for exactly that reason: a
+     * hostile image only had to stamp a large number to be treated as a rollback
+     * and keep everything it had planted.
+     *
+     * Logged either way — "the update did not clear the settings" is
+     * indistinguishable from a broken check unless both numbers are on the
+     * console. */
+    if (stored == BUILD_ID) {
+        ESP_LOGI(TAG, "build %u - settings written by this build, kept",
+                 (unsigned)BUILD_ID);
         return false;
     }
 
-    /* Arm rather than erase. nvs_flash_erase() cannot run with handles open, and
-     * by this point the Wi-Fi driver holds its own; the erase therefore happens
-     * on the next boot, in settings_apply_pending_wipe(), before anything has
-     * opened NVS. This is also why the decision is made here and not at boot: it
-     * must come after the image has cancelled its rollback, or a wipe would be
-     * followed by a revert to firmware that then wipes again. */
-    ESP_LOGW(TAG, "firmware changed - arming an NVS wipe for the next boot");
-    if (nvs_open(NS_SETTINGS, NVS_READWRITE, &h) != ESP_OK) { return false; }
-    const bool armed_ok = (nvs_set_u8(h, K_WIPE, 1U) == ESP_OK) &&
-                          (nvs_commit(h) == ESP_OK);
-    nvs_close(h);
-    return armed_ok;
+    ESP_LOGW(TAG, "stamped %u, running build %u - erasing NVS",
+             (unsigned)stored, (unsigned)BUILD_ID);
+    esp_err_t err = nvs_flash_erase();
+    if (err == ESP_OK) { err = nvs_flash_init(); }
+    if (err != ESP_OK) {
+        /* Nothing was written, so the next boot sees the same older stamp and
+         * tries again rather than recording a half-done wipe as finished. The
+         * terminal meanwhile keeps working on its old settings: a unit that
+         * still takes payments beats a brick. */
+        ESP_LOGE(TAG, "NVS erase failed (%s) - settings kept", esp_err_to_name(err));
+        return false;
+    }
+
+    /* Stamp straight away — the erase took the old value with it, and an
+     * unwritten stamp means a wipe on every boot, so the operator would re-run
+     * setup after each power cut. */
+    if (nvs_open(NS_SETTINGS, NVS_READWRITE, &h) == ESP_OK) {
+        (void)nvs_set_u32(h, K_BUILD_ID, (uint32_t)BUILD_ID);
+        (void)nvs_commit(h);
+        nvs_close(h);
+    }
+    return true;
 }
 
 void settings_factory_reset(void)
@@ -628,6 +582,11 @@ void settings_factory_reset(void)
          * and pays out to the config.h recipient again — plus the now-unused
          * "auto_bl" key left on units provisioned before auto-brightness went. */
         (void)nvs_erase_all(h);
+        /* Put the build stamp straight back: erase_all took it with the rest, and
+         * without it the next boot reads 0, wipes again and greets the operator
+         * with "Updated to ... settings are cleared" for an update that never
+         * happened. */
+        (void)nvs_set_u32(h, K_BUILD_ID, (uint32_t)BUILD_ID);
         (void)nvs_commit(h);
         nvs_close(h);
         ESP_LOGW(TAG, "settings: factory reset");
