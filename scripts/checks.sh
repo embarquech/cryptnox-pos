@@ -51,6 +51,17 @@ else
   bad "page extraction / parse"
 fi
 
+step "UI strings export"
+# Only that the extractor still finds what it should and skips what it should:
+# the sheet itself is reviewed by eye, and `--audit` says what was dropped.
+if [ -z "$PY" ]; then
+  bad "no python found"
+elif "$PY" tools/export_strings.py --selftest >/dev/null; then
+  ok "extractor"
+else
+  bad "extractor"; "$PY" tools/export_strings.py --selftest 2>&1 | sed 's/^/        /'
+fi
+
 if [ "${1:-}" = "--build" ]; then
   step "firmware build"
   # idf.py will not run in Git Bash; the .bat sets up the environment. Called

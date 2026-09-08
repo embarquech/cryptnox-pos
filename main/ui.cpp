@@ -35,6 +35,7 @@
 #include "settings.h"
 #include "provision.h"   /* QR payload + the pending payout-address handshake */
 #include "ota.h"         /* running version + the update window and its handshake */
+#include "ota_version.h" /* ota_version_display() — the 'v' is added for the screen */
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -84,6 +85,118 @@ static XPT2046_Touchscreen touch(T_CS, T_IRQ);
 #define COL_TRON     lv_color_hex(0xE7392E)   /* Tron red — TRX asset badge    */
 #define COL_USDT     lv_color_hex(0x26A17B)   /* Tether green — USDT badge     */
 #define COL_ETH      lv_color_hex(0x627EEA)   /* Ethereum periwinkle — net chip*/
+
+/******************************************************************
+ * 3a. LVGL theme — extends the built-in default rather than replacing it
+ *
+ * Everything this file draws by hand already speaks one language: full-radius
+ * pills, hairline greys, no chrome. The widgets it does NOT style by hand came
+ * out in LVGL's defaults instead, and the tab bar is the one people notice —
+ * the default tabview is flat rectangular buttons with a hard indicator, which
+ * is what made the admin section look older than the screens around it.
+ *
+ * So: a theme, parented to the default one, that restyles the tab bar as a
+ * segmented control and thins the scrollbars. A theme rather than more
+ * hand-styling because it applies at creation, to every tabview this firmware
+ * ever adds, instead of to the one place somebody remembered to touch.
+ *
+ * Deliberately narrow. It does not repaint buttons, pills or cards — those are
+ * already explicit at each call site, and a theme fighting an explicit style is
+ * a look that changes depending on which one ran last.
+ ******************************************************************/
+#define TAB_SEG_INSET   5      /* pill inset inside the 42px bar, top+bottom */
+#define TAB_SEG_GAP     4      /* gap between segments                       */
+#define SCROLLBAR_W     4      /* hairline, not the default block            */
+
+static lv_theme_t s_theme;
+static lv_style_t s_st_tabbar;    /* the bar the segments sit on   */
+static lv_style_t s_st_tab;       /* one segment, not selected     */
+static lv_style_t s_st_tab_sel;   /* the selected segment          */
+static lv_style_t s_st_tabview;   /* the tabview container itself  */
+static lv_style_t s_st_scrollbar;
+
+static void theme_styles_init(void)
+{
+    /* The bar itself stays white: the selected pill is the only ink, which is
+     * what keeps a four-tab bar from reading as a toolbar on a 320px screen. */
+    lv_style_init(&s_st_tabbar);
+    lv_style_set_bg_color(&s_st_tabbar, COL_BG);
+    lv_style_set_bg_opa(&s_st_tabbar, LV_OPA_COVER);
+    lv_style_set_border_width(&s_st_tabbar, 0);
+    lv_style_set_pad_ver(&s_st_tabbar, TAB_SEG_INSET);
+    lv_style_set_pad_hor(&s_st_tabbar, TAB_SEG_GAP);
+    lv_style_set_pad_column(&s_st_tabbar, TAB_SEG_GAP);
+
+    lv_style_init(&s_st_tab);
+    lv_style_set_bg_opa(&s_st_tab, LV_OPA_TRANSP);
+    lv_style_set_border_width(&s_st_tab, 0);
+    lv_style_set_radius(&s_st_tab, LV_RADIUS_CIRCLE);
+    lv_style_set_text_color(&s_st_tab, COL_DIM);
+    lv_style_set_text_font(&s_st_tab, &lv_font_montserrat_14);
+
+    /* Filled pill, same shape as the selector rows and the action buttons. */
+    lv_style_init(&s_st_tab_sel);
+    lv_style_set_bg_color(&s_st_tab_sel, COL_ACCENT);
+    lv_style_set_bg_opa(&s_st_tab_sel, LV_OPA_COVER);
+    lv_style_set_radius(&s_st_tab_sel, LV_RADIUS_CIRCLE);
+    lv_style_set_text_color(&s_st_tab_sel, COL_BG);
+    lv_style_set_border_width(&s_st_tab_sel, 0);
+
+    lv_style_init(&s_st_tabview);
+    lv_style_set_bg_color(&s_st_tabview, COL_BG);
+    lv_style_set_bg_opa(&s_st_tabview, LV_OPA_COVER);
+    lv_style_set_border_width(&s_st_tabview, 0);
+
+    lv_style_init(&s_st_scrollbar);
+    lv_style_set_bg_color(&s_st_scrollbar, COL_BORDER);
+    lv_style_set_bg_opa(&s_st_scrollbar, LV_OPA_COVER);
+    lv_style_set_radius(&s_st_scrollbar, LV_RADIUS_CIRCLE);
+    lv_style_set_width(&s_st_scrollbar, SCROLLBAR_W);
+    lv_style_set_pad_right(&s_st_scrollbar, 2);
+}
+
+static void theme_apply(lv_theme_t *th, lv_obj_t *obj)
+{
+    LV_UNUSED(th);
+
+    lv_obj_add_style(obj, &s_st_scrollbar, LV_PART_SCROLLBAR);
+
+    if (lv_obj_check_type(obj, &lv_tabview_class)) {
+        lv_obj_add_style(obj, &s_st_tabview, LV_PART_MAIN);
+        return;
+    }
+
+    /* The tab bar is a button matrix, and so is the PIN pad. The parent is what
+     * tells them apart — without this check the keypad becomes a segmented
+     * control too, which is a very confusing way to type a PIN. */
+    if (lv_obj_check_type(obj, &lv_btnmatrix_class)) {
+        lv_obj_t *parent = lv_obj_get_parent(obj);
+        if ((parent != NULL) && lv_obj_check_type(parent, &lv_tabview_class)) {
+            lv_obj_add_style(obj, &s_st_tabbar, LV_PART_MAIN);
+            lv_obj_add_style(obj, &s_st_tab, LV_PART_ITEMS);
+            lv_obj_add_style(obj, &s_st_tab_sel,
+                             LV_PART_ITEMS | LV_STATE_CHECKED);
+        }
+    }
+}
+
+/**
+ * @brief Install the theme. After lv_disp_drv_register(), before any object.
+ *
+ * Copied from the active theme and parented to it, so the default styling still
+ * runs first and this only adds on top — the pattern LVGL documents for
+ * extending a theme rather than writing one from nothing.
+ */
+static void theme_init(void)
+{
+    theme_styles_init();
+
+    lv_theme_t *base = lv_disp_get_theme(NULL);
+    s_theme = *base;
+    lv_theme_set_parent(&s_theme, base);
+    lv_theme_set_apply_cb(&s_theme, theme_apply);
+    lv_disp_set_theme(NULL, &s_theme);
+}
 
 /******************************************************************
  * 3b. Layout metrics — shared so every screen's header lines up
@@ -1243,20 +1356,8 @@ static void build_settings(void) {
     lv_obj_t *tv = lv_tabview_create(lv_scr_act(), LV_DIR_TOP, 42);
     lv_obj_set_size(tv, SCR_W, SCR_H - 54);
     lv_obj_align(tv, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_set_style_bg_color(tv, COL_BG, LV_PART_MAIN);
-    lv_obj_set_style_border_width(tv, 0, LV_PART_MAIN);
-
-    /* Flat tab bar: white, no boxes, black underline under the active tab. */
-    lv_obj_t *tabbar = lv_tabview_get_tab_btns(tv);
-    lv_obj_set_style_bg_color(tabbar, COL_BG, LV_PART_MAIN);
-    lv_obj_set_style_border_width(tabbar, 0, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(tabbar, LV_OPA_TRANSP, LV_PART_ITEMS);
-    lv_obj_set_style_text_color(tabbar, COL_DIM, LV_PART_ITEMS);
-    lv_obj_set_style_text_color(tabbar, COL_TEXT, LV_PART_ITEMS | LV_STATE_CHECKED);
-    lv_obj_set_style_border_side(tabbar, LV_BORDER_SIDE_BOTTOM,
-                                 LV_PART_ITEMS | LV_STATE_CHECKED);
-    lv_obj_set_style_border_color(tabbar, COL_TEXT, LV_PART_ITEMS | LV_STATE_CHECKED);
-    lv_obj_set_style_border_width(tabbar, 2, LV_PART_ITEMS | LV_STATE_CHECKED);
+    /* Tabview and tab bar are the theme's (section 3a) — the underline this
+     * used to draw by hand is now a filled pill, on every tabview. */
 
     lv_obj_t *t_screen = lv_tabview_add_tab(tv, "Screen");
     lv_obj_t *t_wifi   = lv_tabview_add_tab(tv, "Wi-Fi");
@@ -1449,8 +1550,11 @@ static void build_settings(void) {
                LV_ALIGN_TOP_MID, 0, 42);
     /* Straight out of the running image's header rather than a #define, so that
      * after an update this reads as the firmware that is actually executing. */
-    make_label(t_about, ota_running_version(), COL_DIM, &lv_font_montserrat_14,
-               LV_ALIGN_TOP_MID, 0, 70);
+    char about_ver[OTA_VERSION_SHOWN_MAX];
+    make_label(t_about,
+               ota_version_display(ota_running_version(), about_ver,
+                                   sizeof(about_ver)),
+               COL_DIM, &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0, 70);
 
     /* An update that installed, booted and was then reverted leaves this tab
      * reading the old version with nothing to say why — which is how "I updated
@@ -1775,15 +1879,20 @@ static void build_ota_confirm(void) {
                              &lv_font_montserrat_14);
     /* 28 pt fits about twelve characters on one line. A version longer than that
      * is a `git describe` string rather than a release tag, and wrapping it at
-     * this size costs two more lines than the card can spare — so step down. */
-    lv_obj_t *ver = ota_text(card, cap, version, COL_TEXT,
-                             (strlen(version) > 12U) ? &lv_font_montserrat_20
-                                                     : &lv_font_montserrat_28);
+     * this size costs two more lines than the card can spare — so step down.
+     * Measured on the shown form: the 'v' is one of the twelve. */
+    char staged_ver[OTA_VERSION_SHOWN_MAX];
+    (void)ota_version_display(version, staged_ver, sizeof(staged_ver));
+    lv_obj_t *ver = ota_text(card, cap, staged_ver, COL_TEXT,
+                             (strlen(staged_ver) > 12U) ? &lv_font_montserrat_20
+                                                        : &lv_font_montserrat_28);
 
+    char running_ver[OTA_VERSION_SHOWN_MAX];
     char body[128];
     snprintf(body, sizeof(body),
              "Running %s.\n\nThe terminal restarts now. Not during a payment.",
-             ota_running_version());
+             ota_version_display(ota_running_version(), running_ver,
+                                 sizeof(running_ver)));
     lv_obj_t *m = ota_text(card, ver, body, COL_DIM, &lv_font_montserrat_14);
     ota_fit_card(card, m, 86);
 
@@ -3190,6 +3299,11 @@ static void ui_task(void *arg) {
     s_disp_drv.flush_cb = disp_flush;
     s_disp_drv.draw_buf = &s_draw_buf;
     lv_disp_drv_register(&s_disp_drv);
+
+    /* After the display exists (a theme belongs to one) and before the first
+     * screen is built — lv_theme_apply runs at object creation, so anything
+     * created earlier would keep the default look. */
+    theme_init();
 
     lv_indev_drv_init(&s_indev_drv);
     s_indev_drv.type    = LV_INDEV_TYPE_POINTER;

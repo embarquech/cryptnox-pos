@@ -81,6 +81,24 @@ int main(void)
     assert(ota_version_cmp(at_limit,   "1.2.3") > 0);
     assert(ota_version_cmp(past_limit, "1.2.3") == 0);
 
+    /* The shown form carries a 'v'; the compared form must never see one. */
+    char buf[OTA_VERSION_SHOWN_MAX];
+    assert(strcmp(ota_version_display("1.0.0", buf, sizeof(buf)), "v1.0.0") == 0);
+    /* Already prefixed, or not a version at all: left exactly as it is. */
+    assert(strcmp(ota_version_display("v1.0.0", buf, sizeof(buf)), "v1.0.0") == 0);
+    assert(strcmp(ota_version_display("?", buf, sizeof(buf)), "?") == 0);
+    assert(strcmp(ota_version_display("", buf, sizeof(buf)), "") == 0);
+    assert(strcmp(ota_version_display(NULL, buf, sizeof(buf)), "") == 0);
+    /* A git describe tag keeps its own 'v' and gains no second one. */
+    assert(strcmp(ota_version_display("v1.2.3-4-gabc", buf, sizeof(buf)),
+                  "v1.2.3-4-gabc") == 0);
+    /* The buffer holds the longest version esp_app_desc_t can carry, plus the
+     * 'v', without truncating -- which is what OTA_VERSION_SHOWN_MAX is for. */
+    assert(strcmp(ota_version_display(at_limit, buf, sizeof(buf)) + 1U,
+                  at_limit) == 0);
+    /* Display never changes what gets compared. */
+    assert(ota_version_cmp("v1.0.0", "1.0.0") == 0);
+
     printf("test_ota_version: all assertions passed\n");
     return 0;
 }

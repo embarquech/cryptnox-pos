@@ -26,6 +26,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
 
 /** @brief Numeric components compared; the rest of the string is ignored. */
 #define OTA_VERSION_PARTS  4U
@@ -97,6 +98,35 @@ static inline int ota_version_cmp(const char *a, const char *b)
         if (va[i] != vb[i]) { return (va[i] < vb[i]) ? -1 : 1; }
     }
     return 0;
+}
+
+/** @brief Bytes needed by @ref ota_version_display: the version, a 'v', a NUL. */
+#define OTA_VERSION_SHOWN_MAX  (OTA_VERSION_MAX + 2U)
+
+/**
+ * @brief The display form of a version: `1.0.0` reads as `v1.0.0` on screen.
+ *
+ * Prefixes only a version that starts with a digit, which leaves alone both the
+ * `?` shown before a version is known and a `git describe` tag that already
+ * carries its own `v` — neither wants a second one.
+ *
+ * Display only. What is stored, compared by @ref ota_version_cmp, and reported
+ * in the config page's JSON stays bare, so the `v` cannot leak into a version
+ * comparison or into something parsing the API.
+ *
+ * @param[in]  v   Version string, may be NULL.
+ * @param[out] buf Destination, at least @ref OTA_VERSION_SHOWN_MAX bytes.
+ * @param      n   Size of @p buf.
+ * @return @p buf, or "" if @p buf is unusable.
+ */
+static inline const char *ota_version_display(const char *v, char *buf, size_t n)
+{
+    if ((buf == NULL) || (n == 0U)) { return ""; }
+    if (v == NULL) { v = ""; }
+
+    const bool numeric = (v[0] >= '0') && (v[0] <= '9');
+    (void)snprintf(buf, n, "%s%s", numeric ? "v" : "", v);
+    return buf;
 }
 
 #endif /* OTA_VERSION_H */

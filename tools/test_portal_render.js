@@ -239,7 +239,9 @@ const CASES = [
       assert.match(els.get('src_cte').textContent, /Set by an operator/);
       assert.match(els.get('src_ctt').textContent, /Built into this firmware/);
       assert.strictEqual(els.get('cur_ssid').textContent, 'My Cafe');
-      assert.strictEqual(els.get('ver').textContent, '1.0.1');
+      /* Shown with a 'v' though the JSON carries it bare, so that nothing
+       * parsing /api/state has to strip it back off. */
+      assert.strictEqual(els.get('ver').textContent, 'v1.0.1');
       /* The gas caps are the settings the panel no longer edits, so this page is
        * the only place they can be changed — and a field that never shows the
        * stored number is one an operator overwrites blind. */

@@ -925,7 +925,9 @@ static const char *const PAGE_JS =
 
 "function render(){"
 "var w=(S.mode=='wizard'),st=S.step||'idle',a=!!S.authed,p=!!S.pending;"
-"$('ver').textContent=S.version||'?';"
+/* Shown with a 'v', like the panel's About tab. The JSON stays bare so nothing
+ * parsing /api/state has to strip it — see ota_version_display(). */
+"$('ver').textContent=S.version?'v'+S.version:'?';"
 "$('note').textContent=S.note||'';"
 "show('s_final',fin);"
 "if(fin){SEC.forEach(function(i){show(i,false)});return}"

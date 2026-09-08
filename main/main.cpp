@@ -42,6 +42,7 @@
 #include "settings.h"
 #include "provision.h"   /* phone-based first-run setup (SoftAP + portal) */
 #include "ota.h"         /* browser-mediated firmware update + rollback confirm */
+#include "ota_version.h" /* ota_version_display() — the 'v' is added for the screen */
 
 /* Quiet CW_Logger — swallows the SDK's verbose connection/retry chatter that
  * was showing up as 'a a a...' on the UART. Keep ESP_LOGI for our own logs. */
@@ -2109,8 +2110,10 @@ extern "C" void app_main(void)
      * where there is an operator looking at the panel. */
     if (fresh_update || wiped) {
         char greeting[96];
+        char shown[OTA_VERSION_SHOWN_MAX];
         (void)snprintf(greeting, sizeof(greeting), "Updated to %s.%s",
-                       ota_running_version(),
+                       ota_version_display(ota_running_version(), shown,
+                                           sizeof(shown)),
                        wiped ? " Settings are cleared - set the terminal up again."
                              : "");
         ui_show_welcome(greeting);
