@@ -297,38 +297,52 @@ def main():
     if '--audit' in sys.argv:
         return audit()
 
-    rows = []
+    shown, hidden = [], []
     for path in SRC:
-        rows += [(path, ln, t)
-                 for ln, t in scan(path.read_text(encoding='utf-8',
-                                                  errors='replace'))]
+        source = path.read_text(encoding='utf-8', errors='replace')
+        for line, txt, why in scan_all(source):
+            (hidden if why else shown).append((path.name, line, txt, why))
 
-    seen, out = set(), []
-    for path, line, txt in sorted(rows, key=lambda r: (r[0].name, r[1])):
-        key = (path.name, line, txt)
-        if key not in seen:
-            seen.add(key)
-            out.append((f'{path.name}:{line}', txt))
+    def dedup(rows):
+        seen, out = set(), []
+        for name, line, txt, why in sorted(rows, key=lambda r: (r[0], r[1])):
+            key = (name, line, txt)
+            if key not in seen:
+                seen.add(key)
+                out.append((f'{name}:{line}', txt, why))
+        return out
+
+    shown, hidden = dedup(shown), dedup(hidden)
+
+    def sheet(ws, title, header, rows, third):
+        ws.title = title
+        ws.append(header)
+        for cell in ws[1]:
+            cell.font = openpyxl.styles.Font(bold=True)
+        for loc, txt, why in rows:
+            ws.append([loc, txt, third(why)])
+        ws.column_dimensions['A'].width = 22
+        ws.column_dimensions['B'].width = 90
+        ws.column_dimensions['C'].width = 40
+        ws.freeze_panes = 'A2'
+        wrap = openpyxl.styles.Alignment(wrap_text=True, vertical='top')
+        for row in ws.iter_rows(min_row=2, min_col=2, max_col=3):
+            for cell in row:
+                cell.alignment = wrap
 
     wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = 'strings'
-    ws.append(['file:line', 'string', 'comment'])
-    for cell in ws[1]:
-        cell.font = openpyxl.styles.Font(bold=True)
-    for loc, txt in out:
-        ws.append([loc, txt, ''])
-    ws.column_dimensions['A'].width = 22
-    ws.column_dimensions['B'].width = 90
-    ws.column_dimensions['C'].width = 40
-    ws.freeze_panes = 'A2'
-    for row in ws.iter_rows(min_row=2, min_col=2, max_col=3):
-        for cell in row:
-            cell.alignment = openpyxl.styles.Alignment(wrap_text=True, vertical='top')
+    sheet(wb.active, 'strings', ['file:line', 'string', 'comment'],
+          shown, lambda why: '')
+    # The reviewer cannot challenge a filter they cannot see. Second sheet, so
+    # the review list stays exactly the three columns that were asked for and
+    # nothing is hidden by a heuristic in this file.
+    sheet(wb.create_sheet(), 'excluded',
+          ['file:line', 'string', 'why it was excluded'],
+          hidden, lambda why: why or '')
 
     dest = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / 'strings.xlsx'
     wb.save(dest)
-    print(f'{len(out)} strings -> {dest}')
+    print(f'{len(shown)} strings + {len(hidden)} excluded -> {dest}')
 
 
 if __name__ == '__main__':
