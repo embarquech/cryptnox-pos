@@ -53,6 +53,14 @@ jobs:
       - name: Install cJSON headers
         run: sudo apt-get update && sudo apt-get install -y libcjson-dev
 
+      # main/config.h holds the per-deployment addresses and endpoints, so it is
+      # gitignored and no runner has one. The template is the same header with
+      # placeholders in place of the secrets, which is all the analysis needs --
+      # and test_networks.cpp is written to accept a placeholder contract as
+      # "this asset was never configured".
+      - name: Provide a config.h
+        run: cp config.template.h main/config.h
+
       # Every test and fuzz harness is single-TU and #includes the production
       # source it covers, so compiling them reaches eth_addr, eth_rlp, eth_json,
       # keccak256, tron_tx, hardening and the header-only parsers (form_parse,

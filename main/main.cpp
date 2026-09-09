@@ -775,13 +775,17 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
      * `to` differs the same way, and this is the line that decides who is paid:
      * from the reconciled store on both paths, never a literal or a fresh NVS
      * read, so it is the copy validated at boot and just checked against its
-     * echo. Getting this backwards would pay the token contract. */
+     * echo. Getting this backwards would pay the token contract. The selector is
+     * `token` rather than `native` — they are set together above and mean the
+     * same thing, but testing the pointer leaves the dereference provably
+     * guarded instead of only guarded by a correlation an analyser cannot see. */
     tx.gas_limit         = native ? GAS_LIMIT_NATIVE : GAS_LIMIT_ERC20;
     tx.eth_value         = native ? native_wei : 0U;
     tx.calldata          = native ? NULL : calldata;
     tx.calldata_len      = native ? 0U   : sizeof(calldata);
     (void)CW_Utils::safe_memcpy(tx.to, sizeof(tx.to),
-                                native ? to->addr : token->addr, ETH_ADDR_LEN);
+                                (token != NULL) ? token->addr : to->addr,
+                                ETH_ADDR_LEN);
 
     uint8_t unsigned_tx[TX_BUF_SIZE];
     size_t  unsigned_len = eth_rlp_encode_unsigned(&tx, unsigned_tx, sizeof(unsigned_tx));
