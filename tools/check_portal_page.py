@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extract the config portal's page from provision.cpp and check it parses.
+"""Extract the config portal's page from portal_page.h and check it parses.
 
 The page is a pair of C string literals compiled into the firmware, so the
 compiler proves the C is valid and nothing proves the HTML or the JavaScript is.
@@ -22,14 +22,14 @@ import sys
 import tempfile
 from pathlib import Path
 
-SRC = Path(__file__).resolve().parent.parent / "main" / "provision.cpp"
+SRC = Path(__file__).resolve().parent.parent / "main" / "portal_page.h"
 
 
 def literal_after(text, name):
     """Concatenate the adjacent C string literals of `static const char *const name`.
 
     Comments are stripped first: a /* ... */ between two literals is legal C and
-    provision.cpp uses them to annotate the script, so a naive scan for quotes
+    portal_page.h uses them to annotate the script, so a naive scan for quotes
     would pick up any quote inside the prose.
     """
     start = text.index(name)
@@ -62,7 +62,7 @@ def literal_after(text, name):
     # check — it still leaves a valid string literal where the URL would be — but
     # do not read the extracted script as what the device actually serves.
     #
-    # The escapes provision.cpp actually uses. \\uXXXX is a JS escape that has to
+    # The escapes portal_page.h actually uses. \\uXXXX is a JS escape that has to
     # survive into the output, so it is left alone.
     return joined.replace('\\"', '"').replace("\\n", "\n").replace("\\\\", "\\")
 

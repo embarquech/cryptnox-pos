@@ -28,7 +28,9 @@
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
 #include "esp_err.h"      /* esp_err_to_name for the startup fault screen */
+#include "esp_heap_caps.h"   /* largest free block — fragmentation, not just total */
 #include "esp_log.h"
+#include "esp_system.h"      /* esp_get_free_heap_size */
 #include "esp_timer.h"
 #include "nvs_flash.h"
 
@@ -400,6 +402,55 @@ static bool erc20_load(erc20_token_t *t, const char *hex_no_0x) {
 }
 
 /**
+ * @brief Resolve one money-carrying EVM address into its dual store, at boot.
+ *
+ * The same five steps for the recipient and for the ERC-20 contract, which is why
+ * they share this: take the operator's value if there is one, probe-parse it, fall
+ * back to config.h if that fails, then parse twice into the dual store (§7.1) —
+ * which also runs the EIP-55 checksum once, so a mistyped address is caught here
+ * rather than at the first payment.
+ *
+ * A stored value that will not parse is not fatal: the setup page can only check
+ * an address structurally, and a terminal stuck on an error screen is worse than
+ * one paying out to its configured default and saying so in the log. A bad
+ * config.h value IS fatal — that one is the integrator's own doing and there is
+ * nothing left to fall back to.
+ *
+ * @param[in]  get         settings_get_payout or settings_get_contract; the two
+ *                         share a signature, which is why this takes the function
+ *                         rather than a flag and a branch.
+ * @param[out] str         Buffer for the resolved "0x…" string, shown on screen.
+ * @param[in]  str_n       Capacity of @p str.
+ * @param[in]  fallback    The config.h value, without the "0x".
+ * @param[out] store       Dual store to parse into, twice.
+ * @param[in]  stored_what What to call the stored value in the log line.
+ * @param[in]  config_what The config.h macro's name, for the fatal message.
+ * @return false when even the config.h value will not parse — boot must stop.
+ */
+static bool resolve_evm_addr(bool (*get)(bool, char *, size_t),
+                             char *str, size_t str_n,
+                             const char *fallback,
+                             pos_addr_t *store,
+                             const char *stored_what,
+                             const char *config_what)
+{
+    if (get(false, str, str_n) && !eth_addr_parse(str, store->addr)) {
+        ESP_LOGE(TAG, "stored %s rejected - using config.h", stored_what);
+        (void)snprintf(str, str_n, "0x%s", fallback);
+    }
+    /* Twice, each pass independent — that is what makes it a dual store. */
+    if (!eth_addr_parse(str, store->addr) ||
+        !eth_addr_parse(str, store->addr_echo)) {
+        char msg[48];
+        (void)snprintf(msg, sizeof(msg), "Bad %s in config", config_what);
+        ESP_LOGE(TAG, "%s", msg);
+        ui_show_tx_status(UI_TX_STATE_FAILED, msg);
+        return false;
+    }
+    return true;
+}
+
+/**
  * @brief Point the UI's address rows at the selected chain.
  *
  * Called on every entry to the confirm screen, not once at boot: the chain is
@@ -660,6 +711,91 @@ static bool card_connect(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
 }
 
 /**
+ * @brief Have the card sign @p hash, then close the session.
+ *
+ * The tail of both payment paths, which used to be written out twice: build the
+ * sign request, copy the PIN in as late as possible, sign, scrub the PIN, close
+ * the session and turn a card status byte into a sentence an operator can act on.
+ * Two copies of the PIN handling and the wipe is the kind of duplication that
+ * costs something when it drifts — the same argument sign_and_broadcast_tron
+ * already makes for keeping TRX and TRC-20 on one function.
+ *
+ * The caller reconciles its amount and addresses immediately before calling this,
+ * which is what makes that check the last thing to happen before an irreversible
+ * signature. It is left with the caller because the anomaly label and the values
+ * to reconcile differ per path.
+ *
+ * The session is disconnected on every exit — including the failures — so no
+ * caller can leave a card held open.
+ *
+ * @param[in]  wallet     Initialised wallet instance.
+ * @param[in]  session    Open secure session; disconnected before returning.
+ * @param[in]  hash       Digest to sign (the keccak of the RLP, or a Tron txID).
+ * @param[in]  hash_len   Length of @p hash.
+ * @param[in]  path       BIP-32 derivation path blob.
+ * @param[in]  path_len   Length of @p path.
+ * @param[in]  pin        Operator-entered card PIN; the caller still owns and
+ *                        scrubs its own copy.
+ * @param[in]  pin_chars  Number of PIN characters in @p pin.
+ * @param[out] rs_out     64 bytes: r || s. Wiped by the caller (WipeGuard).
+ * @param[out] err_out    Short UI-facing error message on failure.
+ * @param[in]  err_max    Capacity of @p err_out.
+ * @return true when @p rs_out holds a signature.
+ */
+static bool card_sign(CryptnoxWallet &wallet, CW_SecureSession &session,
+                      const uint8_t *hash, uint8_t hash_len,
+                      const uint8_t *path, uint8_t path_len,
+                      const char *pin, size_t pin_chars,
+                      uint8_t rs_out[64], char *err_out, size_t err_max)
+{
+    CW_SignRequest req(session,
+                       CW_SIGN_DERIVE_K1,
+                       CW_SIGN_SIG_ECDSA_LOW_S,
+                       CW_SIGN_WITH_PIN);
+    req.hash             = hash;
+    req.hashLength       = hash_len;
+    req.derivePath       = path;
+    req.derivePathLength = path_len;
+
+    /* Copy the operator-entered PIN into the request as late as possible;
+     * req.pin is zero-initialised by the CW_SignRequest constructor. */
+    const size_t copy_len = (pin_chars < CW_MAX_PIN_LENGTH) ? pin_chars
+                                                            : CW_MAX_PIN_LENGTH;
+    (void)CW_Utils::safe_memcpy(req.pin, sizeof(req.pin),
+                                reinterpret_cast<const uint8_t *>(pin),
+                                copy_len);
+
+    CW_SignResult result = wallet.sign(req);
+    WipeGuard g_sig(result.signature, sizeof(result.signature));
+    wallet.disconnect(session);
+
+    /* scrub the PIN immediately after use (secure_wipe is not
+     * dead-store-eliminated); ~CW_SignRequest wipes it again as a backstop. */
+    CW_Utils::secure_wipe(req.pin, sizeof(req.pin));
+
+    if (result.errorCode != CW_OK) {
+        /* Name the one failure the person holding the card can do something
+         * about. SIGN carries the PIN itself (CW_SIGN_WITH_PIN), so a mistyped
+         * one can arrive here as a status byte rather than from a verifyPin.
+         * "Sign error 0x82" sends an operator looking for a broken reader
+         * instead of retyping four digits. */
+        if (result.errorCode == CW_SIGN_PIN_INCORRECT) {
+            (void)snprintf(err_out, err_max, "Wrong PIN");
+        } else {
+            (void)snprintf(err_out, err_max, "Sign error 0x%02X",
+                           static_cast<unsigned int>(result.errorCode));
+        }
+        return false;
+    }
+
+    (void)CW_Utils::safe_memcpy(rs_out, 32U,
+                                result.signature + CW_SIG_R_OFFSET, 32U);
+    (void)CW_Utils::safe_memcpy(rs_out + 32U, 32U,
+                                result.signature + CW_SIG_S_OFFSET, 32U);
+    return true;
+}
+
+/**
  * @brief Sign a USDC transfer on the card and broadcast it via JSON-RPC.
  *
  * Full pipeline: build calldata → fetch nonce → RLP-encode + keccak256 →
@@ -831,60 +967,29 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
         return false;
     }
 
-    CW_SignRequest req(session,
-                       CW_SIGN_DERIVE_K1,
-                       CW_SIGN_SIG_ECDSA_LOW_S,
-                       CW_SIGN_WITH_PIN);
-    req.hash             = hash;
-    req.hashLength       = static_cast<uint8_t>(CW_HASH_SIZE);
-    req.derivePath       = ETH_DERIVE_PATH;
-    req.derivePathLength = static_cast<uint8_t>(sizeof(ETH_DERIVE_PATH));
-
     /* Re-reconcile amount + recipient + contract right before signing — this is the
      * last point before the card produces an irreversible signature over the
-     * calldata (§3.2/§7.1). */
+     * calldata (§3.2/§7.1). Immediately before card_sign(), which does nothing
+     * else first. */
     if (!IS_TRUE32(amount_consistent(amount)) ||
         !IS_TRUE32(address_consistent(to)) ||
         ((token != NULL) && !IS_TRUE32(address_consistent(token)))) {
         pos_handle_anomaly("pre-sign reconcile");
         (void)snprintf(err_out, err_max, "Integrity check failed");
+        wallet.disconnect(session);
         return false;
     }
 
-    /* Copy the operator-entered PIN into the request as late as possible;
-     * req.pin is zero-initialised by the CW_SignRequest constructor. */
-    const size_t copy_len = (pin_chars < CW_MAX_PIN_LENGTH) ? pin_chars
-                                                            : CW_MAX_PIN_LENGTH;
-    (void)CW_Utils::safe_memcpy(req.pin, sizeof(req.pin),
-                                reinterpret_cast<const uint8_t *>(pin),
-                                copy_len);
-
-    CW_SignResult result = wallet.sign(req);
-    WipeGuard g_sig(result.signature, sizeof(result.signature));
-    wallet.disconnect(session);
-
-    /* scrub the PIN immediately after use (secure_wipe is not
-     * dead-store-eliminated); ~CW_SignRequest wipes it again as a backstop. */
-    CW_Utils::secure_wipe(req.pin, sizeof(req.pin));
-
-    if (result.errorCode != CW_OK) {
-        /* Name the one failure the person holding the card can do something
-         * about. SIGN carries the PIN itself (CW_SIGN_WITH_PIN), so a mistyped
-         * one arrives here as a status byte — and on the Ethereum path, which
-         * has no verifyPin ahead of it, that is the *only* place it shows up.
-         * "Sign error 0x82" sends an operator looking for a broken reader
-         * instead of retyping four digits. */
-        if (result.errorCode == CW_SIGN_PIN_INCORRECT) {
-            (void)snprintf(err_out, err_max, "Wrong PIN");
-        } else {
-            (void)snprintf(err_out, err_max, "Sign error 0x%02X",
-                           static_cast<unsigned int>(result.errorCode));
-        }
+    uint8_t rs[64];
+    WipeGuard g_rs(rs, sizeof(rs));
+    if (!card_sign(wallet, session, hash, static_cast<uint8_t>(CW_HASH_SIZE),
+                   ETH_DERIVE_PATH,
+                   static_cast<uint8_t>(sizeof(ETH_DERIVE_PATH)),
+                   pin, pin_chars, rs, err_out, err_max)) {
         return false;
     }
-
-    const uint8_t *sig_r = result.signature + CW_SIG_R_OFFSET;
-    const uint8_t *sig_s = result.signature + CW_SIG_S_OFFSET;
+    const uint8_t *sig_r = rs;
+    const uint8_t *sig_s = rs + 32U;
 
     if (!s_user_cancelled) {
         ui_show_tx_status(UI_TX_STATE_SENDING, NULL);
@@ -1060,53 +1165,27 @@ static bool sign_and_broadcast_tron(CryptnoxWallet &wallet,
         return false;
     }
 
-    CW_SignRequest req(session,
-                       CW_SIGN_DERIVE_K1,
-                       CW_SIGN_SIG_ECDSA_LOW_S,
-                       CW_SIGN_WITH_PIN);
-    req.hash             = tx.txid;
-    req.hashLength       = static_cast<uint8_t>(sizeof(tx.txid));
-    req.derivePath       = CW_TRON_DERIVE_PATH;
-    req.derivePathLength = CW_TRON_PATH_LENGTH;
-
-    /* Last reconcile before the card produces an irreversible signature. */
+    /* Last reconcile before the card produces an irreversible signature.
+     * Immediately before card_sign(), which does nothing else first. */
     if (!IS_TRUE32(amount_consistent(amount)) ||
         !IS_TRUE32(address_consistent(to)) ||
         ((token != NULL) && !IS_TRUE32(address_consistent(&token->addr)))) {
         pos_handle_anomaly("pre-sign reconcile (tron)");
         (void)snprintf(err_out, err_max, "Integrity check failed");
+        wallet.disconnect(session);
         return false;
     }
 
-    const size_t copy_len = (pin_chars < CW_MAX_PIN_LENGTH) ? pin_chars
-                                                            : CW_MAX_PIN_LENGTH;
-    (void)CW_Utils::safe_memcpy(req.pin, sizeof(req.pin),
-                                reinterpret_cast<const uint8_t *>(pin),
-                                copy_len);
-
-    CW_SignResult result = wallet.sign(req);
-    WipeGuard g_sig(result.signature, sizeof(result.signature));
-    wallet.disconnect(session);
-    CW_Utils::secure_wipe(req.pin, sizeof(req.pin));
-
-    if (result.errorCode != CW_OK) {
-        /* Name the one failure the person holding the card can do something
-         * about. SIGN carries the PIN itself (CW_SIGN_WITH_PIN), so a mistyped
-         * one arrives here as a status byte — and on the Ethereum path, which
-         * has no verifyPin ahead of it, that is the *only* place it shows up.
-         * "Sign error 0x82" sends an operator looking for a broken reader
-         * instead of retyping four digits. */
-        if (result.errorCode == CW_SIGN_PIN_INCORRECT) {
-            (void)snprintf(err_out, err_max, "Wrong PIN");
-        } else {
-            (void)snprintf(err_out, err_max, "Sign error 0x%02X",
-                           static_cast<unsigned int>(result.errorCode));
-        }
+    uint8_t rs[64];
+    WipeGuard g_rs(rs, sizeof(rs));
+    if (!card_sign(wallet, session, tx.txid,
+                   static_cast<uint8_t>(sizeof(tx.txid)),
+                   CW_TRON_DERIVE_PATH, CW_TRON_PATH_LENGTH,
+                   pin, pin_chars, rs, err_out, err_max)) {
         return false;
     }
-
-    const uint8_t *sig_r = result.signature + CW_SIG_R_OFFSET;
-    const uint8_t *sig_s = result.signature + CW_SIG_S_OFFSET;
+    const uint8_t *sig_r = rs;
+    const uint8_t *sig_s = rs + 32U;
 
     if (!s_user_cancelled) {
         ui_show_tx_status(UI_TX_STATE_SENDING, NULL);
@@ -1745,42 +1824,19 @@ extern "C" void app_main(void)
     /* No ui_show_splash() here — ui_init() already selects it, and asking twice
      * races the UI task into rebuilding the screen and replaying the logo. */
 
-    /* Resolve the Ethereum recipient: operator-set if there is one, config.h
-     * otherwise. A stored address gets a probe parse first, and a failure falls
-     * back to the compile-time value rather than refusing the boot — the setup
-     * page can only check an address structurally, and a terminal stuck on an
-     * error screen is worse than one paying out to its configured default and
-     * saying so. A bad config.h address is still fatal, as it always was: that
-     * one is the integrator's own doing and there is nothing to fall back to. */
-    if (settings_get_payout(false, s_payout_eth, sizeof(s_payout_eth)) &&
-        !eth_addr_parse(s_payout_eth, s_dest.addr)) {
-        ESP_LOGE(TAG, "stored Ethereum payout address rejected - using config.h");
-        (void)snprintf(s_payout_eth, sizeof(s_payout_eth), "0x%s", ADDR_TO);
-    }
-
-    /* Parse the recipient twice into the dual store (§7.1). Also runs the EIP-55
-     * checksum once at boot — a mistyped recipient is caught here, before any
-     * payment. */
-    if (!eth_addr_parse(s_payout_eth, s_dest.addr) ||
-        !eth_addr_parse(s_payout_eth, s_dest.addr_echo)) {
-        ESP_LOGE(TAG, "Bad ADDR_TO in config");
-        ui_show_tx_status(UI_TX_STATE_FAILED, "Bad ADDR_TO in config");
+    /* The two EVM addresses that decide who is paid and which asset moves:
+     * operator-set if there is one, config.h otherwise, dual-stored either way.
+     * Both go through the same helper — see resolve_evm_addr for why a stored
+     * value is allowed to fail and a config.h one is not. */
+    if (!resolve_evm_addr(settings_get_payout,
+                          s_payout_eth, sizeof(s_payout_eth), ADDR_TO,
+                          &s_dest, "Ethereum payout address", "ADDR_TO")) {
         return;
     }
-
-    /* Same shape for the ERC-20 contract, and for the same reason: it is settable
-     * from the config page now, so a stored value gets a probe parse and falls back
-     * to config.h on failure rather than stranding the terminal. */
-    if (settings_get_contract(false, s_contract_eth, sizeof(s_contract_eth)) &&
-        !eth_addr_parse(s_contract_eth, s_usdc.addr)) {
-        ESP_LOGE(TAG, "stored ERC-20 contract rejected - using config.h");
-        (void)snprintf(s_contract_eth, sizeof(s_contract_eth), "0x%s",
-                       settings_net_str(ADDR_USDC, ADDR_USDC_MAIN));
-    }
-    if (!eth_addr_parse(s_contract_eth, s_usdc.addr) ||
-        !eth_addr_parse(s_contract_eth, s_usdc.addr_echo)) {
-        ESP_LOGE(TAG, "Bad ADDR_USDC in config");
-        ui_show_tx_status(UI_TX_STATE_FAILED, "Bad ADDR_USDC in config");
+    if (!resolve_evm_addr(settings_get_contract,
+                          s_contract_eth, sizeof(s_contract_eth),
+                          settings_net_str(ADDR_USDC, ADDR_USDC_MAIN),
+                          &s_usdc, "ERC-20 contract", "ADDR_USDC")) {
         return;
     }
     /* The config.h-only ERC-20s, parsed twice each into their own stores. Non-fatal,
@@ -2093,6 +2149,12 @@ extern "C" void app_main(void)
     }
 
     ESP_LOGI(TAG, "Ready");
+    /* The baseline every later number is read against: everything a terminal needs
+     * is up, and nothing transient has run yet. Compare it with the line
+     * prov_start() logs to see what the config page and an upload actually cost. */
+    ESP_LOGI(TAG, "heap at ready: %u free, %u largest block",
+             (unsigned)esp_get_free_heap_size(),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
 
     /* Everything a terminal needs is now proven to work on this image: the
      * panel, the card reader, the wallet layer, the uplink and one authenticated

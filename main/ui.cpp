@@ -32,6 +32,7 @@
 #include "logo_img.h"
 #include "logo_small.h"
 #include "chain_icons.h"
+#include "assets.h"      /* the per-asset table: ticker, standard, caption, network */
 #include "settings.h"
 #include "provision.h"   /* QR payload + the pending payout-address handshake */
 #include "ota.h"         /* running version + the update window and its handshake */
@@ -565,12 +566,12 @@ enum BtnAction {
 /* Settings — defined in section 7 (uses the widget helpers). */
 static void settings_persist(void);
 static void open_reset_confirm(void);
-/* The three networks the picker offers. Not pos_chain_t: step 1 of the picker is
- * a network, and several chains share one (USDC and USDT are both Ethereum). */
-typedef enum { UI_NET_ETH = 0, UI_NET_POLY, UI_NET_TRON } ui_net_t;
+/* The networks the picker offers are pos_net_t (assets.h) — step 1 of the picker
+ * is a network, and several chains share one (USDC and USDT are both Ethereum).
+ * This file used to carry its own copy of that enum. */
 
 static void open_network_picker(void);
-static void open_coin_picker(ui_net_t net);
+static void open_coin_picker(pos_net_t net);
 static void open_portal_window(void);
 static void open_ota_gone(void);
 static void close_modal(void);
@@ -594,17 +595,14 @@ static bool chain_is_tron(void) {
     return pos_chain_is_tron(settings_get_chain());
 }
 
+/** The selected asset's row — ticker, standard, caption, network. */
+static const pos_asset_t *asset(void) {
+    return pos_asset_of(settings_get_chain());
+}
+
 /** Ticker of the asset being charged, for the selector and the amount screens. */
 static const char *asset_name(void) {
-    switch (settings_get_chain()) {
-        case POS_CHAIN_TRON_NILE:  return "TRX";
-        case POS_CHAIN_ETH_NATIVE: return "ETH";
-        case POS_CHAIN_POLY_NATIVE:return "POL";
-        case POS_CHAIN_TRON_USDT:
-        case POS_CHAIN_ETH_USDT:
-        case POS_CHAIN_POLY_USDT:  return "USDT";
-        default:                   return "USDC";
-    }
+    return asset()->ticker;
 }
 
 /**
@@ -612,31 +610,16 @@ static const char *asset_name(void) {
  *
  * Names the deployment, not just the family: "Ethereum" and "Ethereum Sepolia"
  * differ by the only thing that decides whether a sale settles in money, and this
- * subtitle is where an operator finds out which one the terminal is on. The
- * mainnet names carry no suffix on purpose — a production terminal should not be
- * shouting a word nobody needs, and the testnet ones then stand out.
+ * subtitle is where an operator finds out which one the terminal is on.
  */
 static const char *asset_network(void) {
-    if (chain_is_tron()) { return settings_net_str("Tron Nile", "Tron"); }
-    return pos_chain_is_polygon(settings_get_chain())
-             ? settings_net_str("Polygon Amoy", "Polygon")
-             : settings_net_str("Ethereum Sepolia", "Ethereum");
+    const pos_net_info_t *ni = pos_net_info(asset()->net);
+    return settings_net_str(ni->long_test, ni->long_main);
 }
 
 /** Caption for the address row above "Send to": TRX has no contract to show. */
 static const char *asset_caption(void) {
-    switch (settings_get_chain()) {
-        /* A network's own coin has no contract to show, so the row names the
-         * asset instead — the same thing TRX has always done. */
-        case POS_CHAIN_TRON_NILE:
-        case POS_CHAIN_ETH_NATIVE:
-        case POS_CHAIN_POLY_NATIVE: return "Asset";
-        case POS_CHAIN_TRON_USDT:
-        case POS_CHAIN_TRON_USDC:   return "Token contract";
-        case POS_CHAIN_ETH_USDT:
-        case POS_CHAIN_POLY_USDT:   return "USDT contract";
-        default:                    return "USDC contract";
-    }
+    return asset()->caption;
 }
 
 static void request_screen(ui_screen_t s) {
@@ -1014,8 +997,8 @@ static void btn_event_cb(lv_event_t *e) {
         case ACT_NET_POLY:
         case ACT_NET_TRON:
             /* Step 2: which coin on the network just picked. */
-            open_coin_picker((act == ACT_NET_TRON) ? UI_NET_TRON :
-                             (act == ACT_NET_POLY) ? UI_NET_POLY : UI_NET_ETH);
+            open_coin_picker((act == ACT_NET_TRON) ? POS_NET_TRON :
+                             (act == ACT_NET_POLY) ? POS_NET_POLY : POS_NET_ETH);
             break;
         case ACT_CHAIN_BASE:
             /* Unreachable — the chain block above returns. Named only so -Wswitch
@@ -1154,24 +1137,34 @@ static lv_obj_t *make_icon_box(lv_obj_t *parent, const lv_img_dsc_t *coin_src,
     return box;
 }
 
+/* The network's own mark, and the little chip that says which network a token
+ * lives on. Indexed by pos_net_t, so the order here follows assets.h. The images
+ * are the one asset fact that cannot live in that table — they are LVGL types,
+ * and the table is kept host-testable. */
+static const lv_img_dsc_t *const NET_ICON[POS_NET__COUNT] = {
+    &icon_eth, &icon_poly, &icon_tron
+};
+static const lv_img_dsc_t *const NET_CHIP[POS_NET__COUNT] = {
+    &chip_eth, &chip_poly, &chip_tron
+};
+
+/* A token's own mark, by ticker. Two of them, so a lookup rather than a table —
+ * and USDC is the fallback for the same reason the old switch defaulted to it. */
+static const lv_img_dsc_t *coin_icon(const char *ticker) {
+    return (strcmp(ticker, "USDT") == 0) ? &icon_usdt : &icon_usdc;
+}
+
 /* The selected asset. A native coin IS its network, so it carries no chip —
  * the chip only says "this token lives over there", which is meaningless
  * stacked on the network's own logo. */
 static lv_obj_t *make_asset_badge(lv_obj_t *parent, pos_chain_t chain) {
-    switch (chain) {
-        /* The network's own coin wears its network mark and no chip: a chip says
-         * "this token, on that network", and there is no second thing to say when
-         * the asset IS the network. */
-        case POS_CHAIN_TRON_NILE: return make_icon_box(parent, &icon_tron, NULL);
-        case POS_CHAIN_ETH_NATIVE: return make_icon_box(parent, &icon_eth, NULL);
-        case POS_CHAIN_POLY_NATIVE:return make_icon_box(parent, &icon_poly, NULL);
-        case POS_CHAIN_TRON_USDT: return make_icon_box(parent, &icon_usdt, &chip_tron);
-        case POS_CHAIN_TRON_USDC: return make_icon_box(parent, &icon_usdc, &chip_tron);
-        case POS_CHAIN_ETH_USDT:  return make_icon_box(parent, &icon_usdt, &chip_eth);
-        case POS_CHAIN_POLY_USDC: return make_icon_box(parent, &icon_usdc, &chip_poly);
-        case POS_CHAIN_POLY_USDT: return make_icon_box(parent, &icon_usdt, &chip_poly);
-        default:                  return make_icon_box(parent, &icon_usdc, &chip_eth);
-    }
+    const pos_asset_t *a = pos_asset_of(chain);
+    const int n = (int)a->net;
+    /* The network's own coin wears its network mark and no chip: a chip says
+     * "this token, on that network", and there is no second thing to say when
+     * the asset IS the network. */
+    if (a->native) { return make_icon_box(parent, NET_ICON[n], NULL); }
+    return make_icon_box(parent, coin_icon(a->ticker), NET_CHIP[n]);
 }
 
 /* The asset selector itself: the badge above turned into a tappable pill, at the
@@ -1231,10 +1224,8 @@ static void asset_btn_set_compact(bool compact) {
 
 /* The bare network mark, for the network picker's own rows — no coin is chosen
  * at that step, so there is nothing to badge it with. */
-static lv_obj_t *make_net_badge(lv_obj_t *parent, ui_net_t net) {
-    return make_icon_box(parent,
-                         (net == UI_NET_TRON) ? &icon_tron :
-                         (net == UI_NET_POLY) ? &icon_poly : &icon_eth, NULL);
+static lv_obj_t *make_net_badge(lv_obj_t *parent, pos_net_t net) {
+    return make_icon_box(parent, NET_ICON[(int)net], NULL);
 }
 
 /* "Tap here" mark — the four widening arcs every contactless reader wears, drawn
@@ -1984,49 +1975,42 @@ static void pill_disable(lv_obj_t *p) {
 }
 
 /** Step 1 — the network. */
-static void open_network_picker(void) {
-    /* Not static: the subtitles name the deployment, which is read from NVS. A
-     * function-local static would be initialised on the first pass and then keep
-     * saying "Sepolia testnet" on a terminal that had been switched. */
-    const struct {
-        const char *name;
-        const char *sub;
-        ui_net_t    net;    /* which network mark to draw */
-        BtnAction   act;
-    } NETS[] = {
-        { "Ethereum", settings_net_str("Sepolia testnet", "Mainnet"),
-          UI_NET_ETH,  ACT_NET_ETH  },
-        { "Polygon",  settings_net_str("Amoy testnet", "Mainnet"),
-          UI_NET_POLY, ACT_NET_POLY },
-        { "Tron",     settings_net_str("Nile testnet", "Mainnet"),
-          UI_NET_TRON, ACT_NET_TRON },
-    };
-    const size_t n = sizeof(NETS) / sizeof(NETS[0]);
+/* Which action opens step 2 for a network, in pos_net_t order. The pickers are
+ * driven by assets.h now; this is the one thing left that is per-network and
+ * belongs to this file, because an action is a UI concept. */
+static const BtnAction NET_ACT[POS_NET__COUNT] = {
+    ACT_NET_ETH, ACT_NET_POLY, ACT_NET_TRON
+};
 
-    /* Same growth rule as step 2 — header + rows + the Cancel button — now that
-     * there are three networks and a hardcoded height would clip one. */
+static void open_network_picker(void) {
+    /* Same growth rule as step 2 — header + rows + the Cancel button — so a
+     * fourth network added to assets.h widens the card rather than clipping. */
     lv_obj_t *card = open_modal(228,
-        static_cast<lv_coord_t>(86 + (n * (PILL_H + 2))));
+        static_cast<lv_coord_t>(86 + (POS_NET__COUNT * (PILL_H + 2))));
 
     make_label(card, "Network", COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_MID, 0, 2);
 
-    for (size_t i = 0; i < n; i++) {
+    for (int i = 0; i < (int)POS_NET__COUNT; i++) {
+        const pos_net_info_t *ni = pos_net_info(static_cast<pos_net_t>(i));
+        /* Read here, not cached in a table: the subtitle names the deployment,
+         * which is a setting. A function-local static would be initialised on the
+         * first pass and then keep saying "Sepolia testnet" on a switched unit. */
+        const char *sub = settings_net_str(ni->sub_test, ni->sub_main);
         /* A network with no payout address of its own is not offered. Otherwise a
          * terminal set up for Ethereum and interrupted before Tron would quietly
          * take Tron payments to the compile-time recipient — somebody else's
          * address — and look entirely normal doing it. */
         /* Polygon spends the Ethereum payout address — same EVM account, so the
          * one the operator stored works on both networks. */
-        const bool have = settings_has_payout(NETS[i].net == UI_NET_TRON);
+        const bool have = settings_has_payout(i == (int)POS_NET_TRON);
         lv_coord_t y = static_cast<lv_coord_t>(22 + (i * (PILL_H + 2)));
         /* "No payout address" measured 133px against this pill's
          * PICK_W - PILL_TEXT_X - PILL_TEXT_PAD_R = 130px cap, so the one row
          * that explains why a network is greyed out arrived elided. */
-        lv_obj_t  *p = make_pill(card, NETS[i].name,
-                                 have ? NETS[i].sub : "No payout set",
-                                 PICK_W, y, NETS[i].act);
-        lv_obj_align(make_net_badge(p, NETS[i].net),
+        lv_obj_t  *p = make_pill(card, ni->name, have ? sub : "No payout set",
+                                 PICK_W, y, NET_ACT[i]);
+        lv_obj_align(make_net_badge(p, static_cast<pos_net_t>(i)),
                      LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
         if (!have) { pill_disable(p); }
     }
@@ -2037,53 +2021,20 @@ static void open_network_picker(void) {
 }
 
 /** Step 2 — the coin on the network chosen in step 1. */
-static void open_coin_picker(ui_net_t net) {
-    /* One row type and one table per network, picked below — a third network was
-     * what made the pair of `tron ? A[i].x : B[i].x` lines untenable. No action
-     * column: the chain is the action (ACT_CHAIN_OF). */
-    typedef struct {
-        const char *name;
-        const char *sub;
-        pos_chain_t chain;
-    } coin_t;
-    /* Native coin first on every network, as Tron has always listed TRX. */
-    static const coin_t ETH_COINS[] = {
-        { "ETH",  "Native coin", POS_CHAIN_ETH_NATIVE  },
-        { "USDC", "ERC-20",      POS_CHAIN_ETH_SEPOLIA },
-        { "USDT", "ERC-20",      POS_CHAIN_ETH_USDT    },
-    };
-    static const coin_t POLY_COINS[] = {
-        { "POL",  "Native coin", POS_CHAIN_POLY_NATIVE },
-        { "USDC", "ERC-20",      POS_CHAIN_POLY_USDC   },
-        { "USDT", "ERC-20",      POS_CHAIN_POLY_USDT   },
-    };
-    static const coin_t TRON_COINS[] = {
-        { "TRX",  "Native coin", POS_CHAIN_TRON_NILE },
-        { "USDT", "TRC-20",      POS_CHAIN_TRON_USDT },
-        { "USDC", "TRC-20",      POS_CHAIN_TRON_USDC },
-    };
-
-    const coin_t *coins;
-    size_t        n;
-    const char   *title;
-    switch (net) {
-        case UI_NET_TRON:
-            coins = TRON_COINS;
-            n     = sizeof(TRON_COINS) / sizeof(TRON_COINS[0]);
-            title = "Coin on Tron";
-            break;
-        case UI_NET_POLY:
-            coins = POLY_COINS;
-            n     = sizeof(POLY_COINS) / sizeof(POLY_COINS[0]);
-            title = "Coin on Polygon";
-            break;
-        case UI_NET_ETH:
-        default:
-            coins = ETH_COINS;
-            n     = sizeof(ETH_COINS) / sizeof(ETH_COINS[0]);
-            title = "Coin on Ethereum";
-            break;
+static void open_coin_picker(pos_net_t net) {
+    /* The rows are assets.h's, filtered on the network: three hand-kept tables
+     * used to say the same thing here, and a fourth network meant a fourth table
+     * plus another arm of the switch that chose between them. The table is ordered
+     * for this loop — grouped by network, native coin first — so the order on
+     * screen is the order there. No action column either: the chain IS the action
+     * (ACT_CHAIN_OF). */
+    size_t n = 0;
+    for (size_t i = 0U; i < POS_ASSET_COUNT; i++) {
+        if (POS_ASSETS[i].net == net) { n++; }
     }
+
+    char title[24];
+    (void)snprintf(title, sizeof(title), "Coin on %s", pos_net_info(net)->name);
 
     /* Card grows with the row count: header + rows + the Back button. */
     lv_obj_t *card = open_modal(228,
@@ -2092,12 +2043,16 @@ static void open_coin_picker(ui_net_t net) {
     make_label(card, title, COL_DIM,
                &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0, 2);
 
-    for (size_t i = 0; i < n; i++) {
-        lv_coord_t y = static_cast<lv_coord_t>(22 + (i * (PILL_H + 2)));
-        lv_obj_t  *p = make_pill(card, coins[i].name, coins[i].sub, PICK_W, y,
-                                 ACT_CHAIN_OF(coins[i].chain), true /* leaf */);
-        lv_obj_align(make_asset_badge(p, coins[i].chain),
+    size_t row = 0;
+    for (size_t i = 0U; i < POS_ASSET_COUNT; i++) {
+        const pos_asset_t *a = &POS_ASSETS[i];
+        if (a->net != net) { continue; }
+        lv_coord_t y = static_cast<lv_coord_t>(22 + (row * (PILL_H + 2)));
+        lv_obj_t  *p = make_pill(card, a->ticker, a->standard, PICK_W, y,
+                                 ACT_CHAIN_OF(a->chain), true /* leaf */);
+        lv_obj_align(make_asset_badge(p, a->chain),
                      LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
+        row++;
     }
 
     /* Back, not Cancel: step 2 of two, so the way out is step 1. */

@@ -10,6 +10,7 @@
 
 #include "settings.h"
 
+#include <atomic>     /* the chain / network caches, read across tasks */
 #include <stdio.h>    /* snprintf — payout address normalisation */
 #include <string.h>
 #include "nvs.h"
@@ -88,61 +89,136 @@ static const char *const TAG = "settings";
 #define DEFAULT_MAX_FEE_GWEI       (uint32_t)(MAX_FEE / WEI_PER_GWEI)
 #define DEFAULT_PRIORITY_FEE_GWEI  (uint32_t)(MAX_PRIORITY_FEE / WEI_PER_GWEI)
 
-pos_chain_t settings_get_chain(void)
+/******************************************************************
+ * NVS scalar helpers
+ *
+ * Every scalar setting below is the same eight lines — open, read or write,
+ * commit, close — differing only in the key, the width and the default. Written
+ * once here so a getter is one line and the failure behaviour (fall back to the
+ * default, never guess) cannot drift between them.
+ *
+ * A failed open is not logged on the read path on purpose: the callers each have
+ * a default that is correct, and the reads happen often enough that a warning
+ * would be noise. The write path does log — a setting that silently did not
+ * persist is the kind of thing an operator reports as "it forgot".
+ ******************************************************************/
+static uint8_t nvs_u8_get(const char *key, uint8_t def)
 {
-    pos_chain_t chain = POS_CHAIN_ETH_SEPOLIA;
+    uint8_t val = def;
     nvs_handle_t h;
     if (nvs_open(NS_SETTINGS, NVS_READONLY, &h) == ESP_OK) {
-        uint8_t stored = 0U;
-        /* Unknown value = a downgrade or a corrupt cell; fall back to the
-         * default rather than charge on a chain no code path can handle. */
-        if ((nvs_get_u8(h, K_CHAIN, &stored) == ESP_OK) &&
-            (stored < (uint8_t)POS_CHAIN__COUNT)) {
-            chain = (pos_chain_t)stored;
-        }
+        (void)nvs_get_u8(h, key, &val);
         nvs_close(h);
     }
+    return val;
+}
+
+static void nvs_u8_set(const char *key, uint8_t val)
+{
+    nvs_handle_t h;
+    if (nvs_open(NS_SETTINGS, NVS_READWRITE, &h) == ESP_OK) {
+        (void)nvs_set_u8(h, key, val);
+        (void)nvs_commit(h);
+        nvs_close(h);
+    } else {
+        ESP_LOGW(TAG, "%s: nvs_open failed", key);
+    }
+}
+
+static uint32_t nvs_u32_get(const char *key, uint32_t def)
+{
+    uint32_t val = def;
+    nvs_handle_t h;
+    if (nvs_open(NS_SETTINGS, NVS_READONLY, &h) == ESP_OK) {
+        (void)nvs_get_u32(h, key, &val);
+        nvs_close(h);
+    }
+    return val;
+}
+
+static void nvs_u32_set(const char *key, uint32_t val)
+{
+    nvs_handle_t h;
+    if (nvs_open(NS_SETTINGS, NVS_READWRITE, &h) == ESP_OK) {
+        (void)nvs_set_u32(h, key, val);
+        (void)nvs_commit(h);
+        nvs_close(h);
+    } else {
+        ESP_LOGW(TAG, "%s: nvs_open failed", key);
+    }
+}
+
+/******************************************************************
+ * The two settings that are read constantly
+ *
+ * The chain and the network flag are asked for on nearly every pass of the UI —
+ * the asset badge, the ticker, the network subtitle, the keypad's ceiling — and
+ * the keypad's ceiling means an NVS open per typed digit. Cached in RAM, with
+ * -1 standing for "not read yet" so a factory-fresh unit still resolves through
+ * the read path exactly once and lands on the documented default.
+ *
+ * Atomic because the writer is the UI task (the asset picker) and one reader is
+ * the main task, mid-payment. Cheap: a 16-bit aligned load on this core.
+ *
+ * Safe to cache for opposite reasons. The chain is written only through
+ * settings_set_chain(), so the cache is written through there and cannot go
+ * stale. The network flag cannot change at all without a restart — the config
+ * page reboots the terminal to apply it (provision.cpp, network_post) — so one
+ * read per boot is the whole story.
+ ******************************************************************/
+static std::atomic<int16_t> s_chain_cache{-1};
+static std::atomic<int8_t>  s_mainnet_cache{-1};
+
+/** @brief Forget both, so the next read goes back to flash. For the erase paths. */
+static void cache_invalidate(void)
+{
+    s_chain_cache.store(-1);
+    s_mainnet_cache.store(-1);
+}
+
+pos_chain_t settings_get_chain(void)
+{
+    const int16_t cached = s_chain_cache.load();
+    if (cached >= 0) { return (pos_chain_t)cached; }
+
+    pos_chain_t chain = POS_CHAIN_ETH_SEPOLIA;
+    /* Unknown value = a downgrade or a corrupt cell; fall back to the default
+     * rather than charge on a chain no code path can handle. */
+    const uint8_t stored = nvs_u8_get(K_CHAIN, (uint8_t)POS_CHAIN_ETH_SEPOLIA);
+    if (stored < (uint8_t)POS_CHAIN__COUNT) {
+        chain = (pos_chain_t)stored;
+    }
+    s_chain_cache.store((int16_t)chain);
     return chain;
 }
 
 void settings_set_chain(pos_chain_t chain)
 {
-    nvs_handle_t h;
-    if (nvs_open(NS_SETTINGS, NVS_READWRITE, &h) == ESP_OK) {
-        (void)nvs_set_u8(h, K_CHAIN, (uint8_t)chain);
-        (void)nvs_commit(h);
-        nvs_close(h);
-    } else {
-        ESP_LOGW(TAG, "chain: nvs_open failed");
-    }
+    nvs_u8_set(K_CHAIN, (uint8_t)chain);
+    /* After the write, not before: a reader that arrives in between gets the old
+     * value, which is the one still in flash. */
+    s_chain_cache.store((int16_t)chain);
 }
 
 bool settings_get_mainnet(void)
 {
+    const int8_t cached = s_mainnet_cache.load();
+    if (cached >= 0) { return (cached != 0); }
+
     /* Defaults true, and the read is written so that every way of not knowing —
      * no key, an unopenable namespace, a factory-fresh unit — lands on the
      * production networks. A terminal that guesses "testnet" takes a shift's
      * worth of payments that settle nowhere and reports each one as done. */
-    uint8_t stored = 1U;
-    nvs_handle_t h;
-    if (nvs_open(NS_SETTINGS, NVS_READONLY, &h) == ESP_OK) {
-        (void)nvs_get_u8(h, K_MAINNET, &stored);
-        nvs_close(h);
-    }
-    return (stored != 0U);
+    const bool mainnet = (nvs_u8_get(K_MAINNET, 1U) != 0U);
+    s_mainnet_cache.store(mainnet ? 1 : 0);
+    return mainnet;
 }
 
 void settings_set_mainnet(bool mainnet)
 {
-    nvs_handle_t h;
-    if (nvs_open(NS_SETTINGS, NVS_READWRITE, &h) == ESP_OK) {
-        (void)nvs_set_u8(h, K_MAINNET, mainnet ? 1U : 0U);
-        (void)nvs_commit(h);
-        nvs_close(h);
-        ESP_LOGW(TAG, "network set to %s", mainnet ? "mainnet" : "testnet");
-    } else {
-        ESP_LOGW(TAG, "mainnet: nvs_open failed");
-    }
+    nvs_u8_set(K_MAINNET, mainnet ? 1U : 0U);
+    s_mainnet_cache.store(mainnet ? 1 : 0);
+    ESP_LOGW(TAG, "network set to %s", mainnet ? "mainnet" : "testnet");
 }
 
 const char *settings_net_str(const char *testnet, const char *mainnet)
@@ -152,29 +228,13 @@ const char *settings_net_str(const char *testnet, const char *mainnet)
 
 uint8_t settings_get_brightness(void)
 {
-    uint8_t val = DEFAULT_BRIGHTNESS;
-    nvs_handle_t h;
-    if (nvs_open(NS_SETTINGS, NVS_READONLY, &h) == ESP_OK) {
-        uint8_t stored;
-        if (nvs_get_u8(h, K_BRIGHTNESS, &stored) == ESP_OK) {
-            val = stored;
-        }
-        nvs_close(h);
-    }
-    return val;
+    return nvs_u8_get(K_BRIGHTNESS, DEFAULT_BRIGHTNESS);
 }
 
 void settings_set_brightness(uint8_t pct)
 {
     if (pct > 100U) { pct = 100U; }
-    nvs_handle_t h;
-    if (nvs_open(NS_SETTINGS, NVS_READWRITE, &h) == ESP_OK) {
-        (void)nvs_set_u8(h, K_BRIGHTNESS, pct);
-        (void)nvs_commit(h);
-        nvs_close(h);
-    } else {
-        ESP_LOGW(TAG, "brightness: nvs_open failed");
-    }
+    nvs_u8_set(K_BRIGHTNESS, pct);
 }
 
 bool settings_has_wifi(void)
@@ -231,47 +291,24 @@ void settings_set_wifi(const char *ssid, const char *pass)
     }
 }
 
-static uint32_t fee_get(const char *key, uint32_t def)
-{
-    uint32_t val = def;
-    nvs_handle_t h;
-    if (nvs_open(NS_SETTINGS, NVS_READONLY, &h) == ESP_OK) {
-        (void)nvs_get_u32(h, key, &val);
-        nvs_close(h);
-    }
-    return val;
-}
-
-static void fee_set(const char *key, uint32_t gwei)
-{
-    nvs_handle_t h;
-    if (nvs_open(NS_SETTINGS, NVS_READWRITE, &h) == ESP_OK) {
-        (void)nvs_set_u32(h, key, gwei);
-        (void)nvs_commit(h);
-        nvs_close(h);
-    } else {
-        ESP_LOGW(TAG, "fee %s: nvs_open failed", key);
-    }
-}
-
 uint32_t settings_get_max_fee_gwei(void)
 {
-    return fee_get(K_MAX_FEE, DEFAULT_MAX_FEE_GWEI);
+    return nvs_u32_get(K_MAX_FEE, DEFAULT_MAX_FEE_GWEI);
 }
 
 void settings_set_max_fee_gwei(uint32_t gwei)
 {
-    fee_set(K_MAX_FEE, gwei);
+    nvs_u32_set(K_MAX_FEE, gwei);
 }
 
 uint32_t settings_get_priority_fee_gwei(void)
 {
-    return fee_get(K_PRIO_FEE, DEFAULT_PRIORITY_FEE_GWEI);
+    return nvs_u32_get(K_PRIO_FEE, DEFAULT_PRIORITY_FEE_GWEI);
 }
 
 void settings_set_priority_fee_gwei(uint32_t gwei)
 {
-    fee_set(K_PRIO_FEE, gwei);
+    nvs_u32_set(K_PRIO_FEE, gwei);
 }
 
 /**
@@ -297,12 +334,7 @@ static void admin_derive(const char *code, const uint8_t *salt,
 
 static void admin_set_fails(uint8_t n)
 {
-    nvs_handle_t h;
-    if (nvs_open(NS_SETTINGS, NVS_READWRITE, &h) == ESP_OK) {
-        (void)nvs_set_u8(h, K_ADMIN_FAILS, n);
-        (void)nvs_commit(h);
-        nvs_close(h);
-    }
+    nvs_u8_set(K_ADMIN_FAILS, n);
 }
 
 bool settings_has_admin_code(void)
@@ -383,13 +415,7 @@ bool settings_check_admin_code(const char *code)
 
 uint8_t settings_admin_fail_count(void)
 {
-    uint8_t n = 0U;
-    nvs_handle_t h;
-    if (nvs_open(NS_SETTINGS, NVS_READONLY, &h) == ESP_OK) {
-        (void)nvs_get_u8(h, K_ADMIN_FAILS, &n);
-        nvs_close(h);
-    }
-    return n;
+    return nvs_u8_get(K_ADMIN_FAILS, 0U);
 }
 
 /* Money-carrying addresses — the payout recipient and the token contract. Two
@@ -570,6 +596,11 @@ bool settings_wipe_if_new_build(void)
         (void)nvs_commit(h);
         nvs_close(h);
     }
+    /* Whatever the caches hold describes a partition that no longer exists. This
+     * runs before anything reads them today, so it is belt and braces — but it is
+     * the ordering that makes it safe, and an invalidation here does not depend on
+     * that ordering staying true. */
+    cache_invalidate();
     return true;
 }
 
@@ -591,6 +622,7 @@ void settings_factory_reset(void)
         nvs_close(h);
         ESP_LOGW(TAG, "settings: factory reset");
     }
+    cache_invalidate();   /* the chain and network flag went with the erase */
 
     /* provision.cpp's own namespace. Nothing in it is load-bearing any more — the
      * AP passphrase is drawn per session and never leaves RAM, and the admin
