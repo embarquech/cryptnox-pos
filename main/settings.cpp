@@ -55,6 +55,9 @@ static const char *const TAG = "settings";
 #define K_ADMIN_FAILS "adm_fails"
 #define K_CHAIN       "chain"
 #define K_MAINNET     "mainnet"
+/* Touch calibration, one key per axis, packed min<<16 | max. */
+#define K_TOUCH_X     "touch_x"
+#define K_TOUCH_Y     "touch_y"
 /* BUILD_ID of the newest firmware that has run on this unit — see
  * settings_wipe_if_new_build. */
 #define K_BUILD_ID    "build_id"
@@ -235,6 +238,36 @@ void settings_set_brightness(uint8_t pct)
 {
     if (pct > 100U) { pct = 100U; }
     nvs_u8_set(K_BRIGHTNESS, pct);
+}
+
+/* Packed two per u32 (min<<16 | max) — two keys instead of four, and an axis
+ * can never be half-written. */
+#define TOUCH_CAL_DEF_MIN  200U
+#define TOUCH_CAL_DEF_MAX  3800U
+
+void settings_get_touch_cal(uint16_t *x_min, uint16_t *x_max,
+                            uint16_t *y_min, uint16_t *y_max)
+{
+    const uint32_t def = (TOUCH_CAL_DEF_MIN << 16) | TOUCH_CAL_DEF_MAX;
+    uint32_t x = nvs_u32_get(K_TOUCH_X, def);
+    uint32_t y = nvs_u32_get(K_TOUCH_Y, def);
+    *x_min = (uint16_t)(x >> 16); *x_max = (uint16_t)(x & 0xFFFFU);
+    *y_min = (uint16_t)(y >> 16); *y_max = (uint16_t)(y & 0xFFFFU);
+}
+
+void settings_set_touch_cal(uint16_t x_min, uint16_t x_max,
+                            uint16_t y_min, uint16_t y_max)
+{
+    /* A span under this is a double-tap on one spot, not a calibration, and
+     * storing it maps the whole panel onto a few pixels — after which nothing,
+     * including the calibration screen, can be tapped again. */
+    const uint16_t MIN_SPAN = 500U;
+    if ((x_max < x_min + MIN_SPAN) || (y_max < y_min + MIN_SPAN)) {
+        ESP_LOGW(TAG, "touch cal rejected: span too small");
+        return;
+    }
+    nvs_u32_set(K_TOUCH_X, ((uint32_t)x_min << 16) | x_max);
+    nvs_u32_set(K_TOUCH_Y, ((uint32_t)y_min << 16) | y_max);
 }
 
 bool settings_has_wifi(void)

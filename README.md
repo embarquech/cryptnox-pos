@@ -301,7 +301,7 @@ python tools/secure_flash.py --package    # -> dist/cryptnox_pos-encrypted-full.
 ## Troubleshooting
 
 - **Inverted colours / banding on gradients** → the CYD panel needs `invertDisplay(true)` (inverted colours) and a GAMMASET tweak (banding/"milky gamma"); both are already applied in `ui_task`. If the screen is blank/scrambled your board may use the other ILI9341 variant — set `CONFIG_TFT_ILI9341_DRIVER=y` (instead of `_2`) in `sdkconfig.defaults` and rebuild.
-- **Touch hitboxes are offset** → the raw range used by the XPT2046 driver is calibrated for the panel shipped with the 2432S028. If yours differs, adjust the `map(p.x, 200, 3800, …)` ranges in `main/ui.cpp` (function `touch_to_screen`).
+- **Touch hitboxes are offset** → calibrate the panel: burger menu → admin code → **Screen** → **Touch**. Two crosses to tap, then Keep or Discard the result, and an un-confirmed calibration puts the old one back after 20 s — so a bad one cannot lock you out of the screen that fixes it. The defaults (raw 200..3800) match the panel shipped with the 2432S028. The stored range lives in NVS, so it goes the way every other setting does: a factory reset or a firmware update with a new `BUILD_ID` clears it and the panel is back on the defaults.
 - **`Card not found`** → confirm the PN532 switches are set for I²C, the SDA/SCL wires match GPIO 27/22, and the card is well centred on the antenna.
 - **`ecrecover did not match either parity`** → `ADDR_FROM` in `config.h` does not correspond to the card's `m/44'/60'/0'/0/0` derived key. Verify the seed and the path.
 - **WiFi connect fails** → only WPA2 is supported; check SSID/password.

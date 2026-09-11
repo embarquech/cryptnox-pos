@@ -151,6 +151,24 @@ uint8_t settings_get_brightness(void);
 /** @brief Persist the backlight level (0..100). */
 void settings_set_brightness(uint8_t pct);
 
+/**
+ * @brief Raw XPT2046 range that maps to the panel's four edges.
+ *
+ * Resistive overlays vary unit to unit — the same corner reads a few hundred
+ * counts apart on two boards out of the same box — so this is the one constant
+ * that has to be a stored knob rather than a number in the source. Defaults to
+ * the 200..3800 the driver used to hardcode, which is right enough to reach the
+ * calibration screen on a panel that has never been calibrated.
+ */
+void settings_get_touch_cal(uint16_t *x_min, uint16_t *x_max,
+                            uint16_t *y_min, uint16_t *y_max);
+
+/** @brief Persist a calibration. Rejected (and ignored) if an axis is inverted
+ *  or collapsed — a bad store here makes the panel untappable, including the
+ *  screen that would fix it. */
+void settings_set_touch_cal(uint16_t x_min, uint16_t x_max,
+                            uint16_t y_min, uint16_t y_max);
+
 /** @brief true if a Wi-Fi SSID has been stored. */
 bool settings_has_wifi(void);
 

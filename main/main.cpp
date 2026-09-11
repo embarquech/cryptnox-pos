@@ -2297,11 +2297,22 @@ extern "C" void app_main(void)
                     /* Broadcast accepted only means "entered the mempool" — a
                      * POS must not claim Approved until the tx is mined with
                      * status 0x1. Poll the receipt (Sepolia block ~12 s). */
-                    ui_show_tx_status(UI_TX_STATE_CONFIRMING, NULL);
+                    ui_show_tx_status(UI_TX_STATE_CONFIRMING,
+                                      "Waiting for the block");
                     eth_rpc_receipt_result_t rc = ETH_RPC_RECEIPT_PENDING;
                     const int64_t deadline =
                         esp_timer_get_time() + 120LL * 1000000LL;  /* 120 s */
                     while (esp_timer_get_time() < deadline) {
+                        /* Count the wait down. Two minutes of spinner over an
+                         * empty line with a customer waiting is indistinguishable
+                         * from a hung terminal; the loop already holds the
+                         * deadline, so the number costs nothing. Set in place —
+                         * ui_show_tx_status here would restart the spinner. */
+                        char left[32];
+                        snprintf(left, sizeof(left), "%d s remaining",
+                                 static_cast<int>((deadline - esp_timer_get_time()
+                                                   + 999999LL) / 1000000LL));
+                        ui_set_tx_info(left);
                         rc = tron
                              ? tron_receipt_as_eth(tron_rpc_get_receipt(tx_hash))
                              : eth_rpc_get_tx_receipt(tx_hash);

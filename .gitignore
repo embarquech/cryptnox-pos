@@ -3,8 +3,18 @@ main/config.h
 
 # IDF build artifacts
 build/
+dist/
 sdkconfig
 sdkconfig.old
+*.bak
+
+# Editor state
+.vscode/
+
+# Review scratch — spreadsheets exported by tools/, staged patches. Generated
+# from the tree, so tracking them means reviewing the same thing twice.
+*.xlsx
+*.patch
 
 # IDF managed components — fetched from registry per dependencies.lock
 managed_components/

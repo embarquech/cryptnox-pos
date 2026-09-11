@@ -48,6 +48,7 @@ typedef enum {
     UI_SCREEN_WELCOME,     /**< Greeting opening first-run setup.          */
     UI_SCREEN_PROV,        /**< QR + AP credentials for phone-based setup. */
     UI_SCREEN_CARD_WAIT,   /**< "Tap your card" while an address is read.  */
+    UI_SCREEN_TOUCH_CAL,   /**< Two-point touch calibration (Screen tab).  */
 } ui_screen_t;
 
 /** @brief Events emitted by the UI task towards the main task. */
@@ -148,6 +149,18 @@ void ui_show_confirm(uint64_t amount_units, const char *dest_addr);
  *                  internally, may be NULL for none.
  */
 void ui_show_tx_status(ui_tx_state_t state, const char *info);
+
+/**
+ * @brief Replace the transaction screen's info line without rebuilding it.
+ *
+ * For progress on a state that lasts: the receipt poll can run for two minutes,
+ * and calling @ref ui_show_tx_status per pass would restart the spinner the
+ * operator is reading as "still working". No-op unless the transaction screen
+ * is up in one of its spinner states.
+ *
+ * @param[in] info Line to show; copied internally, may be NULL to clear.
+ */
+void ui_set_tx_info(const char *info);
 
 /**
  * @brief Copy the most recently entered PIN out and wipe the UI's copy.
