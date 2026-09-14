@@ -369,11 +369,15 @@ static bool touch_raw(int16_t *rx, int16_t *ry) {
     return true;
 }
 
-static bool touch_to_screen(int16_t *sx, int16_t *sy) {
+/* @p sz is the raw pressure, for the second-contact guard — see
+ * touch_jump_filter(). Higher means lower resistance across the panel, which is
+ * a harder press or, the case that matters here, one more finger. */
+static bool touch_to_screen(int16_t *sx, int16_t *sy, int16_t *sz) {
     if (!touch.tirqTouched() || !touch.touched()) {
         return false;
     }
     TS_Point p = touch.getPoint();
+    *sz = (int16_t)p.z;
     int16_t mx = map(p.x, s_cal_xmin, s_cal_xmax, 0, SCR_W);
     int16_t my = map(p.y, s_cal_ymin, s_cal_ymax, 0, SCR_H);
     if (mx < 0)      { mx = 0; }
@@ -391,6 +395,16 @@ static bool touch_to_screen(int16_t *sx, int16_t *sy) {
 static uint32_t s_input_block_until = 0;
 static bool     s_wait_release      = false;
 
+/* The white card the sale-flow screens draw into — see build_page(). NULL on
+ * every other screen, which is how the driver below tells the two apart. */
+static lv_obj_t *s_page_card = NULL;
+
+/* Second-contact guard — see touch_jump_filter(). Sale screens only: every
+ * control there is a tap, so nothing legitimately jumps, while the admin panel's
+ * sliders and scrolling lists cross far more than 25px in a 30ms read period. */
+static touch_jump_t s_jump = { 0, 0, 0, false };
+static bool         s_jump_logged = false;   /* one log line per press */
+
 /* Swipe up from the bottom edge — the admin panel's door now that the burger is
  * gone. Detected here, in the driver, rather than as an LVGL gesture: the screen
  * it has to work on is covered by a keypad and a Charge button, and a gesture
@@ -407,8 +421,31 @@ static volatile bool s_swipe_admin  = false;   /* handed to the UI task loop */
 
 static void indev_read(lv_indev_drv_t *drv, lv_indev_data_t *data) {
     (void)drv;
-    int16_t x, y;
-    bool pressed = touch_to_screen(&x, &y);
+    int16_t x, y, z = 0;
+    bool pressed = touch_to_screen(&x, &y, &z);
+
+    /* Two fingers read as one point between them — hold the first one's. Ahead
+     * of the swipe so an artifact cannot arm that either, and off once the swipe
+     * IS armed: that drag is the one place a sale screen moves a finger far in
+     * one read period, and a false swipe only opens a PIN-locked screen. */
+    const int16_t raw_x = x, raw_y = y;
+    if (!pressed || ((s_page_card != NULL) && !s_swipe_armed)) {
+        touch_jump_filter(&s_jump, pressed, z, &x, &y);
+    }
+
+    /* The numbers TOUCH_Z_STEP_PCT is set from. Once per press, not per read —
+     * the guard firing is an event, and at INFO because the log is capped there
+     * (CONFIG_LOG_MAXIMUM_LEVEL=3), which compiles ESP_LOGD/V away entirely.
+     * Never fires with a thumb down: lower the percentage. Fires on ordinary
+     * one-finger taps: raise it. */
+    if (!pressed) {
+        s_jump_logged = false;
+    } else if (!s_jump_logged && ((x != raw_x) || (y != raw_y))) {
+        s_jump_logged = true;
+        ESP_LOGI(TAG, "second contact: %d,%d held at %d,%d (z=%d, z_min=%d)",
+                 (int)raw_x, (int)raw_y, (int)x, (int)y, (int)z,
+                 (int)s_jump.z_min);
+    }
 
     /* Bottom-edge swipe up. Armed on a press that starts in the band, fired
      * once it has travelled far enough; the rest of the drag is swallowed via
@@ -1611,10 +1648,6 @@ static lv_obj_t *make_field(lv_obj_t *parent, const char *caption,
     lv_label_set_long_mode(v, LV_LABEL_LONG_WRAP);
     return v;
 }
-
-/* The white card the sale-flow screens draw into — see build_page(). NULL on
- * every other screen, which is how the swipe handler tells the two apart. */
-static lv_obj_t *s_page_card = NULL;
 
 static void sheet_y_cb(void *obj, int32_t v) {
     lv_obj_set_y(static_cast<lv_obj_t *>(obj), static_cast<lv_coord_t>(v));

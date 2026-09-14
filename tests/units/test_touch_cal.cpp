@@ -90,6 +90,87 @@ int main(void)
     /* No output buffer. */
     assert(!touch_cal_from_corners(501, 425, 3499, 3575, INSET, W, H, NULL));
 
+    /* --- second-contact guard ------------------------------------------- */
+
+    const int16_t Z1 = 600;                 /* one finger, ordinary press */
+    const int16_t Z2 = 600 + ((600 * TOUCH_Z_STEP_PCT) / 100) + 1;  /* + a thumb */
+
+    /* A tap: first sample is taken as-is, small movement within it tracks. */
+    touch_jump_t j = { 0, 0, 0, false };
+    int16_t x = 100, y = 200;
+    touch_jump_filter(&j, true, Z1, &x, &y);
+    assert(x == 100 && y == 200);
+    x = 110; y = 208;                       /* 10,8 — a finger settling */
+    touch_jump_filter(&j, true, Z1, &x, &y);
+    assert(x == 110 && y == 208);
+
+    /* A thumb lands far off: the panel reports the midpoint. Held back to the
+     * first finger, and held there for as long as both stay down — this is the
+     * sample that would otherwise click whatever sits under the midpoint. */
+    x = 60; y = 120;
+    touch_jump_filter(&j, true, Z2, &x, &y);
+    assert(x == 110 && y == 208);
+    x = 62; y = 118;
+    touch_jump_filter(&j, true, Z2, &x, &y);
+    assert(x == 110 && y == 208);
+
+    /* Both lift, then a fresh tap anywhere is accepted: a release clears the
+     * anchor, or the far side of the screen would be untappable after this. */
+    touch_jump_filter(&j, false, 0, &x, &y);
+    x = 20; y = 300;
+    touch_jump_filter(&j, true, Z1, &x, &y);
+    assert(x == 20 && y == 300);
+
+    /* Exactly at the distance threshold is movement, not a second contact — the
+     * guard must not eat a finger that merely slid across a key. */
+    x = 20 + TOUCH_JUMP_MAX_PX; y = 300;
+    touch_jump_filter(&j, true, Z1, &x, &y);
+    assert(x == (20 + TOUCH_JUMP_MAX_PX) && y == 300);
+    /* ...and one pixel past it is not. */
+    x += TOUCH_JUMP_MAX_PX + 1;
+    touch_jump_filter(&j, true, Z1, &x, &y);
+    assert(x == (20 + TOUCH_JUMP_MAX_PX) && y == 300);
+
+    /* The case distance alone cannot see: a thumb resting one key away. The
+     * midpoint moves only a few pixels — well inside TOUCH_JUMP_MAX_PX — so the
+     * pressure step is the only thing standing between it and a wrong digit. */
+    touch_jump_filter(&j, false, 0, &x, &y);
+    x = 120; y = 240;
+    touch_jump_filter(&j, true, Z1, &x, &y);
+    assert(x == 120 && y == 240);
+    x = 128; y = 246;                       /* 8,6 — half a thumb's offset */
+    touch_jump_filter(&j, true, Z2, &x, &y);
+    assert(x == 120 && y == 240);
+
+    /* One finger bearing down harder trips the same test. Allowed: a point that
+     * was not moving is merely no longer allowed to move. */
+    touch_jump_filter(&j, false, 0, &x, &y);
+    x = 50; y = 50;
+    touch_jump_filter(&j, true, Z1, &x, &y);
+    x = 51; y = 51;
+    touch_jump_filter(&j, true, Z2, &x, &y);
+    assert(x == 50 && y == 50);
+
+    /* Landing heavy and easing off must not set a bar the thumb fits under:
+     * z_min follows the lightest press, so the step is measured from there. */
+    touch_jump_filter(&j, false, 0, &x, &y);
+    x = 80; y = 80;
+    touch_jump_filter(&j, true, 2000, &x, &y);   /* heavy landing */
+    x = 82; y = 82;
+    touch_jump_filter(&j, true, 400, &x, &y);    /* eased off */
+    assert(x == 82 && y == 82);
+    x = 84; y = 84;                              /* +50% of 400, not of 2000 */
+    touch_jump_filter(&j, true, (400 + (400 * TOUCH_Z_STEP_PCT) / 100) + 1, &x, &y);
+    assert(x == 82 && y == 82);
+
+    /* No pressure available: the distance test still stands on its own. */
+    touch_jump_filter(&j, false, 0, &x, &y);
+    x = 10; y = 10;
+    touch_jump_filter(&j, true, 0, &x, &y);
+    x = 200; y = 300;
+    touch_jump_filter(&j, true, 0, &x, &y);
+    assert(x == 10 && y == 10);
+
     printf("test_touch_cal: all assertions passed\n");
     return 0;
 }
