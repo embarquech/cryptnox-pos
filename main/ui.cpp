@@ -81,7 +81,14 @@ static XPT2046_Touchscreen touch(T_CS, T_IRQ);
 #define COL_TEXT     lv_color_hex(0x000000)   /* black — primary text          */
 #define COL_DIM      lv_color_hex(0x9A9A9A)   /* grey — secondary labels       */
 #define COL_TITLE    lv_color_hex(0x424242)   /* dark grey — screen titles     */
-#define COL_ACCENT   lv_color_hex(0x000000)   /* black — primary action button */
+/* Slate, not black. Full black is what the flat 2010s "minimal" look does, and a
+ * 44px slab of #000 under a grey-on-white card reads as a placeholder rather than
+ * a product. #2C3E50 is not a new invention either — it is the ink the setup
+ * portal and the docs site already use (see portal_page.h's --ink), so the panel
+ * and the browser page a technician opens beside it finally match.
+ *
+ * Text ON it stays COL_BG: white on #2C3E50 is 9.2:1, comfortably past AA. */
+#define COL_ACCENT   lv_color_hex(0x2C3E50)   /* slate — primary action button */
 /* Sale-flow page chrome. Deliberately NO new hex values: the card idiom is
  * built out of the palette above, so the terminal keeps the black-on-white it
  * always had. The page is the existing surface grey and the card is the
@@ -858,6 +865,8 @@ static uint64_t amount_cents_max(void) {
 #define CARD_PAD  10
 /* Bottom action button, in card coordinates. */
 #define CARD_BTN_H  44
+/* Corner radius for every button on the panel — see make_button. */
+#define BTN_RADIUS  6
 #define CARD_BTN_Y  (-10)
 #define CARD_BTN_W  (CARD_W - (2 * CARD_PAD))
 
@@ -1278,12 +1287,18 @@ static lv_obj_t *make_button(lv_obj_t *parent, const char *label, lv_color_t bg,
     lv_obj_set_size(btn, w, h);
     lv_obj_align(btn, align, x, y);
 
-    /* Base look — rounded, FLAT fill (kill the default theme's gradient, which
-     * washes a dark fill toward light), no default border. */
+    /* Base look — FLAT fill (kill the default theme's gradient, which washes a
+     * dark fill toward light), no default border.
+     *
+     * BTN_RADIUS is 6, down from 10. At 44px tall a 10px radius is a quarter of
+     * the height gone to corner on each side, which is the shape a toy app uses;
+     * 6 still reads as softened but leaves the button a rectangle, which is what
+     * a terminal taking money should look like. The full-radius pill stays where
+     * it belongs — the asset selector and the chips, which are not actions. */
     lv_obj_set_style_bg_color(btn, bg, LV_PART_MAIN);
     lv_obj_set_style_bg_grad_dir(btn, LV_GRAD_DIR_NONE, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_radius(btn, 10, LV_PART_MAIN);
+    lv_obj_set_style_radius(btn, BTN_RADIUS, LV_PART_MAIN);
     lv_obj_set_style_border_width(btn, 0, LV_PART_MAIN);
 
     /* Flat — no drop shadow (light, minimal look). */
@@ -1502,53 +1517,50 @@ static lv_obj_t *make_net_badge(lv_obj_t *parent, pos_net_t net) {
     return make_icon_box(parent, NET_ICON[(int)net], NULL);
 }
 
-/* "Tap here" mark — a payment card and the NFC waves. Drawn by
- * tools/gen_tap_icon.py into main/tap_icon.c; run that script to change it.
+/* "Tap here" mark — NFC waves in a ring. Drawn by tools/gen_tap_icon.py into
+ * main/tap_icon.c; run that script to change it.
  *
- * Two objects, deliberately. A hand was drawn here and taken out again: three
- * fingers and a palm is more hand than 96 pixels hold beside a card and three
- * waves, and every version of it read as a blob.
+ * IT IS THE MARK ON THE CASE. POS-C1 has this moulded into its back above "TAP
+ * TO PAY", and the panel telling a customer where to tap while drawing a
+ * different symbol to the one under their card is the reason the old
+ * card-and-waves version was replaced. If the tooling changes, this changes
+ * with it — that is the whole constraint on this artwork.
  *
- * ON PROVENANCE, because "just use a public-domain icon" is a trap worth
- * writing down. Two separate rights are in play and a PD licence only settles
- * one of them:
- *
- *   Copyright — any particular drawing of a card and waves is somebody's work.
- *   The composition is generic; the artwork is not. So this one is authored in
- *   the generator, from rectangles and arcs, and there is no stock file traced
- *   or vendored anywhere in the tree.
- *
- *   Trademark — EMVCo's Contactless Indicator is four bare arcs on their own,
- *   and a file being CC0 or public domain grants nothing against a mark. A
- *   "public domain" contactless icon is therefore no safer to ship than any
- *   other one. The card is what makes this not that mark; keep it.
- *
- * Geometry authored here is stronger than public domain on both counts, which
- * is why the source is the artwork.
+ * ON PROVENANCE, kept because "just use a public-domain icon" is a trap worth
+ * writing down. Two separate rights are in play and a PD licence settles only
+ * one: copyright, where any particular drawing is somebody's work, which is why
+ * this one is authored in the generator from a circle and arcs with no stock
+ * file traced or vendored anywhere in the tree; and trademark, where EMVCo's
+ * Contactless Indicator is four bare arcs and a CC0 file grants nothing against
+ * a mark. That second question is answered by the product rather than by this
+ * file — Cryptnox tools its own cases with this symbol, and the firmware
+ * follows the hardware.
  *
  * ALPHA_8BIT: one alpha byte per pixel, coloured at draw time from the object's
  * img_recolor style. LVGL's fast path for that format does not support angle or
  * zoom — set either and it falls back to a path with no decoded data and draws
- * nothing — so the card's tilt is baked into the bitmap and this must stay an
- * untransformed image. Aligned TOP_MID at @p y, occupying TAP_MARK_SZ square:
- * the same box every previous version of this mark has had. */
+ * nothing — so this must stay an untransformed image. Aligned TOP_MID at @p y,
+ * occupying TAP_MARK_SZ square: the same box every previous version of this
+ * mark has had. */
 #define TAP_MARK_SZ   96
 
-/* The mark's ink, and the one place to change it. COL_TITLE — the palette's
- * mid-grey, already the screen-title colour — rather than either extreme:
+/* The mark's ink, and the one place to change it. Black — but it was COL_TITLE
+ * (mid-grey) for as long as the mark was drawn in solid strokes, and the reason
+ * it moved is worth keeping, because it is the same reason in both directions.
  *
- *   COL_TEXT (full black) made a 96px block of line art the heaviest thing on
- *   a card whose text is otherwise grey, so it read as a separate object
- *   dropped onto the screen rather than part of it.
+ * The argument against black was WEIGHT: a 96px block of solid line art on a
+ * card whose text is otherwise grey read as a separate object dropped onto the
+ * screen. Grey pulled it back into the ramp. Then the mark was redrawn in the
+ * case's outline style — two hairlines per stroke around a hollow middle — and
+ * its ink dropped by roughly two thirds. The weight problem it was solving
+ * stopped existing, and grey hairlines instead landed where COL_DIM always
+ * would have: faint enough to read as disabled, which is wrong for the one
+ * thing on the screen the customer is being asked to act on.
  *
- *   COL_DIM would match the captions either side of it exactly, but rendered
- *   the mark faint enough to read as disabled — wrong for the one thing on the
- *   screen the customer is being asked to act on.
- *
- * COL_TITLE sits in the same grey ramp as everything around it while staying a
- * clear instruction. The amount keeps full black, which is the ordering this
- * screen wants: the figure being charged is what has to be read first. */
-#define COL_TAP_MARK  COL_TITLE
+ * So the rule, not the value: this tracks the artwork's weight. Go back to
+ * solid strokes in gen_tap_icon.py and this goes back to COL_TITLE. The amount
+ * keeps full black either way — the figure being charged is read first. */
+#define COL_TAP_MARK  COL_TEXT
 
 static void make_tap_mark(lv_obj_t *parent, lv_coord_t y) {
     lv_obj_t *img = lv_img_create(parent);
@@ -3132,47 +3144,78 @@ static void build_confirm(void) {
     char buf[24];
     format_amount(s_confirm_amount, buf, sizeof(buf));
 
+    /* The vertical budget, because it is fully spent and the rows below are not
+     * free to drift. 262px of card: the Total block to 58, the two address rows
+     * to 180 at their two-line worst case, the test warning to 203, and the
+     * buttons from 208. Both address rows DO hit two lines — a 42-character 0x
+     * address measures ~336px against a 204px column — so the worst case is the
+     * normal case and it has 5px of slack. Move anything down and the warning
+     * goes back under the buttons, which is the bug this spacing fixes. */
     make_label(card, "Total", COL_DIM, &lv_font_montserrat_14,
-               LV_ALIGN_TOP_LEFT, CARD_PAD, 12);
+               LV_ALIGN_TOP_LEFT, CARD_PAD, 8);
+
+    /* What is being charged, and — on a test build — where. Opposite "Total" on
+     * its own row, so it costs no height: the rows below have none to give.
+     *
+     * The amount screen says this in an icon and a TEST chip; this is the last
+     * screen before the card is tapped and it is the one that should spell out
+     * both. Mainnet names the coin and stops there, the same rule
+     * settings_net_str follows — a production terminal should not be shouting a
+     * network name nobody needs, which is what makes the testnet form stand out.
+     * Red on testnet for the same reason the chip is. */
+    const bool mainnet = settings_get_mainnet();
+    char what[48];
+    if (mainnet) {
+        snprintf(what, sizeof(what), "%s", asset_name());
+    } else {
+        snprintf(what, sizeof(what), "%s %s %s", asset_name(), LV_SYMBOL_BULLET,
+                 pos_net_info(asset()->net)->sub_test);
+    }
+    make_label(card, what, mainnet ? COL_DIM : COL_DANGER,
+               &lv_font_montserrat_14, LV_ALIGN_TOP_RIGHT, -CARD_PAD, 8);
+
     lv_obj_t *amt = make_label(card, buf, COL_TEXT, &lv_font_montserrat_28,
-                               LV_ALIGN_TOP_LEFT, CARD_PAD, 30);
+                               LV_ALIGN_TOP_LEFT, CARD_PAD, 24);
     lv_obj_t *cusdc = make_asset_badge(card, settings_get_chain());
     lv_obj_align_to(cusdc, amt, LV_ALIGN_OUT_RIGHT_MID, 8, 0);
 
     make_label(card, "To", COL_DIM, &lv_font_montserrat_14,
-               LV_ALIGN_TOP_LEFT, CARD_PAD, 76);
+               LV_ALIGN_TOP_LEFT, CARD_PAD, 64);
     lv_obj_t *addr = make_label(card,
                                 s_confirm_addr[0] ? s_confirm_addr : "-",
                                 COL_TEXT, &lv_font_montserrat_14,
-                                LV_ALIGN_TOP_LEFT, CARD_PAD, 94);
+                                LV_ALIGN_TOP_LEFT, CARD_PAD, 82);
     lv_label_set_long_mode(addr, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(addr, VW);
 
     make_label(card, asset_caption(),
-               COL_DIM, &lv_font_montserrat_14, LV_ALIGN_TOP_LEFT, CARD_PAD, 140);
+               COL_DIM, &lv_font_montserrat_14, LV_ALIGN_TOP_LEFT, CARD_PAD, 126);
     lv_obj_t *ctr = make_label(card,
                                (s_addr_usdc != NULL) ? s_addr_usdc : "-",
                                COL_TEXT, &lv_font_montserrat_14,
-                               LV_ALIGN_TOP_LEFT, CARD_PAD, 158);
+                               LV_ALIGN_TOP_LEFT, CARD_PAD, 144);
     lv_label_set_long_mode(ctr, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(ctr, VW);
 
-    /* The other half of the amount screen's TEST chip, spelled out on the last
-     * screen before the card is tapped. Aligned under the contract rather than
-     * at a y of its own: that row wraps to one or two lines depending on the
-     * address family, so the line below it cannot be a constant. */
-    if (!settings_get_mainnet()) {
+    /* The warning in words, under the contract rather than at a y of its own:
+     * that row wraps to one or two lines depending on the address family, so the
+     * line below it cannot be a constant. Deliberately NOT given a width — a
+     * wrapped second line here is exactly what used to run under the buttons,
+     * and the sentence measures ~190px against the card's 204. */
+    if (!mainnet) {
         lv_obj_t *tn = make_label(card, "Test network - no real funds",
                                   COL_DANGER, &lv_font_montserrat_14,
                                   LV_ALIGN_DEFAULT, 0, 0);
         lv_obj_update_layout(ctr);
-        lv_obj_align_to(tn, ctr, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 8);
+        lv_obj_align_to(tn, ctr, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 6);
     }
 
+    /* Cancel is the card-wait screen's ghost — white with a hairline, not a grey
+     * slab. Backing out of a sale costs nothing and should read as available
+     * without competing with the button that commits. */
     const lv_coord_t half = (CARD_W - (2 * CARD_PAD) - 8) / 2;
-    make_button(card, "Cancel", COL_SURFACE, COL_TEXT, half, CARD_BTN_H,
-                LV_ALIGN_BOTTOM_LEFT, CARD_PAD, CARD_BTN_Y, ACT_CANCEL,
-                &lv_font_montserrat_20);
+    make_ghost_button(card, "Cancel", half,
+                      LV_ALIGN_BOTTOM_LEFT, CARD_PAD, CARD_BTN_Y, ACT_CANCEL);
     make_button(card, "Confirm", COL_ACCENT, COL_BG, half, CARD_BTN_H,
                 LV_ALIGN_BOTTOM_RIGHT, -CARD_PAD, CARD_BTN_Y, ACT_SEND,
                 &lv_font_montserrat_20);
