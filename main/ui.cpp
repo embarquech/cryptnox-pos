@@ -83,12 +83,22 @@ static XPT2046_Touchscreen touch(T_CS, T_IRQ);
 #define COL_TITLE    lv_color_hex(0x424242)   /* dark grey — screen titles     */
 /* Slate, not black. Full black is what the flat 2010s "minimal" look does, and a
  * 44px slab of #000 under a grey-on-white card reads as a placeholder rather than
- * a product. #2C3E50 is not a new invention either — it is the ink the setup
- * portal and the docs site already use (see portal_page.h's --ink), so the panel
- * and the browser page a technician opens beside it finally match.
+ * a product. Nothing here is invented: the hue is the one the setup portal and
+ * the docs site already use, so the panel and the browser page a technician
+ * opens beside it match.
  *
- * Text ON it stays COL_BG: white on #2C3E50 is 9.2:1, comfortably past AA. */
-#define COL_ACCENT   lv_color_hex(0x2C3E50)   /* slate — primary action button */
+ * WHICH slate, though, is a panel decision and not a web one. The portal's light
+ * ink #2C3E50 was tried here first and came out pale — black sits at a contrast
+ * of 21:1 on white and that value at 11:1, and halving the contrast on a 2.8"
+ * TFT whose blacks are already lifted and whose gamma is soft reads as washed
+ * out rather than as a deep navy. This is the portal's DARK-scheme accent
+ * (--accf) instead: same hue, 13.5:1, which holds up on the panel.
+ *
+ * So: pick from the portal palette, but pick the dark end of it. A colour that
+ * looks right in a browser is not evidence about this display.
+ *
+ * Text ON it stays COL_BG — white on this is 13.5:1, well past AA. */
+#define COL_ACCENT   lv_color_hex(0x22303D)   /* slate — primary action button */
 /* Sale-flow page chrome. Deliberately NO new hex values: the card idiom is
  * built out of the palette above, so the terminal keeps the black-on-white it
  * always had. The page is the existing surface grey and the card is the
