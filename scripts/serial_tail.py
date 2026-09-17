@@ -12,6 +12,12 @@ port = sys.argv[1] if len(sys.argv) > 1 else "COM3"
 secs = float(sys.argv[2]) if len(sys.argv) > 2 else 30.0
 
 with serial.Serial(port, 115200, timeout=1) as s:
+    # ponytail: EN-low pulse via RTS, same as esptool's classic reset, so the
+    # boot log lands inside the capture window instead of before it.
+    s.dtr = False
+    s.rts = True
+    time.sleep(0.1)
+    s.rts = False
     end = time.time() + secs
     while time.time() < end:
         data = s.read(4096)

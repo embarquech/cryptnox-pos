@@ -2678,9 +2678,11 @@ static void add_test_chip(void) {
     lv_obj_set_style_pad_hor(chip, 7, LV_PART_MAIN);
     lv_obj_set_style_pad_ver(chip, 3, LV_PART_MAIN);
     lv_obj_set_style_radius(chip, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-    /* Top-right of the teal band, clear of the step dashes (which span x 56..184
-     * centred) and above the card's top edge at CARD_Y. */
-    lv_obj_align(chip, LV_ALIGN_TOP_RIGHT, -8, 5);
+    /* Top-LEFT of the band: the right-hand end is the Wi-Fi bars' now, and they
+     * are on the top layer, so a right-aligned chip was drawn under them. The
+     * left end is free — the burger that used to sit there is behind the swipe
+     * up — and the dash run starts at x=75, well clear of a 47px chip. */
+    lv_obj_align(chip, LV_ALIGN_TOP_LEFT, 8, 5);
 }
 
 /**
@@ -3937,6 +3939,133 @@ static void build_boot_error(void) {
     }
 }
 
+/******************************************************************
+ * 8b. Wi-Fi signal — the wave, top right of every screen
+ *
+ * Three arcs over a dot, the shape every phone uses, rather than the four
+ * ascending bars this started as: the fan is read at a glance from across a
+ * counter, where four 3px bars were a smudge.
+ *
+ * The dot is 4px, not 3: LVGL clamps the circle radius to half the side, so at
+ * 3px there is nothing left to round and it drew as a small black square.
+ *
+ * The sizes below are one system, not four numbers. The dot reaches out to
+ * SIG_DOT/2 and each arc covers r ± SIG_AW/2, so nothing may start inside what
+ * came before it or the icon closes up into a blob:
+ *   dot to first ring:  SIG_R0 - (SIG_AW / 2) - (SIG_DOT / 2)
+ *   ring to ring:       SIG_RSTEP - SIG_AW
+ * Both are 2px, and they have to agree: the dot is the first thing in the stack,
+ * so a tighter gap under the first ring than between the rings reads as the dot
+ * stuck to it. That is what SIG_R0 is for — at 4 the dot's gap was 1 against the
+ * rings' 2, and at 3 (what this was drawn with) the two met outright.
+ *
+ * Lives on the top layer rather than being built per screen: it outlives the
+ * screen swaps, so no build_* function has to remember it. A modal is created
+ * on the same layer later, so it covers the wave — which is what a modal is for.
+ ******************************************************************/
+#define SIG_ARCS   3
+#define SIG_AW     2      /* arc thickness                                  */
+#define SIG_R0     5      /* innermost arc radius; each ring adds SIG_RSTEP */
+#define SIG_RSTEP  4
+/* Even, and it has to stay even: an arc object is 2r + SIG_AW wide, so the fan's
+ * centre lands on a whole coordinate, and only an even dot has its own centre
+ * there too. At 5 it sat half a pixel right of and below the arcs it is struck
+ * from — small, but at this size half a pixel is the thing you notice. */
+#define SIG_DOT    4
+/* Per-ring sweep, innermost first, centred on 12 o'clock. Two jobs. The inner
+ * rings get more of their circle because how curved an arc looks is its sagitta,
+ * r·(1 - cos(sweep/2)), and a 90° cut at r=5 bends 1.5px — a dash; at 120° it
+ * bends 3.3px and reads as an arc. Second, the whole set sets the icon's width —
+ * a ring is 2r·sin(sweep/2) across — so widening it is done here rather than by
+ * pushing the radii out, which would grow the height with it. 9.4 / 14.7 / 19.9
+ * across at these angles, against 8.7 / 12.7 / 17 before.
+ *
+ * The inner ring is the ceiling: at r=5 no angle can span more than 10px, and
+ * past about 140° it stops looking like a cut from a circle and starts looking
+ * like most of one. Widening beyond this means a bigger SIG_R0. */
+static const uint16_t SIG_SWEEP[SIG_ARCS] = { 140, 110, 100 };
+
+/* The outermost ring's outer edge, which is the icon's half-width and, with the
+ * dot's bottom half, its height. Everything below is derived from it. */
+#define SIG_REACH  (SIG_R0 + ((SIG_ARCS - 1) * SIG_RSTEP) + (SIG_AW / 2))
+#define SIG_W      (2 * SIG_REACH)
+#define SIG_H      (SIG_REACH + ((SIG_DOT + 1) / 2))
+
+static lv_obj_t *s_sig_arc[SIG_ARCS];
+static lv_obj_t *s_sig_dot = NULL;
+static lv_obj_t *s_sig_box = NULL;
+
+static void signal_refresh(lv_timer_t *t) {
+    (void)t;
+    int8_t rssi = 0;
+    /* net_wifi_rssi() fails when the station is not associated — grey dot, no
+     * arc, which is the answer the operator needs before blaming the card.
+     * The cuts match the words on the settings page (Good / Fair / Weak), so
+     * the icon and the "Signal" field there cannot disagree. */
+    const bool up  = net_wifi_rssi(&rssi);
+    const int  lit = !up ? 0 : (rssi >= -60) ? 3 : (rssi >= -70) ? 2 : 1;
+    for (int i = 0; i < SIG_ARCS; i++) {
+        /* Unlit is COL_DIM, not COL_BORDER: the sale flow's page IS COL_BORDER,
+         * so a hairline-grey arc vanished into it and two arcs read as two arcs
+         * total. Same trap the step dashes fell into — see COL_PAGE. */
+        lv_obj_set_style_arc_color(s_sig_arc[i],
+                                   (i < lit) ? COL_TEXT : COL_DIM,
+                                   LV_PART_MAIN);
+    }
+    lv_obj_set_style_bg_color(s_sig_dot, up ? COL_TEXT : COL_DIM, LV_PART_MAIN);
+    /* Off the splash (nothing is connected yet) and off the calibration
+     * screen, where it would sit on the top-right corner target. */
+    const bool show = (s_req_screen != UI_SCREEN_SPLASH) &&
+                      (s_req_screen != UI_SCREEN_TOUCH_CAL);
+    if (show) { lv_obj_clear_flag(s_sig_box, LV_OBJ_FLAG_HIDDEN); }
+    else      { lv_obj_add_flag(s_sig_box, LV_OBJ_FLAG_HIDDEN); }
+}
+
+static void signal_init(void) {
+    s_sig_box = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(s_sig_box);
+    lv_obj_set_size(s_sig_box, SIG_W, SIG_H);
+    lv_obj_align(s_sig_box, LV_ALIGN_TOP_RIGHT, -14, 6);
+    lv_obj_clear_flag(s_sig_box, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(s_sig_box, LV_OBJ_FLAG_CLICKABLE);
+
+    /* Every ring is struck from the same point — the dot — so each arc object is
+     * sized to its own ring and then centred on that point, not on the box. */
+    const lv_coord_t cx = SIG_W / 2, cy = SIG_REACH;
+    for (int i = 0; i < SIG_ARCS; i++) {
+        const lv_coord_t d = (2 * (SIG_R0 + (i * SIG_RSTEP))) + SIG_AW;
+        lv_obj_t *a = lv_arc_create(s_sig_box);
+        lv_obj_remove_style_all(a);          /* also kills the knob and the
+                                              * value indicator: both draw at
+                                              * the default arc width of 0 */
+        lv_obj_set_size(a, d, d);
+        lv_obj_set_pos(a, cx - (d / 2), cy - (d / 2));
+        /* 0° is 3 o'clock and angles run clockwise, so 270 is 12 o'clock and each
+         * ring is cut symmetrically about it. */
+        lv_arc_set_bg_angles(a, 270 - (SIG_SWEEP[i] / 2), 270 + (SIG_SWEEP[i] / 2));
+        lv_obj_set_style_arc_width(a, SIG_AW, LV_PART_MAIN);
+        /* Square-cut, not rounded: a rounded cap on a 2px stroke is a 2px circle
+         * hung off the end, and the anti-aliasing landed it as a darker pixel
+         * past each tip rather than as a taper. */
+        lv_obj_set_style_arc_rounded(a, false, LV_PART_MAIN);
+        lv_obj_clear_flag(a, LV_OBJ_FLAG_CLICKABLE);
+        s_sig_arc[i] = a;
+    }
+
+    s_sig_dot = lv_obj_create(s_sig_box);
+    lv_obj_remove_style_all(s_sig_dot);
+    lv_obj_set_size(s_sig_dot, SIG_DOT, SIG_DOT);
+    lv_obj_set_pos(s_sig_dot, cx - (SIG_DOT / 2), cy - (SIG_DOT / 2));
+    lv_obj_set_style_bg_opa(s_sig_dot, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_radius(s_sig_dot, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_clear_flag(s_sig_dot, LV_OBJ_FLAG_CLICKABLE);
+
+    /* ponytail: 3 s poll. An event-driven update would mean a Wi-Fi handler
+     * poking LVGL from the event task — add one only if the lag shows. */
+    (void)lv_timer_create(signal_refresh, 3000, NULL);
+    signal_refresh(NULL);
+}
+
 static void render_requested_screen(void) {
     /* A modal lives on the top layer, so it would survive the screen swap and
      * sit there swallowing every touch. Nothing wants that. */
@@ -3991,6 +4120,10 @@ static void render_requested_screen(void) {
     }
     s_input_block_until = lv_tick_get() + lockout;
     s_wait_release      = true;
+
+    /* Now, not on the next poll — the bars are hidden on two screens, and a
+     * three-second lag would leave them on the one they are hidden from. */
+    if (s_sig_box != NULL) { signal_refresh(NULL); }
 }
 
 /******************************************************************
@@ -4044,6 +4177,7 @@ static void ui_task(void *arg) {
      * screen is built — lv_theme_apply runs at object creation, so anything
      * created earlier would keep the default look. */
     theme_init();
+    signal_init();               /* top-right Wi-Fi bars, on the top layer */
 
     lv_indev_drv_init(&s_indev_drv);
     s_indev_drv.type    = LV_INDEV_TYPE_POINTER;
