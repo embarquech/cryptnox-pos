@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <inttypes.h>
+#include <time.h>        /* the status-band clock */
 
 #include "lvgl.h"
 #include "logo_img.h"
@@ -622,6 +623,21 @@ static uint64_t  s_amount_cents = 0;      /* amount entered, in cents          *
 static lv_obj_t *s_asset_btn   = NULL;
 static lv_obj_t *s_asset_arrow = NULL;
 
+/* The Charge button, kept because it is enabled and disabled as digits arrive
+ * and leave — see charge_set_enabled(). */
+static lv_obj_t *s_charge_btn  = NULL;
+
+/* The status band's clock. Built per screen by build_page(), so it exists on the
+ * sale flow and nowhere else — the admin page's tab bar owns y=0..42 and the
+ * setup screens own their own headers, which is the same collision that took the
+ * Wi-Fi mark off those screens. Retexted in place by the status timer. */
+static lv_obj_t *s_clock_lbl   = NULL;
+/* ...and whether it has already been tapped and is waiting on main. Its own
+ * flag rather than reading the button's state, because the keypad is still live
+ * during that wait and amount_update_display() would otherwise hand the button
+ * straight back on the next digit — see charge_set_busy(). */
+static bool      s_charge_busy = false;
+
 /* PIN entry — the textarea (password mode) is the live input; s_pin is the
  * handoff buffer read by main via ui_take_pin() and wiped on read. */
 static lv_obj_t *s_pin_ta      = NULL;
@@ -880,7 +896,39 @@ static uint64_t amount_cents_max(void) {
 #define CARD_BTN_Y  (-10)
 #define CARD_BTN_W  (CARD_W - (2 * CARD_PAD))
 
-/* Steps of one sale. PAY_STEP_NONE draws no dashes — a card read during setup
+/* The status band, left to right: clock, the TEST chip when there is one, the
+ * progress rail, the Wi-Fi mark.
+ *
+ * Fixed zones, not measured ones. Every occupant is a known string in a known
+ * font, and a rail that re-measures itself against the clock would change
+ * length when the minute ticks from 09:59 to 10:00 — a band that twitches on
+ * its own is the thing this layout exists to stop.
+ *
+ * Everything sits on one optical centre line at y≈12: montserrat_14 draws a
+ * 16px box (so text at 4), the Wi-Fi mark is 13 tall at 6, the rail is 3 at 11.
+ * Move one and move the others.
+ *
+ * CLOCK_W and CHIP_W are reserves rather than the real widths — "00:00"
+ * measures ~36 against 42, "TEST" with its pads ~54 against 56. The slack is
+ * what keeps the rail clear of them without anyone having to re-measure. */
+#define BAND_Y      4      /* text top: clock and chip                  */
+#define CLOCK_X     10
+#define CLOCK_Y     BAND_Y
+#define CLOCK_W     42
+#define CHIP_X      (CLOCK_X + CLOCK_W + 6)
+#define CHIP_W      56
+#define CHIP_Y      3      /* 20px tall, so 3 centres it on the band    */
+#define RAIL_GAP    8      /* clearance from whatever is either side    */
+#define RAIL_Y      11
+#define RAIL_H      3      /* one line                                  */
+/* The band's right end belongs to the Wi-Fi mark: its width plus its inset from
+ * the screen edge. A reserve like the two above, because the mark's geometry is
+ * declared in section 8b, below every user of it — and section 8b carries a
+ * static_assert that it still fits in here, so shrinking the mark costs nothing
+ * and growing it past this fails the build instead of drawing over the rail. */
+#define SIG_ZONE_W  40
+
+/* Steps of one sale. PAY_STEP_NONE draws no rail — a card read during setup
  * is not a sale and must not claim a place in its progress. */
 enum {
     PAY_STEP_NONE   = -1,
@@ -963,6 +1011,59 @@ static void amount_row_place(void) {
                  ASSET_BTN_Y + ((ASSET_BTN_H - lv_area_get_height(&r)) / 2));
 }
 
+/**
+ * Charge is available only once there is something to charge.
+ *
+ * 0.00 is not a sale, and the button was fully lit for it — the operator's tap
+ * did nothing and the screen said nothing about why, which on a resistive panel
+ * reads as a missed touch rather than as a refusal. btn_event_cb has always
+ * dropped the event; this is what makes that visible.
+ *
+ * LV_STATE_DISABLED rather than hiding the button: LVGL's hit test drops taps on
+ * a disabled object (lv_obj_pos.c), so the state IS the whole gate, and a greyed
+ * button still holds the place the operator is about to aim at. The label is
+ * recoloured by hand because make_button() sets its colour on the label itself,
+ * where the button's state does not reach it — the same reason pill_disable()
+ * walks its children.
+ */
+static void charge_set_enabled(bool on) {
+    if (s_charge_btn == NULL) { return; }   /* not the amount screen */
+
+    if (on) { lv_obj_clear_state(s_charge_btn, LV_STATE_DISABLED); }
+    else    { lv_obj_add_state(s_charge_btn, LV_STATE_DISABLED); }
+
+    lv_obj_set_style_bg_color(s_charge_btn, on ? COL_ACCENT : COL_SURFACE,
+                              LV_PART_MAIN);
+    lv_obj_t *lbl = lv_obj_get_child(s_charge_btn, 0);
+    if (lbl != NULL) {
+        lv_obj_set_style_text_color(lbl, on ? COL_BG : COL_DIM, LV_PART_MAIN);
+    }
+}
+
+/**
+ * Charge has been tapped: inert until this screen is next built.
+ *
+ * A gate, not a look — it does not repaint the button. What it guards against is
+ * a second UI_EVENT_AMOUNT_CONFIRMED queued behind the first. The duplicate is
+ * harmless where it is raised, since main answers it with the same confirm
+ * screen, but it outlives the screen it was meant for: an operator who
+ * double-tapped Charge and then tapped Confirm gets pulled back out of the PIN
+ * keypad by the echo of their own first tap.
+ *
+ * It used to grey the button and relabel it "Checking...", from when the balance
+ * check ran at this point and took a network round trip to answer. That check
+ * moved to the card tap, where the payer is actually known — so there is nothing
+ * to wait for here and nothing to announce. The screen changes immediately, and
+ * a button that repaints on its way out is a flicker, not feedback.
+ */
+static void charge_set_busy(void) {
+    if (s_charge_btn == NULL) { return; }
+    s_charge_busy = true;
+    /* LVGL's hit test drops taps on a disabled object (lv_obj_pos.c), so the
+     * state alone is the whole gate. */
+    lv_obj_add_state(s_charge_btn, LV_STATE_DISABLED);
+}
+
 static void amount_update_display(void) {
     char buf[24];
     const bool split = (s_amount_cents >= AMOUNT_SMALL_CENTS_FROM);
@@ -989,6 +1090,13 @@ static void amount_update_display(void) {
      * digits take the room back. The ticker stays either way — it is on the pill,
      * not on the figure, so it costs the digits nothing. */
     asset_btn_set_compact(s_amount_cents != 0ULL);
+    /* Left alone while a tap is in flight: this runs on every keypress and the
+     * keypad stays live, so a digit typed in that window would otherwise re-arm
+     * a button that has already asked. Skipped rather than called with false,
+     * so the button keeps its ordinary look on the way out. */
+    if (!s_charge_busy) {
+        charge_set_enabled(s_amount_cents != 0ULL);
+    }
 
     /* Last: the pill has just changed width and the labels have just changed text,
      * and the row is placed against both. */
@@ -1113,6 +1221,11 @@ static void btn_event_cb(lv_event_t *e) {
     switch (act) {
         case ACT_CONFIRM:
             if (s_cb != NULL && s_amount_units > 0ULL) {
+                /* Before the callback, not after. What main does with the event
+                 * is its business — it may answer in a microsecond or after a
+                 * network round trip — and this screen must have stopped taking
+                 * taps by the time either can happen. */
+                charge_set_busy();
                 s_cb(UI_EVENT_AMOUNT_CONFIRMED, s_amount_units);
             }
             break;
@@ -1713,6 +1826,9 @@ static void clear_screen(void) {
     s_amount_row   = NULL;
     s_asset_btn    = NULL;
     s_asset_arrow  = NULL;
+    s_charge_btn   = NULL;
+    s_charge_busy  = false;   /* the button the flag was about is gone */
+    s_clock_lbl    = NULL;
     s_pin_ta       = NULL;   /* deleted by lv_obj_clean — drop the dangling ref */
     s_pin_eye_lbl  = NULL;
     s_wifi_pass_ta = NULL;
@@ -1729,6 +1845,59 @@ static void clear_screen(void) {
     s_close_btn    = NULL;
 }
 
+/* The UTC offset the clock adds, cached. settings_get_tz_offset_min() opens
+ * NVS, and clock_refresh() runs every three seconds — the same argument the
+ * touch calibration makes about indev_read. Reloaded when the config page
+ * stores a new one, through ui_clock_changed(). */
+static int16_t       s_tz_off_min = 0;
+static volatile bool s_tz_dirty   = true;
+
+/**
+ * @brief Retext the band's clock from the system clock plus the stored offset.
+ *
+ * "--:--" until the time is real. SNTP sets it a few seconds into boot, and
+ * before that the clock reads 1970 — a till showing a confident wrong time is
+ * worse than one admitting it has none, and the 1970 case is exactly what a
+ * terminal that came up without an uplink would display all day.
+ *
+ * gmtime_r on an already-offset instant rather than localtime_r on a timezone:
+ * that is the whole of why the offset is a number and not a TZ string. tzset
+ * and localtime pull in newlib's timezone machinery, which measured 64 KB of
+ * the app slot — against an operator picking their offset from a list on the
+ * config page, and moving it twice a year where DST applies.
+ *
+ * Minute resolution, so the 3 s status timer that drives the Wi-Fi mark is
+ * ample and no second timer is needed.
+ */
+static void clock_refresh(void) {
+    if (s_clock_lbl == NULL) { return; }
+
+    if (s_tz_dirty) {
+        s_tz_dirty   = false;
+        s_tz_off_min = settings_get_tz_offset_min();
+    }
+
+    const time_t utc = time(NULL);
+    /* Nov 2023, comfortably after any build and before any real sale. Tested on
+     * the unshifted instant: whether the clock has been set is a question about
+     * SNTP, and a -12:00 offset would drag a just-set clock back under a
+     * threshold applied after it. */
+    if (utc < (time_t)1700000000) {
+        lv_label_set_text(s_clock_lbl, "--:--");
+        return;
+    }
+
+    const time_t local = utc + ((time_t)s_tz_off_min * 60);
+    struct tm    tmv;
+    if (gmtime_r(&local, &tmv) == NULL) {
+        lv_label_set_text(s_clock_lbl, "--:--");
+        return;
+    }
+    char b[8];
+    (void)snprintf(b, sizeof(b), "%02d:%02d", tmv.tm_hour, tmv.tm_min);
+    lv_label_set_text(s_clock_lbl, b);
+}
+
 /**
  * @brief Lay the sale-flow chrome and return the white card to build into.
  *
@@ -1740,32 +1909,58 @@ static lv_obj_t *build_page(int step) {
     clear_screen();
     lv_obj_set_style_bg_color(lv_scr_act(), COL_PAGE, LV_PART_MAIN);
 
-    /* One dash per step, centred in the band above the card. Four short bars
-     * rather than a filled progress rail: a sale is a fixed number of discrete
-     * steps, and the customer's question is "how many more", which a rail with
-     * no ticks cannot answer. */
+    /* One rail, in the band between the clock and the Wi-Fi mark, filled to the
+     * step reached.
+     *
+     * This replaces four dashes, and it gives something up: a sale is a fixed
+     * number of discrete steps, and dashes answered "how many more" in a way a
+     * continuous bar cannot.
+     *
+     * It starts after the TEST chip when there is one, which is why this reads
+     * the same setting the chip does rather than being told: add_test_chip()
+     * runs later, from build_amount, and the rail has to be laid out before
+     * anyone knows whether that call will draw anything. The two agree through
+     * CHIP_X and CHIP_W and nothing else. */
     if (step >= 0) {
-        /* 18+6 rather than 26+8: four dashes at the wider pitch spanned x
-         * 56..184, and the test chip is right-aligned at 184..232 — they
-         * touched. At this pitch the run is x 75..165 and the two cannot meet
-         * however the chip's text measures. */
-        const lv_coord_t dw = 18, dh = 5, gap = 6;
-        const lv_coord_t span = (PAY_STEP__COUNT * dw) +
-                                ((PAY_STEP__COUNT - 1) * gap);
-        lv_coord_t x = (SCR_W - span) / 2;
-        for (int i = 0; i < PAY_STEP__COUNT; i++) {
-            lv_obj_t *d = lv_obj_create(lv_scr_act());
-            lv_obj_remove_style_all(d);
-            lv_obj_set_size(d, dw, dh);
-            lv_obj_set_pos(d, x, 13);
-            lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-            lv_obj_set_style_bg_opa(d, LV_OPA_COVER, LV_PART_MAIN);
-            lv_obj_set_style_bg_color(d, (i == step) ? COL_STEP_ON
-                                                     : COL_STEP_OFF,
-                                      LV_PART_MAIN);
-            x += dw + gap;
+        const bool       testnet = !settings_get_mainnet();
+        const lv_coord_t x0      = (testnet ? (CHIP_X + CHIP_W)
+                                            : (CLOCK_X + CLOCK_W)) + RAIL_GAP;
+        const lv_coord_t x1      = SCR_W - SIG_ZONE_W - RAIL_GAP;
+        const lv_coord_t w       = (x1 > x0) ? (lv_coord_t)(x1 - x0) : 0;
+
+        if (w > 0) {
+            lv_obj_t *track = lv_obj_create(lv_scr_act());
+            lv_obj_remove_style_all(track);
+            lv_obj_set_size(track, w, RAIL_H);
+            lv_obj_set_pos(track, x0, RAIL_Y);
+            lv_obj_set_style_bg_color(track, COL_STEP_OFF, LV_PART_MAIN);
+            lv_obj_set_style_bg_opa(track, LV_OPA_COVER, LV_PART_MAIN);
+            lv_obj_set_style_radius(track, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+            lv_obj_clear_flag(track, LV_OBJ_FLAG_SCROLLABLE);
+
+            /* step is 0-based, so the first step already shows a quarter
+             * filled — the customer has done something by the time they are
+             * looking at it. */
+            lv_obj_t *fill = lv_obj_create(track);
+            lv_obj_remove_style_all(fill);
+            lv_obj_set_size(fill,
+                            (lv_coord_t)((w * (step + 1)) / PAY_STEP__COUNT),
+                            RAIL_H);
+            lv_obj_set_pos(fill, 0, 0);
+            lv_obj_set_style_bg_color(fill, COL_STEP_ON, LV_PART_MAIN);
+            lv_obj_set_style_bg_opa(fill, LV_OPA_COVER, LV_PART_MAIN);
+            lv_obj_set_style_radius(fill, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+            lv_obj_clear_flag(fill, LV_OBJ_FLAG_SCROLLABLE);
         }
     }
+
+    /* The clock, left end of the status band. Built here so it lives exactly
+     * where the band does — on the sale flow — and retexted by the status timer
+     * rather than by rebuilding the screen every minute. */
+    s_clock_lbl = make_label(lv_scr_act(), "", COL_TITLE,
+                             &lv_font_montserrat_14,
+                             LV_ALIGN_TOP_LEFT, CLOCK_X, CLOCK_Y);
+    clock_refresh();
 
     lv_obj_t *card = lv_obj_create(lv_scr_act());
     lv_obj_remove_style_all(card);
@@ -2676,13 +2871,15 @@ static void add_test_chip(void) {
     lv_obj_set_style_bg_color(chip, COL_DANGER, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_pad_hor(chip, 7, LV_PART_MAIN);
-    lv_obj_set_style_pad_ver(chip, 3, LV_PART_MAIN);
+    lv_obj_set_style_pad_ver(chip, 2, LV_PART_MAIN);
     lv_obj_set_style_radius(chip, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-    /* Top-LEFT of the band: the right-hand end is the Wi-Fi bars' now, and they
-     * are on the top layer, so a right-aligned chip was drawn under them. The
-     * left end is free — the burger that used to sit there is behind the swipe
-     * up — and the dash run starts at x=75, well clear of a 47px chip. */
-    lv_obj_align(chip, LV_ALIGN_TOP_LEFT, 8, 5);
+    /* Straight after the clock. It was top-LEFT, which is the clock's corner
+     * now; it cannot go right, because that end is the Wi-Fi mark's and the mark
+     * is on the top layer, so a right-aligned chip is drawn underneath it; and
+     * it cannot go in the middle any more, because the rail is there. So it sits
+     * in the band's one remaining slot, and the rail starts after it — see
+     * build_page(), which reserves CHIP_W here whenever the chip is drawn. */
+    lv_obj_align(chip, LV_ALIGN_TOP_LEFT, CHIP_X, CHIP_Y);
 }
 
 /**
@@ -3134,10 +3331,14 @@ static void build_amount(void) {
     lv_obj_set_style_radius(kb, 8, LV_PART_ITEMS);
     lv_obj_add_event_cb(kb, amount_kbd_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
-    make_button(card, "Charge", COL_ACCENT, COL_BG, CARD_BTN_W, CARD_BTN_H,
-                LV_ALIGN_BOTTOM_MID, 0, CARD_BTN_Y, ACT_CONFIRM,
-                &lv_font_montserrat_20);
+    s_charge_btn = make_button(card, "Charge", COL_ACCENT, COL_BG,
+                               CARD_BTN_W, CARD_BTN_H,
+                               LV_ALIGN_BOTTOM_MID, 0, CARD_BTN_Y, ACT_CONFIRM,
+                               &lv_font_montserrat_20);
 
+    /* Also settles the Charge button: the screen is rebuilt on an asset change
+     * with whatever was typed still standing, so it must not come back lit on an
+     * empty figure or dead on a full one. */
     amount_update_display();   /* keep s_amount_units in sync with the string */
 }
 
@@ -3175,21 +3376,32 @@ static void build_confirm(void) {
      * settings_net_str follows — a production terminal should not be shouting a
      * network name nobody needs, which is what makes the testnet form stand out.
      * Red on testnet for the same reason the chip is. */
+    /* The asset is named beside its own mark below now, the way the amount
+     * screen's selector does it — so this row carries only what that cannot
+     * say: which deployment. Mainnet stays silent, the rule settings_net_str
+     * follows throughout, which is what makes the testnet form stand out. */
     const bool mainnet = settings_get_mainnet();
-    char what[48];
-    if (mainnet) {
-        snprintf(what, sizeof(what), "%s", asset_name());
-    } else {
-        snprintf(what, sizeof(what), "%s %s %s", asset_name(), LV_SYMBOL_BULLET,
-                 pos_net_info(asset()->net)->sub_test);
+    if (!mainnet) {
+        make_label(card, pos_net_info(asset()->net)->sub_test, COL_DANGER,
+                   &lv_font_montserrat_14, LV_ALIGN_TOP_RIGHT, -CARD_PAD, 8);
     }
-    make_label(card, what, mainnet ? COL_DIM : COL_DANGER,
-               &lv_font_montserrat_14, LV_ALIGN_TOP_RIGHT, -CARD_PAD, 8);
 
     lv_obj_t *amt = make_label(card, buf, COL_TEXT, &lv_font_montserrat_28,
                                LV_ALIGN_TOP_LEFT, CARD_PAD, 24);
     lv_obj_t *cusdc = make_asset_badge(card, settings_get_chain());
-    lv_obj_align_to(cusdc, amt, LV_ALIGN_OUT_RIGHT_MID, 8, 0);
+    lv_obj_align_to(cusdc, amt, LV_ALIGN_OUT_RIGHT_MID, 6, 0);
+    /* Ticker beside the mark, as on the amount screen: the mark alone says
+     * which asset to somebody who already knows the logos, and this is the
+     * screen where that assumption is worth the least — it is the last one
+     * before the card is tapped.
+     *
+     * The gaps are 6 and 4 rather than 8 and 8 because this row has a ceiling:
+     * "99999.99" at montserrat_28 runs to about x=130, the 36px badge to 172,
+     * and a four-letter ticker to 212 against the card's 214. It fits, with the
+     * tighter gaps and not without them. */
+    lv_obj_t *tick = make_label(card, asset_name(), COL_TEXT,
+                                &lv_font_montserrat_14, LV_ALIGN_DEFAULT, 0, 0);
+    lv_obj_align_to(tick, cusdc, LV_ALIGN_OUT_RIGHT_MID, 4, 0);
 
     make_label(card, "To", COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_LEFT, CARD_PAD, 64);
@@ -3965,8 +4177,14 @@ static void build_boot_error(void) {
  ******************************************************************/
 #define SIG_ARCS   3
 #define SIG_AW     2      /* arc thickness                                  */
-#define SIG_R0     5      /* innermost arc radius; each ring adds SIG_RSTEP */
-#define SIG_RSTEP  4
+/* Shrunk from 5/4 — the whole mark is 22x13 now against the 28x16 it was. The
+ * two gaps the block above insists must agree still do: dot to first ring is
+ * SIG_R0 - (SIG_AW / 2) - (SIG_DOT / 2) = 1, and ring to ring is
+ * SIG_RSTEP - SIG_AW = 1. They were 2 and 2 at the old sizes; what matters is
+ * that they are equal, not what they are. At r=4 the inner ring's 140-degree
+ * cut still bends 2.6px, so it reads as an arc rather than as a dash. */
+#define SIG_R0     4      /* innermost arc radius; each ring adds SIG_RSTEP */
+#define SIG_RSTEP  3
 /* Even, and it has to stay even: an arc object is 2r + SIG_AW wide, so the fan's
  * centre lands on a whole coordinate, and only an even dot has its own centre
  * there too. At 5 it sat half a pixel right of and below the arcs it is struck
@@ -3990,6 +4208,14 @@ static const uint16_t SIG_SWEEP[SIG_ARCS] = { 140, 110, 100 };
 #define SIG_REACH  (SIG_R0 + ((SIG_ARCS - 1) * SIG_RSTEP) + (SIG_AW / 2))
 #define SIG_W      (2 * SIG_REACH)
 #define SIG_H      (SIG_REACH + ((SIG_DOT + 1) / 2))
+/* Inset from the right edge. The mark and this together are the band's
+ * right-hand zone, which the progress rail stops short of — and it reserves
+ * that zone by a constant of its own, because this section is below it in the
+ * file. Resize the mark and this assert is what tells you the rail no longer
+ * clears it. */
+#define SIG_INSET  14
+static_assert((SIG_W + SIG_INSET) <= SIG_ZONE_W,
+              "Wi-Fi mark outgrew SIG_ZONE_W - the progress rail would run under it");
 
 static lv_obj_t *s_sig_arc[SIG_ARCS];
 static lv_obj_t *s_sig_dot = NULL;
@@ -4013,19 +4239,29 @@ static void signal_refresh(lv_timer_t *t) {
                                    LV_PART_MAIN);
     }
     lv_obj_set_style_bg_color(s_sig_dot, up ? COL_TEXT : COL_DIM, LV_PART_MAIN);
-    /* Off the splash (nothing is connected yet) and off the calibration
-     * screen, where it would sit on the top-right corner target. */
+    /* Off the splash (nothing is connected yet), off the calibration screen
+     * where it would sit on the top-right corner target, and off the admin
+     * screens — the settings page's tab bar owns y=0..42 across the full width,
+     * so a mark on the top layer is drawn over the first tab. The signal is
+     * reported properly on that page anyway, as the Wi-Fi tab's own Signal row,
+     * in words rather than as three arcs on top of a button. */
     const bool show = (s_req_screen != UI_SCREEN_SPLASH) &&
-                      (s_req_screen != UI_SCREEN_TOUCH_CAL);
+                      (s_req_screen != UI_SCREEN_TOUCH_CAL) &&
+                      (s_req_screen != UI_SCREEN_SETTINGS) &&
+                      (s_req_screen != UI_SCREEN_ADMIN_UNLOCK) &&
+                      (s_req_screen != UI_SCREEN_ADMIN_SET);
     if (show) { lv_obj_clear_flag(s_sig_box, LV_OBJ_FLAG_HIDDEN); }
     else      { lv_obj_add_flag(s_sig_box, LV_OBJ_FLAG_HIDDEN); }
+
+    /* Same cadence, same reason — the band's two occupants refresh together. */
+    clock_refresh();
 }
 
 static void signal_init(void) {
     s_sig_box = lv_obj_create(lv_layer_top());
     lv_obj_remove_style_all(s_sig_box);
     lv_obj_set_size(s_sig_box, SIG_W, SIG_H);
-    lv_obj_align(s_sig_box, LV_ALIGN_TOP_RIGHT, -14, 6);
+    lv_obj_align(s_sig_box, LV_ALIGN_TOP_RIGHT, -SIG_INSET, 6);
     lv_obj_clear_flag(s_sig_box, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_clear_flag(s_sig_box, LV_OBJ_FLAG_CLICKABLE);
 
@@ -4389,6 +4625,13 @@ extern "C" void ui_set_boot_status(const char *step) {
 
 extern "C" void ui_fees_changed(void) {
     s_fees_dirty = true;   /* applied by the UI task — LVGL is single-thread */
+}
+
+extern "C" void ui_clock_changed(void) {
+    /* Only the cache is invalidated here; the status timer picks it up within
+     * three seconds and retexts the label on the UI task, which is the only
+     * task allowed to touch it. */
+    s_tz_dirty = true;
 }
 
 extern "C" void ui_show_boot_error(ui_boot_err_t kind, const char *detail) {

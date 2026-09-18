@@ -365,6 +365,24 @@ static const char *const PAGE_HTML =
 "<input id=in_fprio type=number min=1 max=500 step=1 inputmode=numeric>"
 "<button class=alt id=go_fee>Save gas fees</button></section>"
 
+/* The panel clock's offset from UTC. A list rather than a typed number because
+ * every wrong answer here is a plausible-looking one, and because the real set
+ * is not the round hours people expect — India is +5:30 and Nepal +5:45.
+ *
+ * An offset, not a timezone: the DST rules that would move it automatically are
+ * in newlib's tzset/localtime, and pulling those in measured 64 KB of the app
+ * slot. So somebody changes this twice a year where DST applies, and the page
+ * says so rather than letting the clock quietly drift an hour in spring. */
+"<section id=s_clock hidden><h2>Clock</h2>"
+"<p>What the time in the corner of the terminal's screen reads in &mdash; "
+"currently <code id=cur_tz>&hellip;</code>. The terminal keeps UTC from the "
+"network; this is only what it adds before showing it.</p>"
+"<label for=in_tz>Offset from UTC</label>"
+"<select id=in_tz></select>"
+"<p><small>A fixed offset, so where the clocks change you come back here twice "
+"a year.</small></p>"
+"<button class=alt id=go_clock>Save clock</button></section>"
+
 /* One section, two ways in. Reading a card and typing an address answer the same
  * question — where do takings go — so they were two cards headed "Card addresses"
  * and "Send to", which made the operator choose between two settings before
@@ -501,8 +519,8 @@ static const char *const PAGE_JS =
  * by construction rather than by adding `&&!fin` to every show() line — and
  * so a section added later without a thought for the end of the wizard is hidden
  * there rather than left on screen addressed to a terminal that has gone. */
-"var SEC=['s_auth','waiting','s_pend','s_addr','s_net','s_ct','s_fee','s_wifi',"
-"'s_fw','nav'];"
+"var SEC=['s_auth','waiting','s_pend','s_addr','s_net','s_ct','s_fee','s_clock',"
+"'s_wifi','s_fw','nav'];"
 /* Three kinds, because "that is not a valid Ethereum address" and "it is stored"
  * in the same grey box is how a refusal gets read as a success. 'err' is the one
  * that matters, so it is what a bare say() rejection handler produces: every
@@ -547,6 +565,7 @@ static const char *const PAGE_JS =
 "show('s_net', a&&!p&&!w);"
 "show('s_ct',  a&&!p&&!w);"
 "show('s_fee', a&&!p&&!w);"
+"show('s_clock',a&&!p&&!w);"
 "show('s_wifi',a&&!p&&(w?st=='wifi':true));"
 "show('s_fw',  a&&!p&&!w);"
 /* Continue exists to leave the address step. There is nothing after the Wi-Fi one
@@ -581,8 +600,14 @@ static const char *const PAGE_JS =
  * a digit out from under whoever is typing. Keyed on a flag rather than on the
  * field being empty, because empty is where you are the instant you backspace
  * one to retype it — that put the old number straight back, mid-edit. */
+"$('cur_tz').textContent=tzlabel(S.tz_off|0);"
+/* Seeded with the fees and on the same flag, for the same reason: the poll runs
+ * every couple of seconds, and writing the select every tick would put the
+ * stored offset back under an operator who had just picked a different one and
+ * not yet saved it. */
 "if(!seeded&&S.fee_max){seeded=true;"
-"$('in_fmax').value=S.fee_max;$('in_fprio').value=S.fee_prio}"
+"$('in_fmax').value=S.fee_max;$('in_fprio').value=S.fee_prio;"
+"$('in_tz').value=(S.tz_off|0)}"
 "$('cur_ssid').textContent=S.ssid||'not set';"
 "$('pend').textContent=S.pending||'';"
 "if(S.scan_gen!==G){G=S.scan_gen;scan()}}}"
@@ -658,6 +683,22 @@ static const char *const PAGE_JS =
 "$('go_fee').onclick=function(){"
 "post('/api/fees',enc({max:$('in_fmax').value,prio:$('in_fprio').value}))"
 ".then(good,say)};"
+
+/* Every offset the world actually uses, in minutes east of UTC. A list rather
+ * than a loop over whole hours: the quarter- and half-hour zones are real, and
+ * a terminal in Kathmandu offered +5:00 is a terminal that is 45 minutes wrong.
+ * Filled in by script rather than written out as 38 <option> tags, which is
+ * about a kilobyte of page for the same result — and the page is flash. */
+"var TZ=[-720,-660,-600,-570,-540,-480,-420,-360,-300,-240,-210,-180,-120,-60,"
+"0,60,120,180,210,240,270,300,330,345,360,390,420,480,525,540,570,600,630,660,"
+"720,765,780,840];"
+"function tzlabel(m){var s=m<0?'-':'+',a=m<0?-m:m;"
+"return'UTC'+s+('0'+Math.floor(a/60)).slice(-2)+':'+('0'+(a%60)).slice(-2)}"
+"TZ.forEach(function(m){var o=document.createElement('option');"
+"o.value=m;o.textContent=tzlabel(m);$('in_tz').appendChild(o)});"
+
+"$('go_clock').onclick=function(){"
+"post('/api/clock',enc({off:$('in_tz').value})).then(good,say)};"
 
 "$('eye').onclick=function(){var p=$('wpass'),r=(p.type=='password');"
 "p.type=r?'text':'password';this.setAttribute('aria-pressed',r);"

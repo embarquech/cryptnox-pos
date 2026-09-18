@@ -56,6 +56,9 @@ static const char *const TAG = "settings";
 #define K_CHAIN       "chain"
 #define K_MAINNET     "mainnet"
 /* Touch calibration, one key per axis, packed min<<16 | max. */
+/* Minutes east of UTC, stored biased — see settings_get_tz_offset_min(). */
+#define K_TZ_OFFSET   "tz_off"
+#define TZ_OFFSET_BIAS 720
 #define K_TOUCH_X     "touch_x"
 #define K_TOUCH_Y     "touch_y"
 /* BUILD_ID of the newest firmware that has run on this unit — see
@@ -238,6 +241,26 @@ void settings_set_brightness(uint8_t pct)
 {
     if (pct > 100U) { pct = 100U; }
     nvs_u8_set(K_BRIGHTNESS, pct);
+}
+
+int16_t settings_get_tz_offset_min(void)
+{
+    /* Stored biased by 720 so it fits the unsigned helpers the rest of this
+     * file uses, and so a missing key reads as UTC rather than as UTC-12. */
+    const uint32_t raw = nvs_u32_get(K_TZ_OFFSET, (uint32_t)TZ_OFFSET_BIAS);
+    if (raw > (uint32_t)(TZ_OFFSET_BIAS + TZ_OFFSET_MAX)) {
+        return 0;   /* nonsense in NVS is UTC, not a wild clock */
+    }
+    return (int16_t)((int32_t)raw - TZ_OFFSET_BIAS);
+}
+
+bool settings_set_tz_offset_min(int16_t minutes)
+{
+    if ((minutes < TZ_OFFSET_MIN) || (minutes > TZ_OFFSET_MAX)) {
+        return false;
+    }
+    nvs_u32_set(K_TZ_OFFSET, (uint32_t)((int32_t)minutes + TZ_OFFSET_BIAS));
+    return true;
 }
 
 /* Packed two per u32 (min<<16 | max) — two keys instead of four, and an axis

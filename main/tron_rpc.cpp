@@ -14,6 +14,7 @@
 
 #include "tron_rpc.h"
 #include "tron_tx.h"
+#include "eth_json.h"    /* eth_json_hex_quantity — one saturating hex parser */
 #include "https_post.h"
 
 #include <stdio.h>
@@ -184,6 +185,136 @@ void tron_rpc_init(const char *base_url)
 void tron_rpc_set_ca_cert(const char *ca_pem)
 {
     s_ca_cert = ca_pem;
+}
+
+/**
+ * @brief A cJSON number as a uint64, clamped at both ends.
+ *
+ * Tron reports sun and energy as JSON integers and cJSON hands them back as
+ * doubles, so past 2^53 the low digits are lost. For a balance that is a
+ * rounding error in the last drop of TRX; it is never the difference between
+ * funded and empty, which is the only question asked of these numbers.
+ *
+ * A missing or non-numeric field reads as zero — for an account the chain has
+ * never seen, that is the answer rather than an error.
+ */
+static uint64_t json_u64(const cJSON *n)
+{
+    if (!cJSON_IsNumber(n) || (n->valuedouble <= 0.0)) { return 0U; }
+    if (n->valuedouble >= 18446744073709551615.0) { return UINT64_MAX; }
+    return (uint64_t)n->valuedouble;
+}
+
+bool tron_rpc_get_balance(const char *owner_hex, uint64_t *sun_out)
+{
+    if ((owner_hex == NULL) || (sun_out == NULL)) { return false; }
+
+    char body[96];
+    (void)snprintf(body, sizeof(body),
+                   "{\"address\":\"%s\",\"visible\":false}", owner_hex);
+
+    char resp[RESP_BUF_SIZE];
+    if (!tron_post("/wallet/getaccount", body, resp, sizeof(resp))) {
+        return false;
+    }
+
+    cJSON *root = cJSON_Parse(resp);
+    if (root == NULL) {
+        ESP_LOGE(TAG, "getaccount: not JSON: %.*s", RESP_LOG_MAX, resp);
+        return false;
+    }
+    *sun_out = json_u64(cJSON_GetObjectItemCaseSensitive(root, "balance"));
+    cJSON_Delete(root);
+    return true;
+}
+
+bool tron_rpc_get_energy(const char *owner_hex, uint64_t *energy_out)
+{
+    if ((owner_hex == NULL) || (energy_out == NULL)) { return false; }
+
+    char body[96];
+    (void)snprintf(body, sizeof(body),
+                   "{\"address\":\"%s\",\"visible\":false}", owner_hex);
+
+    char resp[RESP_BUF_SIZE];
+    if (!tron_post("/wallet/getaccountresource", body, resp, sizeof(resp))) {
+        return false;
+    }
+
+    cJSON *root = cJSON_Parse(resp);
+    if (root == NULL) {
+        ESP_LOGE(TAG, "getaccountresource: not JSON: %.*s", RESP_LOG_MAX, resp);
+        return false;
+    }
+    const uint64_t limit =
+        json_u64(cJSON_GetObjectItemCaseSensitive(root, "EnergyLimit"));
+    const uint64_t used =
+        json_u64(cJSON_GetObjectItemCaseSensitive(root, "EnergyUsed"));
+    cJSON_Delete(root);
+
+    *energy_out = (limit > used) ? (limit - used) : 0U;
+    return true;
+}
+
+bool tron_rpc_get_trc20_balance(const char *owner_hex, const char *contract_hex,
+                                uint64_t *units_out)
+{
+    if ((owner_hex == NULL) || (contract_hex == NULL) || (units_out == NULL)) {
+        return false;
+    }
+    /* The ABI argument is the 20-byte address left-padded to 32, so Tron's "41"
+     * prefix comes off first. Leaving it on would shift the padding by a byte
+     * and ask the contract about a different account — which it would answer,
+     * and the answer would be about somebody else. */
+    if (strlen(owner_hex) != TRON_ADDR_HEX_LEN) {
+        ESP_LOGE(TAG, "balanceOf: owner is not %u hex chars",
+                 (unsigned)TRON_ADDR_HEX_LEN);
+        return false;
+    }
+    const char *owner20 = owner_hex + 2;
+
+    char body[320];
+    (void)snprintf(body, sizeof(body),
+                   "{\"owner_address\":\"%s\",\"contract_address\":\"%s\","
+                   "\"function_selector\":\"balanceOf(address)\","
+                   "\"parameter\":\"000000000000000000000000%s\","
+                   "\"visible\":false}",
+                   owner_hex, contract_hex, owner20);
+
+    char resp[RESP_BUF_SIZE];
+    if (!tron_post("/wallet/triggerconstantcontract", body,
+                   resp, sizeof(resp))) {
+        return false;
+    }
+
+    cJSON *root = cJSON_Parse(resp);
+    if (root == NULL) {
+        ESP_LOGE(TAG, "balanceOf: not JSON: %.*s", RESP_LOG_MAX, resp);
+        return false;
+    }
+    const cJSON *arr =
+        cJSON_GetObjectItemCaseSensitive(root, "constant_result");
+    const cJSON *first = cJSON_IsArray(arr) ? cJSON_GetArrayItem(arr, 0) : NULL;
+
+    bool ok = false;
+    if (cJSON_IsString(first) && (first->valuestring != NULL)) {
+        const size_t n = strlen(first->valuestring);
+        /* A uint256 comes back as 64 characters. Anything longer is not a
+         * number this can read — and must not be truncated into one, because a
+         * padded value truncated from the right loses its significant digits
+         * and would report a funded account as nearly empty. */
+        if ((n > 0U) && (n <= 64U)) {
+            char hex[80];
+            (void)snprintf(hex, sizeof(hex), "0x%s", first->valuestring);
+            ok = eth_json_hex_quantity(hex, units_out);
+        }
+    }
+    if (!ok) {
+        ESP_LOGE(TAG, "balanceOf: no usable constant_result: %.*s",
+                 RESP_LOG_MAX, resp);
+    }
+    cJSON_Delete(root);
+    return ok;
 }
 
 bool tron_rpc_create_transfer(const char *owner_hex, const char *to_hex,

@@ -38,6 +38,12 @@
  *      trailing spaces).
  */
 
+/* Not here: the panel clock's UTC offset. It is an operator setting, picked
+ * from a list on the config page under "Clock" and stored in NVS — a fixed
+ * offset rather than a timezone, because the DST rules that would make it
+ * automatic cost 64 KB of the app slot (measured) and moving it twice a year
+ * from a browser does not. */
+
 /* --- Option A: PublicNode ----------------------------------------- */
 #define RPC_HOST       "ethereum-sepolia-rpc.publicnode.com"
 #define RPC_URL        "https://" RPC_HOST

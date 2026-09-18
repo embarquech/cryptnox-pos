@@ -14,7 +14,9 @@
 #ifndef ETH_JSON_H
 #define ETH_JSON_H
 
+#include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -77,6 +79,66 @@ bool eth_json_error_message(const char *resp, char *out, size_t out_size);
  * @return One of @ref eth_json_receipt_t.
  */
 eth_json_receipt_t eth_json_receipt_status(const char *resp);
+
+/**
+ * @brief Parse a JSON-RPC QUANTITY ("0x0", "0x1a", 64 hex chars) into a
+ *        uint64, saturating instead of wrapping.
+ *
+ * A balance is a uint256 and this is not, so a value wider than 16 significant
+ * hex digits reports @c UINT64_MAX. That direction is the safe one for the
+ * callers here: these numbers are compared against what a sale costs, and an
+ * over-reported balance only lets a doomed sale through to the node that would
+ * have refused it anyway — which is the behaviour without this check at all —
+ * whereas a wrapped one would refuse a sale that is funded. An account holding
+ * 20 ETH is past 2^64 wei, so this is the ordinary case and not a corner.
+ *
+ * Header-only, and deliberately: it is the one piece of this unit a host test
+ * can reach without cJSON (tests/units/test_eth_hex.cpp).
+ *
+ * @param[in]  hex "0x"-prefixed, NUL-terminated hex string.
+ * @param[out] out Parsed value on success; untouched on failure.
+ * @return true on a well-formed quantity; false on a missing prefix, an empty
+ *         body, or any non-hex character anywhere in it.
+ */
+static inline bool eth_json_hex_quantity(const char *hex, uint64_t *out)
+{
+    if ((hex == NULL) || (out == NULL)) { return false; }
+    if ((hex[0] != '0') || ((hex[1] != 'x') && (hex[1] != 'X'))) { return false; }
+
+    const char *p = &hex[2];
+    if (*p == '\0') { return false; }   /* "0x" on its own is not a quantity */
+
+    /* Every digit is checked, leading zeros included: validating only the
+     * significant ones would read "0x00zz" as zero rather than as garbage. */
+    size_t len = 0U;
+    while (p[len] != '\0') {
+        const char c = p[len];
+        const bool is_hex = ((c >= '0') && (c <= '9')) ||
+                            ((c >= 'a') && (c <= 'f')) ||
+                            ((c >= 'A') && (c <= 'F'));
+        if (!is_hex) { return false; }
+        len++;
+    }
+
+    /* Nodes pad a uint256 out to 64 characters; strip down to the significant
+     * digits so the width test below is about the value, not the encoding.
+     * One digit always survives, so "0x000" stays parseable as zero. */
+    while ((*p == '0') && (p[1] != '\0')) { p++; len--; }
+
+    if (len > 16U) { *out = UINT64_MAX; return true; }
+
+    uint64_t v = 0U;
+    for (size_t i = 0U; i < len; i++) {
+        const char c = p[i];
+        uint8_t n;
+        if ((c >= '0') && (c <= '9'))      { n = (uint8_t)(c - '0'); }
+        else if ((c >= 'a') && (c <= 'f')) { n = (uint8_t)((c - 'a') + 10); }
+        else                               { n = (uint8_t)((c - 'A') + 10); }
+        v = (v << 4) | (uint64_t)n;
+    }
+    *out = v;
+    return true;
+}
 
 #ifdef __cplusplus
 }

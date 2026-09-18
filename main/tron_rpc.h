@@ -76,6 +76,56 @@ void tron_rpc_init(const char *base_url);
 void tron_rpc_set_ca_cert(const char *ca_pem);
 
 /**
+ * @brief Read an account's TRX balance, in sun.
+ *
+ * For the pre-flight check that refuses a sale the tapped card cannot fund,
+ * before it signs anything — see @c tron_balance_ok in main.cpp.
+ *
+ * An account the chain has never seen answers with an empty object. That is
+ * reported as a balance of zero and not as an error, because it is the true
+ * answer and it is the case a terminal most needs to catch.
+ *
+ * @param[in]  owner_hex Account address, "41"-prefixed 42-char hex.
+ * @param[out] sun_out   Balance in sun on success; untouched on failure.
+ * @return true if the node answered with parseable JSON.
+ */
+bool tron_rpc_get_balance(const char *owner_hex, uint64_t *sun_out);
+
+/**
+ * @brief Read the energy an account still has available.
+ *
+ * @c EnergyLimit minus @c EnergyUsed from @c /wallet/getaccountresource. Only
+ * the distinction between none and some is used: a TRC-20 transfer burns energy
+ * paid for out of a stake or out of TRX, so an account with zero TRX can still
+ * pay if it has frozen some — and refusing that sale would be worse than the
+ * late failure the check exists to avoid.
+ *
+ * @param[in]  owner_hex  Account address, "41"-prefixed 42-char hex.
+ * @param[out] energy_out Energy available on success; untouched on failure.
+ * @return true if the node answered with parseable JSON.
+ */
+bool tron_rpc_get_energy(const char *owner_hex, uint64_t *energy_out);
+
+/**
+ * @brief Read an account's TRC-20 balance via a constant @c balanceOf call.
+ *
+ * The check that @ref tron_rpc_create_trc20_transfer cannot make: creating a
+ * TriggerSmartContract is only serialisation, and a node will serialise a
+ * transfer of tokens the account does not hold just as readily as one it does.
+ * Without this the card signs it, it broadcasts, it reverts on-chain, and the
+ * customer is declined after the full wait — having paid the energy for it.
+ *
+ * @param[in]  owner_hex    Account address, "41"-prefixed 42-char hex.
+ * @param[in]  contract_hex Token contract address, same form.
+ * @param[out] units_out    Balance in the token's base units on success;
+ *                          untouched on failure. Saturating, as for the EVM
+ *                          side (see @ref eth_json_hex_quantity).
+ * @return true if the node answered with a well-formed constant result.
+ */
+bool tron_rpc_get_trc20_balance(const char *owner_hex, const char *contract_hex,
+                                uint64_t *units_out);
+
+/**
  * @brief Create a TRX transfer and verify what the node serialised for us.
  *
  * @param[in]  owner_hex  Sender address, "41"-prefixed 42-char hex.

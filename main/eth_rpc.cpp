@@ -125,6 +125,24 @@ void eth_rpc_init(const char *rpc_url, const char *from_addr)
     s_from_addr = from_addr;
 }
 
+/* The payer, copied. eth_rpc_init keeps a pointer to its caller's storage,
+ * which suits a config.h literal and not an address derived into a stack buffer
+ * during one sale — so the per-tap override owns its bytes. */
+static char s_from_buf[43];   /* "0x" + 40 hex + NUL */
+
+bool eth_rpc_set_from(const char *addr)
+{
+    if (addr == NULL) { return false; }
+    if ((addr[0] != '0') || ((addr[1] != 'x') && (addr[1] != 'X'))) {
+        return false;
+    }
+    if (strlen(addr) != 42U) { return false; }
+
+    (void)snprintf(s_from_buf, sizeof(s_from_buf), "%s", addr);
+    s_from_addr = s_from_buf;
+    return true;
+}
+
 void eth_rpc_set_auth(const char *project_id, const char *api_secret)
 {
     s_project_id = project_id;
@@ -176,6 +194,95 @@ bool eth_rpc_get_nonce(uint64_t *nonce_out)
     return true;
 }
 
+/**
+ * @brief The configured from-address with any "0x" prefix removed.
+ *
+ * Both callers below want the bare 40 characters — one to compare against what
+ * ecrecover returned, the other to pad into an ABI argument.
+ */
+static const char *from_no_prefix(void)
+{
+    const char *p = s_from_addr;
+    if ((p != NULL) && (p[0] == '0') && ((p[1] == 'x') || (p[1] == 'X'))) {
+        p += 2;
+    }
+    return p;
+}
+
+bool eth_rpc_get_balance(uint64_t *wei_out)
+{
+    if ((wei_out == NULL) || (s_from_addr == NULL)) { return false; }
+
+    char body[256];
+    (void)snprintf(body, sizeof(body),
+                   "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\","
+                   "\"params\":[\"%s\",\"latest\"],\"id\":4}",
+                   s_from_addr);
+
+    char resp[RESP_BUF_SIZE];
+    if (!do_post(body, resp, sizeof(resp))) {
+        return false;
+    }
+
+    char result[RESULT_STR_MAX];
+    if (!eth_json_result_string(resp, result, sizeof(result))) {
+        ESP_LOGE(TAG, "balance: no result in: %.*s", RESP_LOG_MAX, resp);
+        return false;
+    }
+    if (!eth_json_hex_quantity(result, wei_out)) {
+        ESP_LOGE(TAG, "balance: malformed quantity: %.*s", RESP_LOG_MAX, result);
+        return false;
+    }
+    return true;
+}
+
+bool eth_rpc_get_token_balance(const char *token_addr, uint64_t *units_out)
+{
+    if ((token_addr == NULL) || (units_out == NULL) || (s_from_addr == NULL)) {
+        return false;
+    }
+
+    /* The ABI argument is the address left-padded to 32 bytes, so the bare 40
+     * characters have to be exactly that. A short one would shift the padding
+     * and ask the contract about a different account — which would answer, and
+     * the answer would be about somebody else. */
+    const char *from_hex = from_no_prefix();
+    if (strlen(from_hex) != 40U) {
+        ESP_LOGE(TAG, "token balance: from_addr is not 20 bytes");
+        return false;
+    }
+
+    /* balanceOf(address): selector 70a08231, then 12 zero bytes + the address. */
+    char body[320];
+    (void)snprintf(body, sizeof(body),
+                   "{\"jsonrpc\":\"2.0\",\"method\":\"eth_call\","
+                   "\"params\":[{\"to\":\"%s\",\"data\":\"0x70a08231"
+                   "000000000000000000000000%s\"},\"latest\"],\"id\":5}",
+                   token_addr, from_hex);
+
+    char resp[RESP_BUF_SIZE];
+    if (!do_post(body, resp, sizeof(resp))) {
+        return false;
+    }
+
+    char result[RESULT_STR_MAX];
+    if (!eth_json_result_string(resp, result, sizeof(result))) {
+        ESP_LOGE(TAG, "token balance: no result in: %.*s", RESP_LOG_MAX, resp);
+        return false;
+    }
+    /* A call to an address with no code returns "0x" — an answer this must not
+     * read as a zero balance, or a mistyped contract would look like an empty
+     * account instead of like a misconfiguration. eth_json_hex_quantity rejects
+     * it, and the caller treats a failed read as "cannot tell" rather than as
+     * grounds to refuse. */
+    if (!eth_json_hex_quantity(result, units_out)) {
+        ESP_LOGE(TAG, "token balance: malformed quantity: %.*s",
+                 RESP_LOG_MAX, result);
+        return false;
+    }
+    return true;
+}
+
 eth_rpc_parity_result_t eth_rpc_ecrecover_parity(const uint8_t hash[32],
                                                  const uint8_t r[32],
                                                  const uint8_t s[32],
@@ -187,10 +294,7 @@ eth_rpc_parity_result_t eth_rpc_ecrecover_parity(const uint8_t hash[32],
     bool got_recovered = false;
 
     /* from_addr without "0x" prefix for comparison */
-    const char *from_hex = s_from_addr;
-    if ((from_hex[0] == '0') && ((from_hex[1] == 'x') || (from_hex[1] == 'X'))) {
-        from_hex += 2;
-    }
+    const char *from_hex = from_no_prefix();
 
     /* ecrecover precompile input: hash(32) || v_uint256(32) || r(32) || s(32) */
     uint8_t input[128];

@@ -244,6 +244,18 @@ void ui_set_boot_status(const char *step);
 void ui_fees_changed(void);
 
 /**
+ * @brief Note that the stored UTC offset has changed, so the clock can catch up.
+ *
+ * Same handoff as @ref ui_fees_changed and for the same reason: the config page
+ * writes the offset straight through from the HTTP task, and the band's clock
+ * caches it rather than opening NVS on every three-second tick. Without this the
+ * panel keeps the old hour until something rebuilds the screen.
+ *
+ * Safe from the HTTP task: applied by the UI task on its next pass.
+ */
+void ui_clock_changed(void);
+
+/**
  * @brief Greet the operator at the start of first-run setup, or after an update.
  *
  * Shown on a virgin or factory-reset terminal, before the Wi-Fi and admin-code

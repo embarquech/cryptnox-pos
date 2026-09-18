@@ -558,7 +558,7 @@ static esp_err_t state_get(httpd_req_t *req)
                        "\"ct_eth_own\":%s,\"ct_trx_own\":%s,"
                        "\"ssid\":\"%s\",\"pending\":\"%s\",\"note\":\"%s\","
                        "\"mainnet\":%s,\"fee_max\":%u,\"fee_prio\":%u,"
-                       "\"scan_gen\":%u,\"win\":%u}",
+                       "\"tz_off\":%d,\"scan_gen\":%u,\"win\":%u}",
                        (s_mode == PROV_MODE_WIZARD) ? "wizard" : "admin",
                        step_name(s_step), ota_running_version(),
                        pay_eth, pay_trx, ct_eth, ct_trx,
@@ -568,6 +568,7 @@ static esp_err_t state_get(httpd_req_t *req)
                        settings_get_mainnet() ? "true" : "false",
                        static_cast<unsigned>(settings_get_max_fee_gwei()),
                        static_cast<unsigned>(settings_get_priority_fee_gwei()),
+                       static_cast<int>(settings_get_tz_offset_min()),
                        static_cast<unsigned>(s_scan_gen.load()),
                        prov_window_left_min());
     }
@@ -767,6 +768,58 @@ static esp_err_t fees_post(httpd_req_t *req)
     ESP_LOGI(TAG, "gas caps set from the config page: max %lu, tip %lu Gwei",
              max_gwei, prio_gwei);
     return ok(req, "Gas fees stored. They apply to the next sale.");
+}
+
+/**
+ * @brief Store the panel clock's offset from UTC.
+ *
+ * Written straight through like the gas fees, and for the same reason: it cannot
+ * send money anywhere. The worst a wrong one does is put the wrong hour in the
+ * corner of the screen, which announces itself to the first person who looks.
+ *
+ * A fixed offset rather than a timezone — the DST rules live in newlib's
+ * tzset/localtime and measured 64 KB of the app slot, against an operator
+ * revisiting this page twice a year. The page says as much.
+ *
+ * The value is validated against the same bounds settings_set_tz_offset_min
+ * enforces, so a hand-rolled POST cannot store an offset the picker could not
+ * express — and it is rejected rather than clamped, since a clamped offset is a
+ * clock that is silently wrong by whatever the clamp moved it.
+ */
+static esp_err_t clock_post(httpd_req_t *req)
+{
+    esp_err_t rc;
+    if (!gate(req, &rc)) { return rc; }
+
+    char body[64] = { 0 };
+    if (!read_body(req, body, sizeof(body))) {
+        return reply(req, "400 Bad Request", "Bad request.");
+    }
+
+    char off_s[12] = { 0 };
+    (void)form_field(body, "off", off_s, sizeof(off_s));
+
+    /* strtol answers 0 for "abc", which is a legitimate offset (UTC) — so the
+     * terminator is what separates "the operator picked UTC" from "that was not
+     * a number at all". */
+    char      *end = NULL;
+    const long off = strtol(off_s, &end, 10);
+    if ((off_s[0] == '\0') || (*end != '\0')) {
+        return reply(req, "400 Bad Request",
+                     "The offset has to be a whole number of minutes.");
+    }
+    if ((off < TZ_OFFSET_MIN) || (off > TZ_OFFSET_MAX) ||
+        !settings_set_tz_offset_min(static_cast<int16_t>(off))) {
+        return reply(req, "400 Bad Request",
+                     "That is not an offset the terminal can use.");
+    }
+
+    /* The panel is very likely showing a sale screen with this page's card over
+     * it. The clock caches the offset rather than reading NVS every tick, so
+     * without this it keeps the old hour until something rebuilds the screen. */
+    ui_clock_changed();
+    ESP_LOGI(TAG, "clock offset set from the config page: %ld min", off);
+    return ok(req, "Clock stored. The terminal's time updates in a moment.");
 }
 
 /**
@@ -1064,6 +1117,7 @@ static void register_handlers(void)
         { "/api/payout",   HTTP_POST, payout_post,   NULL },
         { "/api/contract", HTTP_POST, contract_post, NULL },
         { "/api/fees",     HTTP_POST, fees_post,     NULL },
+        { "/api/clock",    HTTP_POST, clock_post,    NULL },
         { "/api/network",  HTTP_POST, network_post,  NULL },
         { "/api/card",     HTTP_POST, card_post,     NULL },
         { "/api/wifi",     HTTP_POST, wifi_post,     NULL },

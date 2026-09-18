@@ -146,6 +146,36 @@ void settings_set_mainnet(bool mainnet);
 const char *settings_net_str(const char *testnet, const char *mainnet);
 
 /** @brief Backlight level in percent, or 80 if never set. */
+/** @brief Widest real-world UTC offsets, in minutes: UTC-12:00 to UTC+14:00. */
+#define TZ_OFFSET_MIN  (-720)
+#define TZ_OFFSET_MAX  (840)
+
+/**
+ * @brief The panel clock's offset from UTC, in minutes east.
+ *
+ * SNTP sets the system clock in UTC; this is what the status band adds to it.
+ * Minutes rather than hours because half- and quarter-hour zones are real
+ * (India +5:30, Nepal +5:45, Chatham +12:45).
+ *
+ * A fixed offset, deliberately, not a timezone: the DST rules that would make
+ * it automatic live in newlib's tzset/localtime, and pulling those in measured
+ * 64 KB of the app slot. The cost of the cheap version is that somebody moves
+ * this twice a year from the config page — which is a minute of work, against
+ * 3% of the partition.
+ *
+ * @return Offset in minutes, 0 (UTC) when unset or when NVS holds nonsense.
+ */
+int16_t settings_get_tz_offset_min(void);
+
+/**
+ * @brief Store the panel clock's UTC offset.
+ *
+ * @param[in] minutes Minutes east of UTC, @ref TZ_OFFSET_MIN to
+ *                    @ref TZ_OFFSET_MAX.
+ * @return false if out of range, in which case nothing is written.
+ */
+bool settings_set_tz_offset_min(int16_t minutes);
+
 uint8_t settings_get_brightness(void);
 
 /** @brief Persist the backlight level (0..100). */

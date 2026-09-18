@@ -66,6 +66,25 @@ typedef enum {
 void eth_rpc_init(const char *rpc_url, const char *from_addr);
 
 /**
+ * @brief Replace the from-address — the account a sale spends from.
+ *
+ * The payer is the card on the reader, so it is not known until somebody taps.
+ * @ref eth_rpc_init's @p from_addr is only the boot-time default (the config.h
+ * literal, used for the startup reachability probe); this is the per-tap
+ * override, and everything that reads the sender — the nonce, the balance, the
+ * ecrecover comparison — follows it.
+ *
+ * Unlike every other setter in this header the string is **copied**, because
+ * its caller derives it into a stack buffer inside one sale.
+ *
+ * @param[in] addr "0x"-prefixed, 40 hex characters. A malformed one is refused
+ *                 rather than silently leaving the previous payer in force —
+ *                 the next nonce would otherwise be somebody else's.
+ * @return true if the address was accepted and is now in force.
+ */
+bool eth_rpc_set_from(const char *addr);
+
+/**
  * @brief Optional: set Infura-style HTTP Basic Auth credentials.
  *
  * Same lifetime contract as eth_rpc_init: pointers are stored, not copied.
@@ -97,6 +116,41 @@ void eth_rpc_set_ca_cert(const char *ca_pem);
  * @return true on success, false on transport, parse or range error.
  */
 bool eth_rpc_get_nonce(uint64_t *nonce_out);
+
+/**
+ * @brief Fetch the native balance of from_addr, in wei.
+ *
+ * For the pre-flight check that refuses a sale the payer cannot fund before the
+ * customer is asked for anything — see @c evm_balance_ok in main.cpp. Without
+ * it the first news of an empty account is the node's refusal *after* the PIN,
+ * the tap and the signature.
+ *
+ * Saturating at @c UINT64_MAX (see @ref eth_json_hex_quantity): 20 ETH does not
+ * fit a uint64 of wei, and over-reporting can only fail to refuse.
+ *
+ * @param[out] wei_out Balance on success; untouched on failure.
+ * @return true on success, false on transport or parse error.
+ */
+bool eth_rpc_get_balance(uint64_t *wei_out);
+
+/**
+ * @brief Fetch from_addr's balance of an ERC-20, via @c balanceOf over eth_call.
+ *
+ * The token half of the same check, and the one that saves more: a transfer of
+ * more tokens than the account holds is not refused by the node at all. It is
+ * broadcast, mined, reverted, and charged for — so the customer waits through
+ * the whole confirmation only to be declined, and pays the gas for the
+ * privilege.
+ *
+ * Saturating, like @ref eth_rpc_get_balance.
+ *
+ * @param[in]  token_addr "0x..."-prefixed contract address to call.
+ * @param[out] units_out  Balance in the token's base units on success;
+ *                        untouched on failure.
+ * @return true on success, false on transport or parse error, or if the
+ *         configured from_addr is not a 20-byte hex address.
+ */
+bool eth_rpc_get_token_balance(const char *token_addr, uint64_t *units_out);
 
 /**
  * @brief Determine the signature parity bit (v = 0 or 1).

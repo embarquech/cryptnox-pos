@@ -42,6 +42,7 @@
 #include "esp32_crypto_provider.h"
 #include "CW_Tron.h"
 #include "settings.h"
+#include "assets.h"      /* pos_asset_of() — the ticker a refusal names */
 #include "provision.h"   /* phone-based first-run setup (SoftAP + portal) */
 #include "ota.h"         /* browser-mediated firmware update + rollback confirm */
 #include "ota_version.h" /* ota_version_display() — the 'v' is added for the screen */
@@ -796,6 +797,195 @@ static bool card_sign(CryptnoxWallet &wallet, CW_SecureSession &session,
 }
 
 /**
+ * @brief The EIP-1559 fees one EVM sale will offer, in wei per gas.
+ *
+ * Its own function because two callers have to agree on the answer: the
+ * transaction in @ref sign_and_broadcast, and the pre-flight check below it. A
+ * check run against a cheaper fee than the transaction actually carries would
+ * wave through exactly the sale it exists to catch.
+ *
+ * @param[in]  polygon  true on Polygon, which has a tip floor of its own.
+ * @param[out] max_fee  Fee cap, wei per gas.
+ * @param[out] prio_fee Tip, wei per gas; never above @p max_fee.
+ */
+static void evm_fees_wei(bool polygon, uint64_t *max_fee, uint64_t *prio_fee)
+{
+    /* Fees come from the settings menu (defaulting to the config.h values on
+     * first boot); config.h still owns the gas limit. The user edits Gwei, so
+     * scale to wei. Keep the tip <= the cap or the tx is malformed. */
+    uint64_t max_fee_wei  = (uint64_t)settings_get_max_fee_gwei()      * 1000000000ULL;
+    uint64_t prio_fee_wei = (uint64_t)settings_get_priority_fee_gwei() * 1000000000ULL;
+    if (prio_fee_wei > max_fee_wei) { prio_fee_wei = max_fee_wei; }
+    /* Polygon drops a transfer whose tip is under ~25 Gwei, and the fee knobs are
+     * shared with Ethereum where 20 is right. Raise the floor here rather than
+     * asking the operator to retune the Tx tab every time they switch networks —
+     * and lift the cap with it, or the clamp above would only put it back. */
+    if (polygon) {
+        const uint64_t floor_wei =
+            (uint64_t)POLY_MIN_PRIORITY_FEE_GWEI * 1000000000ULL;
+        if (prio_fee_wei < floor_wei) { prio_fee_wei = floor_wei; }
+        if (max_fee_wei  < prio_fee_wei) { max_fee_wei = prio_fee_wei; }
+    }
+    *max_fee  = max_fee_wei;
+    *prio_fee = prio_fee_wei;
+}
+
+/**
+ * @brief Refuse an EVM sale the tapped card cannot fund, before it signs.
+ *
+ * Without it the first news of an empty account is the node's own refusal at the
+ * very end ("insufficient funds for gas * price + value") — after the signature
+ * and the broadcast. For a token the news is worse than a refusal: a transfer of
+ * more than the account holds is broadcast, mined, reverted and charged for, so
+ * the customer waits out the confirmation to be declined and pays the gas.
+ *
+ * **The caller must have selected the endpoint and set the payer first.** This
+ * deliberately does not call @ref eth_rpc_select itself: that resets the
+ * from-address to the config.h default, and doing it here would quietly ask
+ * about the integrator's own account instead of the card on the reader.
+ *
+ * A read that fails is NOT a refusal. This improves a message; it does not gate
+ * payments, and a terminal that stops selling because one RPC read timed out
+ * would be worse than the problem it is fixing.
+ *
+ * @param[in]  amount  The reconciled sale amount, in keypad base units.
+ * @param[out] err     Panel-facing reason on refusal; untouched otherwise.
+ * @param[in]  err_max Capacity of @p err.
+ * @return true to let the sale proceed (funded, or unknowable).
+ */
+static bool evm_balance_ok(const pos_amount_t *amount, char *err, size_t err_max)
+{
+    const bool  native  = chain_is_native_evm();
+    const bool  polygon = chain_is_polygon();
+    const char *coin    = polygon ? "POL" : "ETH";
+
+    uint64_t max_fee = 0U;
+    uint64_t prio    = 0U;
+    evm_fees_wei(polygon, &max_fee, &prio);
+    /* A gas limit is ~1e5 at the most and max_fee is a uint32 of Gwei scaled by
+     * 1e9, so this product has ~25 bits of headroom. */
+    const uint64_t gas_cost =
+        (uint64_t)(native ? GAS_LIMIT_NATIVE : GAS_LIMIT_ERC20) * max_fee;
+
+    uint64_t have_wei = 0U;
+    if (!eth_rpc_get_balance(&have_wei)) {
+        ESP_LOGW(TAG, "pre-flight: balance read failed - letting the sale run");
+        return true;
+    }
+
+    if (have_wei < gas_cost) {
+        (void)snprintf(err, err_max, "Not enough %s for the network fee", coin);
+        return false;
+    }
+
+    if (native) {
+        /* Out of range for the keypad's own cap, which means something upstream
+         * is wrong rather than underfunded. Left to sign_and_broadcast, which
+         * refuses it by name — and the multiply below would overflow. */
+        if (amount->amount_minor > POS_AMOUNT_UNITS_MAX_NATIVE) { return true; }
+        const uint64_t value_wei = amount->amount_minor * 1000000000000ULL;
+        /* Subtracting rather than adding: value is capped at just under 2^64
+         * wei, so value + gas_cost is the one sum here that could overflow —
+         * and the gas is already known to be covered. */
+        if ((have_wei - gas_cost) < value_wei) {
+            (void)snprintf(err, err_max, "Not enough %s for this amount", coin);
+            return false;
+        }
+        return true;
+    }
+
+    const erc20_token_t *t        = active_erc20_token();
+    const char          *contract = (t != NULL) ? t->str : s_contract_eth;
+    uint64_t             have_units = 0U;
+    if (!eth_rpc_get_token_balance(contract, &have_units)) {
+        ESP_LOGW(TAG, "pre-flight: token balance read failed - letting it run");
+        return true;
+    }
+    if (have_units < amount->amount_minor) {
+        (void)snprintf(err, err_max, "Not enough %s on the card",
+                       pos_asset_of(settings_get_chain())->ticker);
+        return false;
+    }
+    return true;
+}
+
+/**
+ * @brief Refuse a Tron sale the tapped card cannot fund, before it signs.
+ *
+ * The Tron half of @ref evm_balance_ok, and it cannot run as early: the payer
+ * here is whoever tapped, so there is no account to ask about until the card is
+ * on the reader and its PIN is verified. This is the first moment there is one
+ * — before the signature, before the broadcast, before any energy is burned.
+ *
+ * A native TRX transfer was already covered by accident:
+ * @ref tron_rpc_create_transfer will not build one from an account the chain
+ * cannot fund. A TRC-20 was not, and that is the gap this closes. Creating a
+ * TriggerSmartContract is only serialisation — the node builds the transfer
+ * whether or not the account holds the tokens or can pay the energy — so the
+ * card signed it, it broadcast, and it reverted on-chain. The customer waited
+ * out the whole confirmation to be declined, and paid for the attempt.
+ *
+ * A read that fails is not a refusal, as on the EVM side.
+ *
+ * @param[in]  owner_hex  The tapped card's address, "41"-prefixed hex.
+ * @param[in]  token_hex  Token contract, same form; NULL/empty for native TRX.
+ * @param[in]  amount     Sale amount — sun for TRX, base units for a token.
+ * @param[out] err        Panel-facing reason on refusal; untouched otherwise.
+ * @param[in]  err_max    Capacity of @p err.
+ * @return true to let the sale proceed (funded, or unknowable).
+ */
+static bool tron_balance_ok(const char *owner_hex, const char *token_hex,
+                            uint64_t amount, char *err, size_t err_max)
+{
+    const bool is_token = (token_hex != NULL) && (token_hex[0] != '\0');
+
+    uint64_t trx_sun = 0U;
+    if (!tron_rpc_get_balance(owner_hex, &trx_sun)) {
+        ESP_LOGW(TAG, "pre-flight: TRX balance read failed - letting it run");
+        return true;
+    }
+
+    if (!is_token) {
+        /* A TRX transfer pays its amount out of this balance, and its bandwidth
+         * out of the free daily allowance — so the balance is the whole test. */
+        if (trx_sun < amount) {
+            (void)snprintf(err, err_max, "Not enough TRX for this amount");
+            return false;
+        }
+        return true;
+    }
+
+    uint64_t have = 0U;
+    if (!tron_rpc_get_trc20_balance(owner_hex, token_hex, &have)) {
+        ESP_LOGW(TAG, "pre-flight: token balance read failed - letting it run");
+    } else if (have < amount) {
+        (void)snprintf(err, err_max, "Not enough %s on the card",
+                       pos_asset_of(settings_get_chain())->ticker);
+        return false;
+    } else {
+        /* enough tokens — the fee is the remaining question */
+    }
+
+    /* The fee. A TRC-20 transfer burns energy, paid for out of a stake or out
+     * of TRX, so the only certain refusal is an account with neither. Anything
+     * above zero is left alone deliberately: pricing the burn would mean
+     * tracking a network parameter, and getting it wrong refuses sales that
+     * would have settled — which is worse than the late failure this exists to
+     * avoid.
+     *
+     * ponytail: zero-or-not. Price the energy properly if a thin-but-nonzero
+     * balance turns out to be a real support case. */
+    if (trx_sun == 0U) {
+        uint64_t energy = 0U;
+        if (tron_rpc_get_energy(owner_hex, &energy) && (energy == 0U)) {
+            (void)snprintf(err, err_max, "No TRX for the network fee");
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
  * @brief Sign a USDC transfer on the card and broadcast it via JSON-RPC.
  *
  * Full pipeline: build calldata → fetch nonce → RLP-encode + keccak256 →
@@ -870,8 +1060,80 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
         build_usdc_calldata(calldata, to->addr, amount_units);
     }
 
+    /* The card comes before the RPC now. The payer is whoever taps, so the
+     * nonce, the balance and the parity check below are all questions about an
+     * account that does not exist yet — exactly the order the Tron path has
+     * always had, and for the same reason. */
+    CW_SecureSession session;
+    if (!card_connect(wallet, transport, session)) {
+        if (!s_user_cancelled) {
+            (void)snprintf(err_out, err_max, "%s",
+                           (s_card_fault != NULL) ? s_card_fault
+                                                  : "Card not found");
+        }
+        return false;
+    }
+
+    if (!s_user_cancelled) {
+        ui_show_tx_status(UI_TX_STATE_SIGNING, NULL);
+    }
+
+    /* The PIN first, because the key export below needs a verified session —
+     * and because doing it here buys the specific message. The card sets
+     * CW_SIGN_PIN_INCORRECT only for a PIN this keypad cannot produce (under
+     * four digits, refused in ui.cpp), so a genuinely mistyped one comes back
+     * from the sign APDU as a generic failure, and the person who fat-fingered
+     * a digit is shown "Sign error 0x81" and sent looking for a broken reader. */
+    if (!wallet.verifyPin(session, reinterpret_cast<const uint8_t *>(pin),
+                          static_cast<uint8_t>(pin_chars))) {
+        wallet.disconnect(session);
+        (void)snprintf(err_out, err_max, "Wrong PIN");
+        return false;
+    }
+
+    /* Whose account this sale spends — derived from the card on the reader, not
+     * read out of config.h. ADDR_FROM names one specific card, and a terminal
+     * only the integrator's own card can pay at is a demo rather than a till;
+     * it stays as the boot-time reachability probe's address and nothing else.
+     * Same derivation the setup flow uses to read a payout address off a card:
+     * keccak256 of the uncompressed public key, low 20 bytes. */
+    char from_addr[SETTINGS_PAYOUT_MAX] = "";
+    {
+        uint8_t pubkey[64];
+        uint8_t key_hash[32];
+        WipeGuard g_pub(pubkey, sizeof(pubkey));
+        WipeGuard g_kh(key_hash, sizeof(key_hash));
+        if (!wallet.getPublicKey(session, ETH_DERIVE_PATH,
+                                 static_cast<uint8_t>(sizeof(ETH_DERIVE_PATH)),
+                                 pubkey)) {
+            wallet.disconnect(session);
+            (void)snprintf(err_out, err_max, "Cannot read card address");
+            return false;
+        }
+        keccak256(pubkey, sizeof(pubkey), key_hash);
+        (void)eth_addr_format(&key_hash[12], from_addr, sizeof(from_addr));
+    }
+    /* Refused rather than ignored: leaving the previous payer in force would
+     * fetch somebody else's nonce and sign a transaction against it. */
+    if (!eth_rpc_set_from(from_addr)) {
+        wallet.disconnect(session);
+        (void)snprintf(err_out, err_max, "Cannot read card address");
+        return false;
+    }
+    ESP_LOGI(TAG, "EVM sender (this card): %s", from_addr);
+
+    /* Now there is an account to ask about. Before the nonce, before the
+     * signature, before the broadcast — nothing is spent if the answer is no. */
+    ui_set_tx_info("Checking balance");
+    if (!evm_balance_ok(amount, err_out, err_max)) {
+        wallet.disconnect(session);
+        return false;
+    }
+    ui_set_tx_info(NULL);
+
     uint64_t nonce = 0U;
     if (!eth_rpc_get_nonce(&nonce)) {
+        wallet.disconnect(session);
         (void)snprintf(err_out, err_max, "RPC: get nonce failed");
         return false;
     }
@@ -886,22 +1148,9 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
                              ? (polygon ? CHAIN_ID_POLYGON : CHAIN_ID_MAINNET)
                              : (polygon ? CHAIN_ID_AMOY    : CHAIN_ID_SEPOLIA);
     tx.nonce             = nonce;
-    /* Fees come from the settings menu (defaulting to the config.h values on
-     * first boot); config.h still owns the gas limit. The user edits Gwei, so
-     * scale to wei. Keep the tip <= the cap or the tx is malformed. */
-    uint64_t max_fee_wei  = (uint64_t)settings_get_max_fee_gwei()      * 1000000000ULL;
-    uint64_t prio_fee_wei = (uint64_t)settings_get_priority_fee_gwei() * 1000000000ULL;
-    if (prio_fee_wei > max_fee_wei) { prio_fee_wei = max_fee_wei; }
-    /* Polygon drops a transfer whose tip is under ~25 Gwei, and the fee knobs are
-     * shared with Ethereum where 20 is right. Raise the floor here rather than
-     * asking the operator to retune the Tx tab every time they switch networks —
-     * and lift the cap with it, or the clamp above would only put it back. */
-    if (polygon) {
-        const uint64_t floor_wei =
-            (uint64_t)POLY_MIN_PRIORITY_FEE_GWEI * 1000000000ULL;
-        if (prio_fee_wei < floor_wei) { prio_fee_wei = floor_wei; }
-        if (max_fee_wei  < prio_fee_wei) { max_fee_wei = prio_fee_wei; }
-    }
+    uint64_t max_fee_wei  = 0U;
+    uint64_t prio_fee_wei = 0U;
+    evm_fees_wei(polygon, &max_fee_wei, &prio_fee_wei);
     tx.max_priority_fee  = prio_fee_wei;
     tx.max_fee           = max_fee_wei;
     /* The two shapes of transfer. A token call carries the amount in its calldata
@@ -926,6 +1175,7 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
     uint8_t unsigned_tx[TX_BUF_SIZE];
     size_t  unsigned_len = eth_rlp_encode_unsigned(&tx, unsigned_tx, sizeof(unsigned_tx));
     if (unsigned_len == 0U) {
+        wallet.disconnect(session);
         (void)snprintf(err_out, err_max, "RLP encode overflow");
         return false;
     }
@@ -937,35 +1187,6 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
      * Scrub them and the encoded transactions on every exit path below. */
     WipeGuard g_unsigned(unsigned_tx, sizeof(unsigned_tx));
     WipeGuard g_hash(hash, sizeof(hash));
-
-    CW_SecureSession session;
-    if (!card_connect(wallet, transport, session)) {
-        if (!s_user_cancelled) {
-            (void)snprintf(err_out, err_max, "%s",
-                           (s_card_fault != NULL) ? s_card_fault
-                                                  : "Card not found");
-        }
-        return false;
-    }
-
-    if (!s_user_cancelled) {
-        ui_show_tx_status(UI_TX_STATE_SIGNING, NULL);
-    }
-
-    /* Verify the PIN before signing rather than reading it back out of the sign
-     * status byte. The card sets CW_SIGN_PIN_INCORRECT only for a PIN this
-     * keypad cannot produce — under four digits, refused in ui.cpp — so a real
-     * mistyped PIN comes back from the sign APDU as a generic failure, and the
-     * person who fat-fingered one digit is shown "Sign error 0x81" and sent
-     * looking for a broken reader. The Tron path already verifies first because
-     * it needs the public key to build the transaction; this one spends the
-     * extra round trip purely to be able to say the same thing. */
-    if (!wallet.verifyPin(session, reinterpret_cast<const uint8_t *>(pin),
-                          static_cast<uint8_t>(pin_chars))) {
-        wallet.disconnect(session);
-        (void)snprintf(err_out, err_max, "Wrong PIN");
-        return false;
-    }
 
     /* Re-reconcile amount + recipient + contract right before signing — this is the
      * last point before the card produces an irreversible signature over the
@@ -1002,7 +1223,12 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
         case ETH_RPC_PARITY_OK:
             break;
         case ETH_RPC_PARITY_MISMATCH:
-            (void)snprintf(err_out, err_max, "Card-address mismatch");
+            /* Used to mean "wrong card" — it was comparing against config.h's
+             * ADDR_FROM. Now both sides come from the card that just signed, so
+             * a mismatch is an internal inconsistency (a bad signature, or a
+             * derivation that disagrees with itself) and not a setup error the
+             * operator can fix by using their other card. */
+            (void)snprintf(err_out, err_max, "Signature check failed");
             return false;
         case ETH_RPC_PARITY_RPC_ERROR:
         default:
@@ -1148,6 +1374,15 @@ static bool sign_and_broadcast_tron(CryptnoxWallet &wallet,
     }
     tron_addr_to_hex(owner21, owner_hex, sizeof(owner_hex));
     ESP_LOGI(TAG, "Tron sender (this card): %s", owner_b58);
+
+    /* The earliest this question can be asked on Tron — the account only exists
+     * as of the line above. Before create, before the signature, before the
+     * broadcast: nothing has been spent yet if the answer is no. */
+    if (!tron_balance_ok(owner_hex, (token != NULL) ? token_hex : NULL,
+                         amount_sun, err_out, err_max)) {
+        wallet.disconnect(session);
+        return false;
+    }
 
     tron_tx_ctx_t tx;
     const bool built = (token == NULL)
@@ -1843,6 +2078,14 @@ extern "C" void app_main(void)
      * like the TRC-20 ones and for the same reason: a terminal that only charges in
      * USDC on Ethereum leaves these unset, and it must still boot — selecting the
      * asset is what gets refused. */
+    /* What the panel's clock reads in. SNTP sets UTC and the band adds this;
+     * it is an operator setting on the config page, not a build-time one, so
+     * there is nothing to apply here beyond saying what it is. */
+    ESP_LOGI(TAG, "clock: UTC%+d:%02d",
+             settings_get_tz_offset_min() / 60,
+             (settings_get_tz_offset_min() < 0 ? -settings_get_tz_offset_min()
+                                               : settings_get_tz_offset_min()) % 60);
+
     ESP_LOGI(TAG, "networks: %s",
              settings_get_mainnet() ? "PRODUCTION" : "test");
     if (!erc20_load(&s_usdt_eth, settings_net_str(ADDR_USDT, ADDR_USDT_MAIN))) {
@@ -2237,6 +2480,13 @@ extern "C" void app_main(void)
                     pos_amount_set(&pending_amount, 0U);
                     break;
                 }
+                /* No balance check here any more, on either chain. It briefly
+                 * lived at this point for EVM, which worked only because that
+                 * path spent a config.h account: the payer is the card on the
+                 * reader, and at this moment nobody has tapped. Both chains now
+                 * ask once the card is present — see evm_balance_ok and
+                 * tron_balance_ok — so the refusals that remain here are the
+                 * ones answerable from the terminal's own settings. */
                 ui_refresh_addresses();
                 /* The resolved recipient, NOT the config.h literal: on a
                  * terminal provisioned through the setup page those differ, and
