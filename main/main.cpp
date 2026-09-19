@@ -179,12 +179,15 @@ static const char *const TAG = "cryptnox_pos";
 
 /* ── Hardware pin assignments — Cheap Yellow Display (ESP32) ───── */
 /* PN532 on I²C, wired to the CYD CN1 connector. */
-#define PN532_I2C_PORT      0
-#define PN532_SDA           27
-#define PN532_SCL           22
-#define PN532_IRQ           (-1)
-#define PN532_RST           (-1)
-#define PN532_I2C_HZ        100000U
+/* SPI, not I²C: the reader is the slowest step of a sale and the SDK driver
+ * clocks SPI at 1 MHz against I²C's 100 kHz. These are the CYD's SD-slot pins,
+ * unused here — see the touch comment in ui.cpp for why the touch had to give
+ * up its SPI controller so this one could have it. */
+#define PN532_SPI_HOST      SPI3_HOST
+#define PN532_MOSI          23
+#define PN532_MISO          19
+#define PN532_SCK           18
+#define PN532_SS            5
 
 /* The CYD's onboard RGB LED, common anode: the pin is the cathode side, so HIGH
  * is off and a floating pin is a glow. Nothing here uses it, and a till lighting
@@ -2118,13 +2121,15 @@ extern "C" void app_main(void)
 
     pn532_config_t nfc_cfg;
     CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(&nfc_cfg), sizeof(nfc_cfg));
-    nfc_cfg.transport     = PN532_TRANSPORT_I2C;
-    nfc_cfg.i2c_port      = PN532_I2C_PORT;
-    nfc_cfg.pin_sda       = PN532_SDA;
-    nfc_cfg.pin_scl       = PN532_SCL;
-    nfc_cfg.pin_irq       = PN532_IRQ;
-    nfc_cfg.pin_rst       = PN532_RST;
-    nfc_cfg.i2c_clock_hz  = PN532_I2C_HZ;
+    nfc_cfg.transport     = PN532_TRANSPORT_SPI;
+    nfc_cfg.spi_host      = PN532_SPI_HOST;
+    nfc_cfg.pin_mosi      = PN532_MOSI;
+    nfc_cfg.pin_miso      = PN532_MISO;
+    nfc_cfg.pin_sclk      = PN532_SCK;
+    nfc_cfg.pin_cs        = PN532_SS;
+    nfc_cfg.skip_bus_init = false;   /* nothing else owns this bus now */
+    nfc_cfg.pin_irq       = -1;
+    nfc_cfg.pin_rst       = -1;
 
     /* Keep the error code — unplugged reader and misconfigured bus look
      * identical on screen otherwise. */

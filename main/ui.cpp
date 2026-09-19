@@ -71,8 +71,117 @@ static const char *TAG = "ui";
 #define LOGO_X_NUDGE (-4)
 
 static TFT_eSPI            tft;
-static SPIClass            touchSPI(VSPI);
-static XPT2046_Touchscreen touch(T_CS, T_IRQ);
+/* The touch runs on bit-banged SPI, not a controller.
+ *
+ * This board needs three SPI buses — panel (12/13/14), reader and SD slot
+ * (18/19/23), touch (25/32/39) — and the ESP32 has two controllers. The reader
+ * moved to SPI for speed and must keep one to itself, so the touch gives its up:
+ * XPT2046 is a 12-bit ADC capped at 2 MHz, and a sample is barely 100 bits.
+ *
+ * The sequence below is XPT2046_Touchscreen's, command byte for command byte —
+ * same thresholds, same best-two-of-three averaging, same rotation mapping — so
+ * the calibration in NVS and the pressure step the second-contact guard reads
+ * keep meaning what they did. */
+#define T_Z_THRESHOLD      300
+#define T_Z_THRESHOLD_INT   75
+#define T_MSEC_THRESHOLD     3
+
+static volatile bool s_touch_irq_wake = false;
+static void IRAM_ATTR touch_irq_isr(void) { s_touch_irq_wake = true; }
+
+/** @brief Average the closest two of three samples, dropping the outlier. */
+static int16_t besttwoavg(int16_t x, int16_t y, int16_t z) {
+    const int16_t da = (x > y) ? (int16_t)(x - y) : (int16_t)(y - x);
+    const int16_t db = (x > z) ? (int16_t)(x - z) : (int16_t)(z - x);
+    const int16_t dc = (z > y) ? (int16_t)(z - y) : (int16_t)(y - z);
+    if ((da <= db) && (da <= dc)) { return (int16_t)((x + y) >> 1); }
+    if ((db <= da) && (db <= dc)) { return (int16_t)((x + z) >> 1); }
+    return (int16_t)((y + z) >> 1);
+}
+
+namespace {
+class SoftTouch {
+public:
+    void begin(void) {
+        pinMode(T_CS,   OUTPUT); digitalWrite(T_CS,   HIGH);
+        pinMode(T_CLK,  OUTPUT); digitalWrite(T_CLK,  LOW);
+        pinMode(T_MOSI, OUTPUT); digitalWrite(T_MOSI, LOW);
+        pinMode(T_MISO, INPUT);
+        pinMode(T_IRQ,  INPUT);
+        attachInterrupt(digitalPinToInterrupt(T_IRQ), touch_irq_isr, FALLING);
+    }
+    void setRotation(uint8_t r) { m_rotation = r; }
+    bool tirqTouched(void) { return s_touch_irq_wake; }
+    bool touched(void) { update(); return m_zraw >= T_Z_THRESHOLD; }
+    TS_Point getPoint(void) { update(); return TS_Point(m_xraw, m_yraw, m_zraw); }
+
+private:
+    uint8_t  m_rotation = 0U;
+    int16_t  m_xraw = 0, m_yraw = 0, m_zraw = 0;
+    uint32_t m_msraw = 0U;
+
+    /* SPI mode 0, MSB first: MOSI settles while the clock is low, both ends
+     * sample on the rising edge. */
+    uint16_t xfer(uint16_t out, uint8_t bits) {
+        uint16_t in = 0U;
+        for (int8_t i = (int8_t)(bits - 1U); i >= 0; i--) {
+            digitalWrite(T_MOSI, ((out >> i) & 1U) != 0U ? HIGH : LOW);
+            digitalWrite(T_CLK, HIGH);
+            in = (uint16_t)((in << 1) | (uint16_t)digitalRead(T_MISO));
+            digitalWrite(T_CLK, LOW);
+        }
+        return in;
+    }
+    uint16_t xfer16(uint16_t out) { return xfer(out, 16U); }
+
+    void update(void) {
+        if (!s_touch_irq_wake) { return; }
+        const uint32_t now = millis();
+        if ((now - m_msraw) < T_MSEC_THRESHOLD) { return; }
+
+        int16_t data[6];
+        digitalWrite(T_CS, LOW);
+        (void)xfer(0xB1U, 8U);                            /* Z1 */
+        const int16_t z1 = (int16_t)(xfer16(0xC1U) >> 3); /* Z2 next */
+        int32_t z = (int32_t)z1 + 4095;
+        const int16_t z2 = (int16_t)(xfer16(0x91U) >> 3);
+        z -= z2;
+        if (z >= T_Z_THRESHOLD) {
+            (void)xfer16(0x91U);                          /* first X is noisy */
+            data[0] = (int16_t)(xfer16(0xD1U) >> 3);
+            data[1] = (int16_t)(xfer16(0x91U) >> 3);
+            data[2] = (int16_t)(xfer16(0xD1U) >> 3);
+            data[3] = (int16_t)(xfer16(0x91U) >> 3);
+        } else {
+            data[0] = 0; data[1] = 0; data[2] = 0; data[3] = 0;
+        }
+        data[4] = (int16_t)(xfer16(0xD0U) >> 3);          /* last Y powers down */
+        data[5] = (int16_t)(xfer16(0x00U) >> 3);
+        digitalWrite(T_CS, HIGH);
+
+        if (z < 0) { z = 0; }
+        if (z < T_Z_THRESHOLD) {
+            m_zraw = 0;
+            if (z < T_Z_THRESHOLD_INT) { s_touch_irq_wake = false; }
+            return;
+        }
+        m_zraw = (int16_t)z;
+
+        const int16_t x = besttwoavg(data[0], data[2], data[4]);
+        const int16_t y = besttwoavg(data[1], data[3], data[5]);
+        m_msraw = now;
+        switch (m_rotation) {
+            case 0:  m_xraw = (int16_t)(4095 - y); m_yraw = x; break;
+            case 1:  m_xraw = x;                   m_yraw = y; break;
+            case 2:  m_xraw = y; m_yraw = (int16_t)(4095 - x); break;
+            default: m_xraw = (int16_t)(4095 - x);
+                     m_yraw = (int16_t)(4095 - y); break;
+        }
+    }
+};
+}  // namespace
+
+static SoftTouch touch;
 
 /******************************************************************
  * 3. Theme — light, minimal: white bg, black ink
@@ -4495,8 +4604,7 @@ static void ui_task(void *arg) {
      * frame, and the theme is white — black made power-on flash. */
     tft.fillScreen(TFT_WHITE);
 
-    touchSPI.begin(T_CLK, T_MISO, T_MOSI, T_CS);
-    touch.begin(touchSPI);
+    touch.begin();
     touch.setRotation(0);        /* match the panel orientation */
     touch_cal_load();            /* per-unit edge counts, before the first read */
 
