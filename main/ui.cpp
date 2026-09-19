@@ -99,36 +99,34 @@ static XPT2046_Touchscreen touch(T_CS, T_IRQ);
  * looks right in a browser is not evidence about this display.
  *
  * Text ON it stays COL_BG — white on this is 13.5:1, well past AA. */
-#define COL_ACCENT   lv_color_hex(0x22303D)   /* slate — primary action button */
-/* Sale-flow page chrome. Deliberately NO new hex values: the card idiom is
- * built out of the palette above, so the terminal keeps the black-on-white it
- * always had. The page is the existing surface grey and the card is the
- * existing white, which is the whole of what separates them. */
-/* The page behind the white card. COL_BORDER, arrived at by walking the whole
- * ramp and coming back:
+#define COL_ACCENT   lv_color_hex(0x22303D)   /* slate — chrome, tabs, controls */
+/* The sale's two buttons: the one that commits is filled, the one that backs
+ * out is the card's own white with a hairline — an outline button, which is
+ * what it was before it was tinted.
  *
- *   0xF2 (COL_SURFACE) — 13 levels off white; through an 8px side margin it
- *                        came out as no visible card at all.
- *   0xE0 (COL_BORDER)  — this. A distinct ground without weight.
- *   0xC4               — darker, not better.
- *   0x3B / 0x24 / 0x52 — dark-bezel treatments. They separate the card hardest
- *                        and are closest to the reference design's value, but
- *                        they invert the whole page: see the step colours below.
- *   0x9A (COL_DIM)     — unusable at any brightness. The home indicator IS
- *                        COL_DIM, so a page at that value swallows the only
- *                        thing on screen advertising the swipe-up gesture.
+ * COL_ACTION is charcoal blue, so the label on it is WHITE (16.4:1). Black on
+ * it would be 1.3:1 — illegible. Cancel keeps black on white, 21:1. Anything
+ * put on these later gets measured the same way.
  *
- * Anything drawn ON the page must be rechecked whenever this moves. That is the
- * entire history of this block, and it is why the values below are not
- * independent of the one above. */
-#define COL_PAGE     COL_BORDER    /* light grey — page behind the card */
-#define COL_STEP_ON  COL_ACCENT    /* black — the step you are on       */
-/* White, NOT COL_BORDER: the spent dashes sit ON the page, so hairline-grey
- * dashes disappeared into their own background the moment the page became
- * COL_BORDER. On a dark page these two swap — lit goes white, spent goes
- * COL_DIM — because a black lit dash is invisible there and white spent dashes
- * shout as loudly as the lit one. */
-#define COL_STEP_OFF COL_BG        /* white — the steps you are not on  */
+ * Cancel's fill is the card's fill, so the fill alone does not describe where
+ * that button is: the hairline in make_ghost_button() is load-bearing rather
+ * than decorative. Do not drop it as redundant. */
+#define COL_ACTION      lv_color_hex(0x101F2E)  /* charcoal blue — Charge, Confirm */
+/* The page behind the white card: a vertical ramp, pale sky at the top
+ * deepening into COL_PAGE_GRAD at the bottom.
+ *
+ * Two things this has to keep doing, whatever the hue:
+ *
+ *   * separate the card. #E2F5FF is only 8 levels off white on the blue channel
+ *     and less on the others, so the TOP of the page barely does — the ramp is
+ *     what earns the separation, and it earns it lower down the screen. Do not
+ *     flatten it back to one colour.
+ *   * not swallow the home indicator, which is COL_DIM. It stays far darker than
+ *     either end of this ramp, so the swipe-up affordance survives.
+ *
+ * Anything drawn ON the page gets rechecked whenever these two move. */
+#define COL_PAGE      lv_color_hex(0xE2F5FF)    /* pale sky — head of the ramp */
+#define COL_PAGE_GRAD lv_color_hex(0xA8D8F0)    /* deeper sky — foot of it     */
 #define COL_HOME_BAR COL_DIM       /* grey — the swipe handle           */
 #define COL_SUCCESS  lv_color_hex(0x1E9E50)   /* green — "Sent"                */
 #define COL_DANGER   lv_color_hex(0xD63A3A)   /* red — failures / reset        */
@@ -158,6 +156,11 @@ static XPT2046_Touchscreen touch(T_CS, T_IRQ);
 #define TAB_SEG_INSET   5      /* pill inset inside the 42px bar, top+bottom */
 #define TAB_SEG_GAP     4      /* gap between segments                       */
 #define SCROLLBAR_W     4      /* hairline, not the default block            */
+/* Corner radius for every button on the panel — see make_button. Declared up
+ * here rather than with the card metrics because the tab bar is styled before
+ * that section is reached, and a tab that commits to a different corner to the
+ * buttons under it is the shape mismatch this number exists to stop. */
+#define BTN_RADIUS      6
 
 static lv_theme_t s_theme;
 static lv_style_t s_st_tabbar;    /* the bar the segments sit on   */
@@ -185,15 +188,17 @@ static void theme_styles_init(void)
     lv_style_init(&s_st_tab);
     lv_style_set_bg_opa(&s_st_tab, LV_OPA_TRANSP);
     lv_style_set_border_width(&s_st_tab, 0);
-    lv_style_set_radius(&s_st_tab, LV_RADIUS_CIRCLE);
+    lv_style_set_radius(&s_st_tab, BTN_RADIUS);
     lv_style_set_text_color(&s_st_tab, COL_DIM);
     lv_style_set_text_font(&s_st_tab, &lv_font_montserrat_14);
 
-    /* Filled pill, same shape as the selector rows and the action buttons. */
+    /* Filled pill, same shape AND the same colour as the action buttons: the
+     * admin panel's buttons are all COL_ACTION, and the selected tab is the
+     * one piece of chrome that sits in the same band as them. */
     lv_style_init(&s_st_tab_sel);
-    lv_style_set_bg_color(&s_st_tab_sel, COL_ACCENT);
+    lv_style_set_bg_color(&s_st_tab_sel, COL_ACTION);
     lv_style_set_bg_opa(&s_st_tab_sel, LV_OPA_COVER);
-    lv_style_set_radius(&s_st_tab_sel, LV_RADIUS_CIRCLE);
+    lv_style_set_radius(&s_st_tab_sel, BTN_RADIUS);
     lv_style_set_text_color(&s_st_tab_sel, COL_BG);
     lv_style_set_border_width(&s_st_tab_sel, 0);
 
@@ -891,26 +896,22 @@ static uint64_t amount_cents_max(void) {
 #define CARD_PAD  10
 /* Bottom action button, in card coordinates. */
 #define CARD_BTN_H  44
-/* Corner radius for every button on the panel — see make_button. */
-#define BTN_RADIUS  6
 #define CARD_BTN_Y  (-10)
 #define CARD_BTN_W  (CARD_W - (2 * CARD_PAD))
 
 /* The status band, left to right: clock, the TEST chip when there is one, the
- * progress rail, the Wi-Fi mark.
+ * Wi-Fi mark.
  *
  * Fixed zones, not measured ones. Every occupant is a known string in a known
- * font, and a rail that re-measures itself against the clock would change
- * length when the minute ticks from 09:59 to 10:00 — a band that twitches on
- * its own is the thing this layout exists to stop.
+ * font, so nothing in the band moves when the minute ticks from 09:59 to 10:00
+ * — a band that twitches on its own is the thing this layout exists to stop.
  *
  * Everything sits on one optical centre line at y≈12: montserrat_14 draws a
- * 16px box (so text at 4), the Wi-Fi mark is 13 tall at 6, the rail is 3 at 11.
- * Move one and move the others.
+ * 16px box (so text at 4), the Wi-Fi mark is 13 tall at 6. Move one and move
+ * the other.
  *
  * CLOCK_W and CHIP_W are reserves rather than the real widths — "00:00"
- * measures ~36 against 42, "TEST" with its pads ~54 against 56. The slack is
- * what keeps the rail clear of them without anyone having to re-measure. */
+ * measures ~36 against 42, "TEST" with its pads ~54 against 56. */
 #define BAND_Y      4      /* text top: clock and chip                  */
 #define CLOCK_X     10
 #define CLOCK_Y     BAND_Y
@@ -918,18 +919,9 @@ static uint64_t amount_cents_max(void) {
 #define CHIP_X      (CLOCK_X + CLOCK_W + 6)
 #define CHIP_W      56
 #define CHIP_Y      3      /* 20px tall, so 3 centres it on the band    */
-#define RAIL_GAP    8      /* clearance from whatever is either side    */
-#define RAIL_Y      11
-#define RAIL_H      3      /* one line                                  */
-/* The band's right end belongs to the Wi-Fi mark: its width plus its inset from
- * the screen edge. A reserve like the two above, because the mark's geometry is
- * declared in section 8b, below every user of it — and section 8b carries a
- * static_assert that it still fits in here, so shrinking the mark costs nothing
- * and growing it past this fails the build instead of drawing over the rail. */
-#define SIG_ZONE_W  40
 
-/* Steps of one sale. PAY_STEP_NONE draws no rail — a card read during setup
- * is not a sale and must not claim a place in its progress. */
+/* Steps of one sale. Nothing draws them since the progress rail came out, but
+ * the flow still names where it is, and build_page() still takes it. */
 enum {
     PAY_STEP_NONE   = -1,
     PAY_STEP_AMOUNT = 0,
@@ -1032,7 +1024,7 @@ static void charge_set_enabled(bool on) {
     if (on) { lv_obj_clear_state(s_charge_btn, LV_STATE_DISABLED); }
     else    { lv_obj_add_state(s_charge_btn, LV_STATE_DISABLED); }
 
-    lv_obj_set_style_bg_color(s_charge_btn, on ? COL_ACCENT : COL_SURFACE,
+    lv_obj_set_style_bg_color(s_charge_btn, on ? COL_ACTION : COL_SURFACE,
                               LV_PART_MAIN);
     lv_obj_t *lbl = lv_obj_get_child(s_charge_btn, 0);
     if (lbl != NULL) {
@@ -1103,6 +1095,90 @@ static void amount_update_display(void) {
     amount_row_place();
 
     s_amount_units = s_amount_cents * 10000ULL;   /* cents -> 6-decimal base units */
+}
+
+/* Index of the backspace in the amount keypad's map — bottom row, third key.
+ * Counted from the map below; if a key is added before it, this moves. */
+#define AMOUNT_KEY_BACKSPACE  11U
+
+/* The drawn backspace, in units of half its height — see amount_kbd_draw_cb().
+ * The tag is 2*BSP_H tall and BSP_W wide with a BSP_NOSE-deep point on the left,
+ * which is the outline the LVGL symbol draws solid. */
+#define BSP_W     16   /* half-length; 32 wide against 18 tall reads as the
+                        * conventional backspace proportion, where the 26 this
+                        * started at looked stubby beside the 28px digits */
+#define BSP_H      9
+#define BSP_NOSE   6
+#define BSP_CROSS  4
+#define BSP_LINE   2
+
+/**
+ * Draw the amount keypad's backspace as an outline rather than a solid glyph.
+ *
+ * LV_SYMBOL_BACKSPACE is a filled FontAwesome shape, and at the 28px the digits
+ * are set in it lands as a black slab in a row of thin numerals — the heaviest
+ * mark on a screen whose figure is the thing to read. The outline carries the
+ * same meaning at a fraction of the ink, and it is the one key here that is not
+ * a digit, so looking different is correct.
+ *
+ * It keeps the digits' colour. Dimming it was the other way to lighten it and
+ * it was worse: grey reads as disabled, and the key that undoes a mistyped
+ * amount is one an operator needs to believe is available.
+ *
+ * Drawn here rather than shipped as a glyph because a btnmatrix key holds text,
+ * not an image, and the symbol font has no outline backspace. LV_EVENT_DRAW_PART
+ * gives both halves of what that needs: BEGIN to suppress the built-in glyph,
+ * END to draw over the key in its own measured area — no cell geometry is
+ * computed here, so the theme's padding cannot put the mark in the wrong place.
+ */
+static void amount_kbd_draw_cb(lv_event_t *e) {
+    lv_obj_draw_part_dsc_t *dsc = lv_event_get_draw_part_dsc(e);
+    if ((dsc == NULL) || (dsc->class_p != &lv_btnmatrix_class) ||
+        (dsc->type != LV_BTNMATRIX_DRAW_PART_BTN) ||
+        (dsc->id != AMOUNT_KEY_BACKSPACE)) {
+        return;
+    }
+
+    /* The glyph is still in the map — amount_kbd_cb() matches on that string —
+     * so it is hidden at draw time instead of removed. */
+    if (lv_event_get_code(e) == LV_EVENT_DRAW_PART_BEGIN) {
+        if (dsc->label_dsc != NULL) { dsc->label_dsc->opa = LV_OPA_TRANSP; }
+        return;
+    }
+
+    const lv_coord_t cx = (dsc->draw_area->x1 + dsc->draw_area->x2) / 2;
+    const lv_coord_t cy = (dsc->draw_area->y1 + dsc->draw_area->y2) / 2;
+
+    lv_draw_line_dsc_t ld;
+    lv_draw_line_dsc_init(&ld);
+    ld.color = COL_TEXT;          /* the digits' own ink, as asked */
+    ld.width = BSP_LINE;
+    ld.round_start = 1;
+    ld.round_end   = 1;
+
+    /* Tag outline: point at the left, square at the right. */
+    const lv_point_t tag[6] = {
+        { (lv_coord_t)(cx - BSP_W),            cy                        },
+        { (lv_coord_t)(cx - BSP_W + BSP_NOSE), (lv_coord_t)(cy - BSP_H)  },
+        { (lv_coord_t)(cx + BSP_W),            (lv_coord_t)(cy - BSP_H)  },
+        { (lv_coord_t)(cx + BSP_W),            (lv_coord_t)(cy + BSP_H)  },
+        { (lv_coord_t)(cx - BSP_W + BSP_NOSE), (lv_coord_t)(cy + BSP_H)  },
+        { (lv_coord_t)(cx - BSP_W),            cy                        },
+    };
+    for (int i = 0; i < 5; i++) {
+        lv_draw_line(dsc->draw_ctx, &ld, &tag[i], &tag[i + 1]);
+    }
+
+    /* The cross inside, centred in the square end. That centre is
+     * cx + BSP_NOSE/2 whatever BSP_W is, so lengthening the tag leaves it
+     * correctly placed without a second number to keep in step. */
+    const lv_coord_t kx = cx + (BSP_NOSE / 2);
+    const lv_point_t a1 = { (lv_coord_t)(kx - BSP_CROSS), (lv_coord_t)(cy - BSP_CROSS) };
+    const lv_point_t a2 = { (lv_coord_t)(kx + BSP_CROSS), (lv_coord_t)(cy + BSP_CROSS) };
+    const lv_point_t b1 = { (lv_coord_t)(kx + BSP_CROSS), (lv_coord_t)(cy - BSP_CROSS) };
+    const lv_point_t b2 = { (lv_coord_t)(kx - BSP_CROSS), (lv_coord_t)(cy + BSP_CROSS) };
+    lv_draw_line(dsc->draw_ctx, &ld, &a1, &a2);
+    lv_draw_line(dsc->draw_ctx, &ld, &b1, &b2);
 }
 
 /* Keypad on the amount screen — cents entry: each digit shifts in
@@ -1434,8 +1510,13 @@ static lv_obj_t *make_button(lv_obj_t *parent, const char *label, lv_color_t bg,
         lv_obj_set_style_border_color(btn, COL_BORDER, LV_PART_MAIN);
     }
 
-    /* Pressed feedback: darken the fill. */
-    lv_obj_set_style_bg_color(btn, lv_color_mix(lv_color_black(), bg, 70),
+    /* Pressed feedback: darken the fill — except on the near-black COL_ACTION,
+     * where darker than #101F2E is no visible change at all, so it lightens
+     * instead. The press is the only thing a resistive panel says back. */
+    lv_obj_set_style_bg_color(btn,
+                              (bg.full == COL_ACTION.full)
+                                  ? lv_color_mix(lv_color_white(), bg, 40)
+                                  : lv_color_mix(lv_color_black(), bg, 70),
                               LV_PART_MAIN | LV_STATE_PRESSED);
 
     lv_obj_add_event_cb(btn, btn_event_cb, LV_EVENT_CLICKED,
@@ -1460,13 +1541,18 @@ static lv_obj_t *make_label(lv_obj_t *parent, const char *txt, lv_color_t color,
     return lbl;
 }
 
-/* The photo's secondary button: white with a hairline, not a grey slab. Cancel
- * on a payment screen is the answer that costs nothing, so it should read as
- * available without competing with the one that commits. */
+/* The sale's secondary button: white, with a hairline. Cancel on a payment
+ * screen is the answer that costs nothing, so it should read as available
+ * without competing with the one that commits — and an outline button is the
+ * weakest thing that still reads as a button.
+ *
+ * The hairline is the whole of it: the fill is the card's own white, so the
+ * border is what says where the button is. */
 static lv_obj_t *make_ghost_button(lv_obj_t *parent, const char *label,
                                    lv_coord_t w, lv_align_t align,
                                    lv_coord_t x, lv_coord_t y, BtnAction act) {
-    lv_obj_t *b = make_button(parent, label, COL_BG, COL_TEXT, w, CARD_BTN_H,
+    lv_obj_t *b = make_button(parent, label, COL_BG, COL_TEXT, w,
+                              CARD_BTN_H,
                               align, x, y, act, &lv_font_montserrat_20);
     lv_obj_set_style_border_width(b, 1, LV_PART_MAIN);
     lv_obj_set_style_border_color(b, COL_BORDER, LV_PART_MAIN);
@@ -1640,50 +1726,65 @@ static lv_obj_t *make_net_badge(lv_obj_t *parent, pos_net_t net) {
     return make_icon_box(parent, NET_ICON[(int)net], NULL);
 }
 
-/* "Tap here" mark — NFC waves in a ring. Drawn by tools/gen_tap_icon.py into
- * main/tap_icon.c; run that script to change it.
+/* "Tap here" mark — the contactless waves and a hand presenting a card, in an
+ * oval. The artwork is assets/contactless-icon.svg; tools/gen_tap_icon.py
+ * rasterises it into main/tap_icon.c, so change the asset and re-run the
+ * script. A vector source, so the panel's copy is re-rendered at whatever size
+ * this box becomes rather than resampled from a bitmap fixed at another one.
  *
- * IT IS THE MARK ON THE CASE. POS-C1 has this moulded into its back above "TAP
- * TO PAY", and the panel telling a customer where to tap while drawing a
- * different symbol to the one under their card is the reason the old
- * card-and-waves version was replaced. If the tooling changes, this changes
- * with it — that is the whole constraint on this artwork.
+ * AN ASSET RATHER THAN GEOMETRY, after several passes the other way. The mark
+ * was authored here from rectangles and arcs, then from measurements taken off
+ * a reference, and the hand sank both: at the size this box allows it came out
+ * as four capsules pretending to be knuckles. A drawn hand is what the
+ * composition needs and what a generator this size cannot give it.
  *
- * ON PROVENANCE, kept because "just use a public-domain icon" is a trap worth
+ * ON PROVENANCE, because "just use a public-domain icon" is a trap worth
  * writing down. Two separate rights are in play and a PD licence settles only
- * one: copyright, where any particular drawing is somebody's work, which is why
- * this one is authored in the generator from a circle and arcs with no stock
- * file traced or vendored anywhere in the tree; and trademark, where EMVCo's
- * Contactless Indicator is four bare arcs and a CC0 file grants nothing against
- * a mark. That second question is answered by the product rather than by this
- * file — Cryptnox tools its own cases with this symbol, and the firmware
- * follows the hardware.
+ * one of them:
+ *
+ *   Copyright — any particular drawing of this composition is somebody's work.
+ *   This one is UXWing's, whose terms allow personal, commercial and client
+ *   use without attribution. Not a public-domain dedication: a licence, which
+ *   the site can change, so the file in this tree is the copy those terms
+ *   applied to. (assets/carte.png was this mark for one revision, arrived with
+ *   no licence in it at all, and is no longer referenced.)
+ *
+ *   Trademark — EMVCo's Contactless Indicator is the four bare arcs, and no
+ *   copyright licence, CC0 included, grants anything against a mark. A "public
+ *   domain" contactless icon is therefore no safer to ship than this one, and
+ *   drawing the arcs by hand was never safer either. What answers this question
+ *   is the product: a terminal that takes contactless payments is what licenses
+ *   the indicator, usually through scheme certification.
  *
  * ALPHA_8BIT: one alpha byte per pixel, coloured at draw time from the object's
  * img_recolor style. LVGL's fast path for that format does not support angle or
  * zoom — set either and it falls back to a path with no decoded data and draws
  * nothing — so this must stay an untransformed image. Aligned TOP_MID at @p y,
- * occupying TAP_MARK_SZ square: the same box every previous version of this
- * mark has had. */
-#define TAP_MARK_SZ   96
+ * occupying TAP_MARK_W x TAP_MARK_H.
+ *
+ * SIZED BY THE ARTWORK, not by this file: the generator crops the asset to its
+ * ink, scales it to the height PX_H asks for, and asserts the width that falls
+ * out still fits the card. Nothing lays out against these two — the image
+ * carries its own size, and they are here to be read, not to be set. The one
+ * thing that DOES depend on them is the y this mark is placed at, which keeps
+ * it centred in its band: see build_card_wait(). */
+#define TAP_MARK_W    128
+#define TAP_MARK_H    76
 
-/* The mark's ink, and the one place to change it. Black — but it was COL_TITLE
- * (mid-grey) for as long as the mark was drawn in solid strokes, and the reason
- * it moved is worth keeping, because it is the same reason in both directions.
+/* The mark's ink, and the one place to change it. The rule, not the value:
+ * THIS TRACKS THE ARTWORK'S WEIGHT, and it has moved both ways.
  *
- * The argument against black was WEIGHT: a 96px block of solid line art on a
- * card whose text is otherwise grey read as a separate object dropped onto the
- * screen. Grey pulled it back into the ramp. Then the mark was redrawn in the
- * case's outline style — two hairlines per stroke around a hollow middle — and
- * its ink dropped by roughly two thirds. The weight problem it was solving
- * stopped existing, and grey hairlines instead landed where COL_DIM always
- * would have: faint enough to read as disabled, which is wrong for the one
- * thing on the screen the customer is being asked to act on.
+ * Solid strokes get COL_TITLE. A 96px block of solid line art on a card whose
+ * text is otherwise grey reads as a separate object dropped onto the screen;
+ * grey pulls it back into the ramp. The outline version — two hairlines per
+ * stroke around a hollow middle — took COL_TEXT instead, because at a third of
+ * the ink grey hairlines landed where COL_DIM always would have: faint enough
+ * to read as disabled, which is wrong for the one thing on the screen the
+ * customer is being asked to act on.
  *
- * So the rule, not the value: this tracks the artwork's weight. Go back to
- * solid strokes in gen_tap_icon.py and this goes back to COL_TITLE. The amount
- * keeps full black either way — the figure being charged is read first. */
-#define COL_TAP_MARK  COL_TEXT
+ * The mark is back to solid strokes, and so is this. The amount keeps full
+ * black either way — the figure being charged is read first. */
+#define COL_TAP_MARK  COL_TITLE
 
 static void make_tap_mark(lv_obj_t *parent, lv_coord_t y) {
     lv_obj_t *img = lv_img_create(parent);
@@ -1820,6 +1921,10 @@ static void clear_screen(void) {
     lv_obj_t *scr = lv_scr_act();
     lv_obj_clean(scr);
     lv_obj_set_style_bg_color(scr, COL_BG, LV_PART_MAIN);
+    /* build_page() leaves a gradient on the screen, and the screen object
+     * outlives the screens built on it — without this the ramp follows onto
+     * the flat white pages. */
+    lv_obj_set_style_bg_grad_dir(scr, LV_GRAD_DIR_NONE, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, LV_PART_MAIN);
     s_amount_label = NULL;
     s_amount_cents_label = NULL;
@@ -1901,58 +2006,28 @@ static void clock_refresh(void) {
 /**
  * @brief Lay the sale-flow chrome and return the white card to build into.
  *
- * @param step Which dash is lit (PAY_STEP_*), or PAY_STEP_NONE for no dashes.
+ * @param step Which step of the sale this is (PAY_STEP_*). Nothing draws it
+ *        since the progress rail was removed; kept because the callers already
+ *        know it and a later indicator would want it again.
  * @return The card. Children placed in it use ITS coordinates, so (0,0) is the
  *         card's top-left corner — CARD_W x CARD_H, not the screen.
  */
+/* The page ramp, on whatever is acting as the page: the screen on the sale
+ * flow and the admin panel, the rising sheet when the admin code is typed into
+ * one. Anything laid over it that wants the ramp to show through has to say so
+ * — LVGL's own defaults are opaque, which is what the transparency overrides
+ * in build_settings() are for. */
+static void paint_page(lv_obj_t *obj) {
+    lv_obj_set_style_bg_color(obj, COL_PAGE, LV_PART_MAIN);
+    lv_obj_set_style_bg_grad_color(obj, COL_PAGE_GRAD, LV_PART_MAIN);
+    lv_obj_set_style_bg_grad_dir(obj, LV_GRAD_DIR_VER, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, LV_PART_MAIN);
+}
+
 static lv_obj_t *build_page(int step) {
+    (void)step;   /* ponytail: no progress indicator on the band any more */
     clear_screen();
-    lv_obj_set_style_bg_color(lv_scr_act(), COL_PAGE, LV_PART_MAIN);
-
-    /* One rail, in the band between the clock and the Wi-Fi mark, filled to the
-     * step reached.
-     *
-     * This replaces four dashes, and it gives something up: a sale is a fixed
-     * number of discrete steps, and dashes answered "how many more" in a way a
-     * continuous bar cannot.
-     *
-     * It starts after the TEST chip when there is one, which is why this reads
-     * the same setting the chip does rather than being told: add_test_chip()
-     * runs later, from build_amount, and the rail has to be laid out before
-     * anyone knows whether that call will draw anything. The two agree through
-     * CHIP_X and CHIP_W and nothing else. */
-    if (step >= 0) {
-        const bool       testnet = !settings_get_mainnet();
-        const lv_coord_t x0      = (testnet ? (CHIP_X + CHIP_W)
-                                            : (CLOCK_X + CLOCK_W)) + RAIL_GAP;
-        const lv_coord_t x1      = SCR_W - SIG_ZONE_W - RAIL_GAP;
-        const lv_coord_t w       = (x1 > x0) ? (lv_coord_t)(x1 - x0) : 0;
-
-        if (w > 0) {
-            lv_obj_t *track = lv_obj_create(lv_scr_act());
-            lv_obj_remove_style_all(track);
-            lv_obj_set_size(track, w, RAIL_H);
-            lv_obj_set_pos(track, x0, RAIL_Y);
-            lv_obj_set_style_bg_color(track, COL_STEP_OFF, LV_PART_MAIN);
-            lv_obj_set_style_bg_opa(track, LV_OPA_COVER, LV_PART_MAIN);
-            lv_obj_set_style_radius(track, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-            lv_obj_clear_flag(track, LV_OBJ_FLAG_SCROLLABLE);
-
-            /* step is 0-based, so the first step already shows a quarter
-             * filled — the customer has done something by the time they are
-             * looking at it. */
-            lv_obj_t *fill = lv_obj_create(track);
-            lv_obj_remove_style_all(fill);
-            lv_obj_set_size(fill,
-                            (lv_coord_t)((w * (step + 1)) / PAY_STEP__COUNT),
-                            RAIL_H);
-            lv_obj_set_pos(fill, 0, 0);
-            lv_obj_set_style_bg_color(fill, COL_STEP_ON, LV_PART_MAIN);
-            lv_obj_set_style_bg_opa(fill, LV_OPA_COVER, LV_PART_MAIN);
-            lv_obj_set_style_radius(fill, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-            lv_obj_clear_flag(fill, LV_OBJ_FLAG_SCROLLABLE);
-        }
-    }
+    paint_page(lv_scr_act());
 
     /* The clock, left end of the status band. Built here so it lives exactly
      * where the band does — on the sale flow — and retexted by the status timer
@@ -2038,13 +2113,23 @@ static void tab_change_cb(lv_event_t *e) {
 }
 
 static void build_settings(void) {
-    clear_screen();   /* white, full screen */
+    clear_screen();
+    paint_page(lv_scr_act());   /* the sale flow's ramp, full screen */
 
     lv_obj_t *tv = lv_tabview_create(lv_scr_act(), LV_DIR_TOP, 42);
     lv_obj_set_size(tv, SCR_W, SCR_H - 54);
     lv_obj_align(tv, LV_ALIGN_TOP_MID, 0, 0);
     /* Tabview and tab bar are the theme's (section 3a) — the underline this
-     * used to draw by hand is now a filled pill, on every tabview. */
+     * used to draw by hand is now a filled pill, on every tabview.
+     *
+     * Both are painted COL_BG by that theme, and the tabview covers the whole
+     * screen, so the ramp is behind three opaque layers: the tabview, the tab
+     * bar and each page. All three go transparent here rather than in the
+     * theme, which every other tabview this firmware might add still wants
+     * white. */
+    lv_obj_set_style_bg_opa(tv, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(lv_tabview_get_tab_btns(tv), LV_OPA_TRANSP,
+                            LV_PART_MAIN);
 
     lv_obj_t *t_screen = lv_tabview_add_tab(tv, "Screen");
     lv_obj_t *t_wifi   = lv_tabview_add_tab(tv, "Wi-Fi");
@@ -2052,7 +2137,7 @@ static void build_settings(void) {
     lv_obj_t *t_about  = lv_tabview_add_tab(tv, "About");
     lv_obj_t *pages[4] = { t_screen, t_wifi, t_tx, t_about };
     for (int i = 0; i < 4; i++) {
-        lv_obj_set_style_bg_color(pages[i], COL_BG, LV_PART_MAIN);   /* flat white */
+        lv_obj_set_style_bg_opa(pages[i], LV_OPA_TRANSP, LV_PART_MAIN);
         lv_obj_set_style_border_width(pages[i], 0, LV_PART_MAIN);
         lv_obj_set_style_pad_all(pages[i], TAB_PAD, LV_PART_MAIN);
         lv_obj_clear_flag(pages[i], LV_OBJ_FLAG_SCROLLABLE);
@@ -2290,15 +2375,16 @@ static void build_settings(void) {
 
     /* Bottom bar: Close always; on the About tab a Reset joins it on the same
      * line (Reset left, Close right). On other tabs Close is full-width. */
-    s_close_btn = make_button(lv_scr_act(), "Close", COL_ACCENT, COL_BG, 232, ACT_BTN_H,
+    s_close_btn = make_button(lv_scr_act(), "Close", COL_ACTION, COL_BG, 232, ACT_BTN_H,
                               LV_ALIGN_BOTTOM_MID, 0, ACT_BTN_Y, ACT_CLOSE,
                               &lv_font_montserrat_20);
     s_reset_btn = make_button(lv_scr_act(), "Reset", COL_DANGER, COL_TEXT, 108, ACT_BTN_H,
                               LV_ALIGN_BOTTOM_LEFT, 10, ACT_BTN_Y, ACT_RESET,
                               &lv_font_montserrat_20);
-    /* Same full-radius pill shape as the selector rows above. */
-    lv_obj_set_style_radius(s_close_btn, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-    lv_obj_set_style_radius(s_reset_btn, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    /* Shape comes from make_button — BTN_RADIUS, the same corner as Charge.
+     * These two used to be full-radius pills, which made the bottom bar of the
+     * admin panel the one place on the panel where a button was a different
+     * shape to every other button. */
     lv_obj_add_event_cb(lv_tabview_get_tab_btns(tv), tab_change_cb,
                         LV_EVENT_VALUE_CHANGED, NULL);
 
@@ -2392,7 +2478,7 @@ static void build_touch_cal(void) {
                    COL_DANGER, &lv_font_montserrat_20, LV_ALIGN_CENTER, 0, -20);
         lv_obj_set_style_text_align(no, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
         lv_obj_align(no, LV_ALIGN_CENTER, 0, -20);
-        make_button(lv_scr_act(), "Back", COL_ACCENT, COL_BG, 232, ACT_BTN_H,
+        make_button(lv_scr_act(), "Back", COL_ACTION, COL_BG, 232, ACT_BTN_H,
                     LV_ALIGN_BOTTOM_MID, 0, ACT_BTN_Y, ACT_CAL_CANCEL,
                     &lv_font_montserrat_20);
         return;
@@ -2408,10 +2494,10 @@ static void build_touch_cal(void) {
                                  LV_ALIGN_TOP_MID, 0, 140);
     s_cal_deadline = lv_tick_get() + CAL_VERIFY_MS;
 
-    make_button(lv_scr_act(), "Discard", COL_SURFACE, COL_TEXT, 104, ACT_BTN_H,
+    make_button(lv_scr_act(), "Discard", COL_ACTION, COL_BG, 104, ACT_BTN_H,
                 LV_ALIGN_BOTTOM_LEFT, 10, ACT_BTN_Y, ACT_CAL_CANCEL,
                 &lv_font_montserrat_20);
-    make_button(lv_scr_act(), "Keep", COL_ACCENT, COL_BG, 104, ACT_BTN_H,
+    make_button(lv_scr_act(), "Keep", COL_ACTION, COL_BG, 104, ACT_BTN_H,
                 LV_ALIGN_BOTTOM_RIGHT, -10, ACT_BTN_Y, ACT_CAL_SAVE,
                 &lv_font_montserrat_20);
 }
@@ -2498,7 +2584,7 @@ static void open_reset_confirm(void) {
 
     make_button(card, "Erase", COL_DANGER, COL_TEXT, 196, 40,
                 LV_ALIGN_BOTTOM_MID, 0, -50, ACT_RESET_CONFIRM, &lv_font_montserrat_20);
-    make_button(card, "Cancel", COL_SURFACE, COL_TEXT, 196, 40,
+    make_button(card, "Cancel", COL_ACTION, COL_BG, 196, 40,
                 LV_ALIGN_BOTTOM_MID, 0, -2, ACT_MODAL_CLOSE, &lv_font_montserrat_20);
 }
 
@@ -2575,7 +2661,7 @@ static void open_portal_window(void) {
                  "nothing for a phone to join.\n\nRestart and try again.",
                  COL_TEXT, &lv_font_montserrat_14);
         ota_fit_card(card, m, 42);
-        make_button(card, "Close", COL_SURFACE, COL_TEXT, OTA_TEXT_W, 40,
+        make_button(card, "Close", COL_ACTION, COL_BG, OTA_TEXT_W, 40,
                     LV_ALIGN_BOTTOM_MID, 0, -2, ACT_MODAL_CLOSE,
                     &lv_font_montserrat_20);
         return;
@@ -2634,7 +2720,7 @@ static void open_portal_window(void) {
     lv_obj_t *n = ota_text(card, url, note, COL_DIM, &lv_font_montserrat_14);
     ota_fit_card(card, n, 42);
 
-    make_button(card, "Done", COL_SURFACE, COL_TEXT, OTA_TEXT_W, 40,
+    make_button(card, "Done", COL_ACTION, COL_BG, OTA_TEXT_W, 40,
                 LV_ALIGN_BOTTOM_MID, 0, -2, ACT_PORTAL_CLOSE,
                 &lv_font_montserrat_20);
 
@@ -2669,7 +2755,7 @@ static void open_ota_gone(void) {
              "Open Update again and send the file once more.",
              COL_TEXT, &lv_font_montserrat_14);
     ota_fit_card(card, m, 42);
-    make_button(card, "Close", COL_SURFACE, COL_TEXT, OTA_TEXT_W, 40,
+    make_button(card, "Close", COL_ACTION, COL_BG, OTA_TEXT_W, 40,
                 LV_ALIGN_BOTTOM_MID, 0, -2, ACT_MODAL_CLOSE,
                 &lv_font_montserrat_20);
 }
@@ -2707,9 +2793,9 @@ static void build_ota_confirm(void) {
     lv_obj_t *m = ota_text(card, ver, body, COL_DIM, &lv_font_montserrat_14);
     ota_fit_card(card, m, 86);
 
-    make_button(card, "Install", COL_ACCENT, COL_BG, OTA_TEXT_W, 40,
+    make_button(card, "Install", COL_ACTION, COL_BG, OTA_TEXT_W, 40,
                 LV_ALIGN_BOTTOM_MID, 0, -46, ACT_OTA_OK, &lv_font_montserrat_20);
-    make_button(card, "Discard", COL_SURFACE, COL_TEXT, OTA_TEXT_W, 40,
+    make_button(card, "Discard", COL_ACTION, COL_BG, OTA_TEXT_W, 40,
                 LV_ALIGN_BOTTOM_MID, 0, -2, ACT_OTA_NO, &lv_font_montserrat_20);
 
     s_portal_modal = true;
@@ -2875,10 +2961,7 @@ static void add_test_chip(void) {
     lv_obj_set_style_radius(chip, LV_RADIUS_CIRCLE, LV_PART_MAIN);
     /* Straight after the clock. It was top-LEFT, which is the clock's corner
      * now; it cannot go right, because that end is the Wi-Fi mark's and the mark
-     * is on the top layer, so a right-aligned chip is drawn underneath it; and
-     * it cannot go in the middle any more, because the rail is there. So it sits
-     * in the band's one remaining slot, and the rail starts after it — see
-     * build_page(), which reserves CHIP_W here whenever the chip is drawn. */
+     * is on the top layer, so a right-aligned chip is drawn underneath it. */
     lv_obj_align(chip, LV_ALIGN_TOP_LEFT, CHIP_X, CHIP_Y);
 }
 
@@ -3214,7 +3297,11 @@ static void build_card_wait(void) {
     make_label(card, "Cryptnox card", COL_DIM, &lv_font_montserrat_14,
                LV_ALIGN_TOP_MID, 0, 14);
 
-    make_tap_mark(card, 40);
+    /* Centred in the band between the caption above and the line below, rather
+     * than pinned at 40: the mark's height is the generator's to choose, so the
+     * gap it leaves is worked out here instead of being re-typed whenever the
+     * artwork is re-scaled. */
+    make_tap_mark(card, 40 + ((106 - TAP_MARK_H) / 2));
 
     make_label(card, "Hold card to reader", COL_TEXT,
                &lv_font_montserrat_20, LV_ALIGN_TOP_MID, 0, 146);
@@ -3330,8 +3417,12 @@ static void build_amount(void) {
     lv_obj_set_style_text_font(kb, &lv_font_montserrat_28, LV_PART_ITEMS);
     lv_obj_set_style_radius(kb, 8, LV_PART_ITEMS);
     lv_obj_add_event_cb(kb, amount_kbd_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    /* Redraws the backspace as an outline — see amount_kbd_draw_cb(). Both
+     * halves: BEGIN hides the solid glyph, END draws over the key. */
+    lv_obj_add_event_cb(kb, amount_kbd_draw_cb, LV_EVENT_DRAW_PART_BEGIN, NULL);
+    lv_obj_add_event_cb(kb, amount_kbd_draw_cb, LV_EVENT_DRAW_PART_END, NULL);
 
-    s_charge_btn = make_button(card, "Charge", COL_ACCENT, COL_BG,
+    s_charge_btn = make_button(card, "Charge", COL_ACTION, COL_BG,
                                CARD_BTN_W, CARD_BTN_H,
                                LV_ALIGN_BOTTOM_MID, 0, CARD_BTN_Y, ACT_CONFIRM,
                                &lv_font_montserrat_20);
@@ -3440,7 +3531,7 @@ static void build_confirm(void) {
     const lv_coord_t half = (CARD_W - (2 * CARD_PAD) - 8) / 2;
     make_ghost_button(card, "Cancel", half,
                       LV_ALIGN_BOTTOM_LEFT, CARD_PAD, CARD_BTN_Y, ACT_CANCEL);
-    make_button(card, "Confirm", COL_ACCENT, COL_BG, half, CARD_BTN_H,
+    make_button(card, "Confirm", COL_ACTION, COL_BG, half, CARD_BTN_H,
                 LV_ALIGN_BOTTOM_RIGHT, -CARD_PAD, CARD_BTN_Y, ACT_SEND,
                 &lv_font_montserrat_20);
 }
@@ -3780,6 +3871,9 @@ static void build_admin_screen(const char *title, bool allow_cancel,
         clear_screen();
         host = lv_scr_act();
     }
+    /* On the ramp either way: the sheet gets it too, so the code screen does
+     * not change ground depending on how it was reached. */
+    paint_page(host);
 
     (void)make_title(title, allow_cancel, host);
     if (allow_cancel) {
@@ -3852,7 +3946,7 @@ static void build_wifi_list(void) {
     if (s_ap_count == 0U) {
         make_label(lv_scr_act(), "No networks found", COL_DIM,
                    &lv_font_montserrat_14, LV_ALIGN_CENTER, 0, 0);
-        make_button(lv_scr_act(), "Rescan", COL_ACCENT, COL_BG, 140, ACT_BTN_H,
+        make_button(lv_scr_act(), "Rescan", COL_ACTION, COL_BG, 140, ACT_BTN_H,
                     LV_ALIGN_BOTTOM_MID, 0, ACT_BTN_Y, ACT_WIFI,
                     &lv_font_montserrat_20);
         return;
@@ -3983,13 +4077,29 @@ static void hash_short(const char *h, char *out, size_t n) {
     snprintf(out, n, "%.6s...%s", h, h + len - 4U);
 }
 
-/* "<amount> [USDC logo]" centred at offset y from the top. */
+/* "<amount> [coin mark] <TICKER>" centred at offset y from the top.
+ *
+ * @p ticker names the asset beside its mark, the way the amount and confirm
+ * screens do. It is on for the tap screen and off everywhere else: the mark
+ * alone says which asset to somebody who already knows the logos, and the
+ * screen where that assumption is worth least is the one asking for the card.
+ * By the time the answer is "Approved" the sale is over and the row is a
+ * receipt, so it stays short there.
+ *
+ * The nudge is what keeps the row centred: the label is placed from the
+ * middle, and everything else hangs off its right edge, so the amount has to
+ * start further left by half of whatever follows it. */
 static void tx_amount_row(lv_obj_t *parent, const char *amt,
-                          const lv_font_t *font, lv_coord_t y) {
+                          const lv_font_t *font, lv_coord_t y, bool ticker) {
     lv_obj_t *al = make_label(parent, amt, COL_TEXT, font,
-                              LV_ALIGN_TOP_MID, -16, y);
+                              LV_ALIGN_TOP_MID, ticker ? -36 : -16, y);
     lv_obj_t *u  = make_asset_badge(parent, settings_get_chain());
     lv_obj_align_to(u, al, LV_ALIGN_OUT_RIGHT_MID, 8, 0);
+    if (ticker) {
+        lv_obj_t *t = make_label(parent, asset_name(), COL_TEXT,
+                                 &lv_font_montserrat_14, LV_ALIGN_DEFAULT, 0, 0);
+        lv_obj_align_to(t, u, LV_ALIGN_OUT_RIGHT_MID, 4, 0);
+    }
 }
 
 static void build_tx_status(void) {
@@ -4004,7 +4114,7 @@ static void build_tx_status(void) {
     if (s_tx_state == UI_TX_STATE_PLACE_CARD) {
         make_label(card, "Total", COL_DIM, &lv_font_montserrat_14,
                    LV_ALIGN_TOP_MID, 0, 14);
-        tx_amount_row(card, amt, &lv_font_montserrat_28, 32);
+        tx_amount_row(card, amt, &lv_font_montserrat_28, 32, true);
 
         make_label(card, "Tap your card", COL_DIM, &lv_font_montserrat_20,
                    LV_ALIGN_TOP_MID, 0, 78);
@@ -4022,7 +4132,7 @@ static void build_tx_status(void) {
         pop_in(chk);
         make_label(card, "Approved", COL_TEXT, &lv_font_montserrat_20,
                    LV_ALIGN_TOP_MID, 0, 92);
-        tx_amount_row(card, amt, &lv_font_montserrat_28, 122);
+        tx_amount_row(card, amt, &lv_font_montserrat_28, 122, false);
 
         /* The hash main hands this screen with the DONE state. It used to be
          * dropped on the floor, which left the merchant a settled sale they
@@ -4208,14 +4318,9 @@ static const uint16_t SIG_SWEEP[SIG_ARCS] = { 140, 110, 100 };
 #define SIG_REACH  (SIG_R0 + ((SIG_ARCS - 1) * SIG_RSTEP) + (SIG_AW / 2))
 #define SIG_W      (2 * SIG_REACH)
 #define SIG_H      (SIG_REACH + ((SIG_DOT + 1) / 2))
-/* Inset from the right edge. The mark and this together are the band's
- * right-hand zone, which the progress rail stops short of — and it reserves
- * that zone by a constant of its own, because this section is below it in the
- * file. Resize the mark and this assert is what tells you the rail no longer
- * clears it. */
+/* Inset from the right edge. Nothing shares the band's right-hand zone with the
+ * mark now that the progress rail is gone, so this is just where it sits. */
 #define SIG_INSET  14
-static_assert((SIG_W + SIG_INSET) <= SIG_ZONE_W,
-              "Wi-Fi mark outgrew SIG_ZONE_W - the progress rail would run under it");
 
 static lv_obj_t *s_sig_arc[SIG_ARCS];
 static lv_obj_t *s_sig_dot = NULL;
