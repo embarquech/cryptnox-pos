@@ -26,9 +26,31 @@ A VECTOR SOURCE, rasterised here rather than a PNG rasterised once by somebody
 else: the asset is the artwork at any size, so the panel's copy is re-rendered
 from it whenever the box changes instead of being resampled from a bitmap that
 was already the wrong size. It is rendered at SS times the final height and
-downsampled with LANCZOS — cairosvg antialiases on its own, but line art this
-thin keeps more of its strokes through a supersample than through a single
-pass at 100 px.
+downsampled — cairosvg antialiases on its own, but line art this thin keeps
+more of its strokes through a supersample than through a single pass at 100 px.
+
+TWO THINGS ARE DONE TO IT, and both are about the same failure: at 76 px the
+thinnest strokes in this drawing are under a pixel wide, so they come out as
+grey where the drawing is black, and a grey hairline on a pale ground is what
+"washed out" and "looks compressed" both mean on the panel.
+
+  STROKE THE ARTWORK, in the source, before rendering. The asset is a filled
+  outline with no stroke of its own; STROKE_W of the same colour fattens it
+  along its true geometry, and cairosvg antialiases the result as it would any
+  vector. This replaces a MaxFilter dilation of the rendered bitmap, which was
+  the same idea done to pixels and looked it: a square kernel grows a curve by
+  its own corner, so the ellipse came back a hair thicker at the diagonals than
+  at the poles and read as wobbly at the size it is actually shown.
+
+  BOX, not LANCZOS, to downsample. Lanczos overshoots at an edge — a light halo
+  outside every stroke and a dark rim inside it — which on 1 px strokes is
+  ringing at the same scale as the artwork. A box filter over an exact SS-times
+  grid is a plain area average: no ringing to mistake for compression.
+
+Together they take the mask's mean alpha from 45 to 58 with the edge ramp
+intact — the mark is the same drawing, weighted the way the source draws it.
+Nothing is done to the alpha afterwards: a gamma curve was tried and bought
+1.8 counts of mean while flattening the very ramp that keeps the curves smooth.
 
 The artwork is black with a transparent ground, so the conversion is the alpha
 channel: render, crop to the ink, scale, write the bytes. Output is
@@ -49,6 +71,7 @@ SRC = "assets/contactless-icon.svg"
 OUT_C = "main/tap_icon.c"
 OUT_H = "main/tap_icon.h"
 SS = 6                 # supersample before the final downscale
+STROKE_W = 0.8         # in the asset's own units (its viewBox is 122.88x72.92)
 
 # The one size knob. The card-wait screen has 106 px between the mark's y and
 # "Hold card to reader" under it, so 100 filled the band edge to edge; this is
@@ -59,8 +82,25 @@ PX_H = 76
 MAX_W = 204            # CARD_W less its two pads
 
 
+def stroked():
+    """The asset with STROKE_W of its own colour added.
+
+    `stroke` is an inherited SVG property, so it goes on the one <g> the asset
+    wraps its path in and needs no knowledge of the path itself. Asserted
+    rather than attempted: an asset that stops having that <g> would otherwise
+    ship silently as the hairline version this exists to avoid.
+    """
+    src = open(SRC, encoding="utf-8").read()
+    out = src.replace("<g>", '<g style="stroke:#000;stroke-width:%s;'
+                             'stroke-linejoin:round;stroke-linecap:round">'
+                      % STROKE_W, 1)
+    assert out != src, "%s has no bare <g> to hang the stroke on" % SRC
+    return out
+
+
 def build():
-    png = cairosvg.svg2png(url=SRC, output_height=PX_H * SS)
+    png = cairosvg.svg2png(bytestring=stroked().encode(),
+                           output_height=PX_H * SS)
     a = Image.open(io.BytesIO(png)).convert("RGBA").getchannel("A")
     bbox = a.getbbox()
     assert bbox is not None, "%s rendered empty" % SRC
@@ -68,7 +108,7 @@ def build():
     w = max(1, int(round(a.size[0] * PX_H / a.size[1])))
     assert w <= MAX_W, "%s is %d px wide at %d tall - wider than the card" % (
         SRC, w, PX_H)
-    return a.resize((w, PX_H), Image.LANCZOS)
+    return a.resize((w, PX_H), Image.BOX)
 
 
 img = build()

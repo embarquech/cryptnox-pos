@@ -127,6 +127,10 @@ static XPT2046_Touchscreen touch(T_CS, T_IRQ);
  * Anything drawn ON the page gets rechecked whenever these two move. */
 #define COL_PAGE      lv_color_hex(0xE2F5FF)    /* pale sky — head of the ramp */
 #define COL_PAGE_GRAD lv_color_hex(0xA8D8F0)    /* deeper sky — foot of it     */
+/* The admin side has no page colour of its own: it is plain COL_BG, which is
+ * what clear_screen() and the rising sheet already paint. The grey ramp the
+ * pale sky replaced is still in mockups/mockup.py as RAMP_GREY if it is ever
+ * wanted back. */
 #define COL_HOME_BAR COL_DIM       /* grey — the swipe handle           */
 #define COL_SUCCESS  lv_color_hex(0x1E9E50)   /* green — "Sent"                */
 #define COL_DANGER   lv_color_hex(0xD63A3A)   /* red — failures / reset        */
@@ -317,6 +321,11 @@ static void theme_init(void)
 #define HDR_DIVIDER_Y   42     /* rule under the title                */
 #define ACT_BTN_H       46     /* bottom action-button height         */
 #define ACT_BTN_Y       (-8)   /* bottom action-button offset         */
+/* Every text field's vertical inset, and so its height: one line of type plus
+ * twice this. Not in the theme's s_st_field with the rest of the field's look,
+ * because that style is on the Wi-Fi keyboard too and a pad there moves keys —
+ * and because the block it lives in undertakes to set no geometry. */
+#define FIELD_PAD_V     8
 #define MENU_BTN_W      42
 #define MENU_BTN_H      30
 #define MENU_BTN_X      4
@@ -659,6 +668,7 @@ static char          s_wifi_note[64] = {0};   /* why the picker reopened (may be
 static lv_obj_t     *s_wifi_pass_ta  = NULL;
 static lv_obj_t     *s_wifi_eye_lbl  = NULL;   /* glyph swapped on reveal/hide */
 static lv_obj_t     *s_pin_eye_lbl   = NULL;   /* same, on the card-PIN keypad */
+static lv_obj_t     *s_admin_eye_lbl = NULL;   /* same, on the admin-code keypad */
 
 /* Progress screen (UI_SCREEN_WIFI_CONNECTING), two pieces rather than one
  * preformatted line: the name is stored raw so the label elides it by real
@@ -745,7 +755,7 @@ enum BtnAction {
     ACT_CONFIRM, ACT_CANCEL, ACT_SEND, ACT_NEW,
     ACT_CLOSE, ACT_PIN_CANCEL, ACT_PIN_REVEAL,
     ACT_WIFI, ACT_WIFI_CANCEL, ACT_WIFI_PASS_REVEAL,
-    ACT_ADMIN_CANCEL, ACT_WELCOME_OK,
+    ACT_ADMIN_CANCEL, ACT_ADMIN_REVEAL, ACT_WELCOME_OK,
     /* Config portal: accept/reject a proposed value, finish the wizard. */
     ACT_PROV_OK, ACT_PROV_NO, ACT_PROV_FINISH,
     ACT_RESET, ACT_RESET_CONFIRM, ACT_MODAL_CLOSE,
@@ -1097,11 +1107,7 @@ static void amount_update_display(void) {
     s_amount_units = s_amount_cents * 10000ULL;   /* cents -> 6-decimal base units */
 }
 
-/* Index of the backspace in the amount keypad's map — bottom row, third key.
- * Counted from the map below; if a key is added before it, this moves. */
-#define AMOUNT_KEY_BACKSPACE  11U
-
-/* The drawn backspace, in units of half its height — see amount_kbd_draw_cb().
+/* The drawn backspace, in units of half its height — see kbd_backspace_draw_cb().
  * The tag is 2*BSP_H tall and BSP_W wide with a BSP_NOSE-deep point on the left,
  * which is the outline the LVGL symbol draws solid. */
 #define BSP_W     16   /* half-length; 32 wide against 18 tall reads as the
@@ -1111,9 +1117,28 @@ static void amount_update_display(void) {
 #define BSP_NOSE   6
 #define BSP_CROSS  4
 #define BSP_LINE   2
+/* The corner radius. The two right-hand corners are true quarter-circles, drawn
+ * with lv_draw_arc; the nose's two are chamfered, and the point is left alone.
+ *
+ * WHY NOT ALL THREE KINDS THE SAME. A chamfer at a right angle is a flat cut and
+ * looks like one — that is what the first pass at this shipped and what came
+ * back. A chamfer at the nose's 124-degree turn is a 1 px deviation from the arc
+ * it stands in for, invisible at this size, and a fillet there is not: the
+ * tangent length at that angle is 5.6 px, which is most of a 6 px nose. So the
+ * corners that read as flat get arcs and the ones that do not, do not.
+ *
+ * INTEGERS everywhere, which was the fix for the pass before that. The cuts were
+ * computed by walking BSP_R along each edge in floats and truncating, which
+ * rounds toward zero — so the cut above the centre line landed on a different
+ * pixel from the one below it and the mark came out lopsided. The nose's (2,3)
+ * is one third of its 6:9 slope, ~3.6 px: near enough to BSP_R and exact in both
+ * directions. */
+#define BSP_R        3
+#define BSP_NOSE_DX  2   /* the nose's cut, one third of its run... */
+#define BSP_NOSE_DY  3   /* ...and one third of its rise */
 
 /**
- * Draw the amount keypad's backspace as an outline rather than a solid glyph.
+ * Draw the keypad's backspace as an outline rather than a solid glyph.
  *
  * LV_SYMBOL_BACKSPACE is a filled FontAwesome shape, and at the 28px the digits
  * are set in it lands as a black slab in a row of thin numerals — the heaviest
@@ -1130,14 +1155,20 @@ static void amount_update_display(void) {
  * gives both halves of what that needs: BEGIN to suppress the built-in glyph,
  * END to draw over the key in its own measured area — no cell geometry is
  * computed here, so the theme's padding cannot put the mark in the wrong place.
+ *
+ * Attached to every keypad that has a backspace — the amount, the card PIN and
+ * the admin code — so the key that undoes a keystroke is one mark across the
+ * panel. Matched on the key's TEXT, not its index: the three maps put it in
+ * different cells.
  */
-static void amount_kbd_draw_cb(lv_event_t *e) {
+static void kbd_backspace_draw_cb(lv_event_t *e) {
     lv_obj_draw_part_dsc_t *dsc = lv_event_get_draw_part_dsc(e);
     if ((dsc == NULL) || (dsc->class_p != &lv_btnmatrix_class) ||
-        (dsc->type != LV_BTNMATRIX_DRAW_PART_BTN) ||
-        (dsc->id != AMOUNT_KEY_BACKSPACE)) {
+        (dsc->type != LV_BTNMATRIX_DRAW_PART_BTN)) {
         return;
     }
+    const char *key = lv_btnmatrix_get_btn_text(lv_event_get_target(e), dsc->id);
+    if ((key == NULL) || (strcmp(key, LV_SYMBOL_BACKSPACE) != 0)) { return; }
 
     /* The glyph is still in the map — amount_kbd_cb() matches on that string —
      * so it is hidden at draw time instead of removed. */
@@ -1156,18 +1187,51 @@ static void amount_kbd_draw_cb(lv_event_t *e) {
     ld.round_start = 1;
     ld.round_end   = 1;
 
-    /* Tag outline: point at the left, square at the right. */
-    const lv_point_t tag[6] = {
-        { (lv_coord_t)(cx - BSP_W),            cy                        },
-        { (lv_coord_t)(cx - BSP_W + BSP_NOSE), (lv_coord_t)(cy - BSP_H)  },
-        { (lv_coord_t)(cx + BSP_W),            (lv_coord_t)(cy - BSP_H)  },
-        { (lv_coord_t)(cx + BSP_W),            (lv_coord_t)(cy + BSP_H)  },
-        { (lv_coord_t)(cx - BSP_W + BSP_NOSE), (lv_coord_t)(cy + BSP_H)  },
-        { (lv_coord_t)(cx - BSP_W),            cy                        },
+    /* Every coordinate the outline uses, named once. Held in lv_coord_t rather
+     * than written into the point list as expressions: the arithmetic promotes
+     * to int, and an int inside a braced initialiser is a narrowing conversion
+     * the compiler is entitled to refuse. */
+    const lv_coord_t xr = (lv_coord_t)(cx + BSP_W);                 /* right edge */
+    const lv_coord_t xt = (lv_coord_t)(cx - BSP_W);                 /* the point  */
+    const lv_coord_t nx = (lv_coord_t)(cx - BSP_W + BSP_NOSE);      /* nose's base*/
+    const lv_coord_t xn = (lv_coord_t)(nx - BSP_NOSE_DX);           /* its cut    */
+    const lv_coord_t l  = (lv_coord_t)(nx + BSP_R);   /* straight runs start/end */
+    const lv_coord_t r  = (lv_coord_t)(xr - BSP_R);
+    const lv_coord_t t  = (lv_coord_t)(cy - BSP_H);
+    const lv_coord_t b  = (lv_coord_t)(cy + BSP_H);
+    const lv_coord_t tr = (lv_coord_t)(t + BSP_R);    /* where the arcs take over */
+    const lv_coord_t br = (lv_coord_t)(b - BSP_R);
+    const lv_coord_t tn = (lv_coord_t)(t + BSP_NOSE_DY);
+    const lv_coord_t bn = (lv_coord_t)(b - BSP_NOSE_DY);
+
+    /* The straight runs, clockwise from the top, then the nose. */
+    const lv_point_t seg[7][2] = {
+        { { l,  t  }, { r,  t  } },
+        { { xr, tr }, { xr, br } },
+        { { r,  b  }, { l,  b  } },
+        { { l,  b  }, { xn, bn } },
+        { { xn, bn }, { xt, cy } },
+        { { xt, cy }, { xn, tn } },
+        { { xn, tn }, { l,  t  } },
     };
-    for (int i = 0; i < 5; i++) {
-        lv_draw_line(dsc->draw_ctx, &ld, &tag[i], &tag[i + 1]);
+    for (int i = 0; i < 7; i++) {
+        lv_draw_line(dsc->draw_ctx, &ld, &seg[i][0], &seg[i][1]);
     }
+
+    /* The two right-hand corners. lv_draw_arc's radius is the ring's OUTER edge,
+     * so BSP_R + half the stroke puts the ring's middle on BSP_R and its ends
+     * exactly on the lines above — 0 deg is 3 o'clock and the angles run
+     * clockwise, which is why the top corner is 270..360. */
+    lv_draw_arc_dsc_t ad;
+    lv_draw_arc_dsc_init(&ad);
+    ad.color = COL_TEXT;
+    ad.width = BSP_LINE;
+    ad.opa   = LV_OPA_COVER;
+    const uint16_t   arc_r = BSP_R + (BSP_LINE / 2);
+    const lv_point_t c_top = { r, tr };
+    const lv_point_t c_bot = { r, br };
+    lv_draw_arc(dsc->draw_ctx, &ad, &c_top, arc_r, 270, 360);
+    lv_draw_arc(dsc->draw_ctx, &ad, &c_bot, arc_r,   0,  90);
 
     /* The cross inside, centred in the square end. That centre is
      * cx + BSP_NOSE/2 whatever BSP_W is, so lengthening the tag leaves it
@@ -1400,6 +1464,9 @@ static void btn_event_cb(lv_event_t *e) {
             break;
         case ACT_PIN_REVEAL:
             code_field_reveal(s_pin_ta, s_pin_eye_lbl);
+            break;
+        case ACT_ADMIN_REVEAL:
+            code_field_reveal(s_admin_ta, s_admin_eye_lbl);
             break;
         case ACT_RESET:
             open_reset_confirm();            /* ask before wiping */
@@ -1782,9 +1849,12 @@ static lv_obj_t *make_net_badge(lv_obj_t *parent, pos_net_t net) {
  * to read as disabled, which is wrong for the one thing on the screen the
  * customer is being asked to act on.
  *
- * The mark is back to solid strokes, and so is this. The amount keeps full
- * black either way — the figure being charged is read first. */
-#define COL_TAP_MARK  COL_TITLE
+ * The mark is back to solid strokes, and so is this — and then to black. Grey
+ * pulled it into the ramp as intended and took the mark with it: at 128px of
+ * hairline artwork, #424242 over a pale-sky ground is a washed-out mark rather
+ * than a quiet one. The amount keeps full black either way, and so does the one
+ * thing on the screen the customer is being asked to act on. */
+#define COL_TAP_MARK  COL_TEXT
 
 static void make_tap_mark(lv_obj_t *parent, lv_coord_t y) {
     lv_obj_t *img = lv_img_create(parent);
@@ -1889,15 +1959,22 @@ static void sheet_y_cb(void *obj, int32_t v) {
     lv_obj_set_y(static_cast<lv_obj_t *>(obj), static_cast<lv_coord_t>(v));
 }
 
-/* Full-screen opaque panel parked one screen-height below the fold. */
+/* Full-screen opaque panel parked one screen-height below the fold.
+ *
+ * SQUARE CORNERS, and it had a 16px radius until the screen under it stopped
+ * matching. A sheet that comes to rest flush with all four screen edges has
+ * nowhere to put a rounded corner except over the page behind it, so each
+ * corner is a hole: while this sheet was painted with the sale flow's ramp the
+ * hole showed the same ramp and nobody saw it, and the moment the admin screens
+ * went white it was four blue notches at the screen's corners. The rise is what
+ * reads as a sheet; the corners were never doing that work. */
 static lv_obj_t *sheet_open(void) {
     lv_obj_t *sh = lv_obj_create(lv_scr_act());
-    lv_obj_remove_style_all(sh);
+    lv_obj_remove_style_all(sh);   /* radius 0 among the rest — see above */
     lv_obj_set_size(sh, SCR_W, SCR_H);
     lv_obj_set_pos(sh, 0, SCR_H);
     lv_obj_set_style_bg_color(sh, COL_BG, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(sh, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_radius(sh, 16, LV_PART_MAIN);
     lv_obj_clear_flag(sh, LV_OBJ_FLAG_SCROLLABLE);
     /* Clickable (the LVGL default) on purpose: it must swallow taps meant for
      * the screen it is covering, which is still fully built underneath. */
@@ -2024,6 +2101,12 @@ static void paint_page(lv_obj_t *obj) {
     lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, LV_PART_MAIN);
 }
 
+/* There is deliberately no paint_panel() beside this. The admin panel and the
+ * admin code screen are white, and white is what clear_screen() already leaves
+ * — including resetting this ramp's gradient direction, which outlives the
+ * screen it was set on. A function to paint white over white is a line of code
+ * that can only ever go wrong. */
+
 static lv_obj_t *build_page(int step) {
     (void)step;   /* ponytail: no progress indicator on the band any more */
     clear_screen();
@@ -2113,8 +2196,7 @@ static void tab_change_cb(lv_event_t *e) {
 }
 
 static void build_settings(void) {
-    clear_screen();
-    paint_page(lv_scr_act());   /* the sale flow's ramp, full screen */
+    clear_screen();   /* white, full screen — see the note by paint_page() */
 
     lv_obj_t *tv = lv_tabview_create(lv_scr_act(), LV_DIR_TOP, 42);
     lv_obj_set_size(tv, SCR_W, SCR_H - 54);
@@ -3417,10 +3499,10 @@ static void build_amount(void) {
     lv_obj_set_style_text_font(kb, &lv_font_montserrat_28, LV_PART_ITEMS);
     lv_obj_set_style_radius(kb, 8, LV_PART_ITEMS);
     lv_obj_add_event_cb(kb, amount_kbd_cb, LV_EVENT_VALUE_CHANGED, NULL);
-    /* Redraws the backspace as an outline — see amount_kbd_draw_cb(). Both
+    /* Redraws the backspace as an outline — see kbd_backspace_draw_cb(). Both
      * halves: BEGIN hides the solid glyph, END draws over the key. */
-    lv_obj_add_event_cb(kb, amount_kbd_draw_cb, LV_EVENT_DRAW_PART_BEGIN, NULL);
-    lv_obj_add_event_cb(kb, amount_kbd_draw_cb, LV_EVENT_DRAW_PART_END, NULL);
+    lv_obj_add_event_cb(kb, kbd_backspace_draw_cb, LV_EVENT_DRAW_PART_BEGIN, NULL);
+    lv_obj_add_event_cb(kb, kbd_backspace_draw_cb, LV_EVENT_DRAW_PART_END, NULL);
 
     s_charge_btn = make_button(card, "Charge", COL_ACTION, COL_BG,
                                CARD_BTN_W, CARD_BTN_H,
@@ -3582,15 +3664,20 @@ static void pin_kbd_cb(lv_event_t *e) {
     }
 }
 
-/* Masked one-line code field, centred, with no soft-keyboard popup — the on-screen
- * keypad is the only input. Shared by the card PIN and the admin code.
+/* Masked one-line code field, with no soft-keyboard popup — the on-screen keypad
+ * is the only input. Shared by the card PIN and the admin code, and both pair it
+ * with the reveal eye: a code typed blind on a resistive panel and refused tells
+ * the operator nothing about which of the two got it wrong.
  *
- * Reveal is offered on the PIN only, by the caller: the field is 160px centred, so
- * an eye beside it has 30px of margin to sit in either way, but the two screens
- * are not the same question. The card PIN is the one people mistype and cannot
- * check — the card locks after a few tries — and the operator holding the card is
- * the person entitled to see it. The admin code is entered by the same person into
- * the same panel and is not worth the button. */
+ * @p w is the field alone — the caller sizes the field-and-eye pair to the pad
+ * below it (see CODE_FIELD_W) and shifts it left by CODE_FIELD_X to keep the
+ * pair's middle on that pad's centre line, so the box lines up with the keys
+ * under it instead of floating at some width of its own. Both code screens pass
+ * CODE_KBD_W and are therefore the same box; the Wi-Fi passphrase is the same
+ * rule against a full-width keyboard, so it comes out wider. */
+#define CODE_EYE_GAP    6
+#define CODE_FIELD_W(kbd_w)  ((kbd_w) - MENU_BTN_W - CODE_EYE_GAP)
+#define CODE_FIELD_X    (-(MENU_BTN_W + CODE_EYE_GAP) / 2)
 /* Show the hint while the field is empty, hide it the moment anything is typed.
  * Driven by the textarea's own VALUE_CHANGED, which LVGL sends from all four
  * mutating calls (add_char, add_text, del_char, set_text) — so backspacing back to
@@ -3609,7 +3696,8 @@ static void code_hint_cb(lv_event_t *e) {
 }
 
 static lv_obj_t *make_code_field(uint32_t max_len, lv_coord_t x, lv_coord_t y,
-                                 const char *hint, lv_obj_t *parent = NULL) {
+                                 const char *hint, lv_coord_t w,
+                                 lv_obj_t *parent = NULL) {
     lv_obj_t *host = (parent != NULL) ? parent : lv_scr_act();
     lv_obj_t *ta = lv_textarea_create(host);
     lv_textarea_set_password_mode(ta, true);
@@ -3620,12 +3708,14 @@ static lv_obj_t *make_code_field(uint32_t max_len, lv_coord_t x, lv_coord_t y,
     lv_textarea_set_max_length(ta, max_len);
     lv_textarea_set_text(ta, "");
     lv_obj_clear_flag(ta, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_width(ta, 160);
+    lv_obj_set_width(ta, w);
+    /* Trimmed off the default theme's field padding: the box holds one line of
+     * 14px digits, and at the theme's pad it stood as tall as two keypad rows.
+     * The fill, the radius and the text colour are s_st_field's — set here too,
+     * once, they were three chances for this box and the Wi-Fi one to drift. */
+    lv_obj_set_style_pad_ver(ta, FIELD_PAD_V, LV_PART_MAIN);
     lv_obj_align(ta, LV_ALIGN_TOP_MID, x, y);
     lv_obj_set_style_text_align(ta, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(ta, COL_SURFACE, LV_PART_MAIN);
-    lv_obj_set_style_text_color(ta, COL_TEXT, LV_PART_MAIN);
-    lv_obj_set_style_border_color(ta, COL_BORDER, LV_PART_MAIN);
 
     /* What to type, in the box it is typed into. The panel's own screens are a
      * title, an empty box and a keypad, and a title naming the OUTCOME —
@@ -3651,9 +3741,18 @@ static lv_obj_t *make_code_field(uint32_t max_len, lv_coord_t x, lv_coord_t y,
 }
 
 /* Numeric keypad: no key boxes — black glyphs on white, grey flash on press.
- * The map is static because lv_btnmatrix keeps the pointer. */
+ * The map is static because lv_btnmatrix keeps the pointer.
+ *
+ * ONE WIDTH for both screens that type a code. It was two — the card PIN's from
+ * the sale card it is drawn in, the admin code's from the full panel it has to
+ * itself — and each screen's field was then sized to its own keypad, which is
+ * the right rule and gave the wrong result: two code screens that are the same
+ * screen with a different title, one of them 28 px wider than the other. The
+ * panel is the one with room to spare, so it gives the room up. */
+#define CODE_KBD_W   (CARD_W - (2 * CARD_PAD))
 static lv_obj_t *make_numeric_keypad(lv_event_cb_t cb, lv_obj_t *parent = NULL,
-                                     lv_coord_t w = 232, lv_coord_t h = 210) {
+                                     lv_coord_t w = CODE_KBD_W,
+                                     lv_coord_t h = 210) {
     static const char *kbd_map[] = {
         "1", "2", "3", "\n",
         "4", "5", "6", "\n",
@@ -3675,6 +3774,9 @@ static lv_obj_t *make_numeric_keypad(lv_event_cb_t cb, lv_obj_t *parent = NULL,
     lv_obj_set_style_text_font(kb, &lv_font_montserrat_28, LV_PART_ITEMS);
     lv_obj_set_style_radius(kb, 8, LV_PART_ITEMS);
     lv_obj_add_event_cb(kb, cb, LV_EVENT_VALUE_CHANGED, NULL);
+    /* The amount screen's outline backspace, on the PIN and admin pads too. */
+    lv_obj_add_event_cb(kb, kbd_backspace_draw_cb, LV_EVENT_DRAW_PART_BEGIN, NULL);
+    lv_obj_add_event_cb(kb, kbd_backspace_draw_cb, LV_EVENT_DRAW_PART_END, NULL);
     return kb;
 }
 
@@ -3695,8 +3797,13 @@ static void build_pin(void) {
      * with a 6px gap, so the field gives up half of that and the group's middle
      * stays on the keypad's centre line. Centring the field itself would put the
      * eye 8px off the right edge of a 240px panel. Passed in rather than re-aligned
-     * afterwards, so the hint inside the box is placed against the final position. */
-    s_pin_ta = make_code_field(9U, -(MENU_BTN_W + 6) / 2, 44, "Card PIN", card);
+     * afterwards, so the hint inside the box is placed against the final position.
+     *
+     * The pair is exactly the keypad's width, so the box's left edge and the eye's
+     * right edge sit on the outer keys' — the grey slab used to be its own width
+     * and read as an object dropped over the pad rather than the pad's own field. */
+    s_pin_ta = make_code_field(9U, CODE_FIELD_X, 44, "Card PIN",
+                               CODE_FIELD_W(CODE_KBD_W), card);
 
     /* Same reveal the Wi-Fi passphrase has, and for the same reason: a PIN typed
      * blind on a resistive panel and refused tells the operator nothing about which
@@ -3705,10 +3812,10 @@ static void build_pin(void) {
      * make_icon_button() places itself top-left for the burger; move it beside the
      * field, and keep the label handle so the glyph can be swapped in place. */
     lv_obj_t *eye = make_icon_button(LV_SYMBOL_EYE_OPEN, ACT_PIN_REVEAL, card);
-    lv_obj_align_to(eye, s_pin_ta, LV_ALIGN_OUT_RIGHT_MID, 6, 0);
+    lv_obj_align_to(eye, s_pin_ta, LV_ALIGN_OUT_RIGHT_MID, CODE_EYE_GAP, 0);
     s_pin_eye_lbl = lv_obj_get_child(eye, 0);
 
-    (void)make_numeric_keypad(pin_kbd_cb, card, CARD_W - (2 * CARD_PAD), 170);
+    (void)make_numeric_keypad(pin_kbd_cb, card, CODE_KBD_W, 170);
 }
 
 /**
@@ -3871,16 +3978,26 @@ static void build_admin_screen(const char *title, bool allow_cancel,
         clear_screen();
         host = lv_scr_act();
     }
-    /* On the ramp either way: the sheet gets it too, so the code screen does
-     * not change ground depending on how it was reached. */
-    paint_page(host);
+    /* No ground is painted here on purpose: white either way, which is what
+     * clear_screen() leaves above and what sheet_open() paints its panel. The
+     * code screen is the door to the admin panel, so it is the panel's colour
+     * and not the sale flow's ramp, however it was reached. */
 
     (void)make_title(title, allow_cancel, host);
     if (allow_cancel) {
         (void)make_icon_button(LV_SYMBOL_LEFT, ACT_ADMIN_CANCEL, host);
     }
 
-    s_admin_ta = make_code_field(ADMIN_CODE_MAX, 0, 44, hint, host);
+    s_admin_ta = make_code_field(ADMIN_CODE_MAX, CODE_FIELD_X, 44, hint,
+                                 CODE_FIELD_W(CODE_KBD_W), host);
+
+    /* The card PIN's reveal, on this code too. It was left off on the argument
+     * that the admin code is typed by the person who set it — but it is typed
+     * blind on a resistive panel exactly like the PIN, and getting it wrong here
+     * costs a doubling lockout on the only door to the factory reset. */
+    lv_obj_t *eye = make_icon_button(LV_SYMBOL_EYE_OPEN, ACT_ADMIN_REVEAL, host);
+    lv_obj_align_to(eye, s_admin_ta, LV_ALIGN_OUT_RIGHT_MID, CODE_EYE_GAP, 0);
+    s_admin_eye_lbl = lv_obj_get_child(eye, 0);
 
     /* Note band above the keypad: wrong code, mismatch, or the remaining wait. */
     s_admin_note_lbl = make_label(host, s_admin_note, COL_DANGER,
@@ -4001,16 +4118,21 @@ static void build_wifi_pass(void) {
      * a third of LVGL's 1500 ms default on a customer-facing screen. The eye
      * stays the way to re-read the whole passphrase, on the merchant's terms. */
     lv_textarea_set_password_show_time(s_wifi_pass_ta, 500);
-    lv_obj_set_width(s_wifi_pass_ta, SCR_W - 24 - MENU_BTN_W);
-    lv_obj_align(s_wifi_pass_ta, LV_ALIGN_TOP_LEFT, 12, 28);
-    lv_obj_set_style_bg_color(s_wifi_pass_ta, COL_SURFACE, LV_PART_MAIN);
-    lv_obj_set_style_text_color(s_wifi_pass_ta, COL_TEXT, LV_PART_MAIN);
+    /* The same box as the card PIN's and the admin code's, by the same rule:
+     * the field and its eye are one group, sized to the thing typing into it —
+     * here the full-width keyboard, less a margin its own width either side —
+     * and centred as a pair so the group's middle is the keyboard's. Only the
+     * text alignment differs, because a passphrase is read left to right and a
+     * PIN is four digits in the middle of a box. */
+    lv_obj_set_width(s_wifi_pass_ta, CODE_FIELD_W(SCR_W - (2 * FIELD_PAD_V)));
+    lv_obj_align(s_wifi_pass_ta, LV_ALIGN_TOP_MID, CODE_FIELD_X, 28);
+    lv_obj_set_style_pad_ver(s_wifi_pass_ta, FIELD_PAD_V, LV_PART_MAIN);
 
     /* make_icon_button() places itself top-left for the burger; move it beside
      * the field. Keep the label handle so the glyph can be swapped in place. Same
      * pair on the card-PIN screen — see build_pin(). */
     lv_obj_t *eye = make_icon_button(LV_SYMBOL_EYE_OPEN, ACT_WIFI_PASS_REVEAL);
-    lv_obj_align_to(eye, s_wifi_pass_ta, LV_ALIGN_OUT_RIGHT_MID, 6, 0);
+    lv_obj_align_to(eye, s_wifi_pass_ta, LV_ALIGN_OUT_RIGHT_MID, CODE_EYE_GAP, 0);
     s_wifi_eye_lbl = lv_obj_get_child(eye, 0);
 
     lv_obj_t *kb = lv_keyboard_create(lv_scr_act());
@@ -4119,7 +4241,10 @@ static void build_tx_status(void) {
         make_label(card, "Tap your card", COL_DIM, &lv_font_montserrat_20,
                    LV_ALIGN_TOP_MID, 0, 78);
 
-        make_tap_mark(card, 110);
+        /* 118, not 110: the prompt's 20px line ends at 101, and eight pixels
+         * under it read as the mark crowding the words it answers. The Cancel
+         * button starts at 208, so the mark still clears it by twelve. */
+        make_tap_mark(card, 118);
 
         (void)make_ghost_button(card, "Cancel", CARD_BTN_W,
                                 LV_ALIGN_BOTTOM_MID, 0, CARD_BTN_Y, ACT_CANCEL);
