@@ -1117,15 +1117,29 @@ static void amount_update_display(void) {
 #define BSP_NOSE   6
 #define BSP_CROSS  4
 #define BSP_LINE   2
-/* The corner radius. The two right-hand corners are true quarter-circles, drawn
- * with lv_draw_arc; the nose's two are chamfered, and the point is left alone.
+/* The corner radius. The two right-hand corners are rounded over two segments
+ * each; the nose's two are chamfered, and the point is left alone.
  *
  * WHY NOT ALL THREE KINDS THE SAME. A chamfer at a right angle is a flat cut and
  * looks like one — that is what the first pass at this shipped and what came
- * back. A chamfer at the nose's 124-degree turn is a 1 px deviation from the arc
- * it stands in for, invisible at this size, and a fillet there is not: the
- * tangent length at that angle is 5.6 px, which is most of a 6 px nose. So the
- * corners that read as flat get arcs and the ones that do not, do not.
+ * back. A chamfer at the nose's 124-degree turn is a 1 px deviation from the
+ * fillet it stands in for, invisible at this size, and a fillet there is not:
+ * the tangent length at that angle is 5.6 px, which is most of a 6 px nose. So
+ * the corners that read as flat get rounded and the ones that do not, do not.
+ *
+ * WHY LINES AND NOT lv_draw_arc, which is what the two right-hand corners were.
+ * The corners came back as jittery, and an arc at this size is why: a 2 px ring
+ * on a 3 px radius is about three pixels of ink per corner, laid down by a
+ * different primitive from the seven straight runs it has to meet. Its ends are
+ * flat where the lines' are round, its coverage comes from a radius mask rather
+ * than a line mask, and the top corner (270..360) and the bottom (0..90) do not
+ * even land on the same side of their shared angle boundary — so the two ends of
+ * the same tag antialiased differently and the eye read the difference as the
+ * corner shifting. Two segments through the 45-degree point deviate from a true
+ * quarter-circle by 0.4 px, which is under half a pixel and therefore not a
+ * thing anyone can see, and they are drawn by the same lv_draw_line with the
+ * same round caps as the rest of the outline — so the corners match the edges
+ * they join, and the top matches the bottom exactly.
  *
  * INTEGERS everywhere, which was the fix for the pass before that. The cuts were
  * computed by walking BSP_R along each edge in floats and truncating, which
@@ -1134,6 +1148,7 @@ static void amount_update_display(void) {
  * is one third of its 6:9 slope, ~3.6 px: near enough to BSP_R and exact in both
  * directions. */
 #define BSP_R        3
+#define BSP_R45      2   /* round(BSP_R * sin 45) — the fillet's middle point */
 #define BSP_NOSE_DX  2   /* the nose's cut, one third of its run... */
 #define BSP_NOSE_DY  3   /* ...and one third of its rise */
 
@@ -1203,35 +1218,32 @@ static void kbd_backspace_draw_cb(lv_event_t *e) {
     const lv_coord_t br = (lv_coord_t)(b - BSP_R);
     const lv_coord_t tn = (lv_coord_t)(t + BSP_NOSE_DY);
     const lv_coord_t bn = (lv_coord_t)(b - BSP_NOSE_DY);
+    /* The 45-degree point of each right-hand fillet: its centre is (r, tr) at the
+     * top and (r, br) at the bottom, and this steps BSP_R45 out and BSP_R-BSP_R45
+     * back along the other axis. Written from t and b rather than tr and br so
+     * the two are mirror images by construction. */
+    const lv_coord_t xd = (lv_coord_t)(r + BSP_R45);
+    const lv_coord_t td = (lv_coord_t)(t + BSP_R - BSP_R45);
+    const lv_coord_t bd = (lv_coord_t)(b - BSP_R + BSP_R45);
 
-    /* The straight runs, clockwise from the top, then the nose. */
-    const lv_point_t seg[7][2] = {
+    /* The whole outline in one primitive, clockwise from the top: straight run,
+     * fillet, right edge, fillet, straight run, then the nose. */
+    const lv_point_t seg[11][2] = {
         { { l,  t  }, { r,  t  } },
+        { { r,  t  }, { xd, td } },
+        { { xd, td }, { xr, tr } },
         { { xr, tr }, { xr, br } },
+        { { xr, br }, { xd, bd } },
+        { { xd, bd }, { r,  b  } },
         { { r,  b  }, { l,  b  } },
         { { l,  b  }, { xn, bn } },
         { { xn, bn }, { xt, cy } },
         { { xt, cy }, { xn, tn } },
         { { xn, tn }, { l,  t  } },
     };
-    for (int i = 0; i < 7; i++) {
+    for (int i = 0; i < 11; i++) {
         lv_draw_line(dsc->draw_ctx, &ld, &seg[i][0], &seg[i][1]);
     }
-
-    /* The two right-hand corners. lv_draw_arc's radius is the ring's OUTER edge,
-     * so BSP_R + half the stroke puts the ring's middle on BSP_R and its ends
-     * exactly on the lines above — 0 deg is 3 o'clock and the angles run
-     * clockwise, which is why the top corner is 270..360. */
-    lv_draw_arc_dsc_t ad;
-    lv_draw_arc_dsc_init(&ad);
-    ad.color = COL_TEXT;
-    ad.width = BSP_LINE;
-    ad.opa   = LV_OPA_COVER;
-    const uint16_t   arc_r = BSP_R + (BSP_LINE / 2);
-    const lv_point_t c_top = { r, tr };
-    const lv_point_t c_bot = { r, br };
-    lv_draw_arc(dsc->draw_ctx, &ad, &c_top, arc_r, 270, 360);
-    lv_draw_arc(dsc->draw_ctx, &ad, &c_bot, arc_r,   0,  90);
 
     /* The cross inside, centred in the square end. That centre is
      * cx + BSP_NOSE/2 whatever BSP_W is, so lengthening the tag leaves it
