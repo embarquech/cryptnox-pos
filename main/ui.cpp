@@ -32,6 +32,7 @@
 #include "lvgl.h"
 #include "logo_img.h"
 #include "logo_small.h"
+#include "logo_mid.h"    /* 80px, the welcome card — tools/gen_logo_mid.py */
 #include "chain_icons.h"
 #include "tap_icon.h"    /* the "tap your card" mark — tools/gen_tap_icon.py */
 #include "assets.h"      /* the per-asset table: ticker, standard, caption, network */
@@ -2119,7 +2120,10 @@ static void paint_page(lv_obj_t *obj) {
  * screen it was set on. A function to paint white over white is a line of code
  * that can only ever go wrong. */
 
-static lv_obj_t *build_page(int step) {
+/* @p band false for the first-run setup screens that borrow the card: no
+ * clock and no home bar. Nothing is configured yet — the clock would read
+ * --:-- and the swipe the bar advertises is off anywhere but the amount screen. */
+static lv_obj_t *build_page(int step, bool band = true) {
     (void)step;   /* ponytail: no progress indicator on the band any more */
     clear_screen();
     paint_page(lv_scr_act());
@@ -2127,10 +2131,12 @@ static lv_obj_t *build_page(int step) {
     /* The clock, left end of the status band. Built here so it lives exactly
      * where the band does — on the sale flow — and retexted by the status timer
      * rather than by rebuilding the screen every minute. */
-    s_clock_lbl = make_label(lv_scr_act(), "", COL_TITLE,
-                             &lv_font_montserrat_14,
-                             LV_ALIGN_TOP_LEFT, CLOCK_X, CLOCK_Y);
-    clock_refresh();
+    if (band) {
+        s_clock_lbl = make_label(lv_scr_act(), "", COL_TITLE,
+                                 &lv_font_montserrat_14,
+                                 LV_ALIGN_TOP_LEFT, CLOCK_X, CLOCK_Y);
+        clock_refresh();
+    }
 
     lv_obj_t *card = lv_obj_create(lv_scr_act());
     lv_obj_remove_style_all(card);
@@ -2144,13 +2150,15 @@ static lv_obj_t *build_page(int step) {
     /* The handle the admin panel is behind. Drawn rather than merely implied:
      * a gesture with nothing on screen saying it exists is a gesture nobody
      * finds, and this one replaced a button that was visibly there. */
-    lv_obj_t *home = lv_obj_create(lv_scr_act());
-    lv_obj_remove_style_all(home);
-    lv_obj_set_size(home, 84, 5);
-    lv_obj_align(home, LV_ALIGN_BOTTOM_MID, 0, -9);
-    lv_obj_set_style_radius(home, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(home, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(home, COL_HOME_BAR, LV_PART_MAIN);
+    if (band) {
+        lv_obj_t *home = lv_obj_create(lv_scr_act());
+        lv_obj_remove_style_all(home);
+        lv_obj_set_size(home, 84, 5);
+        lv_obj_align(home, LV_ALIGN_BOTTOM_MID, 0, -9);
+        lv_obj_set_style_radius(home, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(home, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_bg_color(home, COL_HOME_BAR, LV_PART_MAIN);
+    }
 
     s_page_card = card;
     return card;
@@ -3112,43 +3120,45 @@ static void build_header(const char *title) {
     make_divider(lv_scr_act(), HDR_DIVIDER_Y);
 }
 
-/* First-run greeting. Same white/logo treatment as the splash, but this one waits
- * for a tap: it is the only moment the terminal has the operator's attention
- * before the setup steps start asking for things. */
+/* First-run greeting, in the sale flow's card on the ramp so setup and selling
+ * read as one product. It waits for a tap: it is the only moment the terminal
+ * has the operator's attention before the setup steps start asking for things. */
 static void build_welcome(void) {
-    clear_screen();
-    lv_obj_set_style_bg_color(lv_scr_act(), lv_color_white(), LV_PART_MAIN);
+    lv_obj_t *card = build_page(PAY_STEP_NONE, false);
 
-    /* Logo is 120x120: -70 puts it 30 px off the top edge and still leaves 18 px
-     * before the text. The whole column is hand-balanced — moving one offset
-     * eats into a neighbour, the screen has no slack left. */
-    lv_obj_t *logo = lv_img_create(lv_scr_act());
-    lv_img_set_src(logo, &logo_img);
-    lv_obj_align(logo, LV_ALIGN_CENTER, 0, -70);
+    /* The card's column is 262 tall and the Start button takes 208..252. The
+     * logo is its own 80px render, NOT the 120px one zoomed: that RGB565 image
+     * has no alpha, and scaled it drew a grey line down its right and bottom
+     * edges. 12..92, which leaves a three-line sub-line room above the button.
+     * The whole column is hand-balanced — moving one offset eats into a
+     * neighbour. */
+    lv_obj_t *logo = lv_img_create(card);
+    lv_img_set_src(logo, &logo_mid);
+    lv_obj_align(logo, LV_ALIGN_TOP_MID, 0, 12);
     pop_in(logo);   /* settled screen, so the flourish is welcome here */
 
     /* "Thank you for choosing Cryptnox POS." split over two lines: the product
      * name stays black to carry the sentence, the lead-in is grey. */
-    make_label(lv_scr_act(), "Thank you for choosing", COL_DIM,
-               &lv_font_montserrat_14, LV_ALIGN_CENTER, 0, 16);
-    lv_obj_t *brand = make_label(lv_scr_act(), "Cryptnox POS", COL_TEXT,
-                                 &lv_font_montserrat_20, LV_ALIGN_CENTER, 0, 44);
+    make_label(card, "Thank you for choosing", COL_DIM,
+               &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0, 104);
+    lv_obj_t *brand = make_label(card, "Cryptnox POS", COL_TEXT,
+                                 &lv_font_montserrat_20, LV_ALIGN_TOP_MID, 0, 124);
 
-    /* Anchored under the brand rather than to the screen centre: this sentence
-     * sits within a few pixels of the wrap threshold at 216 px, so an absolute
-     * offset would give a different gap depending on whether it takes one line
-     * or two. Width and long mode first, so the measurement sees them. */
-    lv_obj_t *sub = make_label(lv_scr_act(), s_welcome_sub,
+    /* Anchored under the brand rather than at a fixed y: this sentence sits near
+     * the wrap threshold, so an absolute offset would give a different gap
+     * depending on whether it takes one line or two. Width and long mode first,
+     * so the measurement sees them. */
+    lv_obj_t *sub = make_label(card, s_welcome_sub,
                                COL_DIM, &lv_font_montserrat_14,
                                LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_width(sub, SCR_W - 24);
+    lv_obj_set_width(sub, CARD_W - (2 * CARD_PAD));
     lv_label_set_long_mode(sub, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_align(sub, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_obj_update_layout(brand);
-    lv_obj_align_to(sub, brand, LV_ALIGN_OUT_BOTTOM_MID, 0, 8);
+    lv_obj_align_to(sub, brand, LV_ALIGN_OUT_BOTTOM_MID, 0, 6);
 
-    (void)make_button(lv_scr_act(), "Start", COL_ACCENT, COL_BG,
-                      SCR_W - 24, ACT_BTN_H, LV_ALIGN_BOTTOM_MID, 0, -10,
+    (void)make_button(card, "Start", COL_ACTION, COL_BG,
+                      CARD_BTN_W, CARD_BTN_H, LV_ALIGN_BOTTOM_MID, 0, CARD_BTN_Y,
                       ACT_WELCOME_OK, &lv_font_montserrat_20);
 }
 
@@ -3385,7 +3395,7 @@ static void build_prov_confirm(void) {
 static void build_card_wait(void) {
     /* Same chrome as the sale, deliberately without a lit dash: reading an
      * address off a card during setup is not a step of anybody's payment. */
-    lv_obj_t *card = build_page(PAY_STEP_NONE);
+    lv_obj_t *card = build_page(PAY_STEP_NONE, false);   /* setup: no band */
     const lv_coord_t VW = CARD_W - (2 * CARD_PAD);
 
     make_label(card, "Cryptnox card", COL_DIM, &lv_font_montserrat_14,
@@ -3501,6 +3511,9 @@ static void build_amount(void) {
     lv_obj_align(kb, LV_ALIGN_TOP_MID, 0, 58);
     lv_obj_set_style_bg_opa(kb, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(kb, 0, LV_PART_MAIN);
+    /* Same columns as the PIN and admin pads (see make_numeric_keypad), so the
+     * digits stand in one place on every keypad screen. */
+    lv_obj_set_style_pad_hor(kb, 0, LV_PART_MAIN);
     /* Minimal keypad: no key boxes — black glyphs on white, grey flash on press. */
     lv_obj_set_style_bg_opa(kb, LV_OPA_TRANSP, LV_PART_ITEMS);
     lv_obj_set_style_bg_color(kb, COL_SURFACE, LV_PART_ITEMS | LV_STATE_PRESSED);
@@ -3681,12 +3694,9 @@ static void pin_kbd_cb(lv_event_t *e) {
  * with the reveal eye: a code typed blind on a resistive panel and refused tells
  * the operator nothing about which of the two got it wrong.
  *
- * @p w is the field alone — the caller sizes the field-and-eye pair to the pad
- * below it (see CODE_FIELD_W) and shifts it left by CODE_FIELD_X to keep the
- * pair's middle on that pad's centre line, so the box lines up with the keys
- * under it instead of floating at some width of its own. Both code screens pass
- * CODE_KBD_W and are therefore the same box; the Wi-Fi passphrase is the same
- * rule against a full-width keyboard, so it comes out wider. */
+ * The code screens place field and eye on the keypad's own columns — see
+ * make_code_row(). The Wi-Fi passphrase has a full-width keyboard and no
+ * columns to follow, so it sizes its pair with CODE_FIELD_W/CODE_FIELD_X. */
 #define CODE_EYE_GAP    6
 #define CODE_FIELD_W(kbd_w)  ((kbd_w) - MENU_BTN_W - CODE_EYE_GAP)
 #define CODE_FIELD_X    (-(MENU_BTN_W + CODE_EYE_GAP) / 2)
@@ -3707,7 +3717,7 @@ static void code_hint_cb(lv_event_t *e) {
     }
 }
 
-static lv_obj_t *make_code_field(uint32_t max_len, lv_coord_t x, lv_coord_t y,
+static lv_obj_t *make_code_field(uint32_t max_len, lv_coord_t x1, lv_coord_t y,
                                  const char *hint, lv_coord_t w,
                                  lv_obj_t *parent = NULL) {
     lv_obj_t *host = (parent != NULL) ? parent : lv_scr_act();
@@ -3726,7 +3736,7 @@ static lv_obj_t *make_code_field(uint32_t max_len, lv_coord_t x, lv_coord_t y,
      * The fill, the radius and the text colour are s_st_field's — set here too,
      * once, they were three chances for this box and the Wi-Fi one to drift. */
     lv_obj_set_style_pad_ver(ta, FIELD_PAD_V, LV_PART_MAIN);
-    lv_obj_align(ta, LV_ALIGN_TOP_MID, x, y);
+    lv_obj_align(ta, LV_ALIGN_TOP_LEFT, x1, y);
     lv_obj_set_style_text_align(ta, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
 
     /* What to type, in the box it is typed into. The panel's own screens are a
@@ -3777,6 +3787,10 @@ static lv_obj_t *make_numeric_keypad(lv_event_cb_t cb, lv_obj_t *parent = NULL,
     lv_obj_align(kb, LV_ALIGN_BOTTOM_MID, 0, -6);
     lv_obj_set_style_bg_opa(kb, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(kb, 0, LV_PART_MAIN);
+    /* No side inset: the outer keys' press slabs then run to the keypad's edges,
+     * which are the code field's left edge and the eye's right edge. With the
+     * theme's pad the field overhung the keys on both sides. */
+    lv_obj_set_style_pad_hor(kb, 0, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(kb, LV_OPA_TRANSP, LV_PART_ITEMS);
     lv_obj_set_style_bg_color(kb, COL_SURFACE, LV_PART_ITEMS | LV_STATE_PRESSED);
     lv_obj_set_style_bg_opa(kb, LV_OPA_COVER, LV_PART_ITEMS | LV_STATE_PRESSED);
@@ -3792,11 +3806,43 @@ static lv_obj_t *make_numeric_keypad(lv_event_cb_t cb, lv_obj_t *parent = NULL,
     return kb;
 }
 
+/* The field and its reveal eye, laid on the keypad's columns below them: the
+ * field spans the 1 and 2 keys, the eye is the 3 key's column with its glyph
+ * centred over the 3/6/9 glyphs. Read off the keypad's own button areas rather
+ * than recomputed, so the row cannot drift from the keys whatever gap the theme
+ * puts between them. Build the keypad first. */
+static lv_obj_t *make_code_row(lv_obj_t *host, lv_obj_t *kb, uint32_t max_len,
+                               const char *hint, BtnAction eye_act,
+                               lv_obj_t **eye_lbl) {
+    lv_obj_update_layout(kb);
+    const lv_area_t *k = reinterpret_cast<lv_btnmatrix_t *>(kb)->button_areas;
+    const lv_coord_t kx = lv_obj_get_x(kb);   /* k[] is relative to the keypad */
+    /* The left edge comes in from the 1 key's slab: the slab only shows on a
+     * press, and the eye reads the pad's edge off the digits inside it, so a box
+     * flush with the slab looked like it started left of the pad. The right edge
+     * runs @c grow past the 2 key's slab, into the empty side of the eye's wide
+     * button — the glyph is centred in it, well clear. Tune both by eye. */
+    const lv_coord_t inset = 8;
+    const lv_coord_t grow  = 12;
+    lv_obj_t *ta = make_code_field(max_len, kx + k[0].x1 + inset, 44, hint,
+                                   ((k[1].x2 - k[0].x1) + 1) - inset + grow,
+                                   host);
+    /* make_icon_button() places itself top-left for the burger; move it, and
+     * keep the label handle so the glyph can be swapped in place. */
+    lv_obj_t *eye = make_icon_button(LV_SYMBOL_EYE_OPEN, eye_act, host);
+    lv_obj_set_width(eye, (k[2].x2 - k[2].x1) + 1);
+    lv_obj_align_to(eye, ta, LV_ALIGN_OUT_RIGHT_MID,
+                    (k[2].x1 - k[1].x2) - 1 - grow, 0);   /* still on the 3 key */
+    *eye_lbl = lv_obj_get_child(eye, 0);
+    return ta;
+}
+
 static void build_pin(void) {
     /* Step three of four — authorising the card. A card read during first-run
      * setup borrows this screen too, and that is not a sale, so it gets the
      * chrome without a lit dash. */
-    lv_obj_t *card = build_page(s_pin_for_card ? PAY_STEP_NONE : PAY_STEP_AUTH);
+    lv_obj_t *card = build_page(s_pin_for_card ? PAY_STEP_NONE : PAY_STEP_AUTH,
+                                !s_pin_for_card);   /* setup read: no band */
     /* Wipe any stale PIN from a previous attempt. */
     CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_pin), sizeof(s_pin));
     s_pin_len = 0;
@@ -3805,29 +3851,14 @@ static void build_pin(void) {
     /* Back (cancel) icon, top-left of the card. */
     (void)make_icon_button(LV_SYMBOL_LEFT, ACT_PIN_CANCEL, card);
 
-    /* Field and eye centred as a pair, not the field alone: the button is 42 wide
-     * with a 6px gap, so the field gives up half of that and the group's middle
-     * stays on the keypad's centre line. Centring the field itself would put the
-     * eye 8px off the right edge of a 240px panel. Passed in rather than re-aligned
-     * afterwards, so the hint inside the box is placed against the final position.
-     *
-     * The pair is exactly the keypad's width, so the box's left edge and the eye's
-     * right edge sit on the outer keys' — the grey slab used to be its own width
-     * and read as an object dropped over the pad rather than the pad's own field. */
-    s_pin_ta = make_code_field(9U, CODE_FIELD_X, 44, "Card PIN",
-                               CODE_FIELD_W(CODE_KBD_W), card);
-
-    /* Same reveal the Wi-Fi passphrase has, and for the same reason: a PIN typed
-     * blind on a resistive panel and refused tells the operator nothing about which
-     * of the two got it wrong — except that here the card counts the attempt, and
-     * runs out of them. Masked by default, because this screen faces the customer.
-     * make_icon_button() places itself top-left for the burger; move it beside the
-     * field, and keep the label handle so the glyph can be swapped in place. */
-    lv_obj_t *eye = make_icon_button(LV_SYMBOL_EYE_OPEN, ACT_PIN_REVEAL, card);
-    lv_obj_align_to(eye, s_pin_ta, LV_ALIGN_OUT_RIGHT_MID, CODE_EYE_GAP, 0);
-    s_pin_eye_lbl = lv_obj_get_child(eye, 0);
-
-    (void)make_numeric_keypad(pin_kbd_cb, card, CODE_KBD_W, 170);
+    /* The eye is the same reveal the Wi-Fi passphrase has, and for the same
+     * reason: a PIN typed blind on a resistive panel and refused tells the
+     * operator nothing about which of the two got it wrong — except that here the
+     * card counts the attempt, and runs out of them. Masked by default, because
+     * this screen faces the customer. */
+    lv_obj_t *kb = make_numeric_keypad(pin_kbd_cb, card, CODE_KBD_W, 170);
+    s_pin_ta = make_code_row(card, kb, 9U, "Card PIN", ACT_PIN_REVEAL,
+                             &s_pin_eye_lbl);
 }
 
 /**
@@ -3985,13 +4016,18 @@ static void build_admin_screen(const char *title, bool allow_cancel,
     /* Into the rising sheet when there is one, and then WITHOUT clearing the
      * screen: the sale screen underneath is what the sheet slides over. Every
      * other entry to this screen is an ordinary full-screen rebuild. */
+    /* First-run creation is a setup step, so it takes the card PIN's look: the
+     * sale flow's card on the ramp, without the clock and home bar. */
+    const bool on_card = (s_req_screen == UI_SCREEN_ADMIN_SET);
     lv_obj_t *host = s_sheet;
-    if (host == NULL) {
+    if (on_card) {
+        host = build_page(PAY_STEP_NONE, false);
+    } else if (host == NULL) {
         clear_screen();
         host = lv_scr_act();
     }
-    /* No ground is painted here on purpose: white either way, which is what
-     * clear_screen() leaves above and what sheet_open() paints its panel. The
+    /* Unlock paints no ground on purpose: white either way, which is what
+     * clear_screen() leaves above and what sheet_open() paints its panel. That
      * code screen is the door to the admin panel, so it is the panel's colour
      * and not the sale flow's ramp, however it was reached. */
 
@@ -4000,21 +4036,22 @@ static void build_admin_screen(const char *title, bool allow_cancel,
         (void)make_icon_button(LV_SYMBOL_LEFT, ACT_ADMIN_CANCEL, host);
     }
 
-    s_admin_ta = make_code_field(ADMIN_CODE_MAX, CODE_FIELD_X, 44, hint,
-                                 CODE_FIELD_W(CODE_KBD_W), host);
+    /* The card is 262 tall, not 320, so there the note tucks under the field
+     * (44..76) and the keypad gives up height, as the PIN screen's does. */
+    lv_obj_t *kb = make_numeric_keypad(admin_kbd_cb, host, CODE_KBD_W,
+                                       on_card ? 160 : 210);
 
     /* The card PIN's reveal, on this code too. It was left off on the argument
      * that the admin code is typed by the person who set it — but it is typed
      * blind on a resistive panel exactly like the PIN, and getting it wrong here
      * costs a doubling lockout on the only door to the factory reset. */
-    lv_obj_t *eye = make_icon_button(LV_SYMBOL_EYE_OPEN, ACT_ADMIN_REVEAL, host);
-    lv_obj_align_to(eye, s_admin_ta, LV_ALIGN_OUT_RIGHT_MID, CODE_EYE_GAP, 0);
-    s_admin_eye_lbl = lv_obj_get_child(eye, 0);
+    s_admin_ta = make_code_row(host, kb, ADMIN_CODE_MAX, hint, ACT_ADMIN_REVEAL,
+                               &s_admin_eye_lbl);
 
     /* Note band above the keypad: wrong code, mismatch, or the remaining wait. */
     s_admin_note_lbl = make_label(host, s_admin_note, COL_DANGER,
-                                  &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0, 82);
-    (void)make_numeric_keypad(admin_kbd_cb, host);
+                                  &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0,
+                                  on_card ? 78 : 82);
 }
 
 static void build_admin_set(void) {
@@ -4491,7 +4528,15 @@ static void signal_refresh(lv_timer_t *t) {
                       (s_req_screen != UI_SCREEN_TOUCH_CAL) &&
                       (s_req_screen != UI_SCREEN_SETTINGS) &&
                       (s_req_screen != UI_SCREEN_ADMIN_UNLOCK) &&
-                      (s_req_screen != UI_SCREEN_ADMIN_SET);
+                      (s_req_screen != UI_SCREEN_ADMIN_SET) &&
+                      /* the first-run setup flow: nothing to report yet */
+                      (s_req_screen != UI_SCREEN_WELCOME) &&
+                      (s_req_screen != UI_SCREEN_PROV) &&
+                      (s_req_screen != UI_SCREEN_WIFI_CONNECTING) &&
+                      (s_req_screen != UI_SCREEN_WIFI_LIST) &&
+                      (s_req_screen != UI_SCREEN_WIFI_PASS) &&
+                      (s_req_screen != UI_SCREEN_CARD_WAIT) &&
+                      !((s_req_screen == UI_SCREEN_PIN) && s_pin_for_card);
     if (show) { lv_obj_clear_flag(s_sig_box, LV_OBJ_FLAG_HIDDEN); }
     else      { lv_obj_add_flag(s_sig_box, LV_OBJ_FLAG_HIDDEN); }
 
