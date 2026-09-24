@@ -1848,8 +1848,8 @@ static lv_obj_t *make_net_badge(lv_obj_t *parent, pos_net_t net) {
  * carries its own size, and they are here to be read, not to be set. The one
  * thing that DOES depend on them is the y this mark is placed at, which keeps
  * it centred in its band: see build_card_wait(). */
-#define TAP_MARK_W    128
-#define TAP_MARK_H    76
+#define TAP_MARK_W    110
+#define TAP_MARK_H    65
 
 /* The mark's ink, and the one place to change it. The rule, not the value:
  * THIS TRACKS THE ARTWORK'S WEIGHT, and it has moved both ways.
@@ -2114,11 +2114,23 @@ static void paint_page(lv_obj_t *obj) {
     lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, LV_PART_MAIN);
 }
 
-/* There is deliberately no paint_panel() beside this. The admin panel and the
- * admin code screen are white, and white is what clear_screen() already leaves
+/* There is deliberately no paint_panel() beside this. The admin panel is white, and white is what clear_screen() already leaves
  * — including resetting this ramp's gradient direction, which outlives the
  * screen it was set on. A function to paint white over white is a line of code
  * that can only ever go wrong. */
+
+/* The sale flow's white card, on @p parent (the screen, or the admin sheet). */
+static lv_obj_t *make_card(lv_obj_t *parent) {
+    lv_obj_t *card = lv_obj_create(parent);
+    lv_obj_remove_style_all(card);
+    lv_obj_set_size(card, CARD_W, CARD_H);
+    lv_obj_set_pos(card, CARD_X, CARD_Y);
+    lv_obj_set_style_bg_color(card, COL_BG, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_radius(card, 14, LV_PART_MAIN);
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+    return card;
+}
 
 /* @p band false for the first-run setup screens that borrow the card: no
  * clock and no home bar. Nothing is configured yet — the clock would read
@@ -2138,14 +2150,7 @@ static lv_obj_t *build_page(int step, bool band = true) {
         clock_refresh();
     }
 
-    lv_obj_t *card = lv_obj_create(lv_scr_act());
-    lv_obj_remove_style_all(card);
-    lv_obj_set_size(card, CARD_W, CARD_H);
-    lv_obj_set_pos(card, CARD_X, CARD_Y);
-    lv_obj_set_style_bg_color(card, COL_BG, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_radius(card, 14, LV_PART_MAIN);
-    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *card = make_card(lv_scr_act());
 
     /* The handle the admin panel is behind. Drawn rather than merely implied:
      * a gesture with nothing on screen saying it exists is a gesture nobody
@@ -3071,12 +3076,12 @@ static void add_test_chip(void) {
  * @brief Screen title, centred but never underneath the top-left icon button.
  *
  * A centred 20px title and a hard-left icon button are two independent claims on
- * the same row, and on a 240px screen the wide ones collide: "Authorise browser"
+ * the same row, and on a 240px screen the wide ones collide: "Authorize browser"
  * measures 187px, so centred it starts at x=26 and the back arrow — which ends at
  * x=46 — was drawn straight through its first two characters.
  *
  * So the title gets the gap between the two gutters and nothing more. If it does
- * not fit at 20px it drops to the 14px face, where "Authorise browser" is 131px
+ * not fit at 20px it drops to the 14px face, where "Authorize browser" is 131px
  * and fits with room to spare. Shrinking beats both alternatives: overlapping is
  * the bug being fixed, and dot-eliding a title on a screen whose entire job is to
  * say what it wants is worse than a smaller one. The width cap and LONG_DOT stay
@@ -3094,7 +3099,11 @@ static lv_obj_t *make_title(const char *txt, bool has_icon,
     lv_obj_update_layout(host);
     lv_coord_t hw = lv_obj_get_width(host);
     if (hw <= 0) { hw = SCR_W; }   /* not laid out yet — assume full width */
-    const lv_coord_t gutter = has_icon ? (MENU_BTN_X + MENU_BTN_W + 4) : 8;
+    /* Cleared from the glyph, not the button: the arrow is ~20px centred in a
+     * 42px hit box, and clearing the whole box left the 224px card 124px of
+     * title — too little for "Authorize browser" even at 14px, so it wrapped. */
+    const lv_coord_t gutter = has_icon ? (MENU_BTN_X + ((MENU_BTN_W + 20) / 2) + 4)
+                                       : 8;
     const lv_coord_t avail  = hw - (2 * gutter);
 
     const bool small = lv_txt_get_width(txt, strlen(txt), &lv_font_montserrat_20,
@@ -3181,34 +3190,45 @@ static void build_welcome(void) {
  * The last step is not a form at all: it thanks the operator and offers Finish,
  * which is what applies the settings (see main). */
 static void build_prov(void) {
-    clear_screen();
-    lv_obj_set_style_bg_color(lv_scr_act(), lv_color_white(), LV_PART_MAIN);
-
     const prov_step_t step = static_cast<prov_step_t>(s_prov_step);
 
-    /* The end of the wizard gets the whole screen: nothing left to scan, and the
+    /* The end of the wizard gets the whole card: nothing left to scan, and the
      * one thing to say is that it worked. */
     if (step == PROV_STEP_DONE) {
-        lv_obj_t *chk = make_label(lv_scr_act(), LV_SYMBOL_OK, COL_SUCCESS,
-                                   &lv_font_montserrat_48, LV_ALIGN_TOP_MID, 0, 76);
+        lv_obj_t *card = build_page(PAY_STEP_NONE, false);   /* setup: no band */
+        lv_obj_t *chk = make_label(card, LV_SYMBOL_OK, COL_SUCCESS,
+                                   &lv_font_montserrat_48, LV_ALIGN_TOP_MID, 0, 16);
         pop_in(chk);
-        make_label(lv_scr_act(), "All set", COL_TEXT, &lv_font_montserrat_20,
-                   LV_ALIGN_TOP_MID, 0, 142);
-        lv_obj_t *b = make_label(lv_scr_act(),
+        make_label(card, "All set", COL_TEXT, &lv_font_montserrat_20,
+                   LV_ALIGN_TOP_MID, 0, 76);
+        lv_obj_t *b = make_label(card,
                                  "Thank you - your terminal is configured.\n\n"
                                  "It restarts once to apply everything.",
                                  COL_DIM, &lv_font_montserrat_14,
-                                 LV_ALIGN_TOP_MID, 0, 176);
-        lv_obj_set_width(b, SCR_W - 32);
+                                 LV_ALIGN_TOP_MID, 0, 106);
+        lv_obj_set_width(b, CARD_W - (2 * CARD_PAD));
         lv_label_set_long_mode(b, LV_LABEL_LONG_WRAP);
         lv_obj_set_style_text_align(b, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        lv_obj_align(b, LV_ALIGN_TOP_MID, 0, 176);
+        lv_obj_align(b, LV_ALIGN_TOP_MID, 0, 106);
 
-        (void)make_button(lv_scr_act(), "Finish", COL_ACCENT, COL_BG,
-                          SCR_W - 24, ACT_BTN_H, LV_ALIGN_BOTTOM_MID, 0, -10,
+        (void)make_button(card, "Finish", COL_ACTION, COL_BG,
+                          CARD_BTN_W, CARD_BTN_H, LV_ALIGN_BOTTOM_MID, 0, CARD_BTN_Y,
                           ACT_PROV_FINISH, &lv_font_montserrat_20);
         return;
     }
+
+    /* Once the browser is in, the screen is only a status line, so it sits in
+     * the sale card on the ramp like the other setup screens. The QR step keeps
+     * the whole white screen: code, credentials and spinner need every row. */
+    const bool authed = prov_authed();
+    lv_obj_t  *host   = lv_scr_act();
+    if (authed) {
+        host = build_page(PAY_STEP_NONE, false);   /* setup: no band */
+    } else {
+        clear_screen();
+        lv_obj_set_style_bg_color(lv_scr_act(), lv_color_white(), LV_PART_MAIN);
+    }
+    const lv_coord_t dy = authed ? 6 : 0;   /* the card's top padding */
 
     /* The title names the step, and it is the biggest thing on the screen. An
      * earlier cut put "Set up from your phone" here for every step and moved
@@ -3230,8 +3250,8 @@ static void build_prov(void) {
     switch (step) {
         case PROV_STEP_AUTH:
             eyebrow = "Step 2";
-            title   = "Scan with your phone";
-            hint    = "Point your camera at the code";
+            title   = "Connect your phone";
+            hint    = "Scan to join the terminal's Wi-Fi";
             break;
         case PROV_STEP_ADDR:
             eyebrow = "Step 4";
@@ -3248,18 +3268,18 @@ static void build_prov(void) {
             break;
     }
 
-    make_label(lv_scr_act(), eyebrow, COL_DIM, &lv_font_montserrat_14,
-               LV_ALIGN_TOP_MID, 0, 6);
-    make_label(lv_scr_act(), title, COL_TEXT, &lv_font_montserrat_20,
-               LV_ALIGN_TOP_MID, 0, 22);
-    make_label(lv_scr_act(), hint, COL_DIM,
-               &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0, 48);
+    make_label(host, eyebrow, COL_DIM, &lv_font_montserrat_14,
+               LV_ALIGN_TOP_MID, 0, 6 + dy);
+    make_label(host, title, COL_TEXT, &lv_font_montserrat_20,
+               LV_ALIGN_TOP_MID, 0, 22 + dy);
+    make_label(host, hint, COL_DIM,
+               &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0, 48 + dy);
 
     /* The QR code and the AP credentials are for joining, so they go away the
      * moment the phone has joined and been let in. Left up on the later steps they
      * read as "scan this again", which is the one thing that cannot help: the
      * operator is looking for the payout form, not for a network. */
-    if (!prov_authed()) {
+    if (!authed) {
         lv_obj_t *qr = lv_qrcode_create(lv_scr_act(), 112, COL_TEXT, COL_BG);
         if (qr != NULL) {
             const char *payload = prov_qr_payload();
@@ -3274,35 +3294,42 @@ static void build_prov(void) {
         /* Labelled, both of them: the bare SSID over a "Pass" line read as a title
          * and a note, and somebody typing them into a phone's Wi-Fi sheet is
          * filling in two named boxes. */
-        char line[64];
-        (void)snprintf(line, sizeof(line), "SSID: %s", prov_ap_ssid());
-        make_label(lv_scr_act(), line, COL_TEXT, &lv_font_montserrat_14,
-                   LV_ALIGN_TOP_MID, 0, 194);
-        (void)snprintf(line, sizeof(line), "Password: %s", prov_ap_pass());
-        make_label(lv_scr_act(), line, COL_DIM, &lv_font_montserrat_14,
-                   LV_ALIGN_TOP_MID, 0, 212);
+        make_label(lv_scr_act(), "Or join manually:", COL_DIM,
+                   &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0, 194);
+        make_label(lv_scr_act(), "Network", COL_DIM, &lv_font_montserrat_14,
+                   LV_ALIGN_TOP_LEFT, 24, 214);
+        make_label(lv_scr_act(), prov_ap_ssid(), COL_TEXT,
+                   &lv_font_montserrat_14, LV_ALIGN_TOP_LEFT, 100, 214);
+        make_label(lv_scr_act(), "Password", COL_DIM, &lv_font_montserrat_14,
+                   LV_ALIGN_TOP_LEFT, 24, 232);
+        make_label(lv_scr_act(), prov_ap_pass(), COL_TEXT,
+                   &lv_font_montserrat_14, LV_ALIGN_TOP_LEFT, 100, 232);
     } else {
-        lv_obj_t *on = make_label(lv_scr_act(),
+        lv_obj_t *on = make_label(host,
                                   "Connected - the setup page is open in the "
                                   "browser.",
                                   COL_DIM, &lv_font_montserrat_14,
-                                  LV_ALIGN_TOP_MID, 0, 110);
-        lv_obj_set_width(on, SCR_W - 40);
+                                  LV_ALIGN_TOP_MID, 0, 86);
+        lv_obj_set_width(on, CARD_W - (2 * CARD_PAD));
         lv_label_set_long_mode(on, LV_LABEL_LONG_WRAP);
         lv_obj_set_style_text_align(on, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        lv_obj_align(on, LV_ALIGN_TOP_MID, 0, 110);
+        lv_obj_align(on, LV_ALIGN_TOP_MID, 0, 86);
 
         /* Only in this branch: a card is read from the browser's setup page, so
          * there is no route to a failed read that is not already past the QR
          * code. */
         if (s_prov_msg[0] != '\0') {
-            lv_obj_t *m = make_label(lv_scr_act(), s_prov_msg, COL_DANGER,
+            lv_obj_t *m = make_label(host, s_prov_msg, COL_DANGER,
                                      &lv_font_montserrat_14,
-                                     LV_ALIGN_TOP_MID, 0, 154);
-            lv_obj_set_width(m, SCR_W - 40);
+                                     LV_ALIGN_TOP_MID, 0, 130);
+            lv_obj_set_width(m, CARD_W - (2 * CARD_PAD));
             lv_label_set_long_mode(m, LV_LABEL_LONG_WRAP);
             lv_obj_set_style_text_align(m, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-            lv_obj_align(m, LV_ALIGN_TOP_MID, 0, 154);
+            /* Under the Connected line, however many lines it wrapped to. Both
+             * start high (86) and the spinner sits low so three lines of each
+             * still end above it — the join error is two lines at 204px. */
+            lv_obj_update_layout(on);
+            lv_obj_align_to(m, on, LV_ALIGN_OUT_BOTTOM_MID, 0, 12);
         }
     }
 
@@ -3313,15 +3340,19 @@ static void build_prov(void) {
      * "a connection", not "your phone": the AP takes a laptop typing the SSID and
      * passphrase just as happily as a camera that scanned them, and a panel naming
      * the wrong device reads as "this will not work from here". */
-    lv_obj_t *sp = lv_spinner_create(lv_scr_act(), 1000, 60);
+    lv_obj_t *sp = lv_spinner_create(host, 1000, 60);
     lv_obj_set_size(sp, 24, 24);
-    lv_obj_align(sp, LV_ALIGN_BOTTOM_MID, 0, -34);
+    lv_obj_align(sp, LV_ALIGN_BOTTOM_MID, 0, authed ? -12 : -34);
     lv_obj_set_style_arc_width(sp, 3, LV_PART_MAIN);
     lv_obj_set_style_arc_width(sp, 3, LV_PART_INDICATOR);
     lv_obj_set_style_arc_color(sp, COL_SURFACE, LV_PART_MAIN);
     lv_obj_set_style_arc_color(sp, COL_ACCENT, LV_PART_INDICATOR);
-    make_label(lv_scr_act(), "Waiting for a connection", COL_DIM,
-               &lv_font_montserrat_14, LV_ALIGN_BOTTOM_MID, 0, -10);
+    /* Only before the join: after it the line above already says "Connected",
+     * and the spinner alone says the terminal is waiting on the browser. */
+    if (!authed) {
+        make_label(lv_scr_act(), "Waiting for a connection", COL_DIM,
+                   &lv_font_montserrat_14, LV_ALIGN_BOTTOM_MID, 0, -10);
+    }
 }
 
 /* A payout address or a token contract proposed from a browser, shown for
@@ -3399,23 +3430,25 @@ static void build_card_wait(void) {
     const lv_coord_t VW = CARD_W - (2 * CARD_PAD);
 
     make_label(card, "Cryptnox card", COL_DIM, &lv_font_montserrat_14,
-               LV_ALIGN_TOP_MID, 0, 14);
+               LV_ALIGN_TOP_MID, 0, 10);
 
     /* Centred in the band between the caption above and the line below, rather
      * than pinned at 40: the mark's height is the generator's to choose, so the
      * gap it leaves is worked out here instead of being re-typed whenever the
      * artwork is re-scaled. */
-    make_tap_mark(card, 40 + ((106 - TAP_MARK_H) / 2));
+    make_tap_mark(card, 32 + ((88 - TAP_MARK_H) / 2));
 
     make_label(card, "Hold card to reader", COL_TEXT,
-               &lv_font_montserrat_20, LV_ALIGN_TOP_MID, 0, 146);
+               &lv_font_montserrat_20, LV_ALIGN_TOP_MID, 0, 124);
 
+    /* 154, not 176: "Reading your payout addresses" wraps to two lines at
+     * 204px, and from 176 the second one sat on the Cancel button (208). */
     lv_obj_t *info = make_label(card, s_card_note, COL_DIM,
-                                &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0, 176);
+                                &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0, 154);
     lv_obj_set_width(info, VW);
     lv_label_set_long_mode(info, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_align(info, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_align(info, LV_ALIGN_TOP_MID, 0, 176);
+    lv_obj_align(info, LV_ALIGN_TOP_MID, 0, 154);
 
     (void)make_ghost_button(card, "Cancel", CARD_BTN_W,
                             LV_ALIGN_BOTTOM_MID, 0, CARD_BTN_Y, ACT_CANCEL);
@@ -3741,7 +3774,7 @@ static lv_obj_t *make_code_field(uint32_t max_len, lv_coord_t x1, lv_coord_t y,
 
     /* What to type, in the box it is typed into. The panel's own screens are a
      * title, an empty box and a keypad, and a title naming the OUTCOME —
-     * "Authorise browser" — left the operator with nothing on screen saying the
+     * "Authorize browser" — left the operator with nothing on screen saying the
      * thing wanted was their admin code.
      *
      * A label of our own, NOT lv_textarea's placeholder. The placeholder cannot be
@@ -4016,30 +4049,27 @@ static void build_admin_screen(const char *title, bool allow_cancel,
     /* Into the rising sheet when there is one, and then WITHOUT clearing the
      * screen: the sale screen underneath is what the sheet slides over. Every
      * other entry to this screen is an ordinary full-screen rebuild. */
-    /* First-run creation is a setup step, so it takes the card PIN's look: the
-     * sale flow's card on the ramp, without the clock and home bar. */
-    const bool on_card = (s_req_screen == UI_SCREEN_ADMIN_SET);
-    lv_obj_t *host = s_sheet;
-    if (on_card) {
+    /* Every code screen takes the card PIN's look — the sale flow's card on the
+     * ramp, without the clock and home bar — so creating the code, authorizing
+     * the setup browser and opening the admin panel all read as one screen.
+     * The sheet gets the ramp painted on it rather than a rebuilt screen. */
+    lv_obj_t *host;
+    if (s_sheet != NULL) {
+        paint_page(s_sheet);
+        host = make_card(s_sheet);
+    } else {
         host = build_page(PAY_STEP_NONE, false);
-    } else if (host == NULL) {
-        clear_screen();
-        host = lv_scr_act();
     }
-    /* Unlock paints no ground on purpose: white either way, which is what
-     * clear_screen() leaves above and what sheet_open() paints its panel. That
-     * code screen is the door to the admin panel, so it is the panel's colour
-     * and not the sale flow's ramp, however it was reached. */
 
     (void)make_title(title, allow_cancel, host);
     if (allow_cancel) {
         (void)make_icon_button(LV_SYMBOL_LEFT, ACT_ADMIN_CANCEL, host);
     }
 
-    /* The card is 262 tall, not 320, so there the note tucks under the field
+    /* The card is 262 tall, not 320, so the note tucks under the field
      * (44..76) and the keypad gives up height, as the PIN screen's does. */
     lv_obj_t *kb = make_numeric_keypad(admin_kbd_cb, host, CODE_KBD_W,
-                                       on_card ? 160 : 210);
+                                       160);
 
     /* The card PIN's reveal, on this code too. It was left off on the argument
      * that the admin code is typed by the person who set it — but it is typed
@@ -4051,7 +4081,7 @@ static void build_admin_screen(const char *title, bool allow_cancel,
     /* Note band above the keypad: wrong code, mismatch, or the remaining wait. */
     s_admin_note_lbl = make_label(host, s_admin_note, COL_DANGER,
                                   &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0,
-                                  on_card ? 78 : 82);
+                                  78);
 }
 
 static void build_admin_set(void) {
@@ -4067,10 +4097,10 @@ static void build_admin_unlock(void) {
      * keypad are what this is, and only the door it opens differs.
      *
      * The hint does not differ, and that is the point: the title says which door,
-     * the box says what the key is. "Authorise browser" over an empty field named
+     * the box says what the key is. "Authorize browser" over an empty field named
      * the outcome and left the operator to guess that the terminal wanted the
      * admin code — the one thing on that screen they had to know. */
-    build_admin_screen(s_admin_for_portal ? "Authorise browser" : "Admin code",
+    build_admin_screen(s_admin_for_portal ? "Authorize browser" : "Admin code",
                        true, "Admin code");
 }
 
@@ -4283,17 +4313,18 @@ static void build_tx_status(void) {
     format_amount(s_confirm_amount, amt, sizeof(amt));
 
     if (s_tx_state == UI_TX_STATE_PLACE_CARD) {
+        /* Total at 8 and the figure at 38: the badge is taller than the 28px
+         * line it is centred on, so at 14/32 its top touched "Total". */
         make_label(card, "Total", COL_DIM, &lv_font_montserrat_14,
-                   LV_ALIGN_TOP_MID, 0, 14);
-        tx_amount_row(card, amt, &lv_font_montserrat_28, 32, true);
+                   LV_ALIGN_TOP_MID, 0, 8);
+        tx_amount_row(card, amt, &lv_font_montserrat_28, 38, true);
 
         make_label(card, "Tap your card", COL_DIM, &lv_font_montserrat_20,
-                   LV_ALIGN_TOP_MID, 0, 78);
+                   LV_ALIGN_TOP_MID, 0, 82);
 
-        /* 118, not 110: the prompt's 20px line ends at 101, and eight pixels
-         * under it read as the mark crowding the words it answers. The Cancel
-         * button starts at 208, so the mark still clears it by twelve. */
-        make_tap_mark(card, 118);
+        /* Centred in the band between the prompt's 20px line (ends ~104) and
+         * the Cancel button (starts 208). */
+        make_tap_mark(card, 106 + ((102 - TAP_MARK_H) / 2));
 
         (void)make_ghost_button(card, "Cancel", CARD_BTN_W,
                                 LV_ALIGN_BOTTOM_MID, 0, CARD_BTN_Y, ACT_CANCEL);

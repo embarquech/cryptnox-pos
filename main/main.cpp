@@ -1850,6 +1850,7 @@ static bool run_wizard(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
                         prov_stop();
                         ui_show_prov(PROV_STEP_DONE);
                     } else {
+                        ui_set_prov_note("");   /* the address step's reason, if any */
                         enter_step(PROV_STEP_WIFI);
                     }
                 } else {
@@ -1922,6 +1923,7 @@ static bool run_wizard(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
 
             case UI_EVENT_WIFI_TRY: {
                 if (!prov_authed()) { break; }
+                ui_set_prov_note("");   /* a new attempt drops the last reason */
                 char w_ssid[33] = { 0 };
                 char w_pass[65] = { 0 };
                 bool joined = false;
@@ -1933,6 +1935,7 @@ static bool run_wizard(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
                      * needs before the first RPC call. */
                     if (!net_wifi_connect(w_ssid, w_pass)) {
                         prov_set_note(NOTE_JOIN_FAILED);
+                        ui_set_prov_note(NOTE_JOIN_FAILED);   /* and on the panel */
                         /* It may still be half-associated: a hung DHCP times out
                          * in net_wifi_connect(), not in the driver, so a lease
                          * arriving after this point would put the setup forms on
@@ -1940,6 +1943,7 @@ static bool run_wizard(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
                         net_wifi_disconnect();
                     } else if (!net_time_sync(15000U)) {
                         prov_set_note(NOTE_NO_TIME);
+                        ui_set_prov_note(NOTE_NO_TIME);
                         /* Joined, but we are not keeping it — and the portal stays
                          * up for another attempt. Its HTTP server binds every
                          * interface, so an association we are not using would leave

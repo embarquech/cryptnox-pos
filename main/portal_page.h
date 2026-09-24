@@ -290,7 +290,7 @@ static const char *const PAGE_HTML =
 
 /* Authorisation. The only thing an unauthorised browser can see, and it does not
  * ask for the code — it asks the operator to look at the terminal. */
-"<section id=s_auth hidden><h2>Authorise this browser</h2>"
+"<section id=s_auth hidden><h2>Authorize this browser</h2>"
 "<p>The admin code is never typed here. Enter it on the terminal's own screen "
 "&mdash; that is what proves you are standing in front of it.</p>"
 "<div id=waiting class=wait hidden><span class=spin></span>"
@@ -631,7 +631,7 @@ static const char *const PAGE_JS =
 /* The token goes on this one too, and it is not optional: /api/state answers an
  * unauthorised request with a deliberately minimal body, so a poll without the
  * token reports authed:false forever — the panel takes the admin code, grants the
- * session, and the page sits on "Authorise this browser" with no way out. */
+ * session, and the page sits on "Authorize this browser" with no way out. */
 "function poll(){fetch('/api/state',{headers:{'X-Prov-Token':T},"
 "cache:'no-store'})"
 ".then(function(r){return r.json()}).then(function(j){S=j;"

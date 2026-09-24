@@ -417,7 +417,7 @@ static bool gate(httpd_req_t *req, esp_err_t *rc)
     }
     if (!authed(req)) {
         *rc = reply(req, "401 Unauthorized",
-                    "This browser is not authorised. Enter the admin code on "
+                    "This browser is not authorized. Enter the admin code on "
                     "the terminal screen.");
         return false;
     }

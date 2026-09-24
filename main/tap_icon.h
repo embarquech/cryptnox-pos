@@ -10,7 +10,7 @@
 
 #include "lvgl.h"
 
-/* 128x76 alpha mask; colour comes from the object's img_recolor. */
+/* 110x65 alpha mask; colour comes from the object's img_recolor. */
 extern const lv_img_dsc_t tap_icon;
 
 #endif /* TAP_ICON_H */

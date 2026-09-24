@@ -78,7 +78,7 @@ STROKE_W = 0.8         # in the asset's own units (its viewBox is 122.88x72.92)
 # deliberately short of that, because a mark that touches the text it labels
 # reads as crowding it. Width follows the artwork's own aspect, and the assert
 # below is what catches an asset too wide for the card it is drawn on.
-PX_H = 76
+PX_H = 65              # 85% of the 76 it was; the tap screen read it as too big
 MAX_W = 204            # CARD_W less its two pads
 
 
