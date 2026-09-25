@@ -4,6 +4,10 @@ idf_component_register(
          "civil_time.cpp" "tron_tx.cpp" "tron_rpc.cpp"
          "ota.cpp" "provision.cpp" "settings.cpp"
          "logo_img.c" "logo_small.c" "logo_mid.c" "chain_icons.c" "tap_icon.c"
+         "fonts/font_inter_14.c" "fonts/font_inter_14_medium.c"
+         "fonts/font_pjs_20_medium.c"
+         "fonts/font_pjs_20_semibold.c" "fonts/font_pjs_28_semibold.c"
+         "fonts/font_pjs_28_light.c" "fonts/font_icons_48.c"
     INCLUDE_DIRS "."
     REQUIRES pn532 driver cryptnox_utils crypto_provider esp32_logger esp32_platform
              secure_channel pn532_nfc_transport

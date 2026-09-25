@@ -90,12 +90,11 @@ CONFIG_TFT_SMOOTH_FONT=y
 # TFT_eSPI is used only as the low-level panel driver (flush); LVGL renders.
 CONFIG_LV_COLOR_DEPTH_16=y
 CONFIG_LV_MEM_SIZE_KILOBYTES=48
-# Anti-aliased Montserrat font sizes referenced by ui.cpp
-CONFIG_LV_FONT_MONTSERRAT_14=y
-CONFIG_LV_FONT_MONTSERRAT_20=y
-CONFIG_LV_FONT_MONTSERRAT_28=y
-CONFIG_LV_FONT_MONTSERRAT_48=y
-CONFIG_LV_FONT_DEFAULT_MONTSERRAT_14=y
+# No built-in text fonts: the UI is Plus Jakarta Sans, generated into
+# main/fonts/ by tools/gen_fonts.py, and ui.cpp hands it to the theme. Kconfig
+# insists on a built-in default, so it gets the smallest one (~2 KB, unused).
+CONFIG_LV_FONT_MONTSERRAT_14=n
+CONFIG_LV_FONT_DEFAULT_UNSCII_8=y
 
 # CYD: the XPT2046 touch controller lives on its own SPI bus (CS=33, CLK=25,
 # MOSI=32, MISO=39, IRQ=36), driven by the XPT2046_Touchscreen component — NOT

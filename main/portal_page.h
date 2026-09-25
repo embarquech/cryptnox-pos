@@ -23,6 +23,7 @@
 #define PORTAL_PAGE_H
 
 #include "card_front.h"   /* CARD_FRONT_PNG_URI — the portal's card picture */
+#include "portal_fonts.h" /* PORTAL_FONTS_CSS — the faces, tools/gen_portal_fonts.py */
 
 /* The AP's own address, and therefore the answer to every DNS question the
  * portal is asked. esp_netif's SoftAP default; changing it means changing this
@@ -40,6 +41,7 @@ static const char *const PAGE_HTML =
 "<!doctype html><html lang=en><head><meta charset=utf-8>"
 "<meta name=viewport content='width=device-width,initial-scale=1'>"
 "<title>Cryptnox POS</title><style>"
+PORTAL_FONTS_CSS
 
 /* The Cryptnox palette, taken from the brand's own stylesheet
  * (cryptnox.github.io/docs/source/_static/custom.css): apricot #fcb770 as the
@@ -71,26 +73,30 @@ static const char *const PAGE_HTML =
  * grid, which outranks the browser's default `[hidden]{display:none}`. Without
  * this line every section shows at once. */
 "[hidden]{display:none!important}"
-/* 'Noto Sans' is the brand's face and ships on most Android, which is what this
- * page is opened on. It is listed, never fetched: the phone is on a captive
- * portal with no route to a font CDN, so a @font-face here would only cost a
- * three-second timeout before falling back to exactly this stack. */
+/* The terminal's own faces: Inter for everything read, Plus Jakarta Sans
+ * (--head) for the brand, headings and buttons — the split the panel uses. Both
+ * are embedded above, because the phone is on a captive portal with no route to
+ * a font CDN; the system stack is only what shows while they decode. Weights
+ * are the embedded ones only (Inter 400/500/600, Jakarta 600) — asking for
+ * another gets a faux bold, which is why <b> is pinned to 600. */
+":root{--head:'Plus Jakarta Sans',Inter,-apple-system,'Segoe UI',system-ui,sans-serif}"
+"b,strong{font-weight:600}"
 "body{margin:0;padding:0 16px 40px;background:var(--bg);color:var(--fg);"
-"font:16px/1.55 'Noto Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',"
+"font:16px/1.55 Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',"
 "system-ui,sans-serif;-webkit-font-smoothing:antialiased}"
 "header,main{max-width:34rem;margin:0 auto}"
 "header{display:flex;align-items:center;gap:10px;padding:22px 2px 16px}"
 ".mark{flex:0 0 30px;width:30px;height:30px;display:block}"
-".brand{font-size:1.05rem;font-weight:700;letter-spacing:-.015em;margin:0}"
+".brand{font-family:var(--head);font-size:1.05rem;font-weight:600;letter-spacing:-.015em;margin:0}"
 ".chip{margin-left:auto;padding:6px 10px;border-radius:999px;font-size:.75rem;"
-"color:var(--dim);background:var(--card);border:1px solid var(--line)}"
+"color:var(--dim);background:var(--card);border:1px solid var(--line);font-weight:500}"
 
 "section{background:var(--card);border:1px solid var(--line);border-radius:16px;"
 "padding:18px;margin:0 0 14px;box-shadow:var(--sh)}"
 /* The apricot tick beside a heading is the only decoration on the page. It is
  * what makes a stack of grey cards read as Cryptnox rather than as a default
  * form, and it costs one pseudo-element. */
-"h2{font-size:.95rem;font-weight:700;margin:0 0 .35rem;padding-left:12px;"
+"h2{font-family:var(--head);font-size:.95rem;font-weight:600;margin:0 0 .35rem;padding-left:12px;"
 "position:relative;letter-spacing:-.005em}"
 "h2::before{content:'';position:absolute;left:0;top:.28em;width:3px;"
 "height:.95em;border-radius:2px;background:var(--acc)}"
@@ -98,7 +104,7 @@ static const char *const PAGE_HTML =
 "section h2~h2{margin-top:1.6rem;padding-top:1.2rem;border-top:1px solid var(--line)}"
 "p,label{display:block;color:var(--dim);font-size:.92rem;margin:.3rem 0 .9rem}"
 /* A label belongs to the field under it, so it keeps only the field's own 6px. */
-"label{margin-bottom:0}"
+"label{margin-bottom:0;font-weight:500}"
 
 "input,select,button{font:inherit;width:100%;padding:12px 14px;margin:6px 0 0;"
 "border:1px solid var(--line);border-radius:11px;background:var(--soft);"
@@ -142,12 +148,11 @@ static const char *const PAGE_HTML =
 
 /* 48px so it is a thumb target, not a mouse one. */
 "button{min-height:48px;margin-top:10px;border:0;background:var(--acc);"
-"color:var(--accf);font-weight:700;cursor:pointer;"
+"color:var(--accf);font-family:var(--head);font-weight:600;cursor:pointer;"
 "transition:filter .15s,transform .05s}"
 "button:hover{filter:brightness(1.06)}button:active{transform:scale(.995)}"
 "button[disabled]{opacity:.45;cursor:not-allowed;filter:none}"
-"button.alt{background:var(--card);color:var(--fg);border:1px solid var(--line);"
-"font-weight:600}"
+"button.alt{background:var(--card);color:var(--fg);border:1px solid var(--line)}"
 "button.alt:hover{border-color:var(--acc);filter:none}"
 
 /* The reveal eye sits inside the password box. The wrapper carries the field's
@@ -229,7 +234,7 @@ static const char *const PAGE_HTML =
 "border-left:3px solid var(--acc)}"
 "#s_pend h2,#s_pend p{color:var(--tintf)}"
 "#s_pend h2::before{display:none}#s_pend h2{padding-left:0}"
-"#pend{font-weight:700;word-break:break-all}"
+"#pend{font-weight:600;word-break:break-all}"
 /* A chosen .bin's name, straight off the operator's filesystem: it has no spaces
  * to break at, so without this a long one widens the card and takes the page's
  * horizontal scrollbar with it. */

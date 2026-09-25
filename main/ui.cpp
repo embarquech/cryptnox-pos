@@ -51,6 +51,16 @@
 
 #include "CW_Utils.h"   /* hardened memory primitives (CODING_RULES §1.4) */
 
+/* Plus Jakarta Sans for titles, buttons and figures, Inter for small text;
+ * one weight per role — main/fonts/, tools/gen_fonts.py. */
+LV_FONT_DECLARE(font_inter_14)           /* Inter Regular: body, captions */
+LV_FONT_DECLARE(font_inter_14_medium)    /* Inter Medium: values, clock   */
+LV_FONT_DECLARE(font_pjs_20_medium)     /* Medium: titles and messages  */
+LV_FONT_DECLARE(font_pjs_20_semibold)   /* SemiBold: button labels      */
+LV_FONT_DECLARE(font_pjs_28_semibold)   /* SemiBold: amounts            */
+LV_FONT_DECLARE(font_pjs_28_light)      /* Light: keypad digits         */
+LV_FONT_DECLARE(font_icons_48)          /* LV_SYMBOL_OK/CLOSE/WARNING   */
+
 static const char *TAG = "ui";
 
 /******************************************************************
@@ -195,7 +205,7 @@ static void theme_styles_init(void)
     lv_style_set_border_width(&s_st_tab, 0);
     lv_style_set_radius(&s_st_tab, BTN_RADIUS);
     lv_style_set_text_color(&s_st_tab, COL_DIM);
-    lv_style_set_text_font(&s_st_tab, &lv_font_montserrat_14);
+    lv_style_set_text_font(&s_st_tab, &font_inter_14_medium);
 
     /* Filled pill, same shape AND the same colour as the action buttons: the
      * admin panel's buttons are all COL_ACTION, and the selected tab is the
@@ -307,7 +317,11 @@ static void theme_init(void)
 {
     theme_styles_init();
 
+    /* Re-initialised with the UI font: the one LVGL built it with is a
+     * Kconfig built-in, and every widget not styled by hand inherits it. */
     lv_theme_t *base = lv_disp_get_theme(NULL);
+    base = lv_theme_default_init(NULL, base->color_primary, base->color_secondary,
+                                 LV_THEME_DEFAULT_DARK, &font_inter_14);
     s_theme = *base;
     lv_theme_set_parent(&s_theme, base);
     lv_theme_set_apply_cb(&s_theme, theme_apply);
@@ -318,7 +332,7 @@ static void theme_init(void)
  * 3b. Layout metrics — shared so every screen's header lines up
  ******************************************************************/
 #define HDR_TITLE_Y     11     /* title offset — optically centred in the
-                                  42px band above the divider (montserrat_20) */
+                                  42px band above the divider (font_pjs_20_medium) */
 #define HDR_DIVIDER_Y   42     /* rule under the title                */
 #define ACT_BTN_H       46     /* bottom action-button height         */
 #define ACT_BTN_Y       (-8)   /* bottom action-button offset         */
@@ -876,7 +890,7 @@ static uint64_t amount_cents_max(void) {
 }
 
 /* From 100.00 up, the cents move to the small font. Five figures and cents in
- * montserrat_28 is ~150 of 240 pixels, and the asset button now shares the row —
+ * font_pjs_28_semibold is ~150 of 240 pixels, and the asset button now shares the row —
  * so the change gives up its size to the part anybody actually reads. Below 100
  * there is room for all of it, and "7.50" with shrunken cents would just look
  * like a typographic tic. */
@@ -917,13 +931,13 @@ static uint64_t amount_cents_max(void) {
  * font, so nothing in the band moves when the minute ticks from 09:59 to 10:00
  * — a band that twitches on its own is the thing this layout exists to stop.
  *
- * Everything sits on one optical centre line at y≈12: montserrat_14 draws a
- * 16px box (so text at 4), the Wi-Fi mark is 13 tall at 6. Move one and move
- * the other.
+ * Everything sits on one optical centre line at y≈12.5: font_inter_14_medium
+ * draws an 18px box with its 11px cap 4 down (so text at 3 puts the cap at
+ * 7..18), the Wi-Fi mark is 13 tall at 6. Move one and move the other.
  *
- * CLOCK_W and CHIP_W are reserves rather than the real widths — "00:00"
- * measures ~36 against 42, "TEST" with its pads ~54 against 56. */
-#define BAND_Y      4      /* text top: clock and chip                  */
+ * CLOCK_W and CHIP_W are reserves rather than the real widths — "00:00", the
+ * widest time, measures ~40 against 42, "TEST" with its pads ~48 against 56. */
+#define BAND_Y      3      /* text top: clock and chip                  */
 #define CLOCK_X     10
 #define CLOCK_Y     BAND_Y
 #define CLOCK_W     42
@@ -949,10 +963,10 @@ enum {
  * boxes share a centre line and the digits' middle IS the coin's. The y used to be
  * that sum written out by hand and it was wrong — 50 against a 30px line box put
  * the figure's middle at 64 against the coin's 67. Measured now, so it also
- * survives a change of font. (Centring the label's box centres the digits:
- * montserrat_28 puts the baseline 25 into a 30px box and draws '0' 20 tall, so the
- * ink runs 5..25 and its middle is the box's. True of this font, not a rule — a
- * font with a deeper descender would want the ink measured instead.)
+ * survives a change of font. (The box is not the ink: font_pjs_28_semibold puts
+ * the baseline 25 into a 32px box and draws '0' 22 tall, so the ink runs 3..25
+ * and its middle sits 2 above the box's. amount_ink_shift() reads that off the
+ * font's own '0', so the digits and not the box land on the coin's centre.)
  *
  * Horizontally: the screen's centre, the same one the keypad and the Charge button
  * below already sit on. An earlier cut centred the row in the line *left of the
@@ -971,6 +985,14 @@ enum {
  * ticker that says which money lives on the selector, where it does not have to
  * compete with the digits for the same 240 pixels.
  */
+/* How far below the line box's middle the middle of a digit's ink sits. */
+static lv_coord_t amount_ink_shift(const lv_font_t *f) {
+    lv_font_glyph_dsc_t g;
+    if (!lv_font_get_glyph_dsc(f, &g, '0', 0)) { return 0; }
+    const lv_coord_t ink_mid = f->line_height - f->base_line - g.ofs_y - (g.box_h / 2);
+    return (f->line_height / 2) - ink_mid;
+}
+
 static void amount_row_place(void) {
     if (s_amount_row == NULL) { return; }
 
@@ -1011,7 +1033,8 @@ static void amount_row_place(void) {
     }
 
     lv_obj_align(s_amount_row, LV_ALIGN_TOP_MID, x,
-                 ASSET_BTN_Y + ((ASSET_BTN_H - lv_area_get_height(&r)) / 2));
+                 ASSET_BTN_Y + ((ASSET_BTN_H - lv_area_get_height(&r)) / 2)
+                     + amount_ink_shift(&font_pjs_28_semibold));
 }
 
 /**
@@ -1633,7 +1656,7 @@ static lv_obj_t *make_ghost_button(lv_obj_t *parent, const char *label,
                                    lv_coord_t x, lv_coord_t y, BtnAction act) {
     lv_obj_t *b = make_button(parent, label, COL_BG, COL_TEXT, w,
                               CARD_BTN_H,
-                              align, x, y, act, &lv_font_montserrat_20);
+                              align, x, y, act, &font_pjs_20_semibold);
     lv_obj_set_style_border_width(b, 1, LV_PART_MAIN);
     lv_obj_set_style_border_color(b, COL_BORDER, LV_PART_MAIN);
     lv_obj_set_style_border_opa(b, LV_OPA_COVER, LV_PART_MAIN);
@@ -1672,7 +1695,7 @@ static lv_obj_t *make_glyph_disc(lv_obj_t *parent, const char *sym,
     lv_obj_t *l = lv_label_create(d);
     lv_label_set_text(l, sym);
     lv_obj_set_style_text_color(l, COL_BG, LV_PART_MAIN);
-    lv_obj_set_style_text_font(l, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(l, &font_inter_14, LV_PART_MAIN);
     lv_obj_center(l);
     return d;
 }
@@ -1782,10 +1805,10 @@ static lv_obj_t *make_asset_button(lv_obj_t *parent) {
     lv_obj_clear_flag(s_asset_btn, LV_OBJ_FLAG_SCROLLABLE);
 
     (void)make_asset_badge(s_asset_btn, settings_get_chain());
-    make_label(s_asset_btn, asset_name(), COL_TEXT, &lv_font_montserrat_14,
+    make_label(s_asset_btn, asset_name(), COL_TEXT, &font_inter_14_medium,
                LV_ALIGN_DEFAULT, 0, 0);
     s_asset_arrow = make_label(s_asset_btn, LV_SYMBOL_RIGHT, COL_DIM,
-                               &lv_font_montserrat_14, LV_ALIGN_DEFAULT, 0, 0);
+                               &font_inter_14, LV_ALIGN_DEFAULT, 0, 0);
     return s_asset_btn;
 }
 
@@ -1915,9 +1938,9 @@ static lv_obj_t *make_pill(lv_obj_t *parent, const char *title, const char *sub,
                         reinterpret_cast<void *>(static_cast<intptr_t>(act)));
 
     if (sub != NULL) {
-        make_label(btn, title, COL_TEXT, &lv_font_montserrat_20,
+        make_label(btn, title, COL_TEXT, &font_pjs_20_medium,
                    LV_ALIGN_TOP_LEFT, PILL_TEXT_X, 7);
-        lv_obj_t *sl = make_label(btn, sub, COL_DIM, &lv_font_montserrat_14,
+        lv_obj_t *sl = make_label(btn, sub, COL_DIM, &font_inter_14,
                                   LV_ALIGN_TOP_LEFT, PILL_TEXT_X, 30);
         /* A leaf row's subtitle is left at LV_SIZE_CONTENT — it is one of our
          * own fixed strings and it must be readable in full. Only the rows that
@@ -1928,13 +1951,13 @@ static lv_obj_t *make_pill(lv_obj_t *parent, const char *title, const char *sub,
             lv_label_set_long_mode(sl, LV_LABEL_LONG_DOT);
         }
     } else {
-        make_label(btn, title, COL_TEXT, &lv_font_montserrat_20,
+        make_label(btn, title, COL_TEXT, &font_pjs_20_medium,
                    LV_ALIGN_LEFT_MID, PILL_TEXT_X, 0);
     }
     /* The chevron means "this opens something". A leaf row is the choice
      * itself, so it gets no chevron — and hands the space to the subtitle. */
     if (!leaf) {
-        make_label(btn, LV_SYMBOL_RIGHT, COL_DIM, &lv_font_montserrat_14,
+        make_label(btn, LV_SYMBOL_RIGHT, COL_DIM, &font_inter_14,
                    LV_ALIGN_RIGHT_MID, -14, 0);
     }
     return btn;
@@ -1959,9 +1982,9 @@ static lv_obj_t *make_field(lv_obj_t *parent, const char *caption,
     lv_obj_set_flex_flow(box, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_row(box, 4, LV_PART_MAIN);
 
-    make_label(box, caption, COL_DIM, &lv_font_montserrat_14,
+    make_label(box, caption, COL_DIM, &font_inter_14,
                LV_ALIGN_DEFAULT, 0, 0);
-    lv_obj_t *v = make_label(box, value, col, &lv_font_montserrat_14,
+    lv_obj_t *v = make_label(box, value, col, &font_inter_14_medium,
                              LV_ALIGN_DEFAULT, 0, 0);
     lv_obj_set_width(v, TAB_W);
     lv_label_set_long_mode(v, LV_LABEL_LONG_WRAP);
@@ -2145,7 +2168,7 @@ static lv_obj_t *build_page(int step, bool band = true) {
      * rather than by rebuilding the screen every minute. */
     if (band) {
         s_clock_lbl = make_label(lv_scr_act(), "", COL_TITLE,
-                                 &lv_font_montserrat_14,
+                                 &font_inter_14_medium,
                                  LV_ALIGN_TOP_LEFT, CLOCK_X, CLOCK_Y);
         clock_refresh();
     }
@@ -2275,9 +2298,9 @@ static void build_settings(void) {
                           LV_FLEX_ALIGN_CENTER);
 
     /* ── Screen tab: brightness ── */
-    make_label(t_screen, "Brightness", COL_TEXT, &lv_font_montserrat_14,
+    make_label(t_screen, "Brightness", COL_TEXT, &font_inter_14_medium,
                LV_ALIGN_TOP_LEFT, 0, 0);
-    lv_obj_t *pct = make_label(t_screen, "", COL_DIM, &lv_font_montserrat_14,
+    lv_obj_t *pct = make_label(t_screen, "", COL_DIM, &font_inter_14,
                                LV_ALIGN_TOP_RIGHT, 0, 0);
     lv_obj_t *sl = lv_slider_create(t_screen);
     lv_obj_set_width(sl, 196);
@@ -2337,7 +2360,7 @@ static void build_settings(void) {
      * the About tab, because "update the firmware" and "change the addresses" are
      * two things on one page and an operator should reach it from either. */
     /* Subtitle held to make_pill's cap, like the Update row on the About tab:
-     * TAB_W - PILL_TEXT_X - PILL_TEXT_PAD_R = 140px, and montserrat_14 renders
+     * TAB_W - PILL_TEXT_X - PILL_TEXT_PAD_R = 140px, and font_inter_14 renders
      * "Scan to open in a browser" at 184px — so it arrived dot-elided, which on
      * the row that explains the feature reads as a bug. This is 131px, and it
      * says where the operator ends up rather than naming a QR code they have not
@@ -2382,7 +2405,7 @@ static void build_settings(void) {
         lv_obj_t *w = make_label(t_tx, "Not configured - this terminal cannot "
                                        "take payments. Set it from the "
                                        "Configure page.",
-                                 COL_DANGER, &lv_font_montserrat_14,
+                                 COL_DANGER, &font_inter_14,
                                  LV_ALIGN_DEFAULT, 0, 0);
         lv_obj_set_width(w, TAB_W);
         lv_label_set_long_mode(w, LV_LABEL_LONG_WRAP);
@@ -2423,7 +2446,7 @@ static void build_settings(void) {
     lv_obj_t *blogo = lv_img_create(t_about);
     lv_img_set_src(blogo, &logo_small);   /* 40px dedicated image */
 
-    make_label(t_about, "cryptnox-pos", COL_TEXT, &lv_font_montserrat_20,
+    make_label(t_about, "cryptnox-pos", COL_TEXT, &font_pjs_20_medium,
                LV_ALIGN_DEFAULT, 0, 0);
     /* Straight out of the running image's header rather than a #define, so that
      * after an update this reads as the firmware that is actually executing. */
@@ -2431,7 +2454,7 @@ static void build_settings(void) {
     make_label(t_about,
                ota_version_display(ota_running_version(), about_ver,
                                    sizeof(about_ver)),
-               COL_DIM, &lv_font_montserrat_14, LV_ALIGN_DEFAULT, 0, 0);
+               COL_DIM, &font_inter_14, LV_ALIGN_DEFAULT, 0, 0);
 
     /* An update that installed, booted and was then reverted leaves this tab
      * reading the old version with nothing to say why — which is how "I updated
@@ -2446,7 +2469,7 @@ static void build_settings(void) {
      * the y_update/y_about pair of ternaries. */
     if (ota_last_update_failed()) {
         make_label(t_about, "Last update rolled back", COL_DANGER,
-                   &lv_font_montserrat_14, LV_ALIGN_DEFAULT, 0, 0);
+                   &font_inter_14, LV_ALIGN_DEFAULT, 0, 0);
     }
 
     /* The update row. Tapping it opens the config page on the venue network and
@@ -2474,7 +2497,7 @@ static void build_settings(void) {
                                  "Third-party: ESP-IDF (Apache-2.0),\n"
                                  "LVGL (MIT), TFT_eSPI (FreeBSD/MIT),\n"
                                  "XPT2046_Touchscreen (MIT)",
-                                 COL_DIM, &lv_font_montserrat_14,
+                                 COL_DIM, &font_inter_14,
                                  LV_ALIGN_DEFAULT, 0, 0);
     lv_label_set_long_mode(about, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(about, 210);
@@ -2484,10 +2507,10 @@ static void build_settings(void) {
      * line (Reset left, Close right). On other tabs Close is full-width. */
     s_close_btn = make_button(lv_scr_act(), "Close", COL_ACTION, COL_BG, 232, ACT_BTN_H,
                               LV_ALIGN_BOTTOM_MID, 0, ACT_BTN_Y, ACT_CLOSE,
-                              &lv_font_montserrat_20);
+                              &font_pjs_20_semibold);
     s_reset_btn = make_button(lv_scr_act(), "Reset", COL_DANGER, COL_TEXT, 108, ACT_BTN_H,
                               LV_ALIGN_BOTTOM_LEFT, 10, ACT_BTN_Y, ACT_RESET,
-                              &lv_font_montserrat_20);
+                              &font_pjs_20_semibold);
     /* Shape comes from make_button — BTN_RADIUS, the same corner as Charge.
      * These two used to be full-radius pills, which made the bottom bar of the
      * admin panel the one place on the panel where a button was a different
@@ -2558,13 +2581,13 @@ static void build_touch_cal(void) {
         lv_obj_t *ask = make_label(lv_scr_act(),
                    first ? "Tap the cross\nat the top left"
                          : "Now the one at\nthe bottom right",
-                   COL_TEXT, &lv_font_montserrat_20, LV_ALIGN_CENTER, 0, -10);
+                   COL_TEXT, &font_pjs_20_medium, LV_ALIGN_CENTER, 0, -10);
         lv_obj_set_style_text_align(ask, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
         lv_obj_align(ask, LV_ALIGN_CENTER, 0, -10);
         lv_obj_t *hint = make_label(lv_scr_act(),
                                     "Use a stylus or a fingernail - the centre "
                                     "of the cross, not near it.",
-                                    COL_DIM, &lv_font_montserrat_14,
+                                    COL_DIM, &font_inter_14,
                                     LV_ALIGN_CENTER, 0, 60);
         lv_obj_set_width(hint, 200);
         lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);
@@ -2582,31 +2605,31 @@ static void build_touch_cal(void) {
         lv_obj_t *no = make_label(lv_scr_act(),
                    "Those two taps were\ntoo close together.\n\n"
                    "Nothing was changed.",
-                   COL_DANGER, &lv_font_montserrat_20, LV_ALIGN_CENTER, 0, -20);
+                   COL_DANGER, &font_pjs_20_medium, LV_ALIGN_CENTER, 0, -20);
         lv_obj_set_style_text_align(no, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
         lv_obj_align(no, LV_ALIGN_CENTER, 0, -20);
         make_button(lv_scr_act(), "Back", COL_ACTION, COL_BG, 232, ACT_BTN_H,
                     LV_ALIGN_BOTTOM_MID, 0, ACT_BTN_Y, ACT_CAL_CANCEL,
-                    &lv_font_montserrat_20);
+                    &font_pjs_20_semibold);
         return;
     }
 
     /* The new map is live from here. Tapping Keep with it IS the test. */
     lv_obj_t *q = make_label(lv_scr_act(), "Keep this\ncalibration?", COL_TEXT,
-                             &lv_font_montserrat_20, LV_ALIGN_TOP_MID, 0, 70);
+                             &font_pjs_20_medium, LV_ALIGN_TOP_MID, 0, 70);
     lv_obj_set_style_text_align(q, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_obj_align(q, LV_ALIGN_TOP_MID, 0, 70);
     s_cal_countdown = make_label(lv_scr_act(), "", COL_DIM,
-                                 &lv_font_montserrat_14,
+                                 &font_inter_14,
                                  LV_ALIGN_TOP_MID, 0, 140);
     s_cal_deadline = lv_tick_get() + CAL_VERIFY_MS;
 
     make_button(lv_scr_act(), "Discard", COL_ACTION, COL_BG, 104, ACT_BTN_H,
                 LV_ALIGN_BOTTOM_LEFT, 10, ACT_BTN_Y, ACT_CAL_CANCEL,
-                &lv_font_montserrat_20);
+                &font_pjs_20_semibold);
     make_button(lv_scr_act(), "Keep", COL_ACTION, COL_BG, 104, ACT_BTN_H,
                 LV_ALIGN_BOTTOM_RIGHT, -10, ACT_BTN_Y, ACT_CAL_SAVE,
-                &lv_font_montserrat_20);
+                &font_pjs_20_semibold);
 }
 
 /* Sampling runs on the UI task, outside LVGL's input device: the calibration
@@ -2685,14 +2708,14 @@ static void open_reset_confirm(void) {
                                "Erase all settings\n"
                                "(Wi-Fi, brightness, fees)\n"
                                "and reboot?",
-                               COL_TEXT, &lv_font_montserrat_14,
+                               COL_TEXT, &font_inter_14,
                                LV_ALIGN_TOP_MID, 0, 12);
     lv_obj_set_style_text_align(msg, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
 
     make_button(card, "Erase", COL_DANGER, COL_TEXT, 196, 40,
-                LV_ALIGN_BOTTOM_MID, 0, -50, ACT_RESET_CONFIRM, &lv_font_montserrat_20);
+                LV_ALIGN_BOTTOM_MID, 0, -50, ACT_RESET_CONFIRM, &font_pjs_20_semibold);
     make_button(card, "Cancel", COL_ACTION, COL_BG, 196, 40,
-                LV_ALIGN_BOTTOM_MID, 0, -2, ACT_MODAL_CLOSE, &lv_font_montserrat_20);
+                LV_ALIGN_BOTTOM_MID, 0, -2, ACT_MODAL_CLOSE, &font_pjs_20_semibold);
 }
 
 /**
@@ -2766,11 +2789,11 @@ static void open_portal_window(void) {
         lv_obj_t *m = ota_text(card, NULL,
                  "The terminal's own Wi-Fi would not come up, so there is "
                  "nothing for a phone to join.\n\nRestart and try again.",
-                 COL_TEXT, &lv_font_montserrat_14);
+                 COL_TEXT, &font_inter_14);
         ota_fit_card(card, m, 42);
         make_button(card, "Close", COL_ACTION, COL_BG, OTA_TEXT_W, 40,
                     LV_ALIGN_BOTTOM_MID, 0, -2, ACT_MODAL_CLOSE,
-                    &lv_font_montserrat_20);
+                    &font_pjs_20_semibold);
         return;
     }
 
@@ -2801,14 +2824,14 @@ static void open_portal_window(void) {
     char creds[80];
     snprintf(creds, sizeof(creds), "SSID: %s\nPassword: %s",
              prov_ap_ssid(), prov_ap_pass());
-    lv_obj_t *url = ota_text(card, qr, creds, COL_TEXT, &lv_font_montserrat_14);
+    lv_obj_t *url = ota_text(card, qr, creds, COL_TEXT, &font_inter_14_medium);
 
     /* Two short lines, broken by hand, because the card cannot grow: 304px is
      * ota_fit_card's ceiling, and the 112px code, the credentials and the Done
      * button leave about 45px of it — three lines at most. The paragraph
      * that used to sit here ran to nine and simply stopped mid-sentence at the
      * card's edge. Each line is kept under OTA_TEXT_W (200px, ~27 characters at
-     * montserrat_14) so neither wraps into a fourth. What was dropped is not lost:
+     * font_inter_14) so neither wraps into a fourth. What was dropped is not lost:
      * "the admin code is typed here, never there" is the first thing the browser
      * page itself says, to the person who needs to read it. */
     /* The address, and it earns its line: joining the AP makes the phone open the
@@ -2824,12 +2847,12 @@ static void open_portal_window(void) {
     snprintf(note, sizeof(note),
              "Or open 192.168.4.1\nVenue Wi-Fi off while open\nCloses in %u min",
              prov_window_left_min());
-    lv_obj_t *n = ota_text(card, url, note, COL_DIM, &lv_font_montserrat_14);
+    lv_obj_t *n = ota_text(card, url, note, COL_DIM, &font_inter_14);
     ota_fit_card(card, n, 42);
 
     make_button(card, "Done", COL_ACTION, COL_BG, OTA_TEXT_W, 40,
                 LV_ALIGN_BOTTOM_MID, 0, -2, ACT_PORTAL_CLOSE,
-                &lv_font_montserrat_20);
+                &font_pjs_20_semibold);
 
     s_portal_modal = true;   /* set last: open_modal() cleared it */
 }
@@ -2860,11 +2883,11 @@ static void open_ota_gone(void) {
              "That firmware is no longer waiting to be installed.\n\n"
              "Nothing changed - this terminal is still on the version it was. "
              "Open Update again and send the file once more.",
-             COL_TEXT, &lv_font_montserrat_14);
+             COL_TEXT, &font_inter_14);
     ota_fit_card(card, m, 42);
     make_button(card, "Close", COL_ACTION, COL_BG, OTA_TEXT_W, 40,
                 LV_ALIGN_BOTTOM_MID, 0, -2, ACT_MODAL_CLOSE,
-                &lv_font_montserrat_20);
+                &font_pjs_20_semibold);
 }
 
 static void build_ota_confirm(void) {
@@ -2880,7 +2903,7 @@ static void build_ota_confirm(void) {
     lv_obj_t *cap = ota_text(card, NULL,
                              older ? "This is an OLDER version" : "New firmware",
                              older ? COL_DANGER : COL_DIM,
-                             &lv_font_montserrat_14);
+                             &font_inter_14);
     /* 28 pt fits about twelve characters on one line. A version longer than that
      * is a `git describe` string rather than a release tag, and wrapping it at
      * this size costs two more lines than the card can spare — so step down.
@@ -2888,8 +2911,8 @@ static void build_ota_confirm(void) {
     char staged_ver[OTA_VERSION_SHOWN_MAX];
     (void)ota_version_display(version, staged_ver, sizeof(staged_ver));
     lv_obj_t *ver = ota_text(card, cap, staged_ver, COL_TEXT,
-                             (strlen(staged_ver) > 12U) ? &lv_font_montserrat_20
-                                                        : &lv_font_montserrat_28);
+                             (strlen(staged_ver) > 12U) ? &font_pjs_20_medium
+                                                        : &font_pjs_28_semibold);
 
     char running_ver[OTA_VERSION_SHOWN_MAX];
     char body[128];
@@ -2897,13 +2920,13 @@ static void build_ota_confirm(void) {
              "Running %s.\n\nThe terminal restarts now. Not during a payment.",
              ota_version_display(ota_running_version(), running_ver,
                                  sizeof(running_ver)));
-    lv_obj_t *m = ota_text(card, ver, body, COL_DIM, &lv_font_montserrat_14);
+    lv_obj_t *m = ota_text(card, ver, body, COL_DIM, &font_inter_14);
     ota_fit_card(card, m, 86);
 
     make_button(card, "Install", COL_ACTION, COL_BG, OTA_TEXT_W, 40,
-                LV_ALIGN_BOTTOM_MID, 0, -46, ACT_OTA_OK, &lv_font_montserrat_20);
+                LV_ALIGN_BOTTOM_MID, 0, -46, ACT_OTA_OK, &font_pjs_20_semibold);
     make_button(card, "Discard", COL_ACTION, COL_BG, OTA_TEXT_W, 40,
-                LV_ALIGN_BOTTOM_MID, 0, -2, ACT_OTA_NO, &lv_font_montserrat_20);
+                LV_ALIGN_BOTTOM_MID, 0, -2, ACT_OTA_NO, &font_pjs_20_semibold);
 
     s_portal_modal = true;
 }
@@ -2946,7 +2969,7 @@ static void open_network_picker(void) {
     lv_obj_t *card = open_modal(228,
         static_cast<lv_coord_t>(86 + (POS_NET__COUNT * (PILL_H + 2))));
 
-    make_label(card, "Network", COL_DIM, &lv_font_montserrat_14,
+    make_label(card, "Network", COL_DIM, &font_inter_14,
                LV_ALIGN_TOP_MID, 0, 2);
 
     for (int i = 0; i < (int)POS_NET__COUNT; i++) {
@@ -2975,7 +2998,7 @@ static void open_network_picker(void) {
 
     make_button(card, "Cancel", COL_SURFACE, COL_TEXT, PICK_W, 40,
                 LV_ALIGN_BOTTOM_MID, 0, -2, ACT_MODAL_CLOSE,
-                &lv_font_montserrat_20);
+                &font_pjs_20_semibold);
 }
 
 /** Step 2 — the coin on the network chosen in step 1. */
@@ -2999,7 +3022,7 @@ static void open_coin_picker(pos_net_t net) {
         static_cast<lv_coord_t>(86 + (n * (PILL_H + 2))));
 
     make_label(card, title, COL_DIM,
-               &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0, 2);
+               &font_inter_14, LV_ALIGN_TOP_MID, 0, 2);
 
     size_t row = 0;
     for (size_t i = 0U; i < POS_ASSET_COUNT; i++) {
@@ -3016,7 +3039,7 @@ static void open_coin_picker(pos_net_t net) {
     /* Back, not Cancel: step 2 of two, so the way out is step 1. */
     make_button(card, "Back", COL_SURFACE, COL_TEXT, PICK_W, 40,
                 LV_ALIGN_BOTTOM_MID, 0, -2, ACT_NET_PICK,
-                &lv_font_montserrat_20);
+                &font_pjs_20_semibold);
 }
 
 /******************************************************************
@@ -3036,7 +3059,7 @@ static lv_obj_t *make_icon_button(const char *sym, BtnAction act,
     lv_obj_t *lbl = lv_label_create(btn);
     lv_label_set_text(lbl, sym);
     lv_obj_set_style_text_color(lbl, COL_TEXT, LV_PART_MAIN);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(lbl, &font_pjs_20_medium, LV_PART_MAIN);
     lv_obj_center(lbl);
     return btn;
 }
@@ -3060,11 +3083,11 @@ static void add_test_chip(void) {
     lv_obj_t *chip = lv_label_create(lv_scr_act());
     lv_label_set_text(chip, "TEST");
     lv_obj_set_style_text_color(chip, COL_BG, LV_PART_MAIN);
-    lv_obj_set_style_text_font(chip, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(chip, &font_inter_14_medium, LV_PART_MAIN);
     lv_obj_set_style_bg_color(chip, COL_DANGER, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_pad_hor(chip, 7, LV_PART_MAIN);
-    lv_obj_set_style_pad_ver(chip, 2, LV_PART_MAIN);
+    lv_obj_set_style_pad_ver(chip, 1, LV_PART_MAIN);   /* 18px line: 20 tall */
     lv_obj_set_style_radius(chip, LV_RADIUS_CIRCLE, LV_PART_MAIN);
     /* Straight after the clock. It was top-LEFT, which is the clock's corner
      * now; it cannot go right, because that end is the Wi-Fi mark's and the mark
@@ -3106,15 +3129,15 @@ static lv_obj_t *make_title(const char *txt, bool has_icon,
                                        : 8;
     const lv_coord_t avail  = hw - (2 * gutter);
 
-    const bool small = lv_txt_get_width(txt, strlen(txt), &lv_font_montserrat_20,
+    const bool small = lv_txt_get_width(txt, strlen(txt), &font_pjs_20_medium,
                                         0, LV_TEXT_FLAG_NONE) > avail;
-    /* +4 keeps the shorter 14px cap optically level with the 20px arrow glyph
-     * beside it, which is drawn from the same HDR_TITLE_Y baseline. */
+    /* +2 keeps the shorter 14px cap optically level with the 20px arrow glyph
+     * beside it (Inter's 18px line box already puts its cap 2 lower). */
     lv_obj_t *l = make_label(host, txt, COL_TITLE,
-                             small ? &lv_font_montserrat_14
-                                   : &lv_font_montserrat_20,
+                             small ? &font_inter_14_medium
+                                   : &font_pjs_20_medium,
                              LV_ALIGN_TOP_MID, 0,
-                             small ? (HDR_TITLE_Y + 4) : HDR_TITLE_Y);
+                             small ? (HDR_TITLE_Y + 2) : HDR_TITLE_Y);
     lv_obj_set_width(l, avail);
     lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
     lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
@@ -3149,16 +3172,16 @@ static void build_welcome(void) {
     /* "Thank you for choosing Cryptnox POS." split over two lines: the product
      * name stays black to carry the sentence, the lead-in is grey. */
     make_label(card, "Thank you for choosing", COL_DIM,
-               &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0, 104);
+               &font_inter_14, LV_ALIGN_TOP_MID, 0, 104);
     lv_obj_t *brand = make_label(card, "Cryptnox POS", COL_TEXT,
-                                 &lv_font_montserrat_20, LV_ALIGN_TOP_MID, 0, 124);
+                                 &font_pjs_20_medium, LV_ALIGN_TOP_MID, 0, 124);
 
     /* Anchored under the brand rather than at a fixed y: this sentence sits near
      * the wrap threshold, so an absolute offset would give a different gap
      * depending on whether it takes one line or two. Width and long mode first,
      * so the measurement sees them. */
     lv_obj_t *sub = make_label(card, s_welcome_sub,
-                               COL_DIM, &lv_font_montserrat_14,
+                               COL_DIM, &font_inter_14,
                                LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_width(sub, CARD_W - (2 * CARD_PAD));
     lv_label_set_long_mode(sub, LV_LABEL_LONG_WRAP);
@@ -3168,7 +3191,7 @@ static void build_welcome(void) {
 
     (void)make_button(card, "Start", COL_ACTION, COL_BG,
                       CARD_BTN_W, CARD_BTN_H, LV_ALIGN_BOTTOM_MID, 0, CARD_BTN_Y,
-                      ACT_WELCOME_OK, &lv_font_montserrat_20);
+                      ACT_WELCOME_OK, &font_pjs_20_semibold);
 }
 
 /* Phone setup: the same screen at every step, captioned with the current one.
@@ -3197,14 +3220,14 @@ static void build_prov(void) {
     if (step == PROV_STEP_DONE) {
         lv_obj_t *card = build_page(PAY_STEP_NONE, false);   /* setup: no band */
         lv_obj_t *chk = make_label(card, LV_SYMBOL_OK, COL_SUCCESS,
-                                   &lv_font_montserrat_48, LV_ALIGN_TOP_MID, 0, 16);
+                                   &font_icons_48, LV_ALIGN_TOP_MID, 0, 16);
         pop_in(chk);
-        make_label(card, "All set", COL_TEXT, &lv_font_montserrat_20,
+        make_label(card, "All set", COL_TEXT, &font_pjs_20_medium,
                    LV_ALIGN_TOP_MID, 0, 76);
         lv_obj_t *b = make_label(card,
                                  "Thank you - your terminal is configured.\n\n"
                                  "It restarts once to apply everything.",
-                                 COL_DIM, &lv_font_montserrat_14,
+                                 COL_DIM, &font_inter_14,
                                  LV_ALIGN_TOP_MID, 0, 106);
         lv_obj_set_width(b, CARD_W - (2 * CARD_PAD));
         lv_label_set_long_mode(b, LV_LABEL_LONG_WRAP);
@@ -3213,7 +3236,7 @@ static void build_prov(void) {
 
         (void)make_button(card, "Finish", COL_ACTION, COL_BG,
                           CARD_BTN_W, CARD_BTN_H, LV_ALIGN_BOTTOM_MID, 0, CARD_BTN_Y,
-                          ACT_PROV_FINISH, &lv_font_montserrat_20);
+                          ACT_PROV_FINISH, &font_pjs_20_semibold);
         return;
     }
 
@@ -3268,12 +3291,12 @@ static void build_prov(void) {
             break;
     }
 
-    make_label(host, eyebrow, COL_DIM, &lv_font_montserrat_14,
+    make_label(host, eyebrow, COL_DIM, &font_inter_14,
                LV_ALIGN_TOP_MID, 0, 6 + dy);
-    make_label(host, title, COL_TEXT, &lv_font_montserrat_20,
+    make_label(host, title, COL_TEXT, &font_pjs_20_medium,
                LV_ALIGN_TOP_MID, 0, 22 + dy);
     make_label(host, hint, COL_DIM,
-               &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0, 48 + dy);
+               &font_inter_14, LV_ALIGN_TOP_MID, 0, 48 + dy);
 
     /* The QR code and the AP credentials are for joining, so they go away the
      * moment the phone has joined and been let in. Left up on the later steps they
@@ -3295,20 +3318,20 @@ static void build_prov(void) {
          * and a note, and somebody typing them into a phone's Wi-Fi sheet is
          * filling in two named boxes. */
         make_label(lv_scr_act(), "Or join manually:", COL_DIM,
-                   &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0, 194);
-        make_label(lv_scr_act(), "Network", COL_DIM, &lv_font_montserrat_14,
+                   &font_inter_14, LV_ALIGN_TOP_MID, 0, 194);
+        make_label(lv_scr_act(), "Network", COL_DIM, &font_inter_14,
                    LV_ALIGN_TOP_LEFT, 24, 214);
         make_label(lv_scr_act(), prov_ap_ssid(), COL_TEXT,
-                   &lv_font_montserrat_14, LV_ALIGN_TOP_LEFT, 100, 214);
-        make_label(lv_scr_act(), "Password", COL_DIM, &lv_font_montserrat_14,
+                   &font_inter_14_medium, LV_ALIGN_TOP_LEFT, 100, 214);
+        make_label(lv_scr_act(), "Password", COL_DIM, &font_inter_14,
                    LV_ALIGN_TOP_LEFT, 24, 232);
         make_label(lv_scr_act(), prov_ap_pass(), COL_TEXT,
-                   &lv_font_montserrat_14, LV_ALIGN_TOP_LEFT, 100, 232);
+                   &font_inter_14_medium, LV_ALIGN_TOP_LEFT, 100, 232);
     } else {
         lv_obj_t *on = make_label(host,
                                   "Connected - the setup page is open in the "
                                   "browser.",
-                                  COL_DIM, &lv_font_montserrat_14,
+                                  COL_DIM, &font_inter_14,
                                   LV_ALIGN_TOP_MID, 0, 86);
         lv_obj_set_width(on, CARD_W - (2 * CARD_PAD));
         lv_label_set_long_mode(on, LV_LABEL_LONG_WRAP);
@@ -3320,7 +3343,7 @@ static void build_prov(void) {
          * code. */
         if (s_prov_msg[0] != '\0') {
             lv_obj_t *m = make_label(host, s_prov_msg, COL_DANGER,
-                                     &lv_font_montserrat_14,
+                                     &font_inter_14,
                                      LV_ALIGN_TOP_MID, 0, 130);
             lv_obj_set_width(m, CARD_W - (2 * CARD_PAD));
             lv_label_set_long_mode(m, LV_LABEL_LONG_WRAP);
@@ -3351,7 +3374,7 @@ static void build_prov(void) {
      * and the spinner alone says the terminal is waiting on the browser. */
     if (!authed) {
         make_label(lv_scr_act(), "Waiting for a connection", COL_DIM,
-                   &lv_font_montserrat_14, LV_ALIGN_BOTTOM_MID, 0, -10);
+                   &font_inter_14, LV_ALIGN_BOTTOM_MID, 0, -10);
     }
 }
 
@@ -3394,9 +3417,9 @@ static void build_prov_confirm(void) {
     lv_obj_t *t = ota_text(card, NULL,
                            contract ? "Set token contract?"
                                     : "Set payout address?",
-                           COL_TEXT, &lv_font_montserrat_20);
-    lv_obj_t *l = ota_text(card, t, label, COL_DIM, &lv_font_montserrat_14);
-    lv_obj_t *a = ota_text(card, l, addr, COL_TEXT, &lv_font_montserrat_14);
+                           COL_TEXT, &font_pjs_20_medium);
+    lv_obj_t *l = ota_text(card, t, label, COL_DIM, &font_inter_14);
+    lv_obj_t *a = ota_text(card, l, addr, COL_TEXT, &font_inter_14_medium);
     /* Both cut to the sentence that changes a decision. The card grows to whatever
      * it is given, but only up to ota_fit_card's ceiling of one screen — past that
      * the buttons come back up over the text, which is the failure this rewrite is
@@ -3407,17 +3430,17 @@ static void build_prov_confirm(void) {
                               ? "A wrong contract charges a different asset."
                               : "Takings will be sent here. Check it against "
                                 "your own records.",
-                              COL_DIM, &lv_font_montserrat_14);
+                              COL_DIM, &font_inter_14);
     ota_fit_card(card, warn, 86);   /* two 40px buttons at -46 and -2 */
 
     /* Reject is the wide, plainly-labelled one and Accept is the deliberate tap:
      * the safe answer to "a stranger's address appeared on my terminal" is no. */
     (void)make_button(card, "Accept", COL_ACCENT, COL_BG, OTA_TEXT_W, 40,
                       LV_ALIGN_BOTTOM_MID, 0, -46, ACT_PROV_OK,
-                      &lv_font_montserrat_20);
+                      &font_pjs_20_semibold);
     (void)make_button(card, "Reject", COL_SURFACE, COL_TEXT, OTA_TEXT_W, 40,
                       LV_ALIGN_BOTTOM_MID, 0, -2, ACT_PROV_NO,
-                      &lv_font_montserrat_20);
+                      &font_pjs_20_semibold);
 }
 
 /* "Hold your card to the reader" while an address is derived from it. Its own
@@ -3429,7 +3452,7 @@ static void build_card_wait(void) {
     lv_obj_t *card = build_page(PAY_STEP_NONE, false);   /* setup: no band */
     const lv_coord_t VW = CARD_W - (2 * CARD_PAD);
 
-    make_label(card, "Cryptnox card", COL_DIM, &lv_font_montserrat_14,
+    make_label(card, "Cryptnox card", COL_DIM, &font_inter_14,
                LV_ALIGN_TOP_MID, 0, 10);
 
     /* Centred in the band between the caption above and the line below, rather
@@ -3439,12 +3462,12 @@ static void build_card_wait(void) {
     make_tap_mark(card, 32 + ((88 - TAP_MARK_H) / 2));
 
     make_label(card, "Hold card to reader", COL_TEXT,
-               &lv_font_montserrat_20, LV_ALIGN_TOP_MID, 0, 124);
+               &font_pjs_20_medium, LV_ALIGN_TOP_MID, 0, 124);
 
     /* 154, not 176: "Reading your payout addresses" wraps to two lines at
      * 204px, and from 176 the second one sat on the Cancel button (208). */
     lv_obj_t *info = make_label(card, s_card_note, COL_DIM,
-                                &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0, 154);
+                                &font_inter_14, LV_ALIGN_TOP_MID, 0, 154);
     lv_obj_set_width(info, VW);
     lv_label_set_long_mode(info, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_align(info, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
@@ -3467,7 +3490,7 @@ static void build_splash(void) {
 
     /* Tight under the logo (the image carries its own breathing margin). */
     make_label(lv_scr_act(), "cryptnox-pos", lv_color_black(),
-               &lv_font_montserrat_20, LV_ALIGN_CENTER, 0, 40);
+               &font_pjs_20_medium, LV_ALIGN_CENTER, 0, 40);
 
     /* Boot feedback — the splash stays up while Wi-Fi/SNTP/RPC come up, so
      * show a discreet spinner instead of looking frozen. */
@@ -3482,7 +3505,7 @@ static void build_splash(void) {
     /* Which boot step is running, so a slow start is legible rather than
      * looking frozen. Discreet, and elided by width to never overflow. */
     s_boot_step_lbl = make_label(lv_scr_act(), s_boot_step, COL_DIM,
-                                 &lv_font_montserrat_14,
+                                 &font_inter_14,
                                  LV_ALIGN_BOTTOM_MID, 0, -20);
     lv_obj_set_width(s_boot_step_lbl, SCR_W - 24);
     lv_label_set_long_mode(s_boot_step_lbl, LV_LABEL_LONG_DOT);
@@ -3514,7 +3537,7 @@ static void build_amount(void) {
 
     /* Figure and small cents in one content-sized flex row, so the group centres
      * itself whatever the fonts measure — nothing here has to know how wide
-     * montserrat_28 draws a 5. Bottom-aligned across the row, which puts the small
+     * font_pjs_28_semibold draws a 5. Bottom-aligned across the row, which puts the small
      * cents on the big font's baseline, near enough (its descender is a pixel or
      * two, and a real baseline align is not on offer in LVGL 8). */
     lv_obj_t *row = lv_obj_create(card);
@@ -3527,9 +3550,9 @@ static void build_amount(void) {
     s_amount_row = row;   /* placed by amount_update_display below */
 
     s_amount_label = make_label(row, "0.00", COL_TEXT,
-                                &lv_font_montserrat_28, LV_ALIGN_DEFAULT, 0, 0);
+                                &font_pjs_28_semibold, LV_ALIGN_DEFAULT, 0, 0);
     s_amount_cents_label = make_label(row, "", COL_TEXT,
-                                      &lv_font_montserrat_20, LV_ALIGN_DEFAULT, 0, 0);
+                                      &font_pjs_20_semibold, LV_ALIGN_DEFAULT, 0, 0);
 
     /* Numeric keypad: digits, double-zero, backspace (cents entry). */
     static const char *amap[] = {
@@ -3554,7 +3577,7 @@ static void build_amount(void) {
     lv_obj_set_style_border_width(kb, 0, LV_PART_ITEMS);
     lv_obj_set_style_shadow_width(kb, 0, LV_PART_ITEMS);
     lv_obj_set_style_text_color(kb, COL_TEXT, LV_PART_ITEMS);
-    lv_obj_set_style_text_font(kb, &lv_font_montserrat_28, LV_PART_ITEMS);
+    lv_obj_set_style_text_font(kb, &font_pjs_28_light, LV_PART_ITEMS);
     lv_obj_set_style_radius(kb, 8, LV_PART_ITEMS);
     lv_obj_add_event_cb(kb, amount_kbd_cb, LV_EVENT_VALUE_CHANGED, NULL);
     /* Redraws the backspace as an outline — see kbd_backspace_draw_cb(). Both
@@ -3565,7 +3588,7 @@ static void build_amount(void) {
     s_charge_btn = make_button(card, "Charge", COL_ACTION, COL_BG,
                                CARD_BTN_W, CARD_BTN_H,
                                LV_ALIGN_BOTTOM_MID, 0, CARD_BTN_Y, ACT_CONFIRM,
-                               &lv_font_montserrat_20);
+                               &font_pjs_20_semibold);
 
     /* Also settles the Charge button: the screen is rebuilt on an asset change
      * with whatever was typed still standing, so it must not come back lit on an
@@ -3595,7 +3618,7 @@ static void build_confirm(void) {
      * address measures ~336px against a 204px column — so the worst case is the
      * normal case and it has 5px of slack. Move anything down and the warning
      * goes back under the buttons, which is the bug this spacing fixes. */
-    make_label(card, "Total", COL_DIM, &lv_font_montserrat_14,
+    make_label(card, "Total", COL_DIM, &font_inter_14,
                LV_ALIGN_TOP_LEFT, CARD_PAD, 8);
 
     /* What is being charged, and — on a test build — where. Opposite "Total" on
@@ -3614,10 +3637,10 @@ static void build_confirm(void) {
     const bool mainnet = settings_get_mainnet();
     if (!mainnet) {
         make_label(card, pos_net_info(asset()->net)->sub_test, COL_DANGER,
-                   &lv_font_montserrat_14, LV_ALIGN_TOP_RIGHT, -CARD_PAD, 8);
+                   &font_inter_14, LV_ALIGN_TOP_RIGHT, -CARD_PAD, 8);
     }
 
-    lv_obj_t *amt = make_label(card, buf, COL_TEXT, &lv_font_montserrat_28,
+    lv_obj_t *amt = make_label(card, buf, COL_TEXT, &font_pjs_28_semibold,
                                LV_ALIGN_TOP_LEFT, CARD_PAD, 24);
     lv_obj_t *cusdc = make_asset_badge(card, settings_get_chain());
     lv_obj_align_to(cusdc, amt, LV_ALIGN_OUT_RIGHT_MID, 6, 0);
@@ -3627,27 +3650,27 @@ static void build_confirm(void) {
      * before the card is tapped.
      *
      * The gaps are 6 and 4 rather than 8 and 8 because this row has a ceiling:
-     * "99999.99" at montserrat_28 runs to about x=130, the 36px badge to 172,
+     * "99999.99" at font_pjs_28_semibold runs to about x=130, the 36px badge to 172,
      * and a four-letter ticker to 212 against the card's 214. It fits, with the
      * tighter gaps and not without them. */
     lv_obj_t *tick = make_label(card, asset_name(), COL_TEXT,
-                                &lv_font_montserrat_14, LV_ALIGN_DEFAULT, 0, 0);
+                                &font_inter_14_medium, LV_ALIGN_DEFAULT, 0, 0);
     lv_obj_align_to(tick, cusdc, LV_ALIGN_OUT_RIGHT_MID, 4, 0);
 
-    make_label(card, "To", COL_DIM, &lv_font_montserrat_14,
+    make_label(card, "To", COL_DIM, &font_inter_14,
                LV_ALIGN_TOP_LEFT, CARD_PAD, 64);
     lv_obj_t *addr = make_label(card,
                                 s_confirm_addr[0] ? s_confirm_addr : "-",
-                                COL_TEXT, &lv_font_montserrat_14,
+                                COL_TEXT, &font_inter_14_medium,
                                 LV_ALIGN_TOP_LEFT, CARD_PAD, 82);
     lv_label_set_long_mode(addr, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(addr, VW);
 
     make_label(card, asset_caption(),
-               COL_DIM, &lv_font_montserrat_14, LV_ALIGN_TOP_LEFT, CARD_PAD, 126);
+               COL_DIM, &font_inter_14, LV_ALIGN_TOP_LEFT, CARD_PAD, 126);
     lv_obj_t *ctr = make_label(card,
                                (s_addr_usdc != NULL) ? s_addr_usdc : "-",
-                               COL_TEXT, &lv_font_montserrat_14,
+                               COL_TEXT, &font_inter_14_medium,
                                LV_ALIGN_TOP_LEFT, CARD_PAD, 144);
     lv_label_set_long_mode(ctr, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(ctr, VW);
@@ -3659,7 +3682,7 @@ static void build_confirm(void) {
      * and the sentence measures ~190px against the card's 204. */
     if (!mainnet) {
         lv_obj_t *tn = make_label(card, "Test network - no real funds",
-                                  COL_DANGER, &lv_font_montserrat_14,
+                                  COL_DANGER, &font_inter_14,
                                   LV_ALIGN_DEFAULT, 0, 0);
         lv_obj_update_layout(ctr);
         lv_obj_align_to(tn, ctr, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 6);
@@ -3673,7 +3696,7 @@ static void build_confirm(void) {
                       LV_ALIGN_BOTTOM_LEFT, CARD_PAD, CARD_BTN_Y, ACT_CANCEL);
     make_button(card, "Confirm", COL_ACTION, COL_BG, half, CARD_BTN_H,
                 LV_ALIGN_BOTTOM_RIGHT, -CARD_PAD, CARD_BTN_Y, ACT_SEND,
-                &lv_font_montserrat_20);
+                &font_pjs_20_semibold);
 }
 
 /* OK pressed on the keypad: stash the PIN for main and move to the tx screen. */
@@ -3787,7 +3810,7 @@ static lv_obj_t *make_code_field(uint32_t max_len, lv_coord_t x1, lv_coord_t y,
      * shifted (the PIN screen moves its box left to make room for the eye). */
     if (hint != NULL) {
         lv_obj_t *l = make_label(host, hint, COL_DIM,
-                                 &lv_font_montserrat_14, LV_ALIGN_DEFAULT, 0, 0);
+                                 &font_inter_14, LV_ALIGN_DEFAULT, 0, 0);
         lv_obj_update_layout(ta);
         lv_obj_align_to(l, ta, LV_ALIGN_CENTER, 0, 0);
         lv_obj_add_event_cb(ta, code_hint_cb, LV_EVENT_VALUE_CHANGED, l);
@@ -3830,7 +3853,7 @@ static lv_obj_t *make_numeric_keypad(lv_event_cb_t cb, lv_obj_t *parent = NULL,
     lv_obj_set_style_border_width(kb, 0, LV_PART_ITEMS);
     lv_obj_set_style_shadow_width(kb, 0, LV_PART_ITEMS);
     lv_obj_set_style_text_color(kb, COL_TEXT, LV_PART_ITEMS);
-    lv_obj_set_style_text_font(kb, &lv_font_montserrat_28, LV_PART_ITEMS);
+    lv_obj_set_style_text_font(kb, &font_pjs_28_light, LV_PART_ITEMS);
     lv_obj_set_style_radius(kb, 8, LV_PART_ITEMS);
     lv_obj_add_event_cb(kb, cb, LV_EVENT_VALUE_CHANGED, NULL);
     /* The amount screen's outline backspace, on the PIN and admin pads too. */
@@ -4080,7 +4103,7 @@ static void build_admin_screen(const char *title, bool allow_cancel,
 
     /* Note band above the keypad: wrong code, mismatch, or the remaining wait. */
     s_admin_note_lbl = make_label(host, s_admin_note, COL_DANGER,
-                                  &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0,
+                                  &font_inter_14, LV_ALIGN_TOP_MID, 0,
                                   78);
 }
 
@@ -4128,7 +4151,7 @@ static void build_wifi_list(void) {
     lv_coord_t list_y = 48;
     if (s_wifi_note[0] != '\0') {
         lv_obj_t *note = make_label(lv_scr_act(), s_wifi_note, COL_DANGER,
-                                    &lv_font_montserrat_14,
+                                    &font_inter_14,
                                     LV_ALIGN_TOP_MID, 0, 50);
         lv_label_set_long_mode(note, LV_LABEL_LONG_WRAP);
         lv_obj_set_width(note, 216);
@@ -4141,10 +4164,10 @@ static void build_wifi_list(void) {
 
     if (s_ap_count == 0U) {
         make_label(lv_scr_act(), "No networks found", COL_DIM,
-                   &lv_font_montserrat_14, LV_ALIGN_CENTER, 0, 0);
+                   &font_inter_14, LV_ALIGN_CENTER, 0, 0);
         make_button(lv_scr_act(), "Rescan", COL_ACTION, COL_BG, 140, ACT_BTN_H,
                     LV_ALIGN_BOTTOM_MID, 0, ACT_BTN_Y, ACT_WIFI,
-                    &lv_font_montserrat_20);
+                    &font_pjs_20_semibold);
         return;
     }
 
@@ -4183,7 +4206,7 @@ static void wifi_pass_kb_cb(lv_event_t *e) {
 
 static void build_wifi_pass(void) {
     clear_screen();
-    make_label(lv_scr_act(), s_wifi_ssid, COL_TEXT, &lv_font_montserrat_14,
+    make_label(lv_scr_act(), s_wifi_ssid, COL_TEXT, &font_inter_14_medium,
                LV_ALIGN_TOP_MID, 0, 6);
 
     s_wifi_pass_ta = lv_textarea_create(lv_scr_act());
@@ -4226,15 +4249,15 @@ static void build_wifi_connecting(void) {
     if (s_wifi_name[0] == '\0') {
         /* Nothing to name ("Scanning..."): the caption is the whole message. */
         make_label(lv_scr_act(), s_wifi_caption, COL_TEXT,
-                   &lv_font_montserrat_20, LV_ALIGN_CENTER, 0, 0);
+                   &font_pjs_20_medium, LV_ALIGN_CENTER, 0, 0);
     } else {
         make_label(lv_scr_act(), s_wifi_caption, COL_DIM,
-                   &lv_font_montserrat_14, LV_ALIGN_CENTER, 0, -30);
+                   &font_inter_14, LV_ALIGN_CENTER, 0, -30);
 
         /* LONG_DOT elides on real glyph metrics, so a 32-char SSID never
          * overflows. Width must be set before the long mode. */
         lv_obj_t *name = make_label(lv_scr_act(), s_wifi_name, COL_TEXT,
-                                    &lv_font_montserrat_20, LV_ALIGN_CENTER, 0, 0);
+                                    &font_pjs_20_medium, LV_ALIGN_CENTER, 0, 0);
         lv_obj_set_width(name, SCR_W - 24);
         lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);
         lv_obj_set_style_text_align(name, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
@@ -4298,7 +4321,7 @@ static void tx_amount_row(lv_obj_t *parent, const char *amt,
     lv_obj_align_to(u, al, LV_ALIGN_OUT_RIGHT_MID, 8, 0);
     if (ticker) {
         lv_obj_t *t = make_label(parent, asset_name(), COL_TEXT,
-                                 &lv_font_montserrat_14, LV_ALIGN_DEFAULT, 0, 0);
+                                 &font_inter_14_medium, LV_ALIGN_DEFAULT, 0, 0);
         lv_obj_align_to(t, u, LV_ALIGN_OUT_RIGHT_MID, 4, 0);
     }
 }
@@ -4315,11 +4338,11 @@ static void build_tx_status(void) {
     if (s_tx_state == UI_TX_STATE_PLACE_CARD) {
         /* Total at 8 and the figure at 38: the badge is taller than the 28px
          * line it is centred on, so at 14/32 its top touched "Total". */
-        make_label(card, "Total", COL_DIM, &lv_font_montserrat_14,
+        make_label(card, "Total", COL_DIM, &font_inter_14,
                    LV_ALIGN_TOP_MID, 0, 8);
-        tx_amount_row(card, amt, &lv_font_montserrat_28, 38, true);
+        tx_amount_row(card, amt, &font_pjs_28_semibold, 38, true);
 
-        make_label(card, "Tap your card", COL_DIM, &lv_font_montserrat_20,
+        make_label(card, "Tap your card", COL_DIM, &font_pjs_20_medium,
                    LV_ALIGN_TOP_MID, 0, 82);
 
         /* Centred in the band between the prompt's 20px line (ends ~104) and
@@ -4333,11 +4356,11 @@ static void build_tx_status(void) {
 
     if (s_tx_state == UI_TX_STATE_DONE) {
         lv_obj_t *chk = make_label(card, LV_SYMBOL_OK, COL_SUCCESS,
-                                   &lv_font_montserrat_48, LV_ALIGN_TOP_MID, 0, 30);
+                                   &font_icons_48, LV_ALIGN_TOP_MID, 0, 30);
         pop_in(chk);
-        make_label(card, "Approved", COL_TEXT, &lv_font_montserrat_20,
+        make_label(card, "Approved", COL_TEXT, &font_pjs_20_medium,
                    LV_ALIGN_TOP_MID, 0, 92);
-        tx_amount_row(card, amt, &lv_font_montserrat_28, 122, false);
+        tx_amount_row(card, amt, &font_pjs_28_semibold, 122, false);
 
         /* The hash main hands this screen with the DONE state. It used to be
          * dropped on the floor, which left the merchant a settled sale they
@@ -4346,24 +4369,24 @@ static void build_tx_status(void) {
         if (s_tx_info[0] != '\0') {
             char shrt[24];
             hash_short(s_tx_info, shrt, sizeof(shrt));
-            make_label(card, shrt, COL_DIM, &lv_font_montserrat_14,
+            make_label(card, shrt, COL_DIM, &font_inter_14,
                        LV_ALIGN_TOP_MID, 0, 168);
         }
 
         make_button(card, "New sale", COL_ACCENT, COL_BG, CARD_BTN_W, CARD_BTN_H,
                     LV_ALIGN_BOTTOM_MID, 0, CARD_BTN_Y, ACT_NEW,
-                    &lv_font_montserrat_20);
+                    &font_pjs_20_semibold);
         return;
     }
 
     if (s_tx_state == UI_TX_STATE_FAILED) {
         lv_obj_t *cross = make_label(card, LV_SYMBOL_CLOSE, lv_color_hex(0xEC5B5B),
-                                     &lv_font_montserrat_48, LV_ALIGN_TOP_MID, 0, 30);
+                                     &font_icons_48, LV_ALIGN_TOP_MID, 0, 30);
         pop_in(cross);
         make_label(card, "Declined", COL_TEXT,
-                   &lv_font_montserrat_20, LV_ALIGN_TOP_MID, 0, 92);
+                   &font_pjs_20_medium, LV_ALIGN_TOP_MID, 0, 92);
         lv_obj_t *info = make_label(card, s_tx_info, COL_DIM,
-                                    &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0, 124);
+                                    &font_inter_14, LV_ALIGN_TOP_MID, 0, 124);
         lv_label_set_long_mode(info, LV_LABEL_LONG_WRAP);
         lv_obj_set_width(info, VW);
         lv_obj_set_style_text_align(info, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
@@ -4371,7 +4394,7 @@ static void build_tx_status(void) {
 
         make_button(card, "New sale", COL_ACCENT, COL_BG, CARD_BTN_W, CARD_BTN_H,
                     LV_ALIGN_BOTTOM_MID, 0, CARD_BTN_Y, ACT_NEW,
-                    &lv_font_montserrat_20);
+                    &font_pjs_20_semibold);
         return;
     }
 
@@ -4391,14 +4414,14 @@ static void build_tx_status(void) {
     lv_obj_set_style_arc_color(sp, COL_SURFACE, LV_PART_MAIN);      /* track */
     lv_obj_set_style_arc_color(sp, COL_ACCENT, LV_PART_INDICATOR);  /* moving arc */
 
-    make_label(card, state_str, COL_TEXT, &lv_font_montserrat_20,
+    make_label(card, state_str, COL_TEXT, &font_pjs_20_medium,
                LV_ALIGN_TOP_MID, 0, 112);
 
     /* Held: "Confirming" can stand for two minutes, and ui_set_tx_info() writes
      * the countdown straight into this label — rebuilding the screen per tick
      * would restart the spinner above it. */
     s_tx_info_lbl = make_label(card, s_tx_info, COL_DIM,
-                               &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0, 146);
+                               &font_inter_14, LV_ALIGN_TOP_MID, 0, 146);
     lv_label_set_long_mode(s_tx_info_lbl, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(s_tx_info_lbl, VW);
     lv_obj_set_style_text_align(s_tx_info_lbl, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
@@ -4413,7 +4436,7 @@ static void build_boot_error(void) {
     build_header("Startup");
 
     lv_obj_t *warn = make_label(lv_scr_act(), LV_SYMBOL_WARNING, COL_DANGER,
-                                &lv_font_montserrat_48, LV_ALIGN_TOP_MID, 0, 62);
+                                &font_icons_48, LV_ALIGN_TOP_MID, 0, 62);
     pop_in(warn);
 
     const char *title;
@@ -4435,11 +4458,11 @@ static void build_boot_error(void) {
             break;
     }
 
-    make_label(lv_scr_act(), title, COL_TEXT, &lv_font_montserrat_20,
+    make_label(lv_scr_act(), title, COL_TEXT, &font_pjs_20_medium,
                LV_ALIGN_TOP_MID, 0, 124);
 
     lv_obj_t *b = make_label(lv_scr_act(), body, COL_DIM,
-                             &lv_font_montserrat_14, LV_ALIGN_TOP_MID, 0, 158);
+                             &font_inter_14, LV_ALIGN_TOP_MID, 0, 158);
     lv_label_set_long_mode(b, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(b, 216);
     lv_obj_set_style_text_align(b, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
@@ -4451,7 +4474,7 @@ static void build_boot_error(void) {
      * rather than overprinting the text the operator has to act on. */
     if (s_boot_detail[0] != '\0') {
         lv_obj_t *d = make_label(lv_scr_act(), s_boot_detail, COL_DIM,
-                                 &lv_font_montserrat_14,
+                                 &font_inter_14,
                                  LV_ALIGN_BOTTOM_MID, 0, -8);
         lv_label_set_long_mode(d, LV_LABEL_LONG_WRAP);
         lv_obj_set_width(d, 216);
