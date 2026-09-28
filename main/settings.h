@@ -157,11 +157,9 @@ const char *settings_net_str(const char *testnet, const char *mainnet);
  * Minutes rather than hours because half- and quarter-hour zones are real
  * (India +5:30, Nepal +5:45, Chatham +12:45).
  *
- * A fixed offset, deliberately, not a timezone: the DST rules that would make
- * it automatic live in newlib's tzset/localtime, and pulling those in measured
- * 64 KB of the app slot. The cost of the cheap version is that somebody moves
- * this twice a year from the config page — which is a minute of work, against
- * 3% of the partition.
+ * The STANDARD (winter) offset. Daylight saving is added on top from
+ * settings_get_tz_dst(), by civil_time.cpp's rules rather than newlib's
+ * tzset/localtime, which measured 64 KB of the app slot.
  *
  * @return Offset in minutes, 0 (UTC) when unset or when NVS holds nonsense.
  */
@@ -175,6 +173,12 @@ int16_t settings_get_tz_offset_min(void);
  * @return false if out of range, in which case nothing is written.
  */
 bool settings_set_tz_offset_min(int16_t minutes);
+
+/** @brief The clock's DST rule, a civil_dst_t; CIVIL_DST_NONE when unset. */
+uint8_t settings_get_tz_dst(void);
+
+/** @brief Store the DST rule. @return false (nothing written) if unknown. */
+bool settings_set_tz_dst(uint8_t rule);
 
 uint8_t settings_get_brightness(void);
 

@@ -38,6 +38,7 @@
 #include "assets.h"      /* the per-asset table: ticker, standard, caption, network */
 #include "settings.h"
 #include "touch_cal.h"   /* two-point calibration arithmetic, host-tested */
+#include "civil_time.h"  /* civil_local_offset_min() — the clock's DST, host-tested */
 #include "provision.h"   /* QR payload + the pending payout-address handshake */
 #include "ota.h"         /* running version + the update window and its handshake */
 #include "ota_version.h" /* ota_version_display() — the 'v' is added for the screen */
@@ -821,18 +822,19 @@ static uint16_t s_settings_tab = 0U;
 /* The chain is read straight from NVS wherever it is needed — the asset badge,
  * the picker pill and main's signing path all ask the same question, so there is
  * no UI-side copy to keep in sync. */
-static bool chain_is_tron(void) {
-    return pos_chain_is_tron(settings_get_chain());
-}
+/* The asset the admin Tx tab is showing. Its own, not the sale's: an operator
+ * looking up another asset's contract there must not change what the next
+ * customer is charged in. Seeded from the sale's asset on each fresh open. */
+static pos_chain_t s_view_chain = POS_CHAIN_ETH_SEPOLIA;
 
-/** The selected asset's row — ticker, standard, caption, network. */
-static const pos_asset_t *asset(void) {
-    return pos_asset_of(settings_get_chain());
+/** An asset's row — ticker, standard, caption, network. Default: the sale's. */
+static const pos_asset_t *asset(pos_chain_t c = settings_get_chain()) {
+    return pos_asset_of(c);
 }
 
 /** Ticker of the asset being charged, for the selector and the amount screens. */
-static const char *asset_name(void) {
-    return asset()->ticker;
+static const char *asset_name(pos_chain_t c = settings_get_chain()) {
+    return asset(c)->ticker;
 }
 
 /**
@@ -842,14 +844,14 @@ static const char *asset_name(void) {
  * differ by the only thing that decides whether a sale settles in money, and this
  * subtitle is where an operator finds out which one the terminal is on.
  */
-static const char *asset_network(void) {
-    const pos_net_info_t *ni = pos_net_info(asset()->net);
+static const char *asset_network(pos_chain_t c = settings_get_chain()) {
+    const pos_net_info_t *ni = pos_net_info(asset(c)->net);
     return settings_net_str(ni->long_test, ni->long_main);
 }
 
 /** Caption for the address row above "Send to": TRX has no contract to show. */
-static const char *asset_caption(void) {
-    return asset()->caption;
+static const char *asset_caption(pos_chain_t c = settings_get_chain()) {
+    return asset(c)->caption;
 }
 
 static void request_screen(ui_screen_t s) {
@@ -872,7 +874,9 @@ static void format_amount(uint64_t units, char *out, size_t n) {
     snprintf(out, n, "%" PRIu64 ".%02" PRIu64, whole, cents);
 }
 
-#define AMOUNT_CENTS_MAX  9999999ULL   /* 99999.99 */
+/* 9999.99: plenty for a counter terminal, and it keeps the figure, the cents
+ * and the asset selector inside the amount row. */
+#define AMOUNT_CENTS_MAX  999999ULL   /* 9999.99 */
 /* 18.44 — POS_AMOUNT_UNITS_MAX_NATIVE expressed in the keypad's cents. */
 #define AMOUNT_CENTS_MAX_NATIVE  (POS_AMOUNT_UNITS_MAX_NATIVE / 10000ULL)
 
@@ -881,7 +885,7 @@ static void format_amount(uint64_t units, char *out, size_t n) {
  *
  * ETH and POL are 18-decimal and the signed value is a uint64 of wei, so a sale
  * stops at 18.44 of either (see POS_AMOUNT_UNITS_MAX_NATIVE). Enforced here, on
- * the way in, rather than at the confirm step: an operator who can key 99999.99
+ * the way in, rather than at the confirm step: an operator who can key 9999.99
  * and only then be told no has been allowed to make a mistake the keypad could
  * simply have declined, in front of a customer.
  */
@@ -1177,6 +1181,14 @@ static void amount_update_display(void) {
 #define BSP_NOSE_DX  2   /* the nose's cut, one third of its run... */
 #define BSP_NOSE_DY  3   /* ...and one third of its rise */
 
+/* Keys tile the pad top to bottom. The default theme gives a btnmatrix a card's
+ * ~13 px padding and ~8 px between rows, and a touch in either lands on no key —
+ * which left a 28 px digit with about a pixel of key above it. */
+static void kbd_fill_rows(lv_obj_t *kb) {
+    lv_obj_set_style_pad_ver(kb, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_row(kb, 0, LV_PART_MAIN);
+}
+
 /**
  * Draw the keypad's backspace as an outline rather than a solid glyph.
  *
@@ -1344,6 +1356,7 @@ static void open_admin_entry(void) {
     s_settings_return = s_req_screen;   /* remember where we came from */
     if (!settings_has_admin_code()) { return; }
     s_settings_tab     = 0U;   /* a fresh open starts on Screen */
+    s_view_chain       = settings_get_chain();
     s_admin_confirming = false;
     s_admin_for_portal = false;
     s_admin_note[0]    = '\0';
@@ -1371,7 +1384,15 @@ static void btn_event_cb(lv_event_t *e) {
     /* The coin rows carry their chain in the action itself, so adding an asset is
      * a row in the picker's table and nothing here. */
     if ((act >= ACT_CHAIN_BASE) && (act < ACT_CHAIN_OF(POS_CHAIN__COUNT))) {
-        settings_set_chain(static_cast<pos_chain_t>(act - ACT_CHAIN_BASE));
+        const pos_chain_t picked = static_cast<pos_chain_t>(act - ACT_CHAIN_BASE);
+        /* From the admin Tx tab the pick only changes what that tab shows. */
+        if (s_req_screen == UI_SCREEN_SETTINGS) {
+            s_view_chain = picked;
+            close_modal();
+            request_screen(UI_SCREEN_SETTINGS);   /* rebuild repoints the rows */
+            return;
+        }
+        settings_set_chain(picked);
         /* The entered amount outlives the picker, so switching from a 6-decimal
          * token to an 18-decimal coin can leave a figure on screen that the new
          * asset cannot carry. Clamp it to the new ceiling here — the alternative
@@ -2072,6 +2093,7 @@ static void clear_screen(void) {
  * touch calibration makes about indev_read. Reloaded when the config page
  * stores a new one, through ui_clock_changed(). */
 static int16_t       s_tz_off_min = 0;
+static uint8_t       s_tz_dst     = 0;
 static volatile bool s_tz_dirty   = true;
 
 /**
@@ -2083,10 +2105,9 @@ static volatile bool s_tz_dirty   = true;
  * terminal that came up without an uplink would display all day.
  *
  * gmtime_r on an already-offset instant rather than localtime_r on a timezone:
- * that is the whole of why the offset is a number and not a TZ string. tzset
- * and localtime pull in newlib's timezone machinery, which measured 64 KB of
- * the app slot — against an operator picking their offset from a list on the
- * config page, and moving it twice a year where DST applies.
+ * tzset and localtime pull in newlib's timezone machinery, which measured 64 KB
+ * of the app slot. DST comes from civil_local_offset_min() instead — the stored
+ * region's rule applied to the stored standard offset.
  *
  * Minute resolution, so the 3 s status timer that drives the Wi-Fi mark is
  * ample and no second timer is needed.
@@ -2097,6 +2118,7 @@ static void clock_refresh(void) {
     if (s_tz_dirty) {
         s_tz_dirty   = false;
         s_tz_off_min = settings_get_tz_offset_min();
+        s_tz_dst     = settings_get_tz_dst();
     }
 
     const time_t utc = time(NULL);
@@ -2109,7 +2131,8 @@ static void clock_refresh(void) {
         return;
     }
 
-    const time_t local = utc + ((time_t)s_tz_off_min * 60);
+    const time_t local = utc + ((time_t)civil_local_offset_min(
+                                    utc, s_tz_off_min, s_tz_dst) * 60);
     struct tm    tmv;
     if (gmtime_r(&local, &tmv) == NULL) {
         lv_label_set_text(s_clock_lbl, "--:--");
@@ -2378,24 +2401,25 @@ static void build_settings(void) {
     /* ── Transaction tab: which asset, what it will call, where the funds go and
      * what gas it will pay.
      *
-     * Everything here is read-only *except* the asset selector at the top. The
-     * stored settings — contract, payout address, fee caps — are proposed from the
-     * config page in AP mode and accepted on this panel, because a resistive screen
-     * is the wrong place to retype an address. The asset is a different kind of
-     * thing: which one a sale is charged in is a shift-time choice made with a
-     * customer waiting, so it stays a tap away both here and on the amount row. ── */
-    const bool tron = chain_is_tron();
+     * All read-only. The stored settings — contract, payout address, fee caps —
+     * are proposed from the config page and accepted on this panel, because a
+     * resistive screen is the wrong place to retype an address. The selector at
+     * the top picks which asset's rows to show (s_view_chain); what a sale is
+     * charged in is chosen on the amount row, not here. ── */
+    const bool tron = pos_chain_is_tron(s_view_chain);
+    ui_refresh_addresses_for(static_cast<uint8_t>(s_view_chain));
     /* Ticker over network, not "Asset" over "USDC on Ethereum Sepolia": that line
      * measured ~178px against make_pill's 140px cap, so the row that says which
      * chain the terminal is charging on arrived dot-elided as "USDC on Ethereum
      * Sep...". Split across the pill's two lines both fit at full length, and the
      * badge beside them already says "asset". */
-    lv_obj_t *apill = make_pill(t_tx, asset_name(), asset_network(),
+    lv_obj_t *apill = make_pill(t_tx, asset_name(s_view_chain),
+                                asset_network(s_view_chain),
                                 TAB_W, 0, ACT_NET_PICK);
-    lv_obj_align(make_asset_badge(apill, settings_get_chain()),
+    lv_obj_align(make_asset_badge(apill, s_view_chain),
                  LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
 
-    (void)make_field(t_tx, asset_caption(),
+    (void)make_field(t_tx, asset_caption(s_view_chain),
                      (s_addr_usdc != NULL) ? s_addr_usdc : "-");
     (void)make_field(t_tx, "Send to",
                      (s_addr_dest != NULL) ? s_addr_dest : "-");
@@ -2695,7 +2719,7 @@ static lv_obj_t *open_modal(lv_coord_t w, lv_coord_t h) {
     lv_obj_t *card = lv_obj_create(s_modal);
     lv_obj_set_size(card, w, h);
     lv_obj_center(card);
-    lv_obj_set_style_bg_color(card, COL_SURFACE, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(card, COL_BG, LV_PART_MAIN);
     lv_obj_set_style_radius(card, 14, LV_PART_MAIN);
     lv_obj_set_style_border_width(card, 1, LV_PART_MAIN);
     lv_obj_set_style_border_color(card, COL_BORDER, LV_PART_MAIN);
@@ -3574,6 +3598,7 @@ static void build_amount(void) {
     /* Same columns as the PIN and admin pads (see make_numeric_keypad), so the
      * digits stand in one place on every keypad screen. */
     lv_obj_set_style_pad_hor(kb, 0, LV_PART_MAIN);
+    kbd_fill_rows(kb);
     /* Minimal keypad: no key boxes — black glyphs on white, grey flash on press. */
     lv_obj_set_style_bg_opa(kb, LV_OPA_TRANSP, LV_PART_ITEMS);
     lv_obj_set_style_bg_color(kb, COL_SURFACE, LV_PART_ITEMS | LV_STATE_PRESSED);
@@ -3654,7 +3679,7 @@ static void build_confirm(void) {
      * before the card is tapped.
      *
      * The gaps are 6 and 4 rather than 8 and 8 because this row has a ceiling:
-     * "99999.99" at font_pjs_28_semibold runs to about x=130, the 36px badge to 172,
+     * "9999.99" at font_pjs_28_semibold runs to about x=130, the 36px badge to 172,
      * and a four-letter ticker to 212 against the card's 214. It fits, with the
      * tighter gaps and not without them. */
     lv_obj_t *tick = make_label(card, asset_name(), COL_TEXT,
@@ -3851,6 +3876,7 @@ static lv_obj_t *make_numeric_keypad(lv_event_cb_t cb, lv_obj_t *parent = NULL,
      * which are the code field's left edge and the eye's right edge. With the
      * theme's pad the field overhung the keys on both sides. */
     lv_obj_set_style_pad_hor(kb, 0, LV_PART_MAIN);
+    kbd_fill_rows(kb);
     lv_obj_set_style_bg_opa(kb, LV_OPA_TRANSP, LV_PART_ITEMS);
     lv_obj_set_style_bg_color(kb, COL_SURFACE, LV_PART_ITEMS | LV_STATE_PRESSED);
     lv_obj_set_style_bg_opa(kb, LV_OPA_COVER, LV_PART_ITEMS | LV_STATE_PRESSED);
@@ -4032,6 +4058,7 @@ static void admin_submit(void) {
                  * verified, so the settings page is a legitimate landing spot and
                  * the one the operator came from. */
                 s_admin_for_portal = false;
+                s_view_chain       = settings_get_chain();
                 prov_auth_resolve(true);
                 request_screen((prov_mode() == PROV_MODE_WIZARD)
                                ? UI_SCREEN_PROV : UI_SCREEN_SETTINGS);
@@ -4136,7 +4163,7 @@ static void build_admin_unlock(void) {
         (void)snprintf(title, sizeof(title), "Browser %s", code);
     } else {
         (void)snprintf(title, sizeof(title), "%s",
-                       s_admin_for_portal ? "Authorize browser" : "Admin code");
+                       s_admin_for_portal ? "Authorize browser" : "Control panel");
     }
     build_admin_screen(title, true, "Admin code");
 }

@@ -27,6 +27,13 @@ for t in $TESTS; do
   fi
 done
 
+# Lives with the fuzz harnesses, but needs nothing they need.
+if g++ -std=c++14 -Wall fuzz/test_civil_time.cpp -o "$out/test_civil_time"        2>"$out/test_civil_time.log" && "$out/test_civil_time" >/dev/null; then
+  ok "test_civil_time"
+else
+  bad "test_civil_time"; sed 's/^/        /' "$out/test_civil_time.log"
+fi
+
 # The receipt check parses JSON, and cJSON ships with ESP-IDF rather than here.
 CJSON="${IDF_PATH:-/c/esp/v5.5.4/esp-idf}/components/json/cJSON"
 if [ -f "$CJSON/cJSON.c" ]; then

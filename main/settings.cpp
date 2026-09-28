@@ -9,6 +9,7 @@
  */
 
 #include "settings.h"
+#include "civil_time.h"   /* CIVIL_DST__COUNT */
 
 #include <atomic>     /* the chain / network caches, read across tasks */
 #include <stdio.h>    /* snprintf — payout address normalisation */
@@ -59,6 +60,7 @@ static const char *const TAG = "settings";
 /* Minutes east of UTC, stored biased — see settings_get_tz_offset_min(). */
 #define K_TZ_OFFSET   "tz_off"
 #define TZ_OFFSET_BIAS 720
+#define K_TZ_DST      "tz_dst"
 #define K_TOUCH_X     "touch_x"
 #define K_TOUCH_Y     "touch_y"
 /* BUILD_ID of the newest firmware that has run on this unit — see
@@ -260,6 +262,19 @@ bool settings_set_tz_offset_min(int16_t minutes)
         return false;
     }
     nvs_u32_set(K_TZ_OFFSET, (uint32_t)((int32_t)minutes + TZ_OFFSET_BIAS));
+    return true;
+}
+
+uint8_t settings_get_tz_dst(void)
+{
+    const uint8_t r = nvs_u8_get(K_TZ_DST, (uint8_t)CIVIL_DST_NONE);
+    return (r < (uint8_t)CIVIL_DST__COUNT) ? r : (uint8_t)CIVIL_DST_NONE;
+}
+
+bool settings_set_tz_dst(uint8_t rule)
+{
+    if (rule >= (uint8_t)CIVIL_DST__COUNT) { return false; }
+    nvs_u8_set(K_TZ_DST, rule);
     return true;
 }
 

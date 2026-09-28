@@ -340,8 +340,8 @@ static bool trc20_load(trc20_asset_t *a, CW_CryptoProvider &crypto) {
 }
 
 /** @brief The selected TRC-20 token, or NULL for native TRX / Ethereum. */
-static trc20_asset_t *active_trc20(void) {
-    switch (settings_get_chain()) {
+static trc20_asset_t *active_trc20(pos_chain_t chain = settings_get_chain()) {
+    switch (chain) {
         case POS_CHAIN_TRON_USDT: return &s_trc20_usdt;
         case POS_CHAIN_TRON_USDC: return &s_trc20_usdc;
         default:                  return NULL;
@@ -383,8 +383,8 @@ static erc20_token_t s_usdt_poly;
  * somewhere else from the config page and therefore the one that lives in
  * s_usdc / s_contract_eth rather than in a table here.
  */
-static erc20_token_t *active_erc20_token(void) {
-    switch (settings_get_chain()) {
+static erc20_token_t *active_erc20_token(pos_chain_t chain = settings_get_chain()) {
+    switch (chain) {
         case POS_CHAIN_ETH_USDT:  return &s_usdt_eth;
         case POS_CHAIN_POLY_USDC: return &s_usdc_poly;
         case POS_CHAIN_POLY_USDT: return &s_usdt_poly;
@@ -466,20 +466,25 @@ static bool resolve_evm_addr(bool (*get)(bool, char *, size_t),
  * switched from the settings menu while this task is parked on its queue. The
  * UI calls it directly from the asset picker for the same reason — see ui.h.
  */
-extern "C" void ui_refresh_addresses(void) {
-    const trc20_asset_t *token = active_trc20();
+extern "C" void ui_refresh_addresses_for(uint8_t c) {
+    const pos_chain_t    chain = static_cast<pos_chain_t>(c);
+    const trc20_asset_t *token = active_trc20(chain);
     if (token != NULL) {
         ui_set_addresses(token->b58, s_payout_tron);
-    } else if (chain_is_tron()) {
+    } else if (pos_chain_is_tron(chain)) {
         ui_set_addresses("Native TRX (no contract)", s_payout_tron);
-    } else if (chain_is_native_evm()) {
-        ui_set_addresses(chain_is_polygon() ? "Native POL (no contract)"
-                                            : "Native ETH (no contract)",
+    } else if (pos_chain_is_native_evm(chain)) {
+        ui_set_addresses(pos_chain_is_polygon(chain) ? "Native POL (no contract)"
+                                                     : "Native ETH (no contract)",
                          s_payout_eth);
     } else {
-        const erc20_token_t *erc = active_erc20_token();
+        const erc20_token_t *erc = active_erc20_token(chain);
         ui_set_addresses((erc != NULL) ? erc->str : s_contract_eth, s_payout_eth);
     }
+}
+
+extern "C" void ui_refresh_addresses(void) {
+    ui_refresh_addresses_for(static_cast<uint8_t>(settings_get_chain()));
 }
 
 /******************************************************************
@@ -2309,10 +2314,11 @@ extern "C" void app_main(void)
     /* What the panel's clock reads in. SNTP sets UTC and the band adds this;
      * it is an operator setting on the config page, not a build-time one, so
      * there is nothing to apply here beyond saying what it is. */
-    ESP_LOGI(TAG, "clock: UTC%+d:%02d",
+    ESP_LOGI(TAG, "clock: UTC%+d:%02d, DST rule %u",
              settings_get_tz_offset_min() / 60,
              (settings_get_tz_offset_min() < 0 ? -settings_get_tz_offset_min()
-                                               : settings_get_tz_offset_min()) % 60);
+                                               : settings_get_tz_offset_min()) % 60,
+             static_cast<unsigned>(settings_get_tz_dst()));
 
     ESP_LOGI(TAG, "networks: %s",
              settings_get_mainnet() ? "PRODUCTION" : "test");

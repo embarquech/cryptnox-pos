@@ -88,6 +88,33 @@ bool civil_parse_build_stamp(const char *date, const char *time_str,
  */
 bool civil_parse_http_date(const char *hdr, int64_t *out);
 
+/**
+ * @brief Daylight-saving rules the panel clock knows, persisted in NVS as a
+ *        number, so never renumber them.
+ *
+ * ponytail: the four rule sets that cover most places with DST; a region with
+ * other rules (Chile, Israel, Egypt...) picks a fixed offset and moves it by
+ * hand. Add a rule here and to the page's region list when one is needed.
+ */
+typedef enum {
+    CIVIL_DST_NONE = 0,  /**< Fixed offset, no DST.                           */
+    CIVIL_DST_EU   = 1,  /**< Last Sun Mar 01:00 UTC to last Sun Oct 01:00 UTC. */
+    CIVIL_DST_US   = 2,  /**< 2nd Sun Mar 02:00 to 1st Sun Nov 02:00, local.  */
+    CIVIL_DST_AU   = 3,  /**< 1st Sun Oct 02:00 to 1st Sun Apr 03:00, local.  */
+    CIVIL_DST_NZ   = 4,  /**< Last Sun Sep 02:00 to 1st Sun Apr 03:00, local. */
+    CIVIL_DST__COUNT
+} civil_dst_t;
+
+/**
+ * @brief Offset from UTC in force at @p utc, DST included.
+ *
+ * @param[in] utc         Seconds since the Unix epoch.
+ * @param[in] std_off_min Standard (winter) offset, minutes east of UTC.
+ * @param[in] rule        A @ref civil_dst_t; anything else is treated as none.
+ * @return @p std_off_min, plus 60 while DST is in force.
+ */
+int civil_local_offset_min(int64_t utc, int std_off_min, int rule);
+
 #ifdef __cplusplus
 }
 #endif

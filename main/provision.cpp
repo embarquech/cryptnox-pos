@@ -50,6 +50,7 @@
 #include "ota.h"
 #include "portal_page.h"   /* PAGE_HTML + PAGE_JS — the document page_get serves */
 #include "settings.h"
+#include "civil_time.h"   /* CIVIL_DST__COUNT — the clock's DST rules */
 
 static const char *const TAG = "prov";
 
@@ -579,7 +580,7 @@ static esp_err_t state_get(httpd_req_t *req)
                        "\"ct_eth_own\":%s,\"ct_trx_own\":%s,"
                        "\"ssid\":\"%s\",\"pending\":\"%s\",\"note\":\"%s\","
                        "\"mainnet\":%s,\"fee_max\":%u,\"fee_prio\":%u,"
-                       "\"tz_off\":%d,\"scan_gen\":%u,\"win\":%u}",
+                       "\"tz_off\":%d,\"tz_dst\":%u,\"scan_gen\":%u,\"win\":%u}",
                        (s_mode == PROV_MODE_WIZARD) ? "wizard" : "admin",
                        step_name(s_step), ota_running_version(),
                        pay_eth, pay_trx, ct_eth, ct_trx,
@@ -590,6 +591,7 @@ static esp_err_t state_get(httpd_req_t *req)
                        static_cast<unsigned>(settings_get_max_fee_gwei()),
                        static_cast<unsigned>(settings_get_priority_fee_gwei()),
                        static_cast<int>(settings_get_tz_offset_min()),
+                       static_cast<unsigned>(settings_get_tz_dst()),
                        static_cast<unsigned>(s_scan_gen.load()),
                        prov_window_left_min());
     }
@@ -807,15 +809,14 @@ static esp_err_t fees_post(httpd_req_t *req)
 }
 
 /**
- * @brief Store the panel clock's offset from UTC.
+ * @brief Store the panel clock's standard offset from UTC and its DST rule.
  *
  * Written straight through like the gas fees, and for the same reason: it cannot
  * send money anywhere. The worst a wrong one does is put the wrong hour in the
  * corner of the screen, which announces itself to the first person who looks.
  *
- * A fixed offset rather than a timezone — the DST rules live in newlib's
- * tzset/localtime and measured 64 KB of the app slot, against an operator
- * revisiting this page twice a year. The page says as much.
+ * The page sends both from one region list; @c dst is a civil_dst_t and a
+ * missing one means none, so a fixed offset is still a valid request.
  *
  * The value is validated against the same bounds settings_set_tz_offset_min
  * enforces, so a hand-rolled POST cannot store an offset the picker could not
@@ -833,7 +834,9 @@ static esp_err_t clock_post(httpd_req_t *req)
     }
 
     char off_s[12] = { 0 };
+    char dst_s[4]  = { 0 };
     (void)form_field(body, "off", off_s, sizeof(off_s));
+    (void)form_field(body, "dst", dst_s, sizeof(dst_s));
 
     /* strtol answers 0 for "abc", which is a legitimate offset (UTC) — so the
      * terminator is what separates "the operator picked UTC" from "that was not
@@ -844,17 +847,21 @@ static esp_err_t clock_post(httpd_req_t *req)
         return reply(req, "400 Bad Request",
                      "The offset has to be a whole number of minutes.");
     }
-    if ((off < TZ_OFFSET_MIN) || (off > TZ_OFFSET_MAX) ||
-        !settings_set_tz_offset_min(static_cast<int16_t>(off))) {
+    char      *dend = NULL;
+    const long dst  = strtol(dst_s, &dend, 10);   /* "" reads as 0: no DST */
+    if ((*dend != '\0') || (dst < 0) || (dst >= CIVIL_DST__COUNT) ||
+        (off < TZ_OFFSET_MIN) || (off > TZ_OFFSET_MAX)) {
         return reply(req, "400 Bad Request",
-                     "That is not an offset the terminal can use.");
+                     "That is not a time zone the terminal can use.");
     }
+    (void)settings_set_tz_offset_min(static_cast<int16_t>(off));
+    (void)settings_set_tz_dst(static_cast<uint8_t>(dst));
 
     /* The panel is very likely showing a sale screen with this page's card over
      * it. The clock caches the offset rather than reading NVS every tick, so
      * without this it keeps the old hour until something rebuilds the screen. */
     ui_clock_changed();
-    ESP_LOGI(TAG, "clock offset set from the config page: %ld min", off);
+    ESP_LOGI(TAG, "clock set from the config page: %ld min, DST rule %ld", off, dst);
     return ok(req, "Clock stored. The terminal's time updates in a moment.");
 }
 

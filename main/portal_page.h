@@ -375,22 +375,22 @@ PORTAL_FONTS_CSS
 "<input id=in_fprio type=number min=1 max=500 step=1 inputmode=numeric>"
 "<button class=alt id=go_fee>Save gas fees</button></section>"
 
-/* The panel clock's offset from UTC. A list rather than a typed number because
- * every wrong answer here is a plausible-looking one, and because the real set
- * is not the round hours people expect — India is +5:30 and Nepal +5:45.
+/* The panel clock's time zone. A list rather than a typed number because every
+ * wrong answer here is a plausible-looking one, and because the real set is not
+ * the round hours people expect — India is +5:30 and Nepal +5:45.
  *
- * An offset, not a timezone: the DST rules that would move it automatically are
- * in newlib's tzset/localtime, and pulling those in measured 64 KB of the app
- * slot. So somebody changes this twice a year where DST applies, and the page
- * says so rather than letting the clock quietly drift an hour in spring. */
+ * Regions first: each is a standard offset plus one of the DST rules in
+ * civil_time.h, and the terminal changes the hour itself. Then every fixed
+ * offset, for anywhere whose rules the terminal does not know. */
 "<section id=s_clock hidden><h2>Clock</h2>"
 "<p>What the time in the corner of the terminal's screen reads in &mdash; "
 "currently <code id=cur_tz>&hellip;</code>. The terminal keeps UTC from the "
 "network; this is only what it adds before showing it.</p>"
-"<label for=in_tz>Offset from UTC</label>"
+"<label for=in_tz>Time zone</label>"
 "<select id=in_tz></select>"
-"<p><small>A fixed offset, so where the clocks change you come back here twice "
-"a year.</small></p>"
+"<p><small>A region follows its daylight-saving changes by itself. A fixed "
+"offset never changes, so where the clocks move you come back here twice a "
+"year.</small></p>"
 "<button class=alt id=go_clock>Save clock</button></section>"
 
 /* One section, two ways in. Reading a card and typing an address answer the same
@@ -618,14 +618,14 @@ static const char *const PAGE_JS =
  * a digit out from under whoever is typing. Keyed on a flag rather than on the
  * field being empty, because empty is where you are the instant you backspace
  * one to retype it — that put the old number straight back, mid-edit. */
-"$('cur_tz').textContent=tzlabel(S.tz_off|0);"
+"$('cur_tz').textContent=tzname(S.tz_off|0,S.tz_dst|0);"
 /* Seeded with the fees and on the same flag, for the same reason: the poll runs
  * every couple of seconds, and writing the select every tick would put the
  * stored offset back under an operator who had just picked a different one and
  * not yet saved it. */
 "if(!seeded&&S.fee_max){seeded=true;"
 "$('in_fmax').value=S.fee_max;$('in_fprio').value=S.fee_prio;"
-"$('in_tz').value=(S.tz_off|0)}"
+"$('in_tz').value=(S.tz_off|0)+','+(S.tz_dst|0)}"
 "$('cur_ssid').textContent=S.ssid||'not set';"
 "$('pend').textContent=S.pending||'';"
 "if(S.scan_gen!==G){G=S.scan_gen;scan()}}}"
@@ -712,11 +712,53 @@ static const char *const PAGE_JS =
 "720,765,780,840];"
 "function tzlabel(m){var s=m<0?'-':'+',a=m<0?-m:m;"
 "return'UTC'+s+('0'+Math.floor(a/60)).slice(-2)+':'+('0'+(a%60)).slice(-2)}"
-"TZ.forEach(function(m){var o=document.createElement('option');"
-"o.value=m;o.textContent=tzlabel(m);$('in_tz').appendChild(o)});"
+/* [standard offset, DST rule, places]: one row per zone, so the list is one
+ * line per time the clock can show. Rule 1 EU, 2 US/Canada, 3 SE Australia,
+ * 4 New Zealand, 0 none (civil_dst_t). Places with other DST rules (Chile,
+ * Paraguay, Israel, Egypt, Morocco...) are left to the bare offsets. */
+"var REG=["
+"[-600,0,'Honolulu'],[-540,2,'Anchorage'],"
+"[-480,2,'Los Angeles, San Francisco, Seattle, Vancouver, Tijuana'],"
+"[-420,2,'Denver, Salt Lake City, Calgary, Edmonton'],[-420,0,'Phoenix'],"
+"[-360,2,'Chicago, Dallas, Houston, Winnipeg'],"
+"[-360,0,'Mexico City, Guadalajara, Regina, Guatemala, San Salvador, San Jose'],"
+"[-300,2,'New York, Washington, Miami, Toronto, Montreal, Ottawa, Nassau, Port-au-Prince'],"
+"[-300,0,'Bogota, Lima, Quito, Panama, Kingston, Cancun'],"
+"[-240,2,'Halifax, Bermuda'],[-240,0,'San Juan, Santo Domingo, Caracas, La Paz'],"
+"[-210,2,'Newfoundland'],"
+"[-180,0,'Sao Paulo, Rio de Janeiro, Brasilia, Buenos Aires, Montevideo'],"
+"[0,1,'London, Dublin, Lisbon, Canary Islands'],[0,0,'Reykjavik, Accra, Dakar, Abidjan'],"
+"[60,1,'Zurich, Geneva, Paris, Berlin, Frankfurt, Rome, Milan, Madrid, Barcelona, "
+"Amsterdam, Brussels, Luxembourg, Vienna, Vaduz, Monaco, Copenhagen, Oslo, Stockholm, "
+"Warsaw, Prague, Bratislava, Budapest, Ljubljana, Zagreb, Belgrade, Sarajevo, "
+"Podgorica, Skopje, Tirana, Valletta'],"
+"[60,0,'Lagos, Algiers, Tunis'],"
+"[120,1,'Helsinki, Tallinn, Riga, Vilnius, Athens, Sofia, Bucharest, Nicosia, Kyiv'],"
+"[120,0,'Johannesburg, Cape Town, Harare, Kigali'],"
+"[180,0,'Istanbul, Moscow, Minsk, Riyadh, Doha, Kuwait, Manama, Baghdad, Nairobi, "
+"Addis Ababa'],"
+"[210,0,'Tehran'],[240,0,'Dubai, Abu Dhabi, Muscat, Baku, Tbilisi, Yerevan, Mauritius'],"
+"[270,0,'Kabul'],[300,0,'Karachi, Lahore, Tashkent, Almaty, Astana, Maldives'],"
+"[330,0,'Mumbai, Delhi, Bangalore, Colombo'],[345,0,'Kathmandu'],[360,0,'Dhaka'],"
+"[390,0,'Yangon'],[420,0,'Bangkok, Hanoi, Ho Chi Minh City, Jakarta, Phnom Penh'],"
+"[480,0,'Beijing, Shanghai, Hong Kong, Macau, Taipei, Singapore, Kuala Lumpur, "
+"Manila, Bali, Perth'],"
+"[540,0,'Tokyo, Osaka, Seoul'],[570,3,'Adelaide'],[570,0,'Darwin'],"
+"[600,3,'Sydney, Canberra, Melbourne, Hobart'],[600,0,'Brisbane, Guam, Port Moresby'],"
+"[720,4,'Auckland, Wellington'],[720,0,'Fiji']];"
+/* Every offset with no row of its own gets a bare one, so the list still
+ * reaches every zone the terminal can show. Sorted by offset, DST row first. */
+"TZ.forEach(function(m){if(!REG.some(function(r){return r[0]==m&&!r[1]}))REG.push([m,0,''])});"
+"REG.sort(function(a,b){return a[0]-b[0]||b[1]-a[1]});"
+"var DSTN=['','EU DST','US DST','AU DST','NZ DST'];"
+"function tzrow(r){return tzlabel(r[0])+(r[1]?' '+DSTN[r[1]]:'')+(r[2]?' - '+r[2]:'')}"
+"function tzname(m,d){for(var i=0;i<REG.length;i++)"
+"if(REG[i][0]==m&&REG[i][1]==d)return tzrow(REG[i]);return tzlabel(m)}"
+"REG.forEach(function(r){var o=document.createElement('option');"
+"o.value=r[0]+','+r[1];o.textContent=tzrow(r);$('in_tz').appendChild(o)});"
 
-"$('go_clock').onclick=function(){"
-"post('/api/clock',enc({off:$('in_tz').value})).then(good,say)};"
+"$('go_clock').onclick=function(){var z=$('in_tz').value.split(',');"
+"post('/api/clock',enc({off:z[0],dst:z[1]})).then(good,say)};"
 
 "$('eye').onclick=function(){var p=$('wpass'),r=(p.type=='password');"
 "p.type=r?'text':'password';this.setAttribute('aria-pressed',r);"

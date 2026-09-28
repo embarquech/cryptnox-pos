@@ -218,6 +218,14 @@ void ui_set_addresses(const char *token_contract, const char *dest_addr);
 void ui_refresh_addresses(void);
 
 /**
+ * @brief Same, for any chain (a pos_chain_t) rather than the one sales use.
+ *
+ * The admin Tx tab browses another asset's contract and payout without
+ * switching what the terminal charges in.
+ */
+void ui_refresh_addresses_for(uint8_t chain);
+
+/**
  * @brief Show a "Connecting to <ssid>…" screen while main associates.
  *
  * Interactive picker only; unattended boot reports through
