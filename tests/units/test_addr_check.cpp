@@ -30,6 +30,22 @@ int main(void)
 {
     /* A real Nile address (the config.h default recipient) — 34 chars, T, base58. */
     assert(addr_tron_plausible("THQGuFzL87ZqhxkgqYEryRAd7gqFqL5rdc"));
+    {
+        /* Decoded bytes, pinned against an independent base58 decode. */
+        static const unsigned char WANT[25] = {
+            0x41, 0x51, 0x86, 0x88, 0xfb, 0xb3, 0x9c, 0xcf, 0x12, 0x53, 0xf2,
+            0xb1, 0x21, 0x76, 0x79, 0xfb, 0xe3, 0x16, 0x32, 0x92, 0x88, 0xcb,
+            0x5e, 0x85, 0x7f };
+        unsigned char b[25];
+        assert(addr_tron_decode("THQGuFzL87ZqhxkgqYEryRAd7gqFqL5rdc", b));
+        assert(memcmp(b, WANT, sizeof(b)) == 0);
+        /* One character off decodes to other bytes (the checksum catches it). */
+        assert(addr_tron_decode("THQGuFzL87ZqhxkgqYEryRAd7gqFqL5rdd", b));
+        assert(memcmp(b, WANT, sizeof(b)) != 0);
+        /* Too large for 25 bytes, or not a Tron address at all. */
+        assert(!addr_tron_decode("Tzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz", b));
+        assert(!addr_tron_decode("0xHQGuFzL87ZqhxkgqYEryRAd7gqFqL5rd", b));
+    }
     assert(addr_tron_plausible("TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf"));
 
     /* Wrong length: 33 and 35 characters. Off-by-one is the likeliest way a

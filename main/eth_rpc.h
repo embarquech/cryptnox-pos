@@ -22,6 +22,8 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+#include "eth_json.h"   /* eth_receipt_expect_t */
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -44,6 +46,7 @@ typedef enum {
     ETH_RPC_RECEIPT_SUCCESS,   /**< mined with status 0x1 — payment final     */
     ETH_RPC_RECEIPT_REVERTED,  /**< mined with status 0x0 — execution failed  */
     ETH_RPC_RECEIPT_RPC_ERROR, /**< transport or parse error (transient)      */
+    ETH_RPC_RECEIPT_MISMATCH,  /**< mined, but not the payment asked for      */
 } eth_rpc_receipt_result_t;
 
 /******************************************************************
@@ -107,7 +110,11 @@ void eth_rpc_set_auth(const char *project_id, const char *api_secret);
 void eth_rpc_set_ca_cert(const char *ca_pem);
 
 /**
- * @brief Fetch the pending transaction count (nonce) for from_addr.
+ * @brief Fetch the confirmed transaction count (nonce) for from_addr.
+ *
+ * "latest", not "pending": a sale whose broadcast answer was lost may still
+ * be in the mempool, and a retry must REPLACE it (same nonce, only one can
+ * land) rather than queue behind it as a second payment.
  *
  * Responses with an HTTP status other than 200, malformed JSON, or a nonce
  * above 2^32-1 are rejected.
@@ -151,6 +158,19 @@ bool eth_rpc_get_balance(uint64_t *wei_out);
  *         configured from_addr is not a 20-byte hex address.
  */
 bool eth_rpc_get_token_balance(const char *token_addr, uint64_t *units_out);
+
+/**
+ * @brief Read an ERC-20 contract's @c decimals().
+ *
+ * Every amount this terminal signs is in 6-decimal base units, so a contract
+ * with any other precision would be charged the wrong sum — 10^12 too little
+ * for an 18-decimal token. Checked before such a contract can be accepted.
+ *
+ * @param[in]  token_addr "0x"-prefixed contract address.
+ * @param[out] dec_out    decimals() on success; untouched on failure.
+ * @return false on transport error, no contract code, or a malformed answer.
+ */
+bool eth_rpc_get_token_decimals(const char *token_addr, uint64_t *dec_out);
 
 /**
  * @brief Determine the signature parity bit (v = 0 or 1).
@@ -201,14 +221,24 @@ bool eth_rpc_send_raw_tx(const uint8_t *tx, size_t tx_len,
  * entered the mempool — a POS must wait for the mined receipt (status 0x1)
  * before declaring the payment approved.
  *
- * @param[in] tx_hash "0x..."-prefixed transaction hash from
- *                    @ref eth_rpc_send_raw_tx.
+ * @param[in] want What the receipt must show (see eth_json.h); its
+ *                 @c tx_hash is the hash computed on the device, not the
+ *                 node's answer to the broadcast.
  * @retval ETH_RPC_RECEIPT_PENDING   Not mined yet — poll again later.
- * @retval ETH_RPC_RECEIPT_SUCCESS   Mined, execution succeeded.
+ * @retval ETH_RPC_RECEIPT_SUCCESS   Mined, execution succeeded, and it is our
+ *                                   transfer.
  * @retval ETH_RPC_RECEIPT_REVERTED  Mined but reverted — funds NOT moved.
  * @retval ETH_RPC_RECEIPT_RPC_ERROR Transport/parse error (may be transient).
+ * @retval ETH_RPC_RECEIPT_MISMATCH  A receipt that is not our payment.
  */
-eth_rpc_receipt_result_t eth_rpc_get_tx_receipt(const char *tx_hash);
+eth_rpc_receipt_result_t eth_rpc_get_tx_receipt(const eth_receipt_expect_t *want);
+
+/**
+ * @brief true if a broadcast error message means the node already HAS this
+ *        transaction ("already known", "known transaction") — i.e. an earlier
+ *        attempt whose answer was lost got through.
+ */
+bool eth_rpc_err_already_known(const char *node_err);
 
 #ifdef __cplusplus
 }

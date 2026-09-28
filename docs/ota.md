@@ -106,9 +106,10 @@ are shown to the operator; the device ignores both and trusts neither.
 The terminal cannot validate a TLS certificate chain to GitHub, because it never
 talks to GitHub. Its only way to know an image is genuine is a signature over
 that image, checked against a public key compiled into the firmware already
-running. `sdkconfig.defaults.release` turns that on
-(`CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT`), and `esp_ota_end()` refuses
-anything that fails it — before the staged slot can ever become bootable.
+running. The secure build turns that on — `sdkconfig.defaults.flash_encryption`
+enables hardware Secure Boot v2, and `sdkconfig.defaults.release` stacks on top
+of it — and `esp_ota_end()` refuses anything that fails it, before the staged
+slot can ever become bootable.
 
 Without it, `POST /api/ota` is one authorised browser session away from replacing
 the firmware on a device that signs cryptocurrency transactions. The session token,
@@ -116,13 +117,17 @@ the 15-minute window and the on-screen accept are not a substitute — they make
 harder to reach, not impossible, and none of them can tell a genuine image from a
 convincing one.
 
-No eFuses are burned and nothing is irreversible — this is Secure Boot V2's
-signature scheme used for *update verification only*, not hardware secure boot.
+This is **hardware** Secure Boot v2: the first boot of a secure build burns the
+signing key's digest into eFuse, and that is one-way — from then on the unit only
+boots, and only installs, images signed with the same key. (An earlier version of
+the release overlay tried to add the software-only variant on top; Kconfig drops
+it whenever `CONFIG_SECURE_BOOT` is set, so both overlays now name the one model
+and the one key.)
 
 Generate the key once:
 
 ```sh
-idf.py secure-generate-signing-key --version 2 secure_boot_signing_key.pem
+idf.py secure-generate-signing-key --version 2 secure_keys/secure_boot_signing_key.pem
 ```
 
 Keep it out of this repository and off any build machine you do not control; it

@@ -18,6 +18,8 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <sys/time.h>  /* gettimeofday */
+#include <strings.h>   /* strcasecmp */
 #include <stdlib.h>
 #include <inttypes.h>
 #include <atomic>
@@ -260,8 +262,8 @@ static bool chain_is_native_evm(void) {
  * Polygon request is how "it works on Ethereum" turns into a TLS failure nobody
  * can place.
  */
-static void eth_rpc_select(void) {
-    if (chain_is_polygon()) {
+static void eth_rpc_select_for(bool polygon) {
+    if (polygon) {
         eth_rpc_init(settings_net_str(POLY_RPC_URL, POLY_RPC_URL_MAIN),
                      "0x" ADDR_FROM);
         eth_rpc_set_auth(NULL, NULL);
@@ -284,6 +286,8 @@ static void eth_rpc_select(void) {
 #endif
     }
 }
+
+static void eth_rpc_select(void) { eth_rpc_select_for(chain_is_polygon()); }
 
 /**
  * @brief A TRC-20 token the terminal can charge in.
@@ -411,11 +415,12 @@ static bool erc20_load(erc20_token_t *t, const char *hex_no_0x) {
  * which also runs the EIP-55 checksum once, so a mistyped address is caught here
  * rather than at the first payment.
  *
- * A stored value that will not parse is not fatal: the setup page can only check
- * an address structurally, and a terminal stuck on an error screen is worse than
- * one paying out to its configured default and saying so in the log. A bad
- * config.h value IS fatal — that one is the integrator's own doing and there is
- * nothing left to fall back to.
+ * A stored value that will not parse does not stop the boot — the setup page
+ * can only check an address structurally — but it is reported through
+ * @p rejected. For a payout that must refuse every sale: falling back to the
+ * config.h recipient would quietly pay an address the operator never chose (a
+ * development address, even on mainnet). A bad config.h value IS fatal — that
+ * one is the integrator's own doing and there is nothing left to fall back to.
  *
  * @param[in]  get         settings_get_payout or settings_get_contract; the two
  *                         share a signature, which is why this takes the function
@@ -426,6 +431,7 @@ static bool erc20_load(erc20_token_t *t, const char *hex_no_0x) {
  * @param[out] store       Dual store to parse into, twice.
  * @param[in]  stored_what What to call the stored value in the log line.
  * @param[in]  config_what The config.h macro's name, for the fatal message.
+ * @param[out] rejected    Set true when a stored value was refused; may be NULL.
  * @return false when even the config.h value will not parse — boot must stop.
  */
 static bool resolve_evm_addr(bool (*get)(bool, char *, size_t),
@@ -433,11 +439,13 @@ static bool resolve_evm_addr(bool (*get)(bool, char *, size_t),
                              const char *fallback,
                              pos_addr_t *store,
                              const char *stored_what,
-                             const char *config_what)
+                             const char *config_what,
+                             bool *rejected)
 {
     if (get(false, str, str_n) && !eth_addr_parse(str, store->addr)) {
-        ESP_LOGE(TAG, "stored %s rejected - using config.h", stored_what);
+        ESP_LOGE(TAG, "stored %s rejected", stored_what);
         (void)snprintf(str, str_n, "0x%s", fallback);
+        if (rejected != NULL) { *rejected = true; }
     }
     /* Twice, each pass independent — that is what makes it a dual store. */
     if (!eth_addr_parse(str, store->addr) ||
@@ -489,6 +497,11 @@ static QueueHandle_t s_ui_queue = NULL;
  * independent copies, reconciled before calldata encode and before signing so
  * a transient flip on the working copy can't redirect funds. */
 static pos_addr_t s_dest;
+
+/* A stored payout address that failed its checksum at boot, [0] EVM, [1] Tron.
+ * The dual store then holds the config.h fallback so the boot can continue,
+ * and every sale on that family is refused — see resolve_evm_addr. */
+static bool s_payout_bad[2] = { false, false };
 
 /* Same treatment for the Tron recipient: it is a different address, so it needs
  * its own dual store rather than borrowing the Ethereum one. */
@@ -985,6 +998,35 @@ static bool tron_balance_ok(const char *owner_hex, const char *token_hex,
     return true;
 }
 
+/* What a broadcast attempt ended as. UNKNOWN is the case that used to be shown
+ * as "Declined": the node never answered, so the transaction may be on its way.
+ * Only the chain can settle it, and until it does the sale is Unconfirmed —
+ * never declined, because a declined sale is one the merchant takes again. */
+typedef enum {
+    BCAST_FAILED = 0,   /**< Refused before or at broadcast: nothing was sent. */
+    BCAST_SENT,         /**< The node took it.                                 */
+    BCAST_UNKNOWN,      /**< No usable answer: it may or may not be out there. */
+} bcast_t;
+
+/* The sale between broadcast and verdict. Everything the receipt poll needs,
+ * kept here rather than in locals so "Check again" on the Unconfirmed screen
+ * resumes the same sale instead of starting another one. */
+typedef struct {
+    bool     active;
+    bool     tron;
+    char     hash[72];        /* EVM: "0x"+64, hashed HERE from the signed
+                                 bytes; Tron: the txID of verified raw_data   */
+    uint8_t  to[ETH_ADDR_LEN];     /* EVM: the tx's `to` (contract or payee)  */
+    uint8_t  payee[ETH_ADDR_LEN];  /* EVM token: the Transfer recipient       */
+    bool     token;                /* EVM: an ERC-20 call, not a native send  */
+    uint64_t amount;               /* EVM token: the Transfer value           */
+    uint64_t expiration_ms;        /* Tron: after this it can never land      */
+    bool     broadcast_known;      /* false: the broadcast answer was lost    */
+    pos_amount_t decided;          /* for the final decision gate             */
+} inflight_t;
+
+static inflight_t s_inflight;
+
 /**
  * @brief Sign a USDC transfer on the card and broadcast it via JSON-RPC.
  *
@@ -1001,20 +1043,21 @@ static bool tron_balance_ok(const char *owner_hex, const char *token_hex,
  * @param[in]  amount_units Transfer amount in USDC base units (6 decimals).
  * @param[in]  pin          Operator-entered card PIN (scrubbed after signing).
  * @param[in]  pin_chars    Number of PIN characters in @p pin.
- * @param[out] tx_hash_out  "0x..."-prefixed tx hash on success.
- * @param[in]  tx_hash_max  Capacity of @p tx_hash_out (>= 68 bytes).
+ * @param[out] fl           Filled once signed: the locally computed hash and
+ *                          what its receipt must show.
  * @param[out] err_out      Short UI-facing error message on failure.
  * @param[in]  err_max      Capacity of @p err_out.
- * @return true on successful broadcast; false on failure or user cancel
- *         (err_out is only meaningful when @ref s_user_cancelled is clear).
+ * @return BCAST_SENT, BCAST_UNKNOWN (no answer — poll @p fl), or BCAST_FAILED
+ *         on refusal or user cancel (err_out is only meaningful when
+ *         @ref s_user_cancelled is clear).
  */
-static bool sign_and_broadcast(CryptnoxWallet &wallet,
-                                Pn532NfcTransport &transport,
-                                const pos_amount_t *amount,
-                                const pos_addr_t *to,
-                                const char *pin, size_t pin_chars,
-                                char *tx_hash_out, size_t tx_hash_max,
-                                char *err_out, size_t err_max)
+static bcast_t sign_and_broadcast(CryptnoxWallet &wallet,
+                                   Pn532NfcTransport &transport,
+                                   const pos_amount_t *amount,
+                                   const pos_addr_t *to,
+                                   const char *pin, size_t pin_chars,
+                                   inflight_t *fl,
+                                   char *err_out, size_t err_max)
 {
     /* Which asset is selected, read once: the operator can switch between sales
      * but never inside one, and what this signs must be what the confirm screen
@@ -1038,7 +1081,7 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
         ((token != NULL) && !IS_TRUE32(address_consistent(token)))) {
         pos_handle_anomaly("pre-calldata reconcile");
         (void)snprintf(err_out, err_max, "Integrity check failed");
-        return false;
+        return BCAST_FAILED;
     }
     const uint64_t amount_units = amount->amount_minor;
 
@@ -1050,7 +1093,7 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
     if (native) {
         if (amount_units > POS_AMOUNT_UNITS_MAX_NATIVE) {
             (void)snprintf(err_out, err_max, "Amount too large for this asset");
-            return false;
+            return BCAST_FAILED;
         }
         native_wei = amount_units * 1000000000000ULL;
     }
@@ -1071,7 +1114,7 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
                            (s_card_fault != NULL) ? s_card_fault
                                                   : "Card not found");
         }
-        return false;
+        return BCAST_FAILED;
     }
 
     if (!s_user_cancelled) {
@@ -1088,7 +1131,7 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
                           static_cast<uint8_t>(pin_chars))) {
         wallet.disconnect(session);
         (void)snprintf(err_out, err_max, "Wrong PIN");
-        return false;
+        return BCAST_FAILED;
     }
 
     /* Whose account this sale spends — derived from the card on the reader, not
@@ -1108,7 +1151,7 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
                                  pubkey)) {
             wallet.disconnect(session);
             (void)snprintf(err_out, err_max, "Cannot read card address");
-            return false;
+            return BCAST_FAILED;
         }
         keccak256(pubkey, sizeof(pubkey), key_hash);
         (void)eth_addr_format(&key_hash[12], from_addr, sizeof(from_addr));
@@ -1118,7 +1161,7 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
     if (!eth_rpc_set_from(from_addr)) {
         wallet.disconnect(session);
         (void)snprintf(err_out, err_max, "Cannot read card address");
-        return false;
+        return BCAST_FAILED;
     }
     ESP_LOGI(TAG, "EVM sender (this card): %s", from_addr);
 
@@ -1127,7 +1170,7 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
     ui_set_tx_info("Checking balance");
     if (!evm_balance_ok(amount, err_out, err_max)) {
         wallet.disconnect(session);
-        return false;
+        return BCAST_FAILED;
     }
     ui_set_tx_info(NULL);
 
@@ -1135,7 +1178,7 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
     if (!eth_rpc_get_nonce(&nonce)) {
         wallet.disconnect(session);
         (void)snprintf(err_out, err_max, "RPC: get nonce failed");
-        return false;
+        return BCAST_FAILED;
     }
 
     eth_tx_t tx;
@@ -1177,7 +1220,7 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
     if (unsigned_len == 0U) {
         wallet.disconnect(session);
         (void)snprintf(err_out, err_max, "RLP encode overflow");
-        return false;
+        return BCAST_FAILED;
     }
 
     uint8_t hash[CW_HASH_SIZE];
@@ -1198,7 +1241,7 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
         pos_handle_anomaly("pre-sign reconcile");
         (void)snprintf(err_out, err_max, "Integrity check failed");
         wallet.disconnect(session);
-        return false;
+        return BCAST_FAILED;
     }
 
     uint8_t rs[64];
@@ -1207,7 +1250,7 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
                    ETH_DERIVE_PATH,
                    static_cast<uint8_t>(sizeof(ETH_DERIVE_PATH)),
                    pin, pin_chars, rs, err_out, err_max)) {
-        return false;
+        return BCAST_FAILED;
     }
     const uint8_t *sig_r = rs;
     const uint8_t *sig_s = rs + 32U;
@@ -1229,11 +1272,11 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
              * derivation that disagrees with itself) and not a setup error the
              * operator can fix by using their other card. */
             (void)snprintf(err_out, err_max, "Signature check failed");
-            return false;
+            return BCAST_FAILED;
         case ETH_RPC_PARITY_RPC_ERROR:
         default:
             (void)snprintf(err_out, err_max, "RPC error (parity)");
-            return false;
+            return BCAST_FAILED;
     }
 
     uint8_t signed_tx[TX_BUF_SIZE];
@@ -1242,26 +1285,64 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
                                                signed_tx, sizeof(signed_tx));
     if (signed_len == 0U) {
         (void)snprintf(err_out, err_max, "RLP signed overflow");
-        return false;
+        return BCAST_FAILED;
     }
 
     /* last cancel check right before the irreversible broadcast. */
     if (s_user_cancelled) {
-        return false;
+        return BCAST_FAILED;
     }
+
+    /* The hash is ours, computed from the bytes the card just signed — before
+     * the broadcast, so it exists even if the node never answers, and never
+     * taken from the node, which could name any other transaction. This is
+     * what the receipt poll asks about and what the receipt has to match. */
+    {
+        uint8_t h[32];
+        keccak256(signed_tx, signed_len, h);
+        fl->hash[0] = '0';
+        fl->hash[1] = 'x';
+        for (size_t i = 0U; i < sizeof(h); i++) {
+            (void)snprintf(&fl->hash[2U + (2U * i)], 3U, "%02x", h[i]);
+        }
+    }
+    fl->tron  = false;
+    fl->token = (token != NULL);
+    (void)CW_Utils::safe_memcpy(fl->to, sizeof(fl->to),
+                                (token != NULL) ? token->addr : to->addr,
+                                ETH_ADDR_LEN);
+    (void)CW_Utils::safe_memcpy(fl->payee, sizeof(fl->payee), to->addr,
+                                ETH_ADDR_LEN);
+    fl->amount = amount_units;
 
     /* Roomier than err_out so the node's sentence arrives whole and is clipped
      * once, at the point that knows the panel's width. */
     char node_err[128] = "";
-    if (!eth_rpc_send_raw_tx(signed_tx, signed_len, tx_hash_out, tx_hash_max,
+    char node_hash[72] = "";
+    if (!eth_rpc_send_raw_tx(signed_tx, signed_len, node_hash, sizeof(node_hash),
                              node_err, sizeof(node_err))) {
-        ESP_LOGE(TAG, "broadcast refused: %s",
-                 (node_err[0] != '\0') ? node_err : "(no message)");
+        if (eth_rpc_err_already_known(node_err)) {
+            /* An earlier attempt at these exact bytes got through. */
+            ESP_LOGW(TAG, "node already has %s", fl->hash);
+            return BCAST_SENT;
+        }
+        if (node_err[0] == '\0') {
+            /* No refusal, just no answer: a timeout, a dropped TLS session, a
+             * body that was not JSON. The node may well have taken it. */
+            ESP_LOGW(TAG, "no answer to the broadcast - polling %s", fl->hash);
+            return BCAST_UNKNOWN;
+        }
+        ESP_LOGE(TAG, "broadcast refused: %s", node_err);
         rpc_error_text(node_err, native, polygon, err_out, err_max);
-        return false;
+        return BCAST_FAILED;
     }
-
-    return true;
+    if (strcasecmp(node_hash, fl->hash) != 0) {
+        /* Not fatal — ours is the one polled — but a node naming a different
+         * transaction is not a node to trust with the verdict either, which is
+         * why the receipt is checked against the transfer itself. */
+        ESP_LOGE(TAG, "node answered hash %s for %s", node_hash, fl->hash);
+    }
+    return BCAST_SENT;
 }
 
 /**
@@ -1285,32 +1366,32 @@ static bool sign_and_broadcast(CryptnoxWallet &wallet,
  * @param[in]  token        Token to charge in, or NULL for native TRX.
  * @param[in]  pin          Operator-entered card PIN (scrubbed after signing).
  * @param[in]  pin_chars    Number of PIN characters in @p pin.
- * @param[out] txid_out     Transaction id hex on success (>= 65 bytes).
- * @param[in]  txid_max     Capacity of @p txid_out.
+ * @param[out] fl           Filled once built: the txID and its expiration.
  * @param[out] err_out      Short UI-facing error message on failure.
  * @param[in]  err_max      Capacity of @p err_out.
- * @return true on successful broadcast; false on failure or user cancel.
+ * @return BCAST_SENT, BCAST_UNKNOWN (broadcast not confirmed — poll @p fl
+ *         until it expires), or BCAST_FAILED on refusal or user cancel.
  */
-static bool sign_and_broadcast_tron(CryptnoxWallet &wallet,
-                                     Pn532NfcTransport &transport,
-                                     CW_CryptoProvider &crypto,
-                                     const pos_amount_t *amount,
-                                     const pos_addr_t *to,
-                                     const trc20_asset_t *token,
-                                     const char *pin, size_t pin_chars,
-                                     char *txid_out, size_t txid_max,
-                                     char *err_out, size_t err_max)
+static bcast_t sign_and_broadcast_tron(CryptnoxWallet &wallet,
+                                        Pn532NfcTransport &transport,
+                                        CW_CryptoProvider &crypto,
+                                        const pos_amount_t *amount,
+                                        const pos_addr_t *to,
+                                        const trc20_asset_t *token,
+                                        const char *pin, size_t pin_chars,
+                                        inflight_t *fl,
+                                        char *err_out, size_t err_max)
 {
     if (!IS_TRUE32(amount_consistent(amount)) ||
         !IS_TRUE32(address_consistent(to)) ||
         ((token != NULL) && !IS_TRUE32(address_consistent(&token->addr)))) {
         pos_handle_anomaly("pre-create reconcile (tron)");
         (void)snprintf(err_out, err_max, "Integrity check failed");
-        return false;
+        return BCAST_FAILED;
     }
     if ((token != NULL) && !token->ok) {
         (void)snprintf(err_out, err_max, "Token contract not configured");
-        return false;
+        return BCAST_FAILED;
     }
     const uint64_t amount_sun = amount->amount_minor;   /* both 6 decimals */
 
@@ -1342,7 +1423,7 @@ static bool sign_and_broadcast_tron(CryptnoxWallet &wallet,
                            (s_card_fault != NULL) ? s_card_fault
                                                   : "Card not found");
         }
-        return false;
+        return BCAST_FAILED;
     }
 
     if (!s_user_cancelled) {
@@ -1361,7 +1442,7 @@ static bool sign_and_broadcast_tron(CryptnoxWallet &wallet,
                           static_cast<uint8_t>(pin_chars))) {
         wallet.disconnect(session);
         (void)snprintf(err_out, err_max, "Wrong PIN");
-        return false;
+        return BCAST_FAILED;
     }
     if (!wallet.getPublicKey(session, CW_TRON_DERIVE_PATH,
                              CW_TRON_PATH_LENGTH, pubkey) ||
@@ -1370,7 +1451,7 @@ static bool sign_and_broadcast_tron(CryptnoxWallet &wallet,
                                 owner_b58, sizeof(owner_b58))) {
         wallet.disconnect(session);
         (void)snprintf(err_out, err_max, "Cannot read card address");
-        return false;
+        return BCAST_FAILED;
     }
     tron_addr_to_hex(owner21, owner_hex, sizeof(owner_hex));
     ESP_LOGI(TAG, "Tron sender (this card): %s", owner_b58);
@@ -1381,7 +1462,7 @@ static bool sign_and_broadcast_tron(CryptnoxWallet &wallet,
     if (!tron_balance_ok(owner_hex, (token != NULL) ? token_hex : NULL,
                          amount_sun, err_out, err_max)) {
         wallet.disconnect(session);
-        return false;
+        return BCAST_FAILED;
     }
 
     tron_tx_ctx_t tx;
@@ -1397,7 +1478,7 @@ static bool sign_and_broadcast_tron(CryptnoxWallet &wallet,
          * for the energy the transfer burns. */
         (void)snprintf(err_out, err_max, "No %s on %.12s...",
                        (token == NULL) ? "TRX" : "funds/TRX", owner_b58);
-        return false;
+        return BCAST_FAILED;
     }
 
     /* Last reconcile before the card produces an irreversible signature.
@@ -1408,7 +1489,7 @@ static bool sign_and_broadcast_tron(CryptnoxWallet &wallet,
         pos_handle_anomaly("pre-sign reconcile (tron)");
         (void)snprintf(err_out, err_max, "Integrity check failed");
         wallet.disconnect(session);
-        return false;
+        return BCAST_FAILED;
     }
 
     uint8_t rs[64];
@@ -1417,7 +1498,7 @@ static bool sign_and_broadcast_tron(CryptnoxWallet &wallet,
                    static_cast<uint8_t>(sizeof(tx.txid)),
                    CW_TRON_DERIVE_PATH, CW_TRON_PATH_LENGTH,
                    pin, pin_chars, rs, err_out, err_max)) {
-        return false;
+        return BCAST_FAILED;
     }
     const uint8_t *sig_r = rs;
     const uint8_t *sig_s = rs + 32U;
@@ -1439,7 +1520,7 @@ static bool sign_and_broadcast_tron(CryptnoxWallet &wallet,
 
     /* last cancel check right before the irreversible broadcast. */
     if (s_user_cancelled) {
-        return false;
+        return BCAST_FAILED;
     }
 
     bool sent = false;
@@ -1451,37 +1532,23 @@ static bool sign_and_broadcast_tron(CryptnoxWallet &wallet,
         }
     }
 
+    (void)snprintf(fl->hash, sizeof(fl->hash), "%s", tx.txid_hex);
+    fl->tron          = true;
+    fl->expiration_ms = tx.expiration_ms;
+
     /* "Refused" and "we never heard back" are not the same thing, and only the
      * chain can tell them apart. A v=0 broadcast that landed but whose response
      * was lost leaves this loop with sent == false, and the v=1 retry is then
-     * refused as a duplicate — so reporting a bare failure here would tell a
-     * merchant a payment did not happen while it settles behind their back.
-     *
-     * Tron block time is ~3 s. Ask the chain about our txID before writing the
-     * sale off: anything other than "no such transaction" means it is out there,
-     * and the caller's own 120 s receipt poll is the right place to settle what
-     * it did. The txID is fixed by raw_data, so both attempts carried the same
-     * one and there is nothing ambiguous to look up. */
+     * refused as a duplicate. The txID is fixed by the verified raw_data, so
+     * both attempts are the same transaction: the receipt poll settles it, and
+     * waits past raw_data's expiration before calling it not sent — until then
+     * the chain can still include it. */
     if (!sent) {
-        vTaskDelay(pdMS_TO_TICKS(4000));
-        const tron_receipt_t r = tron_rpc_get_receipt(tx.txid_hex);
-        if ((r == TRON_RECEIPT_SUCCESS) || (r == TRON_RECEIPT_FAILED)) {
-            ESP_LOGW(TAG, "broadcast reported failure but %s is on-chain - "
-                          "letting the receipt poll decide", tx.txid_hex);
-            sent = true;
-        }
+        ESP_LOGW(TAG, "broadcast not confirmed - polling %s until it expires",
+                 tx.txid_hex);
+        return BCAST_UNKNOWN;
     }
-
-    if (!sent) {
-        /* Genuinely not on the chain as far as the node can tell. Say that it is
-         * unconfirmed rather than that it failed — the operator's next move is to
-         * check the address, not to assume nothing happened. */
-        (void)snprintf(err_out, err_max, "Not broadcast - unconfirmed");
-        return false;
-    }
-
-    (void)snprintf(txid_out, txid_max, "%s", tx.txid_hex);
-    return true;
+    return BCAST_SENT;
 }
 
 /** @brief Map a Tron receipt onto the Ethereum verdicts the UI flow uses. */
@@ -1492,6 +1559,109 @@ static eth_rpc_receipt_result_t tron_receipt_as_eth(tron_receipt_t r)
         case TRON_RECEIPT_FAILED:  return ETH_RPC_RECEIPT_REVERTED;
         case TRON_RECEIPT_PENDING: return ETH_RPC_RECEIPT_PENDING;
         default:                   return ETH_RPC_RECEIPT_RPC_ERROR;
+    }
+}
+
+/** @brief Unix time in ms, 0 while the clock is unset. */
+static uint64_t wall_ms(void)
+{
+    struct timeval tv;
+    if ((gettimeofday(&tv, NULL) != 0) || (tv.tv_sec < 1600000000)) { return 0U; }
+    return (static_cast<uint64_t>(tv.tv_sec) * 1000U) +
+           (static_cast<uint64_t>(tv.tv_usec) / 1000U);
+}
+
+/**
+ * @brief Poll the in-flight sale for up to 120 s and show what the chain says.
+ *
+ * Only three answers end a sale: mined and ours (Approved), mined and reverted
+ * (nothing moved), or — Tron only — expired without ever being included
+ * (nothing can move any more). Everything else, including a receipt that does
+ * not match the transfer and a broadcast whose answer was lost, is
+ * Unconfirmed: the screen keeps the hash, offers Check again, and never says
+ * Declined, because a declined sale is one the merchant charges a second time.
+ */
+static void settle_inflight(void)
+{
+    inflight_t *fl = &s_inflight;
+    ui_show_tx_status(UI_TX_STATE_CONFIRMING,
+                      fl->broadcast_known ? "Waiting for the block"
+                                          : "Checking it was sent");
+    const eth_receipt_expect_t want = {
+        fl->hash, fl->to, fl->token ? fl->payee : NULL, fl->amount
+    };
+    eth_rpc_receipt_result_t rc = ETH_RPC_RECEIPT_PENDING;
+    bool expired = false;
+    const int64_t deadline = esp_timer_get_time() + 120LL * 1000000LL;
+    for (;;) {
+        /* Count the wait down. Two minutes of spinner over an empty line with a
+         * customer waiting is indistinguishable from a hung terminal. Set in
+         * place — ui_show_tx_status here would restart the spinner. */
+        char left[32];
+        snprintf(left, sizeof(left), "%d s remaining",
+                 static_cast<int>((deadline - esp_timer_get_time() + 999999LL)
+                                  / 1000000LL));
+        ui_set_tx_info(left);
+        rc = fl->tron ? tron_receipt_as_eth(tron_rpc_get_receipt(fl->hash))
+                      : eth_rpc_get_tx_receipt(&want);
+        if ((rc == ETH_RPC_RECEIPT_SUCCESS) || (rc == ETH_RPC_RECEIPT_REVERTED) ||
+            (rc == ETH_RPC_RECEIPT_MISMATCH)) {
+            break;
+        }
+        /* Tron: the chain refuses a transaction past raw_data.expiration, so a
+         * node that still has never heard of it 10 s after that (one more
+         * block) means it will never land. Only on "not found" — an RPC error
+         * says nothing either way. */
+        const uint64_t now = wall_ms();
+        if (fl->tron && (rc == ETH_RPC_RECEIPT_PENDING) && (now != 0U) &&
+            (now > (fl->expiration_ms + 10000U))) {
+            expired = true;
+            break;
+        }
+        if (esp_timer_get_time() >= deadline) { break; }
+        vTaskDelay(pdMS_TO_TICKS(4000));
+    }
+
+    if (rc == ETH_RPC_RECEIPT_SUCCESS) {
+        /* §4: render PAID only if the monotonic gate holds — the on-chain
+         * APPROVED verdict AND amount/recipient still self-consistent through
+         * the decide→render window. */
+        fl->active = false;
+        bool32 decision = run_payment_decision(&fl->decided, active_dest(),
+                                               POS_VERDICT_APPROVED);
+        if (IS_TRUE32(decision)) {
+            ESP_LOGI(TAG, "Tx confirmed on-chain");
+            ui_show_tx_status(UI_TX_STATE_DONE, fl->hash);
+        } else {
+            /* Mined OK but the integrity gate failed — never show PAID on a
+             * corrupted decision. */
+            pos_handle_anomaly("final decision gate");
+            ESP_LOGE(TAG, "Integrity gate failed post-receipt: %s", fl->hash);
+            ui_show_tx_status(UI_TX_STATE_FAILED, "Integrity check failed");
+        }
+    } else if (rc == ETH_RPC_RECEIPT_REVERTED) {
+        /* A transfer the node accepted and the chain then rejected is, for a
+         * till, almost always the card not holding enough of the token.
+         * ponytail: a guess, not a reason. Reading the revert data back needs
+         * an eth_call replay at the mined block. */
+        fl->active = false;
+        (void)run_payment_decision(&fl->decided, active_dest(),
+                                   POS_VERDICT_DECLINED);
+        ESP_LOGE(TAG, "Tx reverted on-chain: %s", fl->hash);
+        ui_show_tx_status(UI_TX_STATE_FAILED,
+                          "Reverted - check the card's balance");
+    } else if (expired) {
+        fl->active = false;
+        ESP_LOGW(TAG, "Tron tx %s expired unseen - not sent", fl->hash);
+        ui_show_tx_status(UI_TX_STATE_FAILED, "Not sent - nothing was charged");
+    } else {
+        if (rc == ETH_RPC_RECEIPT_MISMATCH) {
+            /* The node's receipt is not our transfer. Whether ours landed is
+             * now unknown — the node that would say is the one lying. */
+            pos_handle_anomaly("receipt mismatch");
+        }
+        ESP_LOGW(TAG, "Tx %s unconfirmed after 120 s", fl->hash);
+        ui_show_tx_status(UI_TX_STATE_UNCONFIRMED, fl->hash);
     }
 }
 
@@ -1774,6 +1944,59 @@ static bool card_read_payouts(CryptnoxWallet &wallet,
  * @return false if the portal could not be raised at all, in which case the caller
  *         has to fall back to the panel.
  */
+/**
+ * @brief Before a proposed token contract reaches the panel, read its
+ *        decimals() and refuse anything but 6.
+ *
+ * Every amount is signed in 6-decimal base units, so an 18-decimal contract
+ * accepted by mistake would be charged 10^-12 of the sum on the screen. A
+ * contract that cannot be asked (no network, no code there) is refused too:
+ * the page says why and the operator can propose it again.
+ *
+ * @return true if the proposal may be shown for accepting.
+ */
+static bool proposal_decimals_ok(CW_CryptoProvider &crypto)
+{
+    prov_ask_t kind = PROV_ASK_NONE;
+    char value[SETTINGS_PAYOUT_MAX] = "";
+    if (!prov_pending(&kind, NULL, 0U, value, sizeof(value))) { return true; }
+    if ((kind != PROV_ASK_CONTRACT_ETH) && (kind != PROV_ASK_CONTRACT_TRON)) {
+        return true;
+    }
+
+    uint64_t dec = 0U;
+    bool     asked = false;
+    if (kind == PROV_ASK_CONTRACT_ETH) {
+        eth_rpc_select_for(false);          /* the Ethereum USDC contract */
+        asked = eth_rpc_get_token_decimals(value, &dec);
+        eth_rpc_select();
+    } else {
+        uint8_t c21[CW_TRON_ADDRESS_BYTES];
+        char    c_hex[TRON_ADDR_HEX_LEN + 1U];
+        if (CW_Tron::decodeAddress(value, crypto, c21)) {
+            tron_addr_to_hex(c21, c_hex, sizeof(c_hex));
+            asked = tron_rpc_get_trc20_decimals(c_hex, &dec);
+        }
+    }
+    if (asked && (dec == 6U)) { return true; }
+
+    char note[128];
+    if (asked) {
+        (void)snprintf(note, sizeof(note),
+                       "Refused: that contract has %u decimals. Only 6-decimal "
+                       "tokens (USDC, USDT) are supported.",
+                       static_cast<unsigned>((dec > 99U) ? 99U : dec));
+    } else {
+        (void)snprintf(note, sizeof(note),
+                       "Refused: could not read that contract's decimals. Check "
+                       "the address and the network, then try again.");
+    }
+    ESP_LOGW(TAG, "contract %s: %s", value, note);
+    (void)prov_pending_commit(false);
+    prov_set_note(note);
+    return false;
+}
+
 static bool run_wizard(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
                        CW_CryptoProvider &crypto, bool wifi_only)
 {
@@ -1908,7 +2131,7 @@ static bool run_wizard(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
             }
 
             case UI_EVENT_PROV_VALUE:
-                ui_show_prov_confirm();
+                if (proposal_decimals_ok(crypto)) { ui_show_prov_confirm(); }
                 break;
 
             case UI_EVENT_PROV_VALUE_SET:
@@ -2069,13 +2292,14 @@ extern "C" void app_main(void)
      * value is allowed to fail and a config.h one is not. */
     if (!resolve_evm_addr(settings_get_payout,
                           s_payout_eth, sizeof(s_payout_eth), ADDR_TO,
-                          &s_dest, "Ethereum payout address", "ADDR_TO")) {
+                          &s_dest, "Ethereum payout address", "ADDR_TO",
+                          &s_payout_bad[0])) {
         return;
     }
     if (!resolve_evm_addr(settings_get_contract,
                           s_contract_eth, sizeof(s_contract_eth),
                           settings_net_str(ADDR_USDC, ADDR_USDC_MAIN),
-                          &s_usdc, "ERC-20 contract", "ADDR_USDC")) {
+                          &s_usdc, "ERC-20 contract", "ADDR_USDC", NULL)) {
         return;
     }
     /* The config.h-only ERC-20s, parsed twice each into their own stores. Non-fatal,
@@ -2171,8 +2395,9 @@ extern "C" void app_main(void)
      * crypto provider and that lives here. */
     if (settings_get_payout(true, s_payout_tron, sizeof(s_payout_tron)) &&
         !CW_Tron::decodeAddress(s_payout_tron, cryptoProvider, tron_to21)) {
-        ESP_LOGE(TAG, "stored Tron payout address rejected - using config.h");
+        ESP_LOGE(TAG, "stored Tron payout address rejected - sales refused");
         (void)snprintf(s_payout_tron, sizeof(s_payout_tron), "%s", TRON_ADDR_TO);
+        s_payout_bad[1] = true;
     }
     if (!CW_Tron::decodeAddress(s_payout_tron, cryptoProvider, tron_to21) ||
         !CW_Tron::decodeAddress(s_payout_tron, cryptoProvider, tron_to21_echo)) {
@@ -2461,6 +2686,14 @@ extern "C" void app_main(void)
                     pos_amount_set(&pending_amount, 0U);
                     break;
                 }
+                /* Set, but it failed the checksum at boot: the dual store holds
+                 * the config.h fallback, which nobody chose for this till. */
+                if (s_payout_bad[chain_is_tron() ? 1 : 0]) {
+                    ui_show_tx_status(UI_TX_STATE_FAILED,
+                                      "Payout address invalid - set it again");
+                    pos_amount_set(&pending_amount, 0U);
+                    break;
+                }
                 const trc20_asset_t *tok = active_trc20();
                 const erc20_token_t *erc = active_erc20_token();
                 /* Say so here rather than after the customer has tapped a card:
@@ -2520,103 +2753,60 @@ extern "C" void app_main(void)
                 size_t pin_chars = ui_take_pin(pin, sizeof(pin));
 
                 s_user_cancelled = false;
-                char tx_hash[68] = { 0 };
                 char err_msg[64] = { 0 };
+                inflight_t *fl = &s_inflight;
+                CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(fl), sizeof(*fl));
                 /* Read the chain once per payment: the operator can switch it
                  * between sales, but never mid-sale. */
                 const bool tron = chain_is_tron();
-                bool ok = tron
+                const bcast_t sent = tron
                     ? sign_and_broadcast_tron(wallet, nfcTransport,
                                               cryptoProvider,
                                               &pending_amount, &s_tron_dest,
                                               active_trc20(),
-                                              pin, pin_chars,
-                                              tx_hash, sizeof(tx_hash),
+                                              pin, pin_chars, fl,
                                               err_msg, sizeof(err_msg))
                     : sign_and_broadcast(wallet, nfcTransport,
-                                              &pending_amount, &s_dest,
-                                              pin, pin_chars,
-                                              tx_hash, sizeof(tx_hash),
-                                              err_msg, sizeof(err_msg));
+                                         &pending_amount, &s_dest,
+                                         pin, pin_chars, fl,
+                                         err_msg, sizeof(err_msg));
                 /* scrub our copy of the PIN as soon as signing is done. */
                 CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(pin), sizeof(pin));
 
                 /* Snapshot the decided amount for the final gate, then clear
                  * pending so the next sign needs a fresh New Payment flow. */
-                pos_amount_t decided = pending_amount;
+                fl->decided = pending_amount;
                 pos_amount_set(&pending_amount, 0U);
-                if (s_user_cancelled) {
-                    /* Cancel during PLACE_CARD — UI already on amount entry. */
-                } else if (ok) {
-                    /* Broadcast accepted only means "entered the mempool" — a
-                     * POS must not claim Approved until the tx is mined with
-                     * status 0x1. Poll the receipt (Sepolia block ~12 s). */
-                    ui_show_tx_status(UI_TX_STATE_CONFIRMING,
-                                      "Waiting for the block");
-                    eth_rpc_receipt_result_t rc = ETH_RPC_RECEIPT_PENDING;
-                    const int64_t deadline =
-                        esp_timer_get_time() + 120LL * 1000000LL;  /* 120 s */
-                    while (esp_timer_get_time() < deadline) {
-                        /* Count the wait down. Two minutes of spinner over an
-                         * empty line with a customer waiting is indistinguishable
-                         * from a hung terminal; the loop already holds the
-                         * deadline, so the number costs nothing. Set in place —
-                         * ui_show_tx_status here would restart the spinner. */
-                        char left[32];
-                        snprintf(left, sizeof(left), "%d s remaining",
-                                 static_cast<int>((deadline - esp_timer_get_time()
-                                                   + 999999LL) / 1000000LL));
-                        ui_set_tx_info(left);
-                        rc = tron
-                             ? tron_receipt_as_eth(tron_rpc_get_receipt(tx_hash))
-                             : eth_rpc_get_tx_receipt(tx_hash);
-                        if ((rc == ETH_RPC_RECEIPT_SUCCESS) ||
-                            (rc == ETH_RPC_RECEIPT_REVERTED)) {
-                            break;
-                        }
-                        /* PENDING or transient RPC error — try again. */
-                        vTaskDelay(pdMS_TO_TICKS(4000));
-                    }
-                    /* §4: render PAID only if the monotonic gate holds — the
-                     * on-chain APPROVED verdict AND amount/recipient still
-                     * self-consistent through the decide→render window. */
-                    pos_verdict_t verdict = (rc == ETH_RPC_RECEIPT_SUCCESS)
-                                                ? POS_VERDICT_APPROVED
-                                                : POS_VERDICT_DECLINED;
-                    bool32 decision =
-                        run_payment_decision(&decided, active_dest(), verdict);
-                    if (rc == ETH_RPC_RECEIPT_SUCCESS && IS_TRUE32(decision)) {
-                        ESP_LOGI(TAG, "Tx confirmed on-chain");
-                        ui_show_tx_status(UI_TX_STATE_DONE, tx_hash);
-                    } else if (rc == ETH_RPC_RECEIPT_SUCCESS) {
-                        /* Mined OK but the integrity gate failed — never show
-                         * PAID on a corrupted decision. */
-                        pos_handle_anomaly("final decision gate");
-                        ESP_LOGE(TAG, "Integrity gate failed post-receipt: %s", tx_hash);
-                        ui_show_tx_status(UI_TX_STATE_FAILED, "Integrity check failed");
-                    } else if (rc == ETH_RPC_RECEIPT_REVERTED) {
-                        /* A transfer that the node accepted and the chain then
-                         * rejected is, for a till, almost always the card not
-                         * holding enough of the token — the node cannot know a
-                         * balance at broadcast time, so this is where that shows
-                         * up. Say where to look rather than only what happened.
-                         * ponytail: a guess, not a reason. Reading the revert
-                         * data back needs an eth_call replay at the mined block. */
-                        ESP_LOGE(TAG, "Tx reverted on-chain: %s", tx_hash);
-                        ui_show_tx_status(UI_TX_STATE_FAILED,
-                                          "Reverted - check the card's balance");
-                    } else {
-                        ESP_LOGE(TAG, "Tx not confirmed after 120 s: %s", tx_hash);
-                        ui_show_tx_status(UI_TX_STATE_FAILED,
-                                          "Confirmation timeout - check explorer");
-                    }
-                } else {
+                if (sent != BCAST_FAILED) {
+                    /* Out of our hands now, whatever the cancel flag says: a
+                     * signed transaction the node may hold is settled by the
+                     * chain, not by a tap on the panel. */
+                    fl->active          = true;
+                    fl->broadcast_known = (sent == BCAST_SENT);
+                    settle_inflight();
+                } else if (!s_user_cancelled) {
                     ui_show_tx_status(UI_TX_STATE_FAILED, err_msg);
+                } else {
+                    /* Cancel during PLACE_CARD — UI already on amount entry. */
                 }
                 break;
             }
 
+            case UI_EVENT_TX_RECHECK:
+                /* "Check again" on the Unconfirmed screen: same sale, same hash. */
+                if (s_inflight.active) {
+                    settle_inflight();
+                } else {
+                    ui_show_amount_entry();
+                }
+                break;
+
             case UI_EVENT_TX_RETRY:
+                /* New sale — or, from Unconfirmed, the operator's explicit
+                 * "I have checked" Clear. The record goes either way: the nonce
+                 * is read from "latest", so if the old one is still pending a
+                 * new sale replaces it rather than landing beside it. */
+                s_inflight.active = false;
                 ui_show_amount_entry();
                 break;
 
@@ -2640,7 +2830,7 @@ extern "C" void app_main(void)
                 break;
 
             case UI_EVENT_PROV_VALUE:
-                ui_show_prov_confirm();
+                if (proposal_decimals_ok(cryptoProvider)) { ui_show_prov_confirm(); }
                 break;
 
             case UI_EVENT_PROV_VALUE_SET:

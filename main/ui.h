@@ -59,7 +59,8 @@ typedef enum {
     UI_EVENT_PIN_ENTERED,       /**< PIN keypad validated; fetch via ui_take_pin. */
     UI_EVENT_WIFI_SCAN,         /**< User opened the Wi-Fi picker; main should scan. */
     UI_EVENT_WIFI_TRY,          /**< Wi-Fi creds entered; fetch via ui_take_wifi_creds. */
-    UI_EVENT_TX_RETRY,          /**< New payment tapped after Done/Failed. */
+    UI_EVENT_TX_RETRY,          /**< New sale after Done/Failed, or Clear on
+                                     Unconfirmed.                         */
     UI_EVENT_ADMIN_SET,         /**< Admin code created and stored (first run). */
     UI_EVENT_WELCOME_DONE,      /**< Start tapped on the welcome screen.   */
     UI_EVENT_PROV_AUTH,         /**< A browser asked to be authorised; the admin
@@ -80,6 +81,8 @@ typedef enum {
                                      payment; fetch via ui_take_pin.      */
     UI_EVENT_OTA_STAGED,        /**< Firmware uploaded and verified; needs
                                      accepting on the panel before it boots. */
+    UI_EVENT_TX_RECHECK,        /**< Recheck tapped on Unconfirmed: poll the
+                                     same sale's receipt again.           */
 } ui_event_t;
 
 /** @brief States shown on the transaction-status screen. */
@@ -90,7 +93,10 @@ typedef enum {
     UI_TX_STATE_SENDING,     /**< Broadcasting the signed tx.         */
     UI_TX_STATE_CONFIRMING,  /**< Broadcast — waiting for the mined receipt. */
     UI_TX_STATE_DONE,        /**< Receipt mined with status 0x1.      */
-    UI_TX_STATE_FAILED,      /**< Any failure; info line says why.    */
+    UI_TX_STATE_FAILED,      /**< Nothing was sent; info line says why. */
+    UI_TX_STATE_UNCONFIRMED, /**< Sent, or maybe sent, and no verdict yet —
+                                  info is the tx hash. Never "Declined": the
+                                  payment may still land.               */
 } ui_tx_state_t;
 
 /**

@@ -39,6 +39,8 @@ typedef struct {
     uint8_t txid[32];                    /**< The 32 bytes the card signs.   */
     char    txid_hex[65];                /**< Same, hex — for receipt polls. */
     char    raw_hex[TRON_RAW_HEX_MAX];   /**< Verified raw_data hex.         */
+    uint64_t expiration_ms;              /**< raw_data.expiration: after this
+                                              the chain can no longer take it. */
 } tron_tx_ctx_t;
 
 /** @brief Outcome of one @c gettransactioninfobyid poll. */
@@ -124,6 +126,16 @@ bool tron_rpc_get_energy(const char *owner_hex, uint64_t *energy_out);
  */
 bool tron_rpc_get_trc20_balance(const char *owner_hex, const char *contract_hex,
                                 uint64_t *units_out);
+
+/**
+ * @brief Read a TRC-20 contract's @c decimals() — see eth_rpc_get_token_decimals
+ *        for why it has to be 6.
+ *
+ * @param[in]  contract_hex Contract, #TRON_ADDR_HEX_LEN hex chars, "41"-prefixed.
+ * @param[out] dec_out      decimals() on success; untouched on failure.
+ * @return false on transport error or a malformed answer.
+ */
+bool tron_rpc_get_trc20_decimals(const char *contract_hex, uint64_t *dec_out);
 
 /**
  * @brief Create a TRX transfer and verify what the node serialised for us.

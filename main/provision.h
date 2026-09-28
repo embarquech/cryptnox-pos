@@ -210,6 +210,20 @@ void prov_auth_resolve(bool grant);
 bool prov_authed(void);
 
 /**
+ * @brief The 4-digit pairing code of the browser asking to be let in.
+ *
+ * Derived from the session token (its first 16 bits, mod 10000), so the page can
+ * compute the same number from the token it holds. Shown on the panel's admin
+ * prompt and on the page, so the operator approves the browser in their hand
+ * and not whichever one on the access point asked first.
+ *
+ * @param[out] out      NUL-terminated code on success.
+ * @param[in]  out_size >= 5.
+ * @return false when no browser has asked.
+ */
+bool prov_pair_code(char *out, size_t out_size);
+
+/**
  * @brief Cut the wizard down to the Wi-Fi step, with no admin code.
  *
  * For a terminal that is already configured and has only lost its network. Call it

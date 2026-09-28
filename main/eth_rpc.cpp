@@ -159,7 +159,7 @@ bool eth_rpc_get_nonce(uint64_t *nonce_out)
     char body[256];
     (void)snprintf(body, sizeof(body),
                    "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\","
-                   "\"params\":[\"%s\",\"pending\"],\"id\":1}",
+                   "\"params\":[\"%s\",\"latest\"],\"id\":1}",
                    s_from_addr);
 
     char resp[RESP_BUF_SIZE];
@@ -431,13 +431,45 @@ bool eth_rpc_send_raw_tx(const uint8_t *tx, size_t tx_len,
     return true;
 }
 
-eth_rpc_receipt_result_t eth_rpc_get_tx_receipt(const char *tx_hash)
+bool eth_rpc_get_token_decimals(const char *token_addr, uint64_t *dec_out)
 {
+    if ((token_addr == NULL) || (dec_out == NULL)) { return false; }
+    char body[224];
+    int k = snprintf(body, sizeof(body),
+                     "{\"jsonrpc\":\"2.0\",\"method\":\"eth_call\","
+                     "\"params\":[{\"to\":\"%s\",\"data\":\"0x313ce567\"},"
+                     "\"latest\"],\"id\":6}",
+                     token_addr);
+    if ((k <= 0) || (static_cast<size_t>(k) >= sizeof(body))) { return false; }
+
+    char resp[RESP_BUF_SIZE];
+    if (!do_post(body, resp, sizeof(resp))) { return false; }
+    char result[RESULT_STR_MAX];
+    /* "0x" from an address with no code is refused by eth_json_hex_quantity. */
+    if (!eth_json_result_string(resp, result, sizeof(result)) ||
+        !eth_json_hex_quantity(result, dec_out)) {
+        ESP_LOGE(TAG, "decimals: no usable answer: %.*s", RESP_LOG_MAX, resp);
+        return false;
+    }
+    return true;
+}
+
+bool eth_rpc_err_already_known(const char *node_err)
+{
+    return (node_err != NULL) &&
+           ((strstr(node_err, "already known") != NULL) ||
+            (strstr(node_err, "known transaction") != NULL) ||
+            (strstr(node_err, "ALREADY_EXISTS") != NULL));
+}
+
+eth_rpc_receipt_result_t eth_rpc_get_tx_receipt(const eth_receipt_expect_t *want)
+{
+    if ((want == NULL) || (want->tx_hash == NULL)) { return ETH_RPC_RECEIPT_RPC_ERROR; }
     char body[160];
     (void)snprintf(body, sizeof(body),
                    "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionReceipt\","
                    "\"params\":[\"%s\"],\"id\":3}",
-                   tx_hash);
+                   want->tx_hash);
 
     /* Receipts are large (the logsBloom field alone is 512 hex chars, plus
      * the ERC-20 Transfer log) — use a dedicated heap buffer, a truncated
@@ -448,10 +480,14 @@ eth_rpc_receipt_result_t eth_rpc_get_tx_receipt(const char *tx_hash)
 
     eth_rpc_receipt_result_t verdict = ETH_RPC_RECEIPT_RPC_ERROR;
     if (do_post(body, resp, resp_size)) {
-        switch (eth_json_receipt_status(resp)) {
+        switch (eth_json_receipt_check(resp, want)) {
             case ETH_JSON_RECEIPT_PENDING:  verdict = ETH_RPC_RECEIPT_PENDING;  break;
             case ETH_JSON_RECEIPT_SUCCESS:  verdict = ETH_RPC_RECEIPT_SUCCESS;  break;
             case ETH_JSON_RECEIPT_REVERTED: verdict = ETH_RPC_RECEIPT_REVERTED; break;
+            case ETH_JSON_RECEIPT_MISMATCH:
+                ESP_LOGE(TAG, "receipt is not our payment: %.*s", RESP_LOG_MAX, resp);
+                verdict = ETH_RPC_RECEIPT_MISMATCH;
+                break;
             case ETH_JSON_RECEIPT_ERROR:    /* fall through */
             default:                        verdict = ETH_RPC_RECEIPT_RPC_ERROR; break;
         }

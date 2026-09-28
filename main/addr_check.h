@@ -14,9 +14,9 @@
  * test can reach it (tests/units/test_addr_check.cpp).
  *
  * The Ethereum side is NOT here — eth_addr_parse() already verifies the EIP-55
- * checksum, which is a real check and not a structural one. Tron gets structural
- * only: the authoritative base58check decode needs a crypto provider, which lives
- * in the main task. See the note on addr_plausible() in provision.cpp.
+ * checksum. For Tron this has the structural check and the base58 decode; the
+ * checksum over the decoded bytes (double SHA-256) is done in provision.cpp,
+ * which has mbedtls — see addr_plausible() there.
  */
 
 #ifndef ADDR_CHECK_H
@@ -54,6 +54,31 @@ static inline bool addr_tron_plausible(const char *s)
 {
     return (s != NULL) && (strlen(s) == ADDR_TRON_LEN) && (s[0] == 'T') &&
            addr_is_base58(s);
+}
+
+/**
+ * @brief Decode a base58 Tron address into its 25 bytes
+ *        (0x41 || 20-byte key hash || 4-byte checksum).
+ *
+ * @return false if @p s is not a plausible Tron address or does not decode to
+ *         exactly 25 bytes. The checksum is NOT verified here.
+ */
+static inline bool addr_tron_decode(const char *s, unsigned char out[25])
+{
+    static const char *const B58 =
+        "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+    if (!addr_tron_plausible(s)) { return false; }
+    memset(out, 0, 25U);
+    for (const char *p = s; *p != '\0'; p++) {
+        unsigned carry = static_cast<unsigned>(strchr(B58, *p) - B58);
+        for (int j = 24; j >= 0; j--) {
+            carry += 58U * out[j];
+            out[j] = static_cast<unsigned char>(carry & 0xFFU);
+            carry >>= 8;
+        }
+        if (carry != 0U) { return false; }   /* more than 25 bytes */
+    }
+    return out[0] == 0x41U;
 }
 
 #endif /* ADDR_CHECK_H */

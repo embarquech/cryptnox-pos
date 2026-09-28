@@ -143,6 +143,7 @@ static XPT2046_Touchscreen touch(T_CS, T_IRQ);
  * pale sky replaced is still in mockups/mockup.py as RAMP_GREY if it is ever
  * wanted back. */
 #define COL_HOME_BAR COL_DIM       /* grey — the swipe handle           */
+#define COL_WARN     lv_color_hex(0xE39A2D)   /* amber — "not confirmed yet"   */
 #define COL_SUCCESS  lv_color_hex(0x1E9E50)   /* green — "Sent"                */
 #define COL_DANGER   lv_color_hex(0xD63A3A)   /* red — failures / reset        */
 #define COL_BORDER   lv_color_hex(0xE0E0E0)   /* light grey — hairlines        */
@@ -598,7 +599,7 @@ static char     s_confirm_addr[64] = "";
  * spinner, so the label is held and s_tx_info_dirty drives a targeted set, the
  * same hand-off the boot step uses. */
 static ui_tx_state_t s_tx_state    = UI_TX_STATE_PLACE_CARD;
-static char          s_tx_info[64] = "";
+static char          s_tx_info[72] = "";   /* holds a 66-char EVM hash */
 static lv_obj_t     *s_tx_info_lbl = NULL;
 static volatile bool s_tx_info_dirty = false;
 
@@ -767,7 +768,7 @@ static lv_obj_t *s_close_btn = NULL;
  * 6. Button actions
  ******************************************************************/
 enum BtnAction {
-    ACT_CONFIRM, ACT_CANCEL, ACT_SEND, ACT_NEW,
+    ACT_CONFIRM, ACT_CANCEL, ACT_SEND, ACT_NEW, ACT_TX_RECHECK,
     ACT_CLOSE, ACT_PIN_CANCEL, ACT_PIN_REVEAL,
     ACT_WIFI, ACT_WIFI_CANCEL, ACT_WIFI_PASS_REVEAL,
     ACT_ADMIN_CANCEL, ACT_ADMIN_REVEAL, ACT_WELCOME_OK,
@@ -1430,6 +1431,9 @@ static void btn_event_cb(lv_event_t *e) {
             break;
         case ACT_NEW:
             if (s_cb != NULL) { s_cb(UI_EVENT_TX_RETRY, 0); }
+            break;
+        case ACT_TX_RECHECK:
+            if (s_cb != NULL) { s_cb(UI_EVENT_TX_RECHECK, 0); }
             break;
         case ACT_WELCOME_OK:
             /* main answers by showing the code screen straight away, so there is
@@ -4123,8 +4127,18 @@ static void build_admin_unlock(void) {
      * the box says what the key is. "Authorize browser" over an empty field named
      * the outcome and left the operator to guess that the terminal wanted the
      * admin code — the one thing on that screen they had to know. */
-    build_admin_screen(s_admin_for_portal ? "Authorize browser" : "Admin code",
-                       true, "Admin code");
+    /* For a browser, the title carries its pairing code — the page shows the
+     * same four digits, so the operator lets in the phone in their hand and not
+     * whichever one on the access point asked first. */
+    static char title[24];
+    char code[8];
+    if (s_admin_for_portal && prov_pair_code(code, sizeof(code))) {
+        (void)snprintf(title, sizeof(title), "Browser %s", code);
+    } else {
+        (void)snprintf(title, sizeof(title), "%s",
+                       s_admin_for_portal ? "Authorize browser" : "Admin code");
+    }
+    build_admin_screen(title, true, "Admin code");
 }
 
 /* Header with a back arrow (to amount entry) instead of the burger. */
@@ -4375,6 +4389,39 @@ static void build_tx_status(void) {
 
         make_button(card, "New sale", COL_ACCENT, COL_BG, CARD_BTN_W, CARD_BTN_H,
                     LV_ALIGN_BOTTOM_MID, 0, CARD_BTN_Y, ACT_NEW,
+                    &font_pjs_20_semibold);
+        return;
+    }
+
+    if (s_tx_state == UI_TX_STATE_UNCONFIRMED) {
+        /* The sale the terminal cannot call either way: signed and possibly on
+         * the chain, with no verdict in 120 s. Amber and a warning mark, not the
+         * red cross — "Declined" is what made a merchant take the money twice.
+         * Recheck polls the same hash; Clear is the operator saying they have
+         * looked, and is deliberately the quieter of the two. */
+        lv_obj_t *warn = make_label(card, LV_SYMBOL_WARNING, COL_WARN,
+                                    &font_icons_48, LV_ALIGN_TOP_MID, 0, 26);
+        pop_in(warn);
+        make_label(card, "Not confirmed yet", COL_TEXT,
+                   &font_pjs_20_medium, LV_ALIGN_TOP_MID, 0, 86);
+        char shrt[24];
+        hash_short(s_tx_info, shrt, sizeof(shrt));
+        make_label(card, shrt, COL_TEXT, &font_inter_14_medium,
+                   LV_ALIGN_TOP_MID, 0, 114);
+        lv_obj_t *note = make_label(card,
+                                    "It may still arrive. Check the explorer "
+                                    "before charging again.",
+                                    COL_DIM, &font_inter_14, LV_ALIGN_TOP_MID, 0, 138);
+        lv_label_set_long_mode(note, LV_LABEL_LONG_WRAP);
+        lv_obj_set_width(note, VW);
+        lv_obj_set_style_text_align(note, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+        lv_obj_align(note, LV_ALIGN_TOP_MID, 0, 138);
+
+        const lv_coord_t half = (CARD_W - (2 * CARD_PAD) - 8) / 2;
+        make_ghost_button(card, "Clear", half,
+                          LV_ALIGN_BOTTOM_LEFT, CARD_PAD, CARD_BTN_Y, ACT_NEW);
+        make_button(card, "Recheck", COL_ACTION, COL_BG, half, CARD_BTN_H,
+                    LV_ALIGN_BOTTOM_RIGHT, -CARD_PAD, CARD_BTN_Y, ACT_TX_RECHECK,
                     &font_pjs_20_semibold);
         return;
     }

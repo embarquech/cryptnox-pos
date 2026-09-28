@@ -54,45 +54,9 @@ static size_t hex_strlen(const char *s)
 }
 
 /**
- * @brief Case-insensitive substring search, BYTE-ALIGNED (no strcasestr in
- *        newlib).
- *
- * The step is 2, not 1, and that is the security property rather than an
- * optimisation. @p hay is the hex encoding of a byte string, so a real protobuf
- * field can only ever begin at an even character offset. Searching odd offsets
- * too let a hostile node hide the byte run we look for one nibble out of
- * alignment — inside a memo, or any field whose contents it chooses — while the
- * contract that actually executes paid somebody else. Both strings still hash to
- * a consistent txID, so nothing downstream would have caught it.
- *
- * Callers must therefore only ever pass an even-length @p needle (every needle
- * built below is whole bytes) over an even-length @p hay.
- */
-static bool hex_contains(const char *hay, const char *needle)
-{
-    const size_t nl = strlen(needle);
-    const size_t hl = strlen(hay);
-    if ((nl == 0U) || (hl < nl)) { return false; }
-    /* Odd on either side means somebody built a needle that is not whole bytes,
-     * or handed us hex that is not a byte string. Neither is matchable. */
-    if (((nl % 2U) != 0U) || ((hl % 2U) != 0U)) { return false; }
-
-    for (size_t i = 0U; i + nl <= hl; i += 2U) {
-        size_t j = 0U;
-        while ((j < nl) && (lower_ascii(hay[i + j]) == lower_ascii(needle[j]))) {
-            j++;
-        }
-        if (j == nl) { return true; }
-    }
-    return false;
-}
-
-/**
  * @brief true if @p raw is usable raw_data hex: all hex, non-empty, whole bytes.
  *
- * The even-length part is not pedantry. Every check below locates whole bytes at
- * byte boundaries (see @ref hex_contains), and an odd-length string has no byte
- * boundaries to speak of — so it is refused here rather than searched.
+ * Odd-length hex is not a byte string, so it is refused here rather than read.
  */
 static bool raw_hex_ok(const char *raw)
 {
@@ -132,8 +96,226 @@ size_t tron_varint_hex(uint64_t v, char *out, size_t out_size)
     return n * 2U;
 }
 
+/* ── A strict reader for the one protobuf shape a node may hand back ──
+ *
+ * The node serialises raw_data and the card signs sha256 of it, so every byte
+ * must be accounted for. Finding the expected bytes *somewhere* is not enough: a
+ * node could put them in the memo (raw_data.data) while the contract that
+ * executes pays somebody else. So raw_data is walked field by field and only
+ * this shape is accepted:
+ *
+ *   raw      { 1 ref_block_bytes, 3 ref_block_num, 4 ref_block_hash,
+ *              8 expiration, 11 contract (exactly one), 14 timestamp,
+ *              18 fee_limit (TRC-20 only: exactly the cap we asked for) }
+ *   contract { 1 type, 2 parameter }        no Permission_id, provider, name
+ *   Any      { 1 type_url, 2 value }        value byte-exact
+ *
+ * No field may repeat. Anything else — data (10), auths (9), scripts (12), an
+ * unknown field, a fixed-width wire type, a length past the end — is refused. */
+
+/** @brief Cursor over a hex byte string; positions count BYTES, not nibbles. */
+typedef struct {
+    const char *hex;
+    size_t      pos;
+    size_t      end;
+} pb_t;
+
+static int hex_val(char c)
+{
+    c = lower_ascii(c);
+    if ((c >= '0') && (c <= '9')) { return c - '0'; }
+    if ((c >= 'a') && (c <= 'f')) { return (c - 'a') + 10; }
+    return -1;
+}
+
+static bool pb_byte(pb_t *p, uint8_t *b)
+{
+    if (p->pos >= p->end) { return false; }
+    const int hi = hex_val(p->hex[p->pos * 2U]);
+    const int lo = hex_val(p->hex[(p->pos * 2U) + 1U]);
+    if ((hi < 0) || (lo < 0)) { return false; }
+    *b = static_cast<uint8_t>((hi << 4) | lo);
+    p->pos++;
+    return true;
+}
+
+static bool pb_varint(pb_t *p, uint64_t *v)
+{
+    uint64_t x = 0U;
+    for (unsigned i = 0U; i < 10U; i++) {
+        uint8_t b;
+        if (!pb_byte(p, &b)) { return false; }
+        x |= static_cast<uint64_t>(b & 0x7FU) << (7U * i);
+        if ((b & 0x80U) == 0U) { *v = x; return true; }
+    }
+    return false;   /* longer than any 64-bit varint */
+}
+
+/** @brief One field: its number and either its varint or its payload range. */
+typedef struct {
+    uint32_t num;
+    uint32_t wire;    /* 0 varint or 2 length-delimited; nothing else passes */
+    uint64_t value;   /* wire 0 */
+    pb_t     sub;     /* wire 2 */
+} pb_field_t;
+
+static bool pb_next(pb_t *p, pb_field_t *f)
+{
+    uint64_t key;
+    if (!pb_varint(p, &key)) { return false; }
+    f->num  = static_cast<uint32_t>(key >> 3U);
+    f->wire = static_cast<uint32_t>(key & 7U);
+    if ((f->num == 0U) || (f->num > 31U)) { return false; }
+    if (f->wire == 0U) { return pb_varint(p, &f->value); }
+    if (f->wire != 2U) { return false; }
+    uint64_t len;
+    if (!pb_varint(p, &len) || (len > (p->end - p->pos))) { return false; }
+    f->sub.hex = p->hex;
+    f->sub.pos = p->pos;
+    f->sub.end = p->pos + static_cast<size_t>(len);
+    p->pos     = f->sub.end;
+    return true;
+}
+
+/** @brief true if field @p f is wire @p wire and was not seen before. */
+static bool pb_once(const pb_field_t *f, uint32_t wire, uint32_t *seen)
+{
+    const uint32_t bit = 1UL << f->num;
+    if ((f->wire != wire) || ((*seen & bit) != 0U)) { return false; }
+    *seen |= bit;
+    return true;
+}
+
+/** @brief true if a payload is exactly the hex string @p want (any case). */
+static bool pb_is_hex(const pb_t *sub, const char *want)
+{
+    const size_t n = sub->end - sub->pos;
+    if (strlen(want) != (n * 2U)) { return false; }
+    const char *h = sub->hex + (sub->pos * 2U);
+    for (size_t i = 0U; i < (n * 2U); i++) {
+        if (lower_ascii(h[i]) != lower_ascii(want[i])) { return false; }
+    }
+    return true;
+}
+
+/** @brief true if a payload is exactly the ASCII string @p want. */
+static bool pb_is_str(const pb_t *sub, const char *want)
+{
+    const size_t n = sub->end - sub->pos;
+    if (strlen(want) != n) { return false; }
+    pb_t c = *sub;
+    for (size_t i = 0U; i < n; i++) {
+        uint8_t b;
+        if (!pb_byte(&c, &b) || (b != static_cast<uint8_t>(want[i]))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+#define TRON_TYPE_TRANSFER  1U    /* ContractType.TransferContract     */
+#define TRON_TYPE_TRIGGER   31U   /* ContractType.TriggerSmartContract */
+#define TRON_URL_TRANSFER   "type.googleapis.com/protocol.TransferContract"
+#define TRON_URL_TRIGGER    "type.googleapis.com/protocol.TriggerSmartContract"
+
+/** @brief Any { 1 type_url, 2 value }: exactly @p url and one of the values. */
+static bool any_ok(pb_t any, const char *url, const char *v1, const char *v2)
+{
+    uint32_t   seen = 0U;
+    bool       url_ok = false;
+    bool       val_ok = false;
+    pb_field_t f;
+    while (any.pos < any.end) {
+        if (!pb_next(&any, &f) || !pb_once(&f, 2U, &seen)) { return false; }
+        if (f.num == 1U) {
+            url_ok = pb_is_str(&f.sub, url);
+        } else if (f.num == 2U) {
+            val_ok = pb_is_hex(&f.sub, v1) ||
+                     ((v2 != NULL) && pb_is_hex(&f.sub, v2));
+        } else {
+            return false;
+        }
+    }
+    return url_ok && val_ok;
+}
+
+/** @brief Contract { 1 type, 2 parameter } and nothing else. */
+static bool contract_ok(pb_t c, uint32_t type, const char *url,
+                        const char *v1, const char *v2)
+{
+    uint32_t   seen = 0U;
+    bool       type_ok = false;
+    bool       param_ok = false;
+    pb_field_t f;
+    while (c.pos < c.end) {
+        if (!pb_next(&c, &f)) { return false; }
+        if (f.num == 1U) {
+            if (!pb_once(&f, 0U, &seen)) { return false; }
+            type_ok = (f.value == type);
+        } else if (f.num == 2U) {
+            if (!pb_once(&f, 2U, &seen)) { return false; }
+            param_ok = any_ok(f.sub, url, v1, v2);
+        } else {
+            return false;
+        }
+    }
+    return type_ok && param_ok;
+}
+
+/**
+ * @brief Walk raw_data. @p fee_limit 0 means the field must be absent.
+ *
+ * The expiration is bounded as well as returned. A node that set it hours out
+ * could hold the signed transaction back and broadcast it after the terminal
+ * has told the operator it never went out and a second payment was taken. The
+ * chain allows up to 24 h; a real answer is about 60 s.
+ */
+static bool raw_ok(const char *raw_hex, uint32_t type, const char *url,
+                   const char *v1, const char *v2, uint64_t fee_limit,
+                   uint64_t now_ms, uint64_t *expiration_ms)
+{
+    pb_t       p = { raw_hex, 0U, strlen(raw_hex) / 2U };
+    uint32_t   seen = 0U;
+    bool       have_contract = false;
+    bool       fee_ok = (fee_limit == 0U);
+    uint64_t   expiration = 0U;
+    pb_field_t f;
+    while (p.pos < p.end) {
+        if (!pb_next(&p, &f)) { return false; }
+        switch (f.num) {
+        case 1U: case 4U:                        /* ref_block_bytes / _hash */
+            if (!pb_once(&f, 2U, &seen)) { return false; }
+            break;
+        case 3U: case 14U:                       /* ref_block_num, timestamp */
+            if (!pb_once(&f, 0U, &seen)) { return false; }
+            break;
+        case 8U:
+            if (!pb_once(&f, 0U, &seen)) { return false; }
+            expiration = f.value;
+            break;
+        case 11U:
+            if (!pb_once(&f, 2U, &seen)) { return false; }
+            have_contract = contract_ok(f.sub, type, url, v1, v2);
+            break;
+        case 18U:
+            if (!pb_once(&f, 0U, &seen)) { return false; }
+            fee_ok = (fee_limit != 0U) && (f.value == fee_limit);
+            break;
+        default:
+            return false;      /* data, auths, scripts, or anything unknown */
+        }
+    }
+    if (!have_contract || !fee_ok || (expiration == 0U)) { return false; }
+    if ((now_ms == 0U) || (expiration > (now_ms + TRON_TX_MAX_EXPIRY_MS))) {
+        return false;
+    }
+    if (expiration_ms != NULL) { *expiration_ms = expiration; }
+    return true;
+}
+
 bool tron_tx_contract_ok(const char *raw_data_hex, const char *owner_hex,
-                         const char *to_hex, uint64_t amount_sun)
+                         const char *to_hex, uint64_t amount_sun,
+                         uint64_t now_ms, uint64_t *expiration_ms)
 {
     if (!raw_hex_ok(raw_data_hex)) { return false; }
     if (!addr_hex_ok(owner_hex) || !addr_hex_ok(to_hex)) { return false; }
@@ -145,14 +327,15 @@ bool tron_tx_contract_ok(const char *raw_data_hex, const char *owner_hex,
         return false;
     }
 
-    /* "0a15" owner "1215" to "18" amount — the whole contract, contiguous. */
+    /* TransferContract { 1 owner, 2 to, 3 amount } — the whole value. */
     char want[4U + TRON_ADDR_HEX_LEN + 4U + TRON_ADDR_HEX_LEN + 2U +
               sizeof(amount)];
     int k = snprintf(want, sizeof(want), "0a15%s1215%s18%s",
                      owner_hex, to_hex, amount);
     if ((k <= 0) || (static_cast<size_t>(k) >= sizeof(want))) { return false; }
 
-    return hex_contains(raw_data_hex, want);
+    return raw_ok(raw_data_hex, TRON_TYPE_TRANSFER, TRON_URL_TRANSFER,
+                  want, NULL, 0U, now_ms, expiration_ms);
 }
 
 size_t tron_trc20_param_hex(const char *to_hex, uint64_t amount,
@@ -181,7 +364,8 @@ size_t tron_trc20_param_hex(const char *to_hex, uint64_t amount,
 
 bool tron_tx_trc20_ok(const char *raw_data_hex, const char *owner_hex,
                       const char *contract_hex, const char *to_hex,
-                      uint64_t amount, uint64_t fee_limit_sun)
+                      uint64_t amount, uint64_t fee_limit_sun,
+                      uint64_t now_ms, uint64_t *expiration_ms)
 {
     if (!raw_hex_ok(raw_data_hex)) { return false; }
     if (!addr_hex_ok(owner_hex) || !addr_hex_ok(contract_hex) ||
@@ -197,44 +381,26 @@ bool tron_tx_trc20_ok(const char *raw_data_hex, const char *owner_hex,
         return false;
     }
 
-    char want[4U + TRON_ADDR_HEX_LEN + 4U + TRON_ADDR_HEX_LEN + 4U +
+    /* TriggerSmartContract { 1 owner, 2 contract, 4 data } — the whole value.
+     * call_value (3) is proto3-default 0 and normally omitted, but a node that
+     * emits it explicitly ("1800") is serialising the same contract. Nothing
+     * else: call_token_value / token_id would move a TRC-10 token as well. */
+    char want[4U + TRON_ADDR_HEX_LEN + 4U + TRON_ADDR_HEX_LEN + 4U + 4U +
               sizeof(TRON_TRC20_SELECTOR) + sizeof(param) + 8U];
-    int k = snprintf(want, sizeof(want), "0a15%s1215%s2244" TRON_TRC20_SELECTOR "%s",
+    int k = snprintf(want, sizeof(want),
+                     "0a15%s1215%s2244" TRON_TRC20_SELECTOR "%s",
                      owner_hex, contract_hex, param);
     if ((k <= 0) || (static_cast<size_t>(k) >= sizeof(want))) { return false; }
-
-    if (!hex_contains(raw_data_hex, want)) {
-        /* call_value is proto3-default 0 and therefore normally omitted, but a
-         * node that emits it explicitly ("1800") is serialising the same
-         * contract — accept that shape rather than decline a valid payment. */
-        char want_cv[sizeof(want) + 4U];
-        k = snprintf(want_cv, sizeof(want_cv),
-                     "0a15%s1215%s18002244" TRON_TRC20_SELECTOR "%s",
-                     owner_hex, contract_hex, param);
-        if ((k <= 0) || (static_cast<size_t>(k) >= sizeof(want_cv))) {
-            return false;
-        }
-        if (!hex_contains(raw_data_hex, want_cv)) { return false; }
-    }
-
-    /* ponytail: byte-aligned substring match, so two things remain possible that
-     * a real parser would catch — a hostile fee_limit plus a coincidental
-     * "9001<our varint>" on a byte boundary elsewhere in raw_data (~2^-32), and
-     * a second `contract` entry alongside ours, since the field repeats. Neither
-     * is reachable without a node that is already lying to us AND getting the
-     * chain to accept a multi-contract transaction. Parse the protobuf
-     * field-by-field if either ever stops being acceptable. */
-    char fee_varint[24];
-    if (tron_varint_hex(fee_limit_sun, fee_varint, sizeof(fee_varint)) == 0U) {
-        return false;
-    }
-    char fee_want[4U + sizeof(fee_varint)];
-    k = snprintf(fee_want, sizeof(fee_want), "9001%s", fee_varint);
-    if ((k <= 0) || (static_cast<size_t>(k) >= sizeof(fee_want))) {
+    char want_cv[sizeof(want)];
+    k = snprintf(want_cv, sizeof(want_cv),
+                 "0a15%s1215%s18002244" TRON_TRC20_SELECTOR "%s",
+                 owner_hex, contract_hex, param);
+    if ((k <= 0) || (static_cast<size_t>(k) >= sizeof(want_cv))) {
         return false;
     }
 
-    return hex_contains(raw_data_hex, fee_want);
+    return raw_ok(raw_data_hex, TRON_TYPE_TRIGGER, TRON_URL_TRIGGER,
+                  want, want_cv, fee_limit_sun, now_ms, expiration_ms);
 }
 
 size_t tron_tx_envelope_hex(const char *raw_data_hex, const char *sig_hex,

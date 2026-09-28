@@ -299,7 +299,12 @@ PORTAL_FONTS_CSS
 "<p>The admin code is never typed here. Enter it on the terminal's own screen "
 "&mdash; that is what proves you are standing in front of it.</p>"
 "<div id=waiting class=wait hidden><span class=spin></span>"
-"<b>Waiting for the admin code on the terminal screen&hellip;</b></div>"
+"<b>Waiting for the admin code on the terminal screen&hellip;</b>"
+/* The pairing code: the panel's prompt reads "Browser NNNN" for the browser it
+ * is about to let in. Another phone on the access point asking first would show
+ * a different number there — the one thing that tells the operator not to type
+ * the code. */
+"<p id=pair></p></div>"
 "<button id=go_auth>Ask the terminal again</button></section>"
 
 /* Something is waiting to be accepted on the panel. Shown over everything else,
@@ -520,6 +525,12 @@ static const char *const PAGE_JS =
 "<script>"
 "var $=function(i){return document.getElementById(i)};"
 "var T='',S={},G=-1,asked=false,fin=false,seeded=false;"
+/* The token survives a reload in sessionStorage: the terminal only hands it to
+ * the browser that holds it, so a reload that forgot it would be locked out. */
+"try{T=sessionStorage.getItem('pt')||''}catch(e){}"
+"function keep(t){T=t;try{if(t)sessionStorage.setItem('pt',t);"
+"else sessionStorage.removeItem('pt')}catch(e){}}"
+"function pc(t){return('000'+(parseInt(t.substr(0,4),16)%10000)).slice(-4)}"
 /* Every section render() can show, so the finished screen can be made exclusive
  * by construction rather than by adding `&&!fin` to every show() line — and
  * so a section added later without a thought for the end of the wizard is hidden
@@ -542,7 +553,7 @@ static const char *const PAGE_JS =
 "if(b!==undefined)h['Content-Type']='application/x-www-form-urlencoded';"
 "return fetch(u,{method:'POST',headers:h,body:b}).then(function(r){"
 "return r.text().then(function(t){"
-"if(r.status==401){T='';S.authed=false;asked=false}"
+"if(r.status==401){keep('');S.authed=false;asked=false}"
 "if(!r.ok)throw (t||('HTTP '+r.status));return t})})}"
 
 "function enc(o){var a=[];for(var k in o)"
@@ -559,6 +570,8 @@ static const char *const PAGE_JS =
 "show('s_final',fin);"
 "if(fin){SEC.forEach(function(i){show(i,false)});return}"
 "show('s_auth',!a);show('waiting',!a&&!!S.auth_pending);"
+"$('pair').textContent=T?'Check the terminal shows Browser '+pc(T)+', then enter "
+"the code there.':'';"
 "show('s_pend',a&&p);"
 /* In the wizard one section at a time, in the order of the flow. In admin mode
  * everything at once — it is a settings page, not a sequence. */
@@ -653,7 +666,7 @@ static const char *const PAGE_JS =
 ".catch(function(){})}"
 
 "function ask(){asked=true;say('');"
-"post('/api/auth').then(function(t){T=t;S.auth_pending=true;render()},"
+"post('/api/auth').then(function(t){keep(t);S.auth_pending=!S.authed;render()},"
 "function(e){asked=false;say(e)})}"
 "$('go_auth').onclick=ask;"
 

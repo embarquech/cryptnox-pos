@@ -477,7 +477,7 @@ image is accepted. The release path must be tested separately, on a sacrificial
 unit, because it is the only thing that makes `POST /api/ota` safe to expose:
 
 ```bash
-idf.py secure-generate-signing-key --version 2 secure_boot_signing_key.pem
+idf.py secure-generate-signing-key --version 2 secure_keys/secure_boot_signing_key.pem
 idf.py -D "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.defaults.flash_encryption;sdkconfig.defaults.release" build
 ```
 

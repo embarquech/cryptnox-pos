@@ -27,6 +27,21 @@ for t in $TESTS; do
   fi
 done
 
+# The receipt check parses JSON, and cJSON ships with ESP-IDF rather than here.
+CJSON="${IDF_PATH:-/c/esp/v5.5.4/esp-idf}/components/json/cJSON"
+if [ -f "$CJSON/cJSON.c" ]; then
+  if gcc -c "$CJSON/cJSON.c" -o "$out/cJSON.o" 2>"$out/cjson.log" &&
+     g++ -std=c++14 -Wall -Imain -Icryptnox-sdk-esp32/cryptnox-sdk-cpp -I"$CJSON" \
+         tests/units/test_eth_receipt.cpp "$out/cJSON.o" -o "$out/test_eth_receipt" \
+         2>"$out/test_eth_receipt.log" && "$out/test_eth_receipt" >/dev/null; then
+    ok "test_eth_receipt"
+  else
+    bad "test_eth_receipt"; sed 's/^/        /' "$out/test_eth_receipt.log" "$out/cjson.log"
+  fi
+else
+  printf '  skip  test_eth_receipt (no cJSON: set IDF_PATH)\n'
+fi
+
 step "config portal page"
 # The extractor doubles as the id-wiring check, and emits the script for the
 # render test so there is one extractor rather than two that could disagree.

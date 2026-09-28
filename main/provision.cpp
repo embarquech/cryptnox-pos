@@ -40,6 +40,7 @@
 #include "esp_system.h"   /* esp_restart — the network switch reboots to apply */
 #include "esp_timer.h"
 #include "nvs.h"
+#include "mbedtls/sha256.h"   /* Tron base58check */
 
 #include "addr_check.h"
 #include "eth_addr.h"
@@ -373,9 +374,9 @@ static bool expired(void)
  * it is 128 random bits, and guessing it does not get anybody past the on-screen
  * confirmation that guards every value that matters anyway.
  */
-static bool authed(httpd_req_t *req)
+static bool has_token(httpd_req_t *req)
 {
-    if (!s_authed) { return false; }
+    if (s_token[0] == '\0') { return false; }
 
     char tok[TOKEN_HEX_LEN + 1U] = { 0 };
     if (httpd_req_get_hdr_value_str(req, "X-Prov-Token", tok,
@@ -385,6 +386,12 @@ static bool authed(httpd_req_t *req)
     return CW_Utils::secure_compare(reinterpret_cast<const uint8_t *>(tok),
                                     reinterpret_cast<const uint8_t *>(s_token),
                                     sizeof(tok));
+}
+
+/** @brief Whether the request is the browser that was let in. */
+static bool authed(httpd_req_t *req)
+{
+    return s_authed && has_token(req);
 }
 
 /** @brief Send a plain-text status line; the page shows it verbatim. */
@@ -413,6 +420,20 @@ static bool gate(httpd_req_t *req, esp_err_t *rc)
     if (expired()) {
         *rc = reply(req, "503 Service Unavailable",
                     "This page has closed. Reopen it on the terminal.");
+        return false;
+    }
+    /* The Wi-Fi-only portal lets a browser in without the admin code, because
+     * the terminal has lost its network and only needs a password. It opens by
+     * itself when the venue network drops — which anyone can cause — so it must
+     * not also be a way to change fees, the network, the clock or the payout
+     * without the code. Those stay behind the full admin session. */
+    if (s_wifi_only && (strcmp(req->uri, "/api/wifi") != 0) &&
+        (strcmp(req->uri, "/api/rescan") != 0) &&
+        (strcmp(req->uri, "/api/scan") != 0)) {
+        *rc = reply(req, "403 Forbidden",
+                    "Only the Wi-Fi network can be set from here while the "
+                    "terminal is offline. Use Configure on the terminal for "
+                    "anything else.");
         return false;
     }
     if (!authed(req)) {
@@ -613,15 +634,23 @@ static esp_err_t auth_post(httpd_req_t *req)
         return reply(req, "503 Service Unavailable",
                      "This page has closed. Reopen it on the terminal.");
     }
-    if (s_authed) {
-        /* Already in. Hand the token back rather than 409: the page reloaded, and
-         * making it re-ask the operator for the code would be a worse answer to
-         * "somebody pressed F5" than anything this protects against. */
-        return ok(req, s_token);
+    /* The token belongs to one browser. A reload keeps it (the page holds it in
+     * sessionStorage and sends it back), so "somebody pressed F5" still gets
+     * straight back in — but a request WITHOUT it is somebody else on this
+     * access point, and handing them the live token would let any phone that
+     * joined the Wi-Fi ride on the operator's session. */
+    if (s_authed || s_auth_pending) {
+        if (has_token(req)) { return ok(req, s_token); }
+        return reply(req, "409 Conflict",
+                     s_authed ? "Another browser is already signed in. Close "
+                                "the page on the terminal to start over."
+                              : "Another browser is waiting for the admin code. "
+                                "Cancel it on the terminal, then try again.");
     }
 
-    /* A fresh token per request, so a browser that asked and walked away cannot
-     * be authorised later by somebody else's on-screen entry. */
+    /* A fresh token per session. The first four digits it maps to are shown on
+     * the panel beside the code prompt and on this browser's page, so the
+     * operator can see WHICH browser they are about to let in. */
     for (size_t i = 0; i < TOKEN_HEX_LEN; i++) {
         s_token[i] = "0123456789abcdef"[esp_random() & 0x0FU];
     }
@@ -658,16 +687,23 @@ static esp_err_t auth_post(httpd_req_t *req)
  * Ethereum gets the real check: eth_addr_parse() verifies the EIP-55 checksum, so
  * a single mistyped character in a mixed-case address is caught here.
  *
- * ponytail: Tron gets a structural check only — length, 'T' prefix, base58
- * alphabet (addr_check.h). The authoritative base58check needs a crypto provider,
- * which lives in the main task, so it happens at boot where it always has: a
- * stored address that fails it falls back to the config.h recipient with a loud log
- * rather than bricking the terminal. Move the real decode here if the portal ever
- * gains access to a provider.
+ * Tron gets the real check too: base58-decoded (addr_check.h) and its 4-byte
+ * checksum verified as double SHA-256 of the first 21 bytes. A mistyped address
+ * that only looked right used to be stored, fail at boot, and — before that was
+ * fixed — pay the config.h recipient instead.
  */
 static bool addr_plausible(bool tron, const char *addr)
 {
-    if (tron) { return addr_tron_plausible(addr); }
+    if (tron) {
+        unsigned char b[25];
+        uint8_t       h[32];
+        if (!addr_tron_decode(addr, b)) { return false; }
+        if ((mbedtls_sha256(b, 21U, h, 0) != 0) ||
+            (mbedtls_sha256(h, sizeof(h), h, 0) != 0)) {
+            return false;
+        }
+        return memcmp(h, &b[21], 4U) == 0;
+    }
     uint8_t parsed[ETH_ADDR_LEN];
     return eth_addr_parse(addr, parsed);
 }
@@ -1402,6 +1438,18 @@ void prov_auth_resolve(bool grant)
 }
 
 bool prov_authed(void) { return s_authed; }
+
+bool prov_pair_code(char *out, size_t out_size)
+{
+    if ((out == NULL) || (out_size < 5U) || (s_token[0] == '\0')) { return false; }
+    unsigned v = 0U;
+    for (size_t i = 0U; i < 4U; i++) {
+        const char c = s_token[i];
+        v = (v << 4) | static_cast<unsigned>((c <= '9') ? (c - '0') : (c - 'a' + 10));
+    }
+    (void)snprintf(out, out_size, "%04u", v % 10000U);
+    return true;
+}
 
 void prov_set_wifi_only(void) { s_wifi_only = true; }
 

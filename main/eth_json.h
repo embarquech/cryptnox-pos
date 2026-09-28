@@ -30,7 +30,21 @@ typedef enum {
     ETH_JSON_RECEIPT_PENDING,   /**< @c result is null — not mined yet.       */
     ETH_JSON_RECEIPT_SUCCESS,   /**< @c result.status == "0x1".               */
     ETH_JSON_RECEIPT_REVERTED,  /**< @c result is an object but status != 0x1.*/
+    ETH_JSON_RECEIPT_MISMATCH,  /**< A mined receipt that is not the payment
+                                     asked for (@ref eth_json_receipt_check):
+                                     another hash, recipient, token or amount. */
 } eth_json_receipt_t;
+
+/** @brief What a receipt must show for the payment to count — see
+ *         @ref eth_json_receipt_check. */
+typedef struct {
+    const char    *tx_hash;  /**< "0x" + 64 hex, hashed on the device from the
+                                  signed bytes — never the node's answer.   */
+    const uint8_t *to;       /**< 20 bytes: the tx's @c to — the token contract,
+                                  or the payee for a native transfer.       */
+    const uint8_t *payee;    /**< ERC-20: @c Transfer recipient; NULL native. */
+    uint64_t       amount;   /**< ERC-20: @c Transfer value, base units.    */
+} eth_receipt_expect_t;
 
 /**
  * @brief Extract the top-level @c "result" string from a JSON-RPC response.
@@ -79,6 +93,24 @@ bool eth_json_error_message(const char *resp, char *out, size_t out_size);
  * @return One of @ref eth_json_receipt_t.
  */
 eth_json_receipt_t eth_json_receipt_status(const char *resp);
+
+/**
+ * @brief Classify a receipt AND check it is the payment that was asked for.
+ *
+ * A status of 0x1 alone proves nothing: a node that never broadcast our
+ * transaction can answer with the receipt of any other successful one. So on
+ * top of @ref eth_json_receipt_status this requires @c transactionHash to be
+ * the hash computed on the device, @c to to be the expected contract (or payee),
+ * and — for a token — a @c Transfer log from that contract to @c payee for
+ * exactly @c amount. A mined receipt failing any of those is
+ * @ref ETH_JSON_RECEIPT_MISMATCH, never SUCCESS or REVERTED.
+ *
+ * @param[in] resp NUL-terminated response body.
+ * @param[in] want What the receipt must show; NULL yields ERROR.
+ * @return One of @ref eth_json_receipt_t.
+ */
+eth_json_receipt_t eth_json_receipt_check(const char *resp,
+                                          const eth_receipt_expect_t *want);
 
 /**
  * @brief Parse a JSON-RPC QUANTITY ("0x0", "0x1a", 64 hex chars) into a

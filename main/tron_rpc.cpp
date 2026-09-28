@@ -28,6 +28,7 @@
 
 #include "esp_log.h"
 #include "mbedtls/sha256.h"
+#include <sys/time.h>   /* gettimeofday — raw_data expiration bound */
 #include "cJSON.h"
 
 static const char *const TAG = "tron_rpc";
@@ -110,6 +111,15 @@ static bool tron_post(const char *path, const char *body,
      * is pinned only if the integrator supplied one; unpinned falls back to the
      * CA bundle, and tron_tx_contract_ok is what makes that survivable. */
     return https_post_json(url, body, resp, resp_size, NULL, NULL, s_ca_cert);
+}
+
+/** @brief Unix time in ms, 0 if the clock is unset (the checks then refuse). */
+static uint64_t now_ms(void)
+{
+    struct timeval tv;
+    if ((gettimeofday(&tv, NULL) != 0) || (tv.tv_sec < 1600000000)) { return 0U; }
+    return (static_cast<uint64_t>(tv.tv_sec) * 1000U) +
+           (static_cast<uint64_t>(tv.tv_usec) / 1000U);
 }
 
 /**
@@ -317,6 +327,42 @@ bool tron_rpc_get_trc20_balance(const char *owner_hex, const char *contract_hex,
     return ok;
 }
 
+bool tron_rpc_get_trc20_decimals(const char *contract_hex, uint64_t *dec_out)
+{
+    if ((contract_hex == NULL) || (dec_out == NULL) ||
+        (strlen(contract_hex) != TRON_ADDR_HEX_LEN)) {
+        return false;
+    }
+    /* A constant call needs some owner; the contract itself will do. */
+    char body[256];
+    int k = snprintf(body, sizeof(body),
+                     "{\"owner_address\":\"%s\",\"contract_address\":\"%s\","
+                     "\"function_selector\":\"decimals()\",\"visible\":false}",
+                     contract_hex, contract_hex);
+    if ((k <= 0) || (static_cast<size_t>(k) >= sizeof(body))) { return false; }
+
+    char resp[RESP_BUF_SIZE];
+    if (!tron_post("/wallet/triggerconstantcontract", body, resp, sizeof(resp))) {
+        return false;
+    }
+    cJSON *root = cJSON_Parse(resp);
+    if (root == NULL) { return false; }
+    const cJSON *arr   = cJSON_GetObjectItemCaseSensitive(root, "constant_result");
+    const cJSON *first = cJSON_IsArray(arr) ? cJSON_GetArrayItem(arr, 0) : NULL;
+    bool ok = false;
+    if (cJSON_IsString(first) && (first->valuestring != NULL) &&
+        (strlen(first->valuestring) > 0U) && (strlen(first->valuestring) <= 64U)) {
+        char hex[80];
+        (void)snprintf(hex, sizeof(hex), "0x%s", first->valuestring);
+        ok = eth_json_hex_quantity(hex, dec_out);
+    }
+    if (!ok) {
+        ESP_LOGE(TAG, "decimals: no usable answer: %.*s", RESP_LOG_MAX, resp);
+    }
+    cJSON_Delete(root);
+    return ok;
+}
+
 bool tron_rpc_create_transfer(const char *owner_hex, const char *to_hex,
                               uint64_t amount_sun, tron_tx_ctx_t *out)
 {
@@ -348,7 +394,8 @@ bool tron_rpc_create_transfer(const char *owner_hex, const char *to_hex,
     if (!ok) {
         ESP_LOGE(TAG, "create: unusable answer: %.*s", RESP_LOG_MAX, resp);
     } else if (!tron_tx_contract_ok(out->raw_hex, owner_hex, to_hex,
-                                    amount_sun)) {
+                                    amount_sun, now_ms(),
+                                    &out->expiration_ms)) {
         /* The node is a trust boundary — see tron_tx.h. */
         ESP_LOGE(TAG, "create: raw_data does not match the requested transfer");
         ok = false;
@@ -408,7 +455,8 @@ bool tron_rpc_create_trc20_transfer(const char *owner_hex,
     if (!ok) {
         ESP_LOGE(TAG, "trc20: unusable answer: %.*s", RESP_LOG_MAX, resp);
     } else if (!tron_tx_trc20_ok(out->raw_hex, owner_hex, contract_hex, to_hex,
-                                 amount, fee_limit_sun)) {
+                                 amount, fee_limit_sun, now_ms(),
+                                 &out->expiration_ms)) {
         ESP_LOGE(TAG, "trc20: raw_data does not match the requested transfer");
         ok = false;
     } else {
