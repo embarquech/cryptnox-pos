@@ -1855,10 +1855,9 @@ static lv_obj_t *make_net_badge(lv_obj_t *parent, pos_net_t net) {
 }
 
 /* "Tap here" mark — the contactless waves and a hand presenting a card, in an
- * oval. The artwork is assets/contactless-icon.svg; tools/gen_tap_icon.py
- * rasterises it into main/tap_icon.c, so change the asset and re-run the
- * script. A vector source, so the panel's copy is re-rendered at whatever size
- * this box becomes rather than resampled from a bitmap fixed at another one.
+ * oval. The artwork is assets/contactless-icon.png; tools/gen_tap_icon.py
+ * downsamples it into main/tap_icon.c, so change the asset and re-run the
+ * script.
  *
  * AN ASSET RATHER THAN GEOMETRY, after several passes the other way. The mark
  * was authored here from rectangles and arcs, then from measurements taken off
@@ -1896,7 +1895,7 @@ static lv_obj_t *make_net_badge(lv_obj_t *parent, pos_net_t net) {
  * carries its own size, and they are here to be read, not to be set. The one
  * thing that DOES depend on them is the y this mark is placed at, which keeps
  * it centred in its band: see build_card_wait(). */
-#define TAP_MARK_W    110
+#define TAP_MARK_W    109
 #define TAP_MARK_H    65
 
 /* The mark's ink, and the one place to change it. The rule, not the value:

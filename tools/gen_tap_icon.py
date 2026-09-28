@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # Copyright (c) 2026 Cryptnox SA
-"""Convert assets/contactless-icon.svg — the "tap your card" mark — into
+"""Convert assets/contactless-icon.png — the "tap your card" mark — into
 main/tap_icon.c.
 
 THE ARTWORK IS NO LONGER DRAWN HERE. Earlier versions of this script authored
@@ -22,38 +22,15 @@ Indicator is the four bare arcs, and a terminal that takes contactless payments
 is what licenses the indicator. Nothing about the asset's licence changes that
 either way.
 
-A VECTOR SOURCE, rasterised here rather than a PNG rasterised once by somebody
-else: the asset is the artwork at any size, so the panel's copy is re-rendered
-from it whenever the box changes instead of being resampled from a bitmap that
-was already the wrong size. It is rendered at SS times the final height and
-downsampled — cairosvg antialiases on its own, but line art this thin keeps
-more of its strokes through a supersample than through a single pass at 100 px.
-
-TWO THINGS ARE DONE TO IT, and both are about the same failure: at 76 px the
-thinnest strokes in this drawing are under a pixel wide, so they come out as
-grey where the drawing is black, and a grey hairline on a pale ground is what
-"washed out" and "looks compressed" both mean on the panel.
-
-  STROKE THE ARTWORK, in the source, before rendering. The asset is a filled
-  outline with no stroke of its own; STROKE_W of the same colour fattens it
-  along its true geometry, and cairosvg antialiases the result as it would any
-  vector. This replaces a MaxFilter dilation of the rendered bitmap, which was
-  the same idea done to pixels and looked it: a square kernel grows a curve by
-  its own corner, so the ellipse came back a hair thicker at the diagonals than
-  at the poles and read as wobbly at the size it is actually shown.
-
-  BOX, not LANCZOS, to downsample. Lanczos overshoots at an edge — a light halo
-  outside every stroke and a dark rim inside it — which on 1 px strokes is
-  ringing at the same scale as the artwork. A box filter over an exact SS-times
-  grid is a plain area average: no ringing to mistake for compression.
-
-Together they take the mask's mean alpha from 45 to 58 with the edge ramp
-intact — the mark is the same drawing, weighted the way the source draws it.
-Nothing is done to the alpha afterwards: a gamma curve was tried and bought
-1.8 counts of mean while flattening the very ramp that keeps the curves smooth.
+A BITMAP SOURCE, 512 px square with the ink across its full width, so the
+panel's 65 px copy is a large downscale — BOX, not LANCZOS, for it. Lanczos
+overshoots at an edge (a light halo outside every stroke, a dark rim inside),
+which on strokes this size reads as compression. A box filter is a plain area
+average. The PNG's strokes are heavy enough to survive the reduction as drawn,
+so unlike the SVG it replaced it is not stroked first.
 
 The artwork is black with a transparent ground, so the conversion is the alpha
-channel: render, crop to the ink, scale, write the bytes. Output is
+channel: crop to the ink, scale, write the bytes. Output is
 LV_IMG_CF_ALPHA_8BIT, coloured at draw time from the object's img_recolor
 style — the right format for single-colour line art, and a third of what
 TRUE_COLOR_ALPHA would cost to say the same thing.
@@ -61,17 +38,13 @@ TRUE_COLOR_ALPHA would cost to say the same thing.
 Run from repo root:  python tools/gen_tap_icon.py [--preview]
 """
 
-import io
 import sys
 
-import cairosvg
 from PIL import Image
 
-SRC = "assets/contactless-icon.svg"
+SRC = "assets/contactless-icon.png"
 OUT_C = "main/tap_icon.c"
 OUT_H = "main/tap_icon.h"
-SS = 6                 # supersample before the final downscale
-STROKE_W = 0.8         # in the asset's own units (its viewBox is 122.88x72.92)
 
 # The one size knob. The card-wait screen has 106 px between the mark's y and
 # "Hold card to reader" under it, so 100 filled the band edge to edge; this is
@@ -82,26 +55,8 @@ PX_H = 65              # 85% of the 76 it was; the tap screen read it as too big
 MAX_W = 204            # CARD_W less its two pads
 
 
-def stroked():
-    """The asset with STROKE_W of its own colour added.
-
-    `stroke` is an inherited SVG property, so it goes on the one <g> the asset
-    wraps its path in and needs no knowledge of the path itself. Asserted
-    rather than attempted: an asset that stops having that <g> would otherwise
-    ship silently as the hairline version this exists to avoid.
-    """
-    src = open(SRC, encoding="utf-8").read()
-    out = src.replace("<g>", '<g style="stroke:#000;stroke-width:%s;'
-                             'stroke-linejoin:round;stroke-linecap:round">'
-                      % STROKE_W, 1)
-    assert out != src, "%s has no bare <g> to hang the stroke on" % SRC
-    return out
-
-
 def build():
-    png = cairosvg.svg2png(bytestring=stroked().encode(),
-                           output_height=PX_H * SS)
-    a = Image.open(io.BytesIO(png)).convert("RGBA").getchannel("A")
+    a = Image.open(SRC).convert("RGBA").getchannel("A")
     bbox = a.getbbox()
     assert bbox is not None, "%s rendered empty" % SRC
     a = a.crop(bbox)
@@ -128,7 +83,7 @@ if "--preview" in sys.argv:
 HDR = ("/*\n * SPDX-License-Identifier: LGPL-3.0-or-later\n"
        " * Copyright (c) 2026 Cryptnox SA\n */\n"
        "/* Auto-generated by tools/gen_tap_icon.py from\n"
-       " * assets/contactless-icon.svg - do not edit. */\n\n")
+       " * assets/contactless-icon.png - do not edit. */\n\n")
 
 with open(OUT_C, "w", newline="\n") as f:
     f.write(HDR)
