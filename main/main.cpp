@@ -1977,8 +1977,8 @@ static bool proposal_decimals_ok(CW_CryptoProvider &crypto)
         eth_rpc_select();
     } else {
         uint8_t c21[CW_TRON_ADDRESS_BYTES];
-        char    c_hex[TRON_ADDR_HEX_LEN + 1U];
         if (CW_Tron::decodeAddress(value, crypto, c21)) {
+            char c_hex[TRON_ADDR_HEX_LEN + 1U];
             tron_addr_to_hex(c21, c_hex, sizeof(c_hex));
             asked = tron_rpc_get_trc20_decimals(c_hex, &dec);
         }
@@ -2020,7 +2020,8 @@ static bool run_wizard(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
         ui_show_prov(step);
         if (step == PROV_STEP_WIFI) {
             net_wifi_ap_t aps[16];
-            prov_set_scan(aps, net_wifi_scan(aps, 16));
+            const uint16_t n_aps = net_wifi_scan(aps, 16);
+            prov_set_scan(aps, n_aps);
         }
     };
 
@@ -2091,7 +2092,8 @@ static bool run_wizard(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
 
             case UI_EVENT_PROV_SCAN: {
                 net_wifi_ap_t aps[16];
-                prov_set_scan(aps, net_wifi_scan(aps, 16));
+                const uint16_t n_aps = net_wifi_scan(aps, 16);
+                prov_set_scan(aps, n_aps);
                 break;
             }
 
@@ -2902,7 +2904,8 @@ extern "C" void app_main(void)
 
             case UI_EVENT_PROV_SCAN: {
                 net_wifi_ap_t aps[16];
-                prov_set_scan(aps, net_wifi_scan(aps, 16));
+                const uint16_t n_aps = net_wifi_scan(aps, 16);
+                prov_set_scan(aps, n_aps);
                 break;
             }
 

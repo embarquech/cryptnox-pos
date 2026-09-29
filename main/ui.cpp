@@ -53,14 +53,16 @@
 #include "CW_Utils.h"   /* hardened memory primitives (CODING_RULES §1.4) */
 
 /* Plus Jakarta Sans for titles, buttons and figures, Inter for small text;
- * one weight per role — main/fonts/, tools/gen_fonts.py. */
-LV_FONT_DECLARE(font_inter_14)           /* Inter Regular: body, captions */
-LV_FONT_DECLARE(font_inter_14_medium)    /* Inter Medium: values, clock   */
-LV_FONT_DECLARE(font_pjs_20_medium)     /* Medium: titles and messages  */
-LV_FONT_DECLARE(font_pjs_20_semibold)   /* SemiBold: button labels      */
-LV_FONT_DECLARE(font_pjs_28_semibold)   /* SemiBold: amounts            */
-LV_FONT_DECLARE(font_pjs_28_light)      /* Light: keypad digits         */
-LV_FONT_DECLARE(font_icons_48)          /* LV_SYMBOL_OK/CLOSE/WARNING   */
+ * one weight per role — main/fonts/, tools/gen_fonts.py.
+ * Spelled out rather than LV_FONT_DECLARE, which cppcheck cannot expand
+ * without the LVGL headers (unknownMacro fails CI). */
+extern const lv_font_t font_inter_14;         /* Inter Regular: body, captions */
+extern const lv_font_t font_inter_14_medium;  /* Inter Medium: values, clock   */
+extern const lv_font_t font_pjs_20_medium;    /* Medium: titles and messages  */
+extern const lv_font_t font_pjs_20_semibold;  /* SemiBold: button labels      */
+extern const lv_font_t font_pjs_28_semibold;  /* SemiBold: amounts            */
+extern const lv_font_t font_pjs_28_light;     /* Light: keypad digits         */
+extern const lv_font_t font_icons_48;         /* LV_SYMBOL_OK/CLOSE/WARNING   */
 
 static const char *TAG = "ui";
 

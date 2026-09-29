@@ -73,7 +73,7 @@ jobs:
           for t in tests/units/test_*.cpp; do
             echo "cc $t"
             g++ -std=c++14 -c "$t" -o "build/codeql/$(basename "$t").o" \
-              -I main -I cryptnox-sdk-esp32/cryptnox-sdk-cpp
+              -I main -I cryptnox-sdk-esp32/cryptnox-sdk-cpp -I /usr/include/cjson
           done
           for f in fuzz/fuzz_*.cpp; do
             echo "cc $f"
