@@ -45,7 +45,9 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"   /* s_ui_mx */
 #include "esp_timer.h"
+#include "wdt.h"               /* the UI loop is on the task watchdog */
 #include "esp_log.h"
 #include "esp_system.h"   /* esp_restart() for factory reset */
 #include "driver/ledc.h"
@@ -596,6 +598,7 @@ static uint64_t s_amount_units = 0ULL;
 /* Confirm-screen payload */
 static uint64_t s_confirm_amount = 0ULL;
 static char     s_confirm_addr[64] = "";
+static char     s_confirm_fee[40]  = "";   /* "Fee up to 0.0013 ETH", or "" */
 
 /* Tx-status payload. The info line is updated in place while the screen is up
  * (the confirmation countdown) — a request_screen per tick would restart the
@@ -729,20 +732,26 @@ static volatile bool s_ota_modal_dirty   = false;
 static ui_boot_err_t s_boot_err            = UI_BOOT_ERR_NFC;
 static char          s_boot_detail[64]     = {0};
 
-/* Admin code (burger-menu lock). 4 digits on purpose: the threat is a customer
- * left alone with the terminal for a minute, which the escalating penalty below
- * already defeats. Someone with days of unattended physical access is out of
- * scope for this code — the funds are behind the card PIN, not behind it. The
- * merchant can always choose a longer one, up to ADMIN_CODE_MAX. */
-#define ADMIN_CODE_MIN   4
-#define ADMIN_CODE_MAX   9
+/* Admin code (burger-menu lock). Six digits for a new code: with the penalty
+ * capped at a minute, four digits were ~720 guesses over an unattended night —
+ * a fair share of a 10^4 space, and the code opens the payout addresses. Six
+ * digits under the escalating penalty below (capped at an hour) is a few dozen
+ * guesses a night against 10^6. The merchant can choose a longer one, up to
+ * ADMIN_CODE_MAX.
+ *
+ * The unlock screen still takes four: a code set before the minimum went up
+ * has to keep opening the menu — it gates the factory reset too — so only the
+ * creation screen enforces the new floor. */
+#define ADMIN_CODE_MIN        6
+#define ADMIN_CODE_MIN_STORED 4   /* shortest code an older build could store */
+#define ADMIN_CODE_MAX        9
 static lv_obj_t     *s_admin_ta      = NULL;
 static lv_obj_t     *s_admin_note_lbl = NULL;
 static char          s_admin_first[ADMIN_CODE_MAX + 1] = {0};  /* 1st of 2 passes */
 static char          s_admin_note[48] = {0};
 static bool          s_admin_confirming = false;   /* 2nd pass of the creation */
 static bool          s_welcome_sent     = false;   /* Start already reported */
-static char          s_welcome_sub[48]  = {0};     /* line under the brand */
+static char          s_welcome_sub[96]  = {0};     /* line under the brand: fits main's update greeting */
 /* Penalty clock, monotonic since boot (lv_tick_elaps handles the wrap). The
  * attempt count itself lives in NVS, so power-cycling shortens the current wait
  * but never resets the escalation. */
@@ -854,6 +863,37 @@ static const char *asset_network(pos_chain_t c = settings_get_chain()) {
 /** Caption for the address row above "Send to": TRX has no contract to show. */
 static const char *asset_caption(pos_chain_t c = settings_get_chain()) {
     return asset(c)->caption;
+}
+
+/* The buffers above are written by the main task (and a few by the HTTP task)
+ * through the public ui_* calls, and read by the UI task while it builds a
+ * screen. A screen built mid-strncpy showed half of one message and half of the
+ * next — or, for the Wi-Fi list, a record torn between two scans. So the UI task
+ * holds this for each pass of its loop (render, the targeted label updates and
+ * lv_timer_handler with its event callbacks), and every public call that writes
+ * shared state holds it for the copy. Recursive: an event callback that reaches
+ * back into a public ui_* call on the UI task already owns it. Writers wait for
+ * at most one pass of the loop, a few milliseconds. */
+static SemaphoreHandle_t s_ui_mx = NULL;
+
+struct UiLock {
+    UiLock()  { if (s_ui_mx != NULL) { (void)xSemaphoreTakeRecursive(s_ui_mx, portMAX_DELAY); } }
+    ~UiLock() { if (s_ui_mx != NULL) { (void)xSemaphoreGiveRecursive(s_ui_mx); } }
+    UiLock(const UiLock &) = delete;
+    UiLock &operator=(const UiLock &) = delete;
+};
+
+/* prov_stop() takes up to ~2 s (httpd teardown, the AP going down) and used to
+ * run here, on the UI task, freezing the panel for all of it. It is main's call
+ * now: the UI asks, main does it between events. Rate-limited, because the
+ * deadline check below would otherwise ask every 5 ms until main gets round to
+ * it — and a request that fell off a full queue is simply asked again. */
+static uint32_t s_prov_stop_at = 0U;
+
+static void request_prov_stop(void) {
+    if ((s_prov_stop_at != 0U) && (lv_tick_elaps(s_prov_stop_at) < 1000U)) { return; }
+    s_prov_stop_at = lv_tick_get() | 1U;   /* never 0 once asked */
+    if (s_cb != NULL) { s_cb(UI_EVENT_PROV_STOP, 0); }
 }
 
 static void request_screen(ui_screen_t s) {
@@ -1561,7 +1601,7 @@ static void btn_event_cb(lv_event_t *e) {
         case ACT_PORTAL_CLOSE:
             /* Closing the card closes the page: a config endpoint should not
              * outlive the operator standing in front of the terminal. */
-            prov_stop();
+            request_prov_stop();
             close_modal();
             break;
         case ACT_OTA_NO:
@@ -1569,7 +1609,7 @@ static void btn_event_cb(lv_event_t *e) {
              * declined image cannot be re-offered to whoever wanders past next. */
             close_modal();
             (void)ota_commit(false);
-            prov_stop();
+            request_prov_stop();
             break;
         case ACT_OTA_OK:
             /* The panel is the only place firmware can be installed; the browser
@@ -1584,7 +1624,7 @@ static void btn_event_cb(lv_event_t *e) {
                  * refused to become bootable. Either way, say so — a card that
                  * just closes is indistinguishable from a successful update that
                  * silently did not happen. */
-                prov_stop();
+                request_prov_stop();
                 open_ota_gone();
             }
             break;
@@ -3689,6 +3729,14 @@ static void build_confirm(void) {
 
     make_label(card, "To", COL_DIM, &font_inter_14,
                LV_ALIGN_TOP_LEFT, CARD_PAD, 64);
+    /* The most the card can be charged in network fees on top of the total —
+     * the customer is agreeing to that too. Opposite "To" on its caption row, the
+     * way the test-network name sits opposite "Total": the card has no height
+     * left to give it a row of its own. ~150px at its longest against 204. */
+    if (s_confirm_fee[0] != '\0') {
+        make_label(card, s_confirm_fee, COL_DIM, &font_inter_14,
+                   LV_ALIGN_TOP_RIGHT, -CARD_PAD, 64);
+    }
     lv_obj_t *addr = make_label(card,
                                 s_confirm_addr[0] ? s_confirm_addr : "-",
                                 COL_TEXT, &font_inter_14_medium,
@@ -3951,17 +3999,29 @@ static void build_pin(void) {
 /**
  * @brief Wait imposed after repeated wrong admin codes.
  *
- * Free for the first three tries, then doubling, capped at 60 s. Never a
- * permanent lock: the code gates the factory reset too, so locking for good
- * would leave no way back in short of a USB reflash.
+ * Free for the first three tries, then doubling — 1 s, 2 s, 4 s ... — and
+ * still doubling past a minute, up to an hour per attempt from the fifteenth
+ * wrong code on. The count is in NVS, so a power cycle restarts the current wait
+ * rather than resetting it. Never a permanent lock: the code gates the factory
+ * reset too, so locking for good would leave no way back in short of a USB
+ * reflash.
  */
+#define ADMIN_PENALTY_MAX_S  3600U
+
 static uint32_t admin_penalty_ms(uint8_t fails) {
     if (fails < 3U) { return 0U; }
     uint32_t shift = static_cast<uint32_t>(fails) - 3U;
-    if (shift > 6U) { shift = 6U; }          /* cap before the shift overflows */
+    if (shift > 12U) { shift = 12U; }        /* 4096 s: past the cap, no overflow */
     uint32_t secs = 1U << shift;
-    if (secs > 60U) { secs = 60U; }
+    if (secs > ADMIN_PENALTY_MAX_S) { secs = ADMIN_PENALTY_MAX_S; }
     return secs * 1000U;
+}
+
+/* "45s" or "12 min" — the penalty runs to an hour now, and "wait 3417s" is a
+ * number nobody standing at a counter wants to divide by sixty. */
+static void wait_text(char *out, size_t n, uint32_t secs) {
+    if (secs < 120U) { (void)snprintf(out, n, "%us", static_cast<unsigned>(secs)); }
+    else { (void)snprintf(out, n, "%u min", static_cast<unsigned>((secs + 59U) / 60U)); }
 }
 
 /* Seconds left on the penalty, 0 once it has elapsed. */
@@ -4037,14 +4097,15 @@ static void admin_submit(void) {
     } else {
         const uint32_t wait_s = admin_lock_remaining_s();
         char msg[sizeof(s_admin_note)];
-        if (strlen(code) < ADMIN_CODE_MIN) {
+        if (strlen(code) < ADMIN_CODE_MIN_STORED) {
             /* Too short to be any stored code, so don't spend an attempt on it.
              * Otherwise a few stray taps on OK push the counter into the penalty
              * and the merchant waits a minute for a menu nobody attacked. */
             admin_set_note("Enter your code");
         } else if (wait_s > 0U) {
-            (void)snprintf(msg, sizeof(msg), "Too many tries - wait %us",
-                           static_cast<unsigned>(wait_s));
+            char w[16];
+            wait_text(w, sizeof(w), wait_s);
+            (void)snprintf(msg, sizeof(msg), "Too many tries - wait %s", w);
             admin_set_note(msg);
         } else if (settings_check_admin_code(code)) {
             s_admin_lock_ms = 0U;
@@ -4071,8 +4132,9 @@ static void admin_submit(void) {
             if (penalty > 0U) {
                 s_admin_lock_start = lv_tick_get();
                 s_admin_lock_ms    = penalty;
-                (void)snprintf(msg, sizeof(msg), "Wrong code - wait %us",
-                               static_cast<unsigned>(penalty / 1000U));
+                char w[16];
+                wait_text(w, sizeof(w), penalty / 1000U);
+                (void)snprintf(msg, sizeof(msg), "Wrong code - wait %s", w);
                 admin_set_note(msg);
             } else {
                 admin_set_note("Wrong code");
@@ -4505,7 +4567,8 @@ static void build_tx_status(void) {
 
 /* Startup fault. Not the transaction screen: its red cross and "Declined" made
  * a wiring problem read as a refused sale. No action button — nothing here is
- * recoverable from the touchscreen, so the body text says what to do. */
+ * recoverable from the touchscreen, and main restarts the terminal by itself
+ * after BOOT_FAULT_RESTART_S (30 s), so the body text says that. */
 static void build_boot_error(void) {
     clear_screen();
     build_header("Startup");
@@ -4521,15 +4584,22 @@ static void build_boot_error(void) {
             title = "Wallet not ready";
             body  = "The card reader answered but the Cryptnox wallet could not "
                     "be initialised.\n\n"
-                    "Restart the terminal. If this keeps happening, the reader "
-                    "or its firmware is at fault.";
+                    "The terminal restarts by itself in 30 s. If this keeps "
+                    "happening, the reader or its firmware is at fault.";
+            break;
+        case UI_BOOT_ERR_CONFIG:
+            title = "Invalid configuration";
+            body  = "An address built into this firmware (config.h) does not "
+                    "parse.\n\n"
+                    "The terminal restarts in 30 s. Install a build with a "
+                    "corrected config.h.";
             break;
         case UI_BOOT_ERR_NFC:
         default:
             title = "NFC reader not found";
             body  = "The PN532 module did not answer on the I2C bus.\n\n"
-                    "Check the SDA/SCL wiring, the RST pin and the 3V3 supply, "
-                    "then restart the terminal.";
+                    "Check the SDA/SCL wiring, the RST pin and the 3V3 supply. "
+                    "The terminal restarts by itself in 30 s.";
             break;
     }
 
@@ -4646,7 +4716,14 @@ static void signal_refresh(lv_timer_t *t) {
                                    (i < lit) ? COL_TEXT : COL_DIM,
                                    LV_PART_MAIN);
     }
-    lv_obj_set_style_bg_color(s_sig_dot, up ? COL_TEXT : COL_DIM, LV_PART_MAIN);
+    /* Amber while the terminal's own network is down and being re-joined in the
+     * background (net.cpp): "offline, working on it" is a different answer from
+     * "never configured", and it is the one that tells the operator to wait
+     * rather than to go and fix something. */
+    lv_obj_set_style_bg_color(s_sig_dot,
+                              up ? COL_TEXT
+                                 : net_wifi_reconnecting() ? COL_WARN : COL_DIM,
+                              LV_PART_MAIN);
     /* Off the splash (nothing is connected yet), off the calibration screen
      * where it would sit on the top-right corner target, and off the admin
      * screens — the settings page's tab bar owns y=0..42 across the full width,
@@ -4851,7 +4928,19 @@ static void ui_task(void *arg) {
     ESP_LOGI(TAG, "UI initialized (LVGL %d.%d + TFT_eSPI/XPT2046)",
              lv_version_major(), lv_version_minor());
 
+    /* On the task watchdog: a render or an event callback that never comes
+     * back (a wedged SPI transfer, a touch read stuck on the bus) resets the
+     * terminal instead of leaving a frozen panel in front of a customer. */
+    if (esp_task_wdt_add(NULL) != ESP_OK) {
+        ESP_LOGE(TAG, "UI loop not on the task watchdog");
+    }
+
     while (true) {
+        /* Sleep first, unlocked — the writers' window — then one pass of the
+         * loop under the lock, released when the pass ends. See s_ui_mx. */
+        vTaskDelay(pdMS_TO_TICKS(5));
+        wdt_feed();
+        UiLock lk;
         if (s_screen_dirty) {
             s_screen_dirty = false;
             render_requested_screen();
@@ -4946,7 +5035,7 @@ static void ui_task(void *arg) {
          * ota_post() gives up on a socket that has gone quiet (UPLOAD_MAX_STALLS). */
         if ((prov_mode() == PROV_MODE_ADMIN) && (prov_window_left_min() == 0U) &&
             !ota_receiving()) {
-            prov_stop();
+            request_prov_stop();
             /* ...but NOT the firmware card. s_portal_modal is set by that card too
              * (build_ota_confirm), so this used to close the Install/Discard
              * decision the operator was in the middle of — on a deadline that had
@@ -4956,8 +5045,6 @@ static void ui_task(void *arg) {
             if (s_portal_modal && !ota_staged(NULL, 0U, NULL)) { close_modal(); }
         }
         lv_timer_handler();
-
-        vTaskDelay(pdMS_TO_TICKS(5));
     }
 }
 
@@ -4965,6 +5052,7 @@ static void ui_task(void *arg) {
  * 10. Public API
  ******************************************************************/
 extern "C" void ui_init(ui_event_cb_t cb) {
+    s_ui_mx        = xSemaphoreCreateRecursiveMutex();   /* before the task */
     s_cb           = cb;
     s_req_screen   = UI_SCREEN_SPLASH;
     s_screen_dirty = true;
@@ -4978,13 +5066,18 @@ extern "C" void ui_show_splash(void) {
 }
 
 extern "C" void ui_show_amount_entry(void) {
+    UiLock lk;   /* shared with the UI task - see s_ui_mx */
     s_amount_cents = 0U;      /* fresh entry each time */
     s_amount_units = 0U;
     request_screen(UI_SCREEN_AMOUNT);
 }
 
-extern "C" void ui_show_confirm(uint64_t amount_units, const char *dest_addr) {
+extern "C" void ui_show_confirm(uint64_t amount_units, const char *dest_addr,
+                                const char *fee) {
+    UiLock lk;   /* shared with the UI task - see s_ui_mx */
     s_confirm_amount = amount_units;
+    (void)snprintf(s_confirm_fee, sizeof(s_confirm_fee), "%s",
+                   (fee != NULL) ? fee : "");
     if (dest_addr != NULL) {
         strncpy(s_confirm_addr, dest_addr, sizeof(s_confirm_addr) - 1);
         s_confirm_addr[sizeof(s_confirm_addr) - 1] = '\0';
@@ -4995,6 +5088,7 @@ extern "C" void ui_show_confirm(uint64_t amount_units, const char *dest_addr) {
 }
 
 extern "C" size_t ui_take_pin(char *out, size_t n) {
+    UiLock lk;   /* shared with the UI task - see s_ui_mx */
     if ((out == NULL) || (n == 0U)) { return 0U; }
     size_t len = s_pin_len;
     if (len > (n - 1U)) { len = n - 1U; }
@@ -5009,6 +5103,7 @@ extern "C" size_t ui_take_pin(char *out, size_t n) {
 
 extern "C" void ui_show_wifi_list(const net_wifi_ap_t *aps, uint16_t n,
                                   const char *note) {
+    UiLock lk;   /* shared with the UI task - see s_ui_mx */
     s_ap_count = (n > WIFI_MAX_APS) ? WIFI_MAX_APS : n;
     for (uint16_t i = 0U; i < s_ap_count; i++) {
         s_aps[i] = aps[i];
@@ -5024,16 +5119,19 @@ extern "C" void ui_show_wifi_list(const net_wifi_ap_t *aps, uint16_t n,
 }
 
 extern "C" void ui_set_addresses(const char *token_contract, const char *dest_addr) {
+    UiLock lk;   /* shared with the UI task - see s_ui_mx */
     s_addr_usdc = token_contract;
     s_addr_dest = dest_addr;
 }
 
 extern "C" void ui_show_wifi_connecting(const char *ssid) {
+    UiLock lk;   /* shared with the UI task - see s_ui_mx */
     set_wifi_progress("Connecting to", ssid);
     request_screen(UI_SCREEN_WIFI_CONNECTING);
 }
 
 extern "C" void ui_set_boot_status(const char *step) {
+    UiLock lk;   /* shared with the UI task - see s_ui_mx */
     strncpy(s_boot_step, (step != NULL) ? step : "", sizeof(s_boot_step) - 1);
     s_boot_step[sizeof(s_boot_step) - 1] = '\0';
     s_boot_step_dirty = true;   /* applied by the UI task — LVGL is single-thread */
@@ -5051,6 +5149,7 @@ extern "C" void ui_clock_changed(void) {
 }
 
 extern "C" void ui_show_boot_error(ui_boot_err_t kind, const char *detail) {
+    UiLock lk;   /* shared with the UI task - see s_ui_mx */
     s_boot_err = kind;
     if (detail != NULL) {
         strncpy(s_boot_detail, detail, sizeof(s_boot_detail) - 1);
@@ -5062,6 +5161,7 @@ extern "C" void ui_show_boot_error(ui_boot_err_t kind, const char *detail) {
 }
 
 extern "C" void ui_show_welcome(const char *sub) {
+    UiLock lk;   /* shared with the UI task - see s_ui_mx */
     strncpy(s_welcome_sub,
             ((sub != NULL) && (sub[0] != '\0')) ? sub
                                                 : "Let's configure your terminal.",
@@ -5072,6 +5172,7 @@ extern "C" void ui_show_welcome(const char *sub) {
 }
 
 extern "C" void ui_show_admin_set(void) {
+    UiLock lk;   /* shared with the UI task - see s_ui_mx */
     s_admin_confirming = false;
     s_admin_note[0]    = '\0';
     CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_admin_first),
@@ -5081,6 +5182,7 @@ extern "C" void ui_show_admin_set(void) {
 
 extern "C" size_t ui_take_wifi_creds(char *ssid, size_t ssid_n,
                                      char *pass, size_t pass_n) {
+    UiLock lk;   /* shared with the UI task - see s_ui_mx */
     if ((ssid == NULL) || (pass == NULL) || (ssid_n == 0U) || (pass_n == 0U)) {
         return 0U;
     }
@@ -5094,6 +5196,7 @@ extern "C" size_t ui_take_wifi_creds(char *ssid, size_t ssid_n,
 }
 
 extern "C" void ui_stage_wifi_creds(const char *ssid, const char *pass) {
+    UiLock lk;   /* shared with the UI task - see s_ui_mx */
     strncpy(s_wifi_ssid, (ssid != NULL) ? ssid : "", sizeof(s_wifi_ssid) - 1U);
     s_wifi_ssid[sizeof(s_wifi_ssid) - 1U] = '\0';
     strncpy(s_wifi_pass, (pass != NULL) ? pass : "", sizeof(s_wifi_pass) - 1U);
@@ -5101,6 +5204,7 @@ extern "C" void ui_stage_wifi_creds(const char *ssid, const char *pass) {
 }
 
 extern "C" void ui_show_prov(int step) {
+    UiLock lk;   /* shared with the UI task - see s_ui_mx */
     s_prov_step = step;
     request_screen(UI_SCREEN_PROV);
 }
@@ -5110,6 +5214,7 @@ extern "C" void ui_show_prov_confirm(void) {
 }
 
 extern "C" void ui_show_prov_auth(void) {
+    UiLock lk;   /* shared with the UI task - see s_ui_mx */
     s_admin_for_portal = true;
     s_admin_confirming = false;
     s_admin_note[0]    = '\0';
@@ -5122,17 +5227,20 @@ extern "C" void ui_show_prov_auth(void) {
 }
 
 extern "C" void ui_show_card_pin(void) {
+    UiLock lk;   /* shared with the UI task - see s_ui_mx */
     s_pin_for_card = true;
     s_prov_msg[0]  = '\0';   /* a new attempt starts; drop the last one's reason */
     request_screen(UI_SCREEN_PIN);
 }
 
 extern "C" void ui_set_prov_note(const char *msg) {
+    UiLock lk;   /* shared with the UI task - see s_ui_mx */
     strncpy(s_prov_msg, (msg != NULL) ? msg : "", sizeof(s_prov_msg) - 1);
     s_prov_msg[sizeof(s_prov_msg) - 1] = '\0';
 }
 
 extern "C" void ui_show_card_wait(const char *note) {
+    UiLock lk;   /* shared with the UI task - see s_ui_mx */
     strncpy(s_card_note, (note != NULL) ? note : "", sizeof(s_card_note) - 1);
     s_card_note[sizeof(s_card_note) - 1] = '\0';
     request_screen(UI_SCREEN_CARD_WAIT);
@@ -5143,6 +5251,7 @@ extern "C" void ui_show_ota_confirm(void) {
 }
 
 extern "C" void ui_show_tx_status(ui_tx_state_t state, const char *info) {
+    UiLock lk;   /* shared with the UI task - see s_ui_mx */
     s_tx_state = state;
     if (info != NULL) {
         strncpy(s_tx_info, info, sizeof(s_tx_info) - 1);
@@ -5154,6 +5263,7 @@ extern "C" void ui_show_tx_status(ui_tx_state_t state, const char *info) {
 }
 
 extern "C" void ui_set_tx_info(const char *info) {
+    UiLock lk;   /* shared with the UI task - see s_ui_mx */
     strncpy(s_tx_info, (info != NULL) ? info : "", sizeof(s_tx_info) - 1);
     s_tx_info[sizeof(s_tx_info) - 1] = '\0';
     s_tx_info_dirty = true;

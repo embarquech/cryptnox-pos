@@ -48,6 +48,7 @@
 #include "provision.h"   /* phone-based first-run setup (SoftAP + portal) */
 #include "ota.h"         /* browser-mediated firmware update + rollback confirm */
 #include "ota_version.h" /* ota_version_display() — the 'v' is added for the screen */
+#include "wdt.h"         /* wdt_feed() — the main loop is on the task watchdog */
 
 /* Quiet CW_Logger — swallows the SDK's verbose connection/retry chatter that
  * was showing up as 'a a a...' on the UART. Keep ESP_LOGI for our own logs. */
@@ -75,6 +76,7 @@ extern "C" {
 #include "pn532.h"
 #include "keccak256.h"
 #include "eth_addr.h"
+#include "eth_sig.h"       /* the recovery bit, from the card's own key */
 #include "card_status.h"   /* is the tapped card even set up? */
 #include "hardening.h"
 #include "eth_rlp.h"
@@ -432,8 +434,32 @@ static bool erc20_load(erc20_token_t *t, const char *hex_no_0x) {
  * @param[in]  stored_what What to call the stored value in the log line.
  * @param[in]  config_what The config.h macro's name, for the fatal message.
  * @param[out] rejected    Set true when a stored value was refused; may be NULL.
- * @return false when even the config.h value will not parse — boot must stop.
+ * @return false when even the config.h value will not parse — which does not
+ *         actually return: see @ref boot_fault.
  */
+/* How long a startup fault stays on the panel before the terminal restarts. */
+#define BOOT_FAULT_RESTART_S  30U
+
+/**
+ * @brief Show a startup fault, then restart. Does not return.
+ *
+ * An unattended terminal that stopped on a fault screen stays stopped until
+ * somebody power-cycles it, and most of what fails here — a reader that missed
+ * its first I2C wake-up, a card stack that did not come up — is fine on the next
+ * boot. The restart also settles the other case: on a fresh update that has not
+ * been confirmed yet (ota_mark_valid runs after the wallet), it rolls back to the
+ * image that worked, which is what should happen to a build that cannot boot.
+ * A fault that survives restarts keeps showing, 30 s at a time.
+ */
+static void boot_fault(ui_boot_err_t kind, const char *detail)
+{
+    ui_show_boot_error(kind, detail);
+    ESP_LOGE(TAG, "startup fault - restarting in %u s",
+             static_cast<unsigned>(BOOT_FAULT_RESTART_S));
+    vTaskDelay(pdMS_TO_TICKS(BOOT_FAULT_RESTART_S * 1000U));
+    esp_restart();
+}
+
 static bool resolve_evm_addr(bool (*get)(bool, char *, size_t),
                              char *str, size_t str_n,
                              const char *fallback,
@@ -453,8 +479,8 @@ static bool resolve_evm_addr(bool (*get)(bool, char *, size_t),
         char msg[48];
         (void)snprintf(msg, sizeof(msg), "Bad %s in config", config_what);
         ESP_LOGE(TAG, "%s", msg);
-        ui_show_tx_status(UI_TX_STATE_FAILED, msg);
-        return false;
+        boot_fault(UI_BOOT_ERR_CONFIG, msg);
+        return false;   /* not reached */
     }
     return true;
 }
@@ -656,6 +682,26 @@ static const char *card_fault(Pn532NfcTransport &transport)
 }
 
 /**
+ * @brief Why verifyPin said no: the PIN, or the card leaving the field.
+ *
+ * The SDK answers verifyPin with a bare bool, and a card pulled away mid-APDU
+ * says no exactly like a mistyped PIN does — so the holder was told "Wrong PIN"
+ * and retyped one that was right. Asked before the session is dropped: if the
+ * card no longer answers a SELECT it was not the PIN.
+ */
+static const char *pin_fail_text(Pn532NfcTransport &transport, const char *wrong)
+{
+    static const uint8_t SELECT[] = CARD_SELECT_APDU;
+    uint8_t r[40];
+    uint8_t n = static_cast<uint8_t>(sizeof(r));
+    if (!transport.sendAPDU(SELECT, static_cast<uint8_t>(sizeof(SELECT)), r, n)) {
+        ESP_LOGW(TAG, "verifyPin failed and the card is gone - not a PIN error");
+        return "Card moved - tap it again";
+    }
+    return wrong;
+}
+
+/**
  * @brief Wait for a card and open a secure channel, cancellable from the UI.
  *
  * Manual connect loop with cancel checks between PN532 polls — replaces
@@ -692,6 +738,7 @@ static bool card_connect(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
     const int64_t card_wait_us = 60LL * 1000000LL;
     const int64_t start_us     = esp_timer_get_time();
     while (true) {
+        wdt_feed();   /* a minute of waiting for a card is on purpose */
         if (s_user_cancelled) {
             return false;
         }
@@ -848,6 +895,56 @@ static void evm_fees_wei(bool polygon, uint64_t *max_fee, uint64_t *prio_fee)
     *prio_fee = prio_fee_wei;
 }
 
+/* The fees one sale offers, read ONCE — when its confirm screen is built — and
+ * used by everything after that: the cap shown to the customer, the balance
+ * check and the transaction the card signs. Read separately, a fee changed from
+ * the config page in between made the three disagree, and the check could wave
+ * through a sale the signed transaction could not pay for. */
+static struct {
+    uint64_t max_fee;    /* wei per gas */
+    uint64_t prio_fee;   /* wei per gas */
+} s_sale_fee;
+
+/**
+ * @brief "0.0013 ETH": @p v base units of a @p dec-decimal coin, to six places,
+ *        rounded UP — it is a ceiling, and rounding down would understate it.
+ */
+static void fmt_coin(char *out, size_t n, uint64_t v, unsigned dec, const char *coin)
+{
+    uint64_t div = 1U;
+    for (unsigned i = 6U; i < dec; i++) { div *= 10U; }
+    const uint64_t micro = (v / div) + (((v % div) != 0U) ? 1U : 0U);
+    char frac[8];
+    (void)snprintf(frac, sizeof(frac), "%06" PRIu64, micro % 1000000U);
+    size_t f = strlen(frac);
+    while ((f > 0U) && (frac[f - 1U] == '0')) { frac[--f] = '\0'; }
+    (void)snprintf(out, n, "%" PRIu64 "%s%s %s", micro / 1000000U,
+                   (f > 0U) ? "." : "", frac, coin);
+}
+
+/**
+ * @brief The most network fee the customer's card can be charged on top of the
+ *        sale, for the confirm screen. "" where there is no cap to state: a
+ *        native TRX transfer burns bandwidth, not a fee limit.
+ */
+static void sale_fee_text(char *out, size_t n)
+{
+    out[0] = '\0';
+    char amt[32];
+    if (chain_is_tron()) {
+        if (active_trc20() == NULL) { return; }
+        fmt_coin(amt, sizeof(amt), TRON_TRC20_FEE_LIMIT_SUN, 6U, "TRX");
+    } else {
+        /* gas limit ~1e5 at most, max fee a uint32 of Gwei x 1e9: ~25 bits of
+         * headroom in the product, as in evm_balance_ok. */
+        const uint64_t wei = (uint64_t)(chain_is_native_evm() ? GAS_LIMIT_NATIVE
+                                                              : GAS_LIMIT_ERC20)
+                             * s_sale_fee.max_fee;
+        fmt_coin(amt, sizeof(amt), wei, 18U, chain_is_polygon() ? "POL" : "ETH");
+    }
+    (void)snprintf(out, n, "Fee up to %s", amt);
+}
+
 /**
  * @brief Refuse an EVM sale the tapped card cannot fund, before it signs.
  *
@@ -877,9 +974,8 @@ static bool evm_balance_ok(const pos_amount_t *amount, char *err, size_t err_max
     const bool  polygon = chain_is_polygon();
     const char *coin    = polygon ? "POL" : "ETH";
 
-    uint64_t max_fee = 0U;
-    uint64_t prio    = 0U;
-    evm_fees_wei(polygon, &max_fee, &prio);
+    /* The sale's snapshot, not a fresh read — see s_sale_fee. */
+    const uint64_t max_fee = s_sale_fee.max_fee;
     /* A gas limit is ~1e5 at the most and max_fee is a uint32 of Gwei scaled by
      * 1e9, so this product has ~25 bits of headroom. */
     const uint64_t gas_cost =
@@ -1027,10 +1123,27 @@ typedef struct {
     uint64_t amount;               /* EVM token: the Transfer value           */
     uint64_t expiration_ms;        /* Tron: after this it can never land      */
     bool     broadcast_known;      /* false: the broadcast answer was lost    */
+    bool     polygon;              /* EVM: which endpoint the receipt is on   */
     pos_amount_t decided;          /* for the final decision gate             */
 } inflight_t;
 
 static inflight_t s_inflight;
+
+/**
+ * @brief Write the sale to NVS just before it leaves the terminal.
+ *
+ * Until now the hash lived in RAM only, so a brownout or a panic during the
+ * receipt poll lost the one thing the merchant needs to know — whether the
+ * customer paid. Written as "broadcast not known": a record that survives a
+ * reset is by definition one whose answer nobody saw. One write per sale.
+ */
+static void inflight_persist(const inflight_t *fl)
+{
+    inflight_t rec = *fl;
+    rec.active          = true;
+    rec.broadcast_known = false;
+    (void)settings_inflight_save(&rec, sizeof(rec));
+}
 
 /**
  * @brief Sign a USDC transfer on the card and broadcast it via JSON-RPC.
@@ -1134,8 +1247,8 @@ static bcast_t sign_and_broadcast(CryptnoxWallet &wallet,
      * a digit is shown "Sign error 0x81" and sent looking for a broken reader. */
     if (!wallet.verifyPin(session, reinterpret_cast<const uint8_t *>(pin),
                           static_cast<uint8_t>(pin_chars))) {
+        (void)snprintf(err_out, err_max, "%s", pin_fail_text(transport, "Wrong PIN"));
         wallet.disconnect(session);
-        (void)snprintf(err_out, err_max, "Wrong PIN");
         return BCAST_FAILED;
     }
 
@@ -1146,10 +1259,12 @@ static bcast_t sign_and_broadcast(CryptnoxWallet &wallet,
      * Same derivation the setup flow uses to read a payout address off a card:
      * keccak256 of the uncompressed public key, low 20 bytes. */
     char from_addr[SETTINGS_PAYOUT_MAX] = "";
+    /* Kept past the address derivation: the recovery bit below is worked out
+     * against this key. */
+    uint8_t pubkey[64];
+    WipeGuard g_pub(pubkey, sizeof(pubkey));
     {
-        uint8_t pubkey[64];
         uint8_t key_hash[32];
-        WipeGuard g_pub(pubkey, sizeof(pubkey));
         WipeGuard g_kh(key_hash, sizeof(key_hash));
         if (!wallet.getPublicKey(session, ETH_DERIVE_PATH,
                                  static_cast<uint8_t>(sizeof(ETH_DERIVE_PATH)),
@@ -1196,11 +1311,9 @@ static bcast_t sign_and_broadcast(CryptnoxWallet &wallet,
                              ? (polygon ? CHAIN_ID_POLYGON : CHAIN_ID_MAINNET)
                              : (polygon ? CHAIN_ID_AMOY    : CHAIN_ID_SEPOLIA);
     tx.nonce             = nonce;
-    uint64_t max_fee_wei  = 0U;
-    uint64_t prio_fee_wei = 0U;
-    evm_fees_wei(polygon, &max_fee_wei, &prio_fee_wei);
-    tx.max_priority_fee  = prio_fee_wei;
-    tx.max_fee           = max_fee_wei;
+    /* The same snapshot the balance check and the confirm screen used. */
+    tx.max_priority_fee  = s_sale_fee.prio_fee;
+    tx.max_fee           = s_sale_fee.max_fee;
     /* The two shapes of transfer. A token call carries the amount in its calldata
      * and pays the contract's storage writes; the coin's own transfer carries the
      * amount in `value`, calls nothing, and costs the flat 21000.
@@ -1264,24 +1377,17 @@ static bcast_t sign_and_broadcast(CryptnoxWallet &wallet,
         ui_show_tx_status(UI_TX_STATE_SENDING, NULL);
     }
 
-    /* the parity recovery now fails explicitly instead of silently
-     * defaulting to v=0, so the operator sees the actual root cause. */
+    /* The recovery bit, worked out here against the key the card just exported
+     * — no longer two ecrecover eth_calls to the node, which cost a round-trip
+     * per sale and took the node's word for it. Doubles as a local signature
+     * check: a failure is an internal inconsistency (a bad signature, or a
+     * derivation that disagrees with itself), never a setup error the operator
+     * could fix with another card. */
     uint8_t v = 0U;
-    switch (eth_rpc_ecrecover_parity(hash, sig_r, sig_s, &v)) {
-        case ETH_RPC_PARITY_OK:
-            break;
-        case ETH_RPC_PARITY_MISMATCH:
-            /* Used to mean "wrong card" — it was comparing against config.h's
-             * ADDR_FROM. Now both sides come from the card that just signed, so
-             * a mismatch is an internal inconsistency (a bad signature, or a
-             * derivation that disagrees with itself) and not a setup error the
-             * operator can fix by using their other card. */
-            (void)snprintf(err_out, err_max, "Signature check failed");
-            return BCAST_FAILED;
-        case ETH_RPC_PARITY_RPC_ERROR:
-        default:
-            (void)snprintf(err_out, err_max, "RPC error (parity)");
-            return BCAST_FAILED;
+    if (!eth_sig_parity(hash, sig_r, sig_s, pubkey, &v)) {
+        ESP_LOGE(TAG, "signature does not verify under the card's own key");
+        (void)snprintf(err_out, err_max, "Signature check failed");
+        return BCAST_FAILED;
     }
 
     uint8_t signed_tx[TX_BUF_SIZE];
@@ -1318,7 +1424,9 @@ static bcast_t sign_and_broadcast(CryptnoxWallet &wallet,
                                 ETH_ADDR_LEN);
     (void)CW_Utils::safe_memcpy(fl->payee, sizeof(fl->payee), to->addr,
                                 ETH_ADDR_LEN);
-    fl->amount = amount_units;
+    fl->amount  = amount_units;
+    fl->polygon = polygon;
+    inflight_persist(fl);
 
     /* Roomier than err_out so the node's sentence arrives whole and is clipped
      * once, at the point that knows the panel's width. */
@@ -1445,8 +1553,8 @@ static bcast_t sign_and_broadcast_tron(CryptnoxWallet &wallet,
     if (!wallet.verifyPin(session,
                           reinterpret_cast<const uint8_t *>(pin),
                           static_cast<uint8_t>(pin_chars))) {
+        (void)snprintf(err_out, err_max, "%s", pin_fail_text(transport, "Wrong PIN"));
         wallet.disconnect(session);
-        (void)snprintf(err_out, err_max, "Wrong PIN");
         return BCAST_FAILED;
     }
     if (!wallet.getPublicKey(session, CW_TRON_DERIVE_PATH,
@@ -1528,6 +1636,14 @@ static bcast_t sign_and_broadcast_tron(CryptnoxWallet &wallet,
         return BCAST_FAILED;
     }
 
+    /* Before the broadcast, not after it: the txID is fixed by the verified
+     * raw_data, so the record is complete now — and a reset between the first
+     * attempt and its answer is exactly the case the persisted copy is for. */
+    (void)snprintf(fl->hash, sizeof(fl->hash), "%s", tx.txid_hex);
+    fl->tron          = true;
+    fl->expiration_ms = tx.expiration_ms;
+    inflight_persist(fl);
+
     bool sent = false;
     for (uint8_t v = 0U; (v < 2U) && !sent; v++) {
         sig[64] = v;
@@ -1536,10 +1652,10 @@ static bcast_t sign_and_broadcast_tron(CryptnoxWallet &wallet,
             ESP_LOGW(TAG, "broadcast rejected with v=%u", static_cast<unsigned>(v));
         }
     }
-
-    (void)snprintf(fl->hash, sizeof(fl->hash), "%s", tx.txid_hex);
-    fl->tron          = true;
-    fl->expiration_ms = tx.expiration_ms;
+    /* Tron stack: ~4 KB of locals here on top of TLS, in a 16 KB task. Logged
+     * once per Tron sale so the headroom is a number rather than a guess. */
+    ESP_LOGI(TAG, "main stack after Tron broadcast: %u bytes free",
+             static_cast<unsigned>(uxTaskGetStackHighWaterMark(NULL)));
 
     /* "Refused" and "we never heard back" are not the same thing, and only the
      * chain can tell them apart. A v=0 broadcast that landed but whose response
@@ -1589,6 +1705,9 @@ static uint64_t wall_ms(void)
 static void settle_inflight(void)
 {
     inflight_t *fl = &s_inflight;
+    /* The sale's own endpoint. A no-op straight after a sale; after a reset it
+     * is what points a resumed EVM poll at the network the hash is on. */
+    if (!fl->tron) { eth_rpc_select_for(fl->polygon); }
     ui_show_tx_status(UI_TX_STATE_CONFIRMING,
                       fl->broadcast_known ? "Waiting for the block"
                                           : "Checking it was sent");
@@ -1599,6 +1718,7 @@ static void settle_inflight(void)
     bool expired = false;
     const int64_t deadline = esp_timer_get_time() + 120LL * 1000000LL;
     for (;;) {
+        wdt_feed();   /* two minutes of polling is on purpose */
         /* Count the wait down. Two minutes of spinner over an empty line with a
          * customer waiting is indistinguishable from a hung terminal. Set in
          * place — ui_show_tx_status here would restart the spinner. */
@@ -1632,6 +1752,7 @@ static void settle_inflight(void)
          * APPROVED verdict AND amount/recipient still self-consistent through
          * the decide→render window. */
         fl->active = false;
+        settings_inflight_clear();
         bool32 decision = run_payment_decision(&fl->decided, active_dest(),
                                                POS_VERDICT_APPROVED);
         if (IS_TRUE32(decision)) {
@@ -1650,6 +1771,7 @@ static void settle_inflight(void)
          * ponytail: a guess, not a reason. Reading the revert data back needs
          * an eth_call replay at the mined block. */
         fl->active = false;
+        settings_inflight_clear();
         (void)run_payment_decision(&fl->decided, active_dest(),
                                    POS_VERDICT_DECLINED);
         ESP_LOGE(TAG, "Tx reverted on-chain: %s", fl->hash);
@@ -1657,6 +1779,7 @@ static void settle_inflight(void)
                           "Reverted - check the card's balance");
     } else if (expired) {
         fl->active = false;
+        settings_inflight_clear();
         ESP_LOGW(TAG, "Tron tx %s expired unseen - not sent", fl->hash);
         ui_show_tx_status(UI_TX_STATE_FAILED, "Not sent - nothing was charged");
     } else {
@@ -1688,6 +1811,11 @@ static void settle_inflight(void)
  * 3 x (1 + WIFI_MAX_RETRY) associations, 45 s worst case. */
 #define WIFI_SAVED_ATTEMPTS  3U
 #define TIME_SYNC_ATTEMPTS   3U
+
+/* The main loop wakes at least this often with nothing to do, so it can feed the
+ * task watchdog (CONFIG_ESP_TASK_WDT_TIMEOUT_S is 60). */
+#define MAIN_LOOP_TICK_MS    5000U
+#define HEAP_LOG_PERIOD_US   (10LL * 60LL * 1000000LL)
 
 /* Picker notes, shared by the boot bring-up and the settings Wi-Fi change so the
  * two cannot drift apart. */
@@ -1883,8 +2011,8 @@ static bool card_read_payouts(CryptnoxWallet &wallet,
 
     if (!wallet.verifyPin(session, reinterpret_cast<const uint8_t *>(pin),
                           static_cast<uint8_t>(pin_chars))) {
+        (void)snprintf(err, err_n, "%s", pin_fail_text(transport, "Wrong card PIN"));
         wallet.disconnect(session);
-        (void)snprintf(err, err_n, "Wrong card PIN");
         return false;
     }
 
@@ -2206,6 +2334,12 @@ static bool run_wizard(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
                 break;
             }
 
+            case UI_EVENT_PROV_STOP:
+                /* Asked for by the UI (see request_prov_stop in ui.cpp), done
+                 * here because it blocks for up to ~2 s. */
+                if (prov_mode() != PROV_MODE_OFF) { prov_stop(); }
+                break;
+
             case UI_EVENT_PROV_FINISH:
                 /* Restart to apply. The recipient and contract dual stores are
                  * built at boot from validated strings; rebuilding them in place
@@ -2367,8 +2501,7 @@ extern "C" void app_main(void)
     esp_err_t nfc_ret = pn532_init(&nfc, &nfc_cfg);
     if (nfc_ret != ESP_OK) {
         ESP_LOGE(TAG, "PN532 bus init failed: %s", esp_err_to_name(nfc_ret));
-        ui_show_boot_error(UI_BOOT_ERR_NFC, esp_err_to_name(nfc_ret));
-        return;
+        boot_fault(UI_BOOT_ERR_NFC, esp_err_to_name(nfc_ret));
     }
 
     /* pn532_init() only brings up the bus and ignores its own probe results
@@ -2377,8 +2510,7 @@ extern "C" void app_main(void)
     uint32_t nfc_fw = pn532_get_firmware_version(&nfc);
     if (nfc_fw == 0U) {
         ESP_LOGE(TAG, "PN532 did not answer GetFirmwareVersion - reader absent?");
-        ui_show_boot_error(UI_BOOT_ERR_NFC, "No answer to GetFirmwareVersion");
-        return;
+        boot_fault(UI_BOOT_ERR_NFC, "No answer to GetFirmwareVersion");
     }
     ESP_LOGI(TAG, "PN532 firmware: IC 0x%02X, version %u.%u",
              (unsigned)((nfc_fw >> 24) & 0xFFU),
@@ -2410,8 +2542,7 @@ extern "C" void app_main(void)
     if (!CW_Tron::decodeAddress(s_payout_tron, cryptoProvider, tron_to21) ||
         !CW_Tron::decodeAddress(s_payout_tron, cryptoProvider, tron_to21_echo)) {
         ESP_LOGE(TAG, "Bad TRON_ADDR_TO in config");
-        ui_show_tx_status(UI_TX_STATE_FAILED, "Bad TRON_ADDR_TO in config");
-        return;
+        boot_fault(UI_BOOT_ERR_CONFIG, "Bad TRON_ADDR_TO in config");
     }
     (void)CW_Utils::safe_memcpy(s_tron_dest.addr, sizeof(s_tron_dest.addr),
                                 &tron_to21[1], ETH_ADDR_LEN);
@@ -2480,8 +2611,38 @@ extern "C" void app_main(void)
 
     if (!wallet.begin()) {
         ESP_LOGE(TAG, "Wallet begin failed");
-        ui_show_boot_error(UI_BOOT_ERR_WALLET, NULL);
-        return;
+        boot_fault(UI_BOOT_ERR_WALLET, NULL);
+    }
+
+    /* The bar for keeping a firmware update: the panel, the card reader and the
+     * wallet layer all came up on this image. Before this line any reset sends
+     * the bootloader back to the previous slot, which is right for a build that
+     * cannot drive its own hardware — see ota.h.
+     *
+     * Deliberately NOT after the network, the setup wizard or an RPC round-trip,
+     * which is where it used to be. A new build wipes the settings, so its first
+     * boot runs the whole wizard; confirming only after that meant a power cut, a
+     * router still booting or an RPC outage during setup rolled a perfectly good
+     * image back — and the rollback wiped the settings a second time. Those are
+     * the venue's problems, not the image's, and they are retried below rather
+     * than proven here. */
+    const bool fresh_update = ota_mark_valid();
+
+    /* An update is installed from a browser and finishes by itself, so the first
+     * boot on a new image is the one boot nobody has confirmed: the panel would
+     * otherwise come up indistinguishable from a terminal that was merely
+     * power-cycled, and the operator has no way to tell the update landed — or
+     * that this till is the one they were updating. So greet and name the
+     * version, on the first screen that has an operator in front of it. The wipe
+     * itself already happened at the top of this function. */
+    char greeting[96] = "";
+    if (fresh_update || wiped) {
+        char shown[OTA_VERSION_SHOWN_MAX];
+        (void)snprintf(greeting, sizeof(greeting), "Updated to %s.%s",
+                       ota_version_display(ota_running_version(), shown,
+                                           sizeof(shown)),
+                       wiped ? " Settings are cleared - set the terminal up again."
+                             : "");
     }
 
     /* ── WiFi + RPC ────────────────────────────────────────────── */
@@ -2497,6 +2658,18 @@ extern "C" void app_main(void)
      * compared before the card sees the hash (tron_tx.h) — but pinning means an
      * attacker has to beat both that check and TLS rather than just the one. */
     tron_rpc_set_ca_cert(TRON_CA_CERT_PEM);
+#endif
+    /* Pinning is optional and per deployment, so say which endpoints are not
+     * pinned: each of them trusts any of the ~150 CAs in the bundle. A release
+     * build should normally have none of these lines. */
+#ifndef RPC_CA_CERT_PEM
+    ESP_LOGW(TAG, "TLS: Ethereum RPC not pinned (RPC_CA_CERT_PEM) - full CA bundle");
+#endif
+#ifndef POLY_CA_CERT_PEM
+    ESP_LOGW(TAG, "TLS: Polygon RPC not pinned (POLY_CA_CERT_PEM) - full CA bundle");
+#endif
+#ifndef TRON_CA_CERT_PEM
+    ESP_LOGW(TAG, "TLS: Tron RPC not pinned (TRON_CA_CERT_PEM) - full CA bundle");
 #endif
     /* ── Not configured: greet, take the admin code, then hand over to the browser ──
      *
@@ -2535,7 +2708,11 @@ extern "C" void app_main(void)
     const bool setup_run = no_code || no_payout;
     if (no_code) {
         ESP_LOGI(TAG, "no admin code - first-run setup");
-        ui_show_welcome(NULL);      /* first-run wording */
+        /* First-run wording, or the update greeting when that is why the code
+         * is gone — shown once, here, rather than after a wizard that ends in a
+         * restart and would never reach it. */
+        ui_show_welcome((greeting[0] != '\0') ? greeting : NULL);
+        greeting[0] = '\0';
         wait_for_ui_event(UI_EVENT_WELCOME_DONE);
 
         ui_show_admin_set();
@@ -2565,8 +2742,29 @@ extern "C" void app_main(void)
     /* The block above already ran the full wizard, so it has had its turn. */
     bool        offer_setup = !setup_run;
     const char *net_note   = NULL;
+    bool        synced     = false;
+    /* A terminal that is fully set up — an address to pay, a network to pay over
+     * — is one nobody is standing at when it boots. After a power cut the router
+     * is usually still coming up when the ESP32 already is, and sending that
+     * terminal into setup (or onto the panel picker) because its network was not
+     * there yet leaves it waiting for an operator who is not coming. So it comes
+     * up offline instead and keeps at it in the background: the Wi-Fi re-join
+     * (net.cpp) and SNTP both retry on their own, the status band's dot goes
+     * amber while they do, and a sale is refused up front until both are back —
+     * see UI_EVENT_AMOUNT_CONFIRMED. The settings menu can still change the
+     * network if it really has gone for good. */
+    const bool unattended = settings_has_wifi() &&
+                            (settings_has_payout(false) || settings_has_payout(true));
     while (true) {
-        if (!(try_saved && wifi_try_saved())) {
+        const bool joined = try_saved && wifi_try_saved();
+        if (!joined && try_saved && unattended) {
+            ESP_LOGW(TAG, "saved network down - coming up offline, re-joining "
+                          "in the background");
+            net_wifi_keep_trying();
+            net_time_background();
+            break;
+        }
+        if (!joined) {
             /* No usable saved network. The browser flow first, once; then the panel
              * picker, which is also where a failed clock sync sends us. */
             if (offer_setup) {
@@ -2595,9 +2793,19 @@ extern "C" void app_main(void)
         ui_set_boot_status("Syncing clock");
         if (sync_time()) {
             wifi_keep_or_drop(true);    /* proven usable — safe to persist */
+            synced = true;
             break;
         }
         ESP_LOGE(TAG, "SNTP time sync failed on this network");
+        if (joined && unattended) {
+            /* The saved network, up but without time yet — a WAN link that is
+             * slower to return than the LAN. Keep it; SNTP retries by itself.
+             * (Re-subscribed in case the failure was the back-dated-clock
+             * refusal, which unsubscribes.) */
+            ESP_LOGW(TAG, "no network time yet - retrying in the background");
+            net_time_background();
+            break;
+        }
         /* Drop the staged credentials, but leave an already-saved network alone:
          * it may well work again after a reboot, and erasing it would cost the
          * operator the password for what is often a transient outage. */
@@ -2617,18 +2825,23 @@ extern "C" void app_main(void)
      * Retried like the sync above, since a single failure is more often a
      * flaky uplink than a hostile one. The payment path re-checks every
      * request regardless, so this is early warning, not the enforcement. */
+    /* A warning, not a gate. It used to stop the terminal on a failure screen
+     * whose button nobody read — so an RPC provider having a bad minute at boot
+     * left the till dead until somebody power-cycled it. Every payment request
+     * does the same Date check again, so nothing is waved through by carrying on;
+     * the only thing lost is the early notice. Skipped with no clock: TLS cannot
+     * succeed yet and the attempt would only cost 45 s of timeouts. */
     bool rpc_ok = false;
-    for (int attempt = 0; (attempt < 3) && !rpc_ok; attempt++) {
+    for (int attempt = 0; synced && (attempt < 3) && !rpc_ok; attempt++) {
         uint64_t boot_nonce = 0U;
         rpc_ok = eth_rpc_get_nonce(&boot_nonce);
     }
-    if (!rpc_ok) {
-        ESP_LOGE(TAG, "RPC unreachable or clock rejected at boot");
-        ui_show_tx_status(UI_TX_STATE_FAILED, "RPC/clock check failed - see log");
-        return;
+    if (synced && !rpc_ok) {
+        ESP_LOGE(TAG, "RPC unreachable or clock rejected at boot - carrying on, "
+                      "each sale re-checks");
     }
 
-    ESP_LOGI(TAG, "Ready");
+    ESP_LOGI(TAG, "Ready%s", synced ? "" : " (offline - re-joining in the background)");
     /* The baseline every later number is read against: everything a terminal needs
      * is up, and nothing transient has run yet. Compare it with the line
      * prov_start() logs to see what the config page and an upload actually cost. */
@@ -2636,51 +2849,70 @@ extern "C" void app_main(void)
              (unsigned)esp_get_free_heap_size(),
              (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
 
-    /* Everything a terminal needs is now proven to work on this image: the
-     * panel, the card reader, the wallet layer, the uplink and one authenticated
-     * RPC round-trip. That is the bar for keeping a firmware update — before
-     * this line, any reset would have sent the bootloader back to the previous
-     * slot, which is exactly what should happen to a build that cannot get
-     * here. See ota.h. */
-    const bool fresh_update = ota_mark_valid();
-
-    /* An update is installed from a browser and finishes by itself, so the first
-     * boot on a new image is the one boot nobody has confirmed: the panel would
-     * otherwise come up on the amount screen, indistinguishable from a terminal
-     * that was merely power-cycled, and the operator has no way to tell the update
-     * landed — or that this till is the one they were updating.
-     *
-     * So greet and name the version: one tap on Start, and the operator has seen
-     * which terminal came back and on which firmware. */
-    /* The wipe itself already happened at the top of this function; say so here,
-     * where there is an operator looking at the panel. */
-    if (fresh_update || wiped) {
-        char greeting[96];
-        char shown[OTA_VERSION_SHOWN_MAX];
-        (void)snprintf(greeting, sizeof(greeting), "Updated to %s.%s",
-                       ota_version_display(ota_running_version(), shown,
-                                           sizeof(shown)),
-                       wiped ? " Settings are cleared - set the terminal up again."
-                             : "");
+    /* The update greeting, unless the first-run welcome already carried it. */
+    if (greeting[0] != '\0') {
         ui_show_welcome(greeting);
         wait_for_ui_event(UI_EVENT_WELCOME_DONE);
     }
 
     /* ── Main interaction loop ────────────────────────────────── */
-    ui_show_amount_entry();
+    /* A sale that was between broadcast and verdict when the terminal went down
+     * (brownout, panic, somebody pulling the plug) is picked up where it stopped:
+     * same hash, same checks, and the verdict on the panel — Unconfirmed with
+     * "Check again" if the network is not back yet. */
+    if (settings_inflight_load(&s_inflight, sizeof(s_inflight)) && s_inflight.active) {
+        ESP_LOGW(TAG, "resuming the sale in flight at reset: %s", s_inflight.hash);
+        settle_inflight();
+    } else {
+        settings_inflight_clear();
+        ui_show_amount_entry();
+    }
 
     pos_amount_t pending_amount;
     pos_amount_set(&pending_amount, 0U);
     ui_msg_t msg;
 
+    /* On the task watchdog from here on: a loop that stops coming back to its
+     * queue is a hung terminal, and resetting it beats a frozen panel. Boot above
+     * is not subscribed — the wizard and the picker wait on people. */
+    if (esp_task_wdt_add(NULL) != ESP_OK) {
+        ESP_LOGE(TAG, "main loop not on the task watchdog");
+    }
+    int64_t next_heap_log_us = esp_timer_get_time() + HEAP_LOG_PERIOD_US;
+
     while (true) {
-        if (xQueueReceive(s_ui_queue, &msg, portMAX_DELAY) != pdTRUE) {
+        wdt_feed();
+        /* Fragmentation over a long uptime is the plausible way this terminal
+         * fails a TLS handshake after days: every call does a fresh one, with no
+         * PSRAM. A line every ten minutes turns "it stopped after a week" into a
+         * graph of largest-free-block going down. */
+        if (esp_timer_get_time() >= next_heap_log_us) {
+            next_heap_log_us = esp_timer_get_time() + HEAP_LOG_PERIOD_US;
+            ESP_LOGI(TAG, "heap: %u free, %u largest block",
+                     static_cast<unsigned>(esp_get_free_heap_size()),
+                     static_cast<unsigned>(
+                         heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT)));
+        }
+        if (xQueueReceive(s_ui_queue, &msg, pdMS_TO_TICKS(MAIN_LOOP_TICK_MS)) != pdTRUE) {
             continue;
         }
 
         switch (msg.event) {
             case UI_EVENT_AMOUNT_CONFIRMED: {
                 pos_amount_set(&pending_amount, msg.payload);
+                /* Before the customer taps, not after: a terminal that came up
+                 * offline (or lost its router mid-shift) is re-joining in the
+                 * background, and every request a sale makes would fail anyway —
+                 * after the card, the PIN and a customer's patience. Without a
+                 * clock TLS cannot validate a certificate, so that is the same. */
+                if (!net_wifi_online() || (wall_ms() == 0U)) {
+                    ui_show_tx_status(UI_TX_STATE_FAILED,
+                                      !net_wifi_online()
+                                          ? "Offline - re-joining the Wi-Fi"
+                                          : "Waiting for network time");
+                    pos_amount_set(&pending_amount, 0U);
+                    break;
+                }
                 /* Refuse rather than fall back. settings_get_payout() answers with
                  * the config.h recipient when nobody set one, which keeps a
                  * config.h-only unit working — but "working" there means taking a
@@ -2740,8 +2972,13 @@ extern "C" void app_main(void)
                  * would make the review screen worse than no review screen —
                  * s_payout_* is the string s_dest / s_tron_dest were parsed
                  * from, so what is displayed is what gets signed. */
+                evm_fees_wei(chain_is_polygon(), &s_sale_fee.max_fee,
+                             &s_sale_fee.prio_fee);
+                char fee_txt[40];
+                sale_fee_text(fee_txt, sizeof(fee_txt));
                 ui_show_confirm(pending_amount.amount_minor,
-                                chain_is_tron() ? s_payout_tron : s_payout_eth);
+                                chain_is_tron() ? s_payout_tron : s_payout_eth,
+                                fee_txt);
                 break;
             }
 
@@ -2764,6 +3001,10 @@ extern "C" void app_main(void)
                 char err_msg[64] = { 0 };
                 inflight_t *fl = &s_inflight;
                 CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(fl), sizeof(*fl));
+                /* The decided amount, for the final gate — in the record before
+                 * the sign, because the record is persisted before the broadcast
+                 * (inflight_persist) and a resumed poll needs it too. */
+                fl->decided = pending_amount;
                 /* Read the chain once per payment: the operator can switch it
                  * between sales, but never mid-sale. */
                 const bool tron = chain_is_tron();
@@ -2781,9 +3022,7 @@ extern "C" void app_main(void)
                 /* scrub our copy of the PIN as soon as signing is done. */
                 CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(pin), sizeof(pin));
 
-                /* Snapshot the decided amount for the final gate, then clear
-                 * pending so the next sign needs a fresh New Payment flow. */
-                fl->decided = pending_amount;
+                /* Clear pending so the next sign needs a fresh New Payment flow. */
                 pos_amount_set(&pending_amount, 0U);
                 if (sent != BCAST_FAILED) {
                     /* Out of our hands now, whatever the cancel flag says: a
@@ -2793,8 +3032,12 @@ extern "C" void app_main(void)
                     fl->broadcast_known = (sent == BCAST_SENT);
                     settle_inflight();
                 } else if (!s_user_cancelled) {
+                    settings_inflight_clear();   /* refused: nothing went out */
                     ui_show_tx_status(UI_TX_STATE_FAILED, err_msg);
                 } else {
+                    /* Cancelled — before the broadcast, so nothing went out
+                     * either; drop any record so a reboot does not resume it. */
+                    settings_inflight_clear();
                     /* Cancel during PLACE_CARD — UI already on amount entry. */
                 }
                 break;
@@ -2815,7 +3058,14 @@ extern "C" void app_main(void)
                  * is read from "latest", so if the old one is still pending a
                  * new sale replaces it rather than landing beside it. */
                 s_inflight.active = false;
+                settings_inflight_clear();
                 ui_show_amount_entry();
+                break;
+
+            case UI_EVENT_PROV_STOP:
+                /* The UI's request, run here: prov_stop() blocks for up to ~2 s,
+                 * which froze the panel when the UI task ran it itself. */
+                if (prov_mode() != PROV_MODE_OFF) { prov_stop(); }
                 break;
 
             case UI_EVENT_OTA_STAGED:
@@ -2966,7 +3216,14 @@ extern "C" void app_main(void)
                             ESP_LOGW(TAG, "rolling back to saved network '%s'",
                                      b_ssid);
                             ui_show_wifi_connecting(b_ssid);
-                            (void)net_wifi_connect(b_ssid, b_pass);
+                            if (!net_wifi_connect(b_ssid, b_pass) &&
+                                (prov_mode() == PROV_MODE_OFF)) {
+                                /* The saved network is down too (the router is
+                                 * what failed, not the new password). A failed
+                                 * join is not kept, so without this nothing would
+                                 * ever try it again. */
+                                net_wifi_keep_trying();
+                            }
                         }
                         CW_Utils::secure_wipe(
                             reinterpret_cast<uint8_t *>(b_pass), sizeof(b_pass));

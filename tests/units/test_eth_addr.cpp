@@ -83,12 +83,14 @@ int main(void)
         assert(eth_addr_parse(s, a));
     }
 
-    /* All-zero address: no letters, so nothing to case — but it must still be
-     * "0x" + 40 characters and parse. */
+    /* All-zero address: no letters, so nothing to case — it must still format
+     * as "0x" + 40 characters, and parsing it back must REFUSE it: nobody holds
+     * the zero address, and a transfer to it burns the funds. */
     uint8_t zero[ETH_ADDR_LEN] = { 0 };
     assert(eth_addr_format(zero, s, sizeof(s)));
     assert(strlen(s) == 42U);
-    assert(eth_addr_parse(s, a));
+    assert(!eth_addr_parse(s, a));
+    assert(!eth_addr_parse("0000000000000000000000000000000000000000", a));
 
     /* Too small a buffer is refused, not truncated — a half-written payout
      * address must never reach a caller that would go on to store it. 42 is one

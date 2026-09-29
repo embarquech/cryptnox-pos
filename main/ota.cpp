@@ -236,7 +236,7 @@ bool ota_mark_valid(void)
     if (ota_last_update_failed()) {
         ESP_LOGE(TAG, "the last update did NOT stick: the new image booted and "
                       "never confirmed itself, so this terminal rolled back to %s. "
-                      "Install it again and leave it alone until 'Ready'.",
+                      "Install it again and leave it alone until the reader is up.",
                  ota_running_version());
     }
 

@@ -18,6 +18,7 @@
 #include <string.h>
 #include <stdlib.h>     /* malloc, free */
 #include <time.h>       /* time */
+#include <sys/time.h>   /* settimeofday — clearing a back-dated clock */
 #include <inttypes.h>   /* PRId64 */
 
 /* CW_Utils.h pulls in Arduino.h (via platform_compat.h); it must come before
@@ -32,6 +33,8 @@
 #include "esp_netif.h"
 #include "esp_netif_sntp.h"
 #include "esp_app_desc.h"   /* esp_app_get_description — build timestamp */
+#include "esp_timer.h"      /* the background re-join */
+#include "wdt.h"            /* wdt_feed() — callers on the task watchdog block here */
 #include "esp_log.h"
 
 static const char *const TAG = "net";
@@ -46,6 +49,13 @@ static const char *const TAG = "net";
  * the FAIL bit is never set, so only this timeout ends the call. */
 #define WIFI_TIMEOUT_MS     15000
 
+/* Background re-join once a kept association drops and the immediate retries
+ * are spent: 2, 4, 8, 16 s, then every 30 s for as long as it takes. A router
+ * that reboots mid-shift is back in a minute or two, and the terminal has to be
+ * back on it without anybody power-cycling it. */
+#define REJOIN_FIRST_S      2U
+#define REJOIN_MAX_S        30U
+
 /******************************************************************
  * 2. Module state
  ******************************************************************/
@@ -55,15 +65,67 @@ static int                s_retry_num        = 0;
 static bool               s_wifi_inited      = false;
 static bool               s_sntp_running     = false;
 
+/* Whether the station association is one to hold on to. Set by a successful
+ * join (and by net_wifi_keep_trying), cleared by net_wifi_disconnect — which is
+ * also what net_ap_start calls, so the re-join never runs while the portal is
+ * AP-only. Read from the event and timer tasks, hence volatile. */
+static volatile bool      s_keep             = false;
+static esp_timer_handle_t s_rejoin_timer     = NULL;
+static uint32_t           s_rejoin_s         = 0U;   /* next backoff; 0 = first */
+
+/* Whether the SoftAP is currently the radio's only interface. The scan and
+ * connect calls below need the station back for a moment, and this is how they
+ * know to put the radio back to AP-only afterwards — and how the re-join knows
+ * to stay out of the way. */
+static volatile bool      s_ap_up            = false;
+
 /******************************************************************
  * 3. WiFi event handler
  ******************************************************************/
+
+/** @brief Background re-join: one association attempt, from the timer task. */
+static void rejoin_cb(void *arg)
+{
+    (void)arg;
+    if (!s_keep || s_ap_up) { return; }
+    /* Straight to the ceiling: a failed attempt reschedules through the handler
+     * instead of spending the immediate retries a second time. */
+    s_retry_num = WIFI_MAX_RETRY;
+    ESP_LOGI(TAG, "WiFi re-join attempt");
+    (void)esp_wifi_connect();
+}
+
+/** @brief Schedule the next re-join, doubling the wait up to REJOIN_MAX_S. */
+static void rejoin_schedule(void)
+{
+    if (!s_keep || s_ap_up || (s_rejoin_timer == NULL)) { return; }
+    if (s_rejoin_s == 0U) {
+        s_rejoin_s = REJOIN_FIRST_S;
+    } else {
+        s_rejoin_s = ((s_rejoin_s * 2U) > REJOIN_MAX_S) ? REJOIN_MAX_S
+                                                         : (s_rejoin_s * 2U);
+    }
+    (void)esp_timer_stop(s_rejoin_timer);   /* ESP_ERR_INVALID_STATE if idle */
+    if (esp_timer_start_once(s_rejoin_timer,
+                             static_cast<uint64_t>(s_rejoin_s) * 1000000ULL) == ESP_OK) {
+        ESP_LOGW(TAG, "WiFi down - re-join in %u s", static_cast<unsigned>(s_rejoin_s));
+    }
+}
+
+/** @brief Stop the background re-join and reset its backoff. */
+static void rejoin_cancel(void)
+{
+    if (s_rejoin_timer != NULL) { (void)esp_timer_stop(s_rejoin_timer); }
+    s_rejoin_s = 0U;
+}
 
 /**
  * @brief WiFi/IP event handler driving the connect retry state machine.
  *
  * Retries the association up to @ref WIFI_MAX_RETRY times, then signals
- * @ref WIFI_FAIL_BIT; signals @ref WIFI_CONNECTED_BIT once an IP is bound.
+ * @ref WIFI_FAIL_BIT — and, for an association that is being kept, hands over
+ * to the background re-join, which keeps trying with backoff for as long as it
+ * takes. Signals @ref WIFI_CONNECTED_BIT once an IP is bound.
  *
  * @param[in] arg        Unused.
  * @param[in] event_base Event base (WIFI_EVENT or IP_EVENT).
@@ -82,15 +144,22 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
          * (e.g. before provisioning) doesn't churn through retries. */
     } else if ((event_base == WIFI_EVENT) &&
                (event_id == WIFI_EVENT_STA_DISCONNECTED)) {
+        if (s_wifi_event_group != NULL) {
+            xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+        }
         if (s_retry_num < WIFI_MAX_RETRY) {
             esp_wifi_connect();
             s_retry_num++;
             ESP_LOGW(TAG, "WiFi retry %d/%d", s_retry_num, WIFI_MAX_RETRY);
-        } else if (s_wifi_event_group != NULL) {
-            xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
+        } else {
+            if (s_wifi_event_group != NULL) {
+                xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
+            }
+            rejoin_schedule();   /* no-op unless the association is being kept */
         }
     } else if ((event_base == IP_EVENT) && (event_id == IP_EVENT_STA_GOT_IP)) {
         s_retry_num = 0;
+        rejoin_cancel();
         if (s_wifi_event_group != NULL) {
             xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
         }
@@ -126,6 +195,15 @@ void net_wifi_init(void)
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_start());
 
+    const esp_timer_create_args_t targs = {
+        .callback        = &rejoin_cb,
+        .arg             = NULL,
+        .dispatch_method = ESP_TIMER_TASK,
+        .name            = "wifi_rejoin",
+        .skip_unhandled_events = true,
+    };
+    ESP_ERROR_CHECK(esp_timer_create(&targs, &s_rejoin_timer));
+
     s_wifi_inited = true;
 }
 
@@ -133,11 +211,6 @@ void net_wifi_init(void)
  * recreating it across setup steps buys nothing and esp_netif teardown while
  * lwIP still holds sockets is a known way to crash. */
 static esp_netif_t *s_ap_netif = NULL;
-
-/* Whether the SoftAP is currently the radio's only interface. The scan and
- * connect calls below need the station back for a moment, and this is how they
- * know to put the radio back to AP-only afterwards. */
-static bool s_ap_up = false;
 
 bool net_ap_start(const char *ssid, const char *pass)
 {
@@ -200,6 +273,8 @@ void net_wifi_disconnect(void)
      * itself three times over. net_wifi_connect() zeroes the counter again, so
      * nothing after this inherits the ceiling. */
     s_retry_num = WIFI_MAX_RETRY;
+    s_keep      = false;   /* ...and the background re-join with it */
+    rejoin_cancel();
     (void)esp_wifi_disconnect();
     /* Take the interface down with the association while a portal is up: the
      * association is what put the config forms on the venue LAN, and leaving an
@@ -227,6 +302,7 @@ void net_ap_stop(void)
     if ((esp_wifi_get_config(WIFI_IF_STA, &cfg) == ESP_OK) &&
         (cfg.sta.ssid[0] != '\0')) {
         s_retry_num = 0;   /* net_wifi_disconnect() left it at the ceiling */
+        s_keep      = true;   /* the terminal's own network: hold on to it */
         const esp_err_t err = esp_wifi_connect();
         if (err == ESP_OK) {
             ESP_LOGI(TAG, "re-joining '%s'",
@@ -245,6 +321,7 @@ void net_ap_stop(void)
 
 uint16_t net_wifi_scan(net_wifi_ap_t *out, uint16_t max)
 {
+    wdt_feed();   /* a blocking all-channel scan */
     net_wifi_init();
     if ((out == NULL) || (max == 0U)) { return 0U; }
 
@@ -298,6 +375,7 @@ uint16_t net_wifi_scan(net_wifi_ap_t *out, uint16_t max)
 
 bool net_wifi_connect(const char *ssid, const char *password)
 {
+    wdt_feed();   /* up to WIFI_TIMEOUT_MS below */
     net_wifi_init();
 
     /* The station is off while the SoftAP is up (net_ap_start), and joining
@@ -308,6 +386,10 @@ bool net_wifi_connect(const char *ssid, const char *password)
      * see UI_EVENT_WIFI_TRY in main.cpp. */
     if (s_ap_up) { (void)esp_wifi_set_mode(WIFI_MODE_APSTA); }
 
+    /* Not kept while it is being tried: a join that fails must not turn into a
+     * background loop on a network nobody has proven. */
+    s_keep = false;
+    rejoin_cancel();
     xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
     s_retry_num = 0;
 
@@ -337,11 +419,30 @@ bool net_wifi_connect(const char *ssid, const char *password)
 
     bool connected = ((bits & WIFI_CONNECTED_BIT) != 0U);
     if (connected) {
+        s_keep = true;   /* drops from here on re-join in the background */
         ESP_LOGI(TAG, "WiFi connected");
     } else {
         ESP_LOGE(TAG, "WiFi connect failed");
     }
     return connected;
+}
+
+void net_wifi_keep_trying(void)
+{
+    if (!s_wifi_inited || s_ap_up) { return; }
+    s_keep = true;
+    rejoin_schedule();
+}
+
+bool net_wifi_online(void)
+{
+    return (s_wifi_event_group != NULL) &&
+           ((xEventGroupGetBits(s_wifi_event_group) & WIFI_CONNECTED_BIT) != 0U);
+}
+
+bool net_wifi_reconnecting(void)
+{
+    return s_keep && !net_wifi_online();
 }
 
 bool net_wifi_rssi(int8_t *rssi_out)
@@ -388,26 +489,63 @@ static int64_t build_time_floor(void)
     return stamp - BUILD_FLOOR_SLACK_S;
 }
 
+/**
+ * @brief Every SNTP update, foreground or background, lands here first.
+ *
+ * The same floor @ref net_time_sync applies after its wait, applied to the
+ * background resyncs too: once SNTP is left subscribed, lwIP sets the clock on
+ * its own, and a back-dated packet arriving then would otherwise be adopted
+ * with nobody checking. Refused by putting the clock back to "unset" — every
+ * TLS request then fails closed, and the sale path says it has no time.
+ */
+static void on_time_sync(struct timeval *tv)
+{
+    const int64_t floor_epoch = build_time_floor();
+    if ((tv != NULL) && (static_cast<int64_t>(tv->tv_sec) < floor_epoch)) {
+        ESP_LOGE(TAG, "SNTP time %" PRId64 " precedes firmware build floor - "
+                      "clock cleared (spoofed NTP?)",
+                 static_cast<int64_t>(tv->tv_sec));
+        const struct timeval zero = { 0, 0 };
+        (void)settimeofday(&zero, NULL);
+    }
+}
+
+/** @brief Subscribe the SNTP client, without waiting for it. */
+static bool sntp_start(void)
+{
+    /* Several reliable servers — phone hotspots often slow or drop NTP (UDP
+     * 123) to pool.ntp.org, so fall back to Google / Cloudflare time. */
+    esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(3,
+        ESP_SNTP_SERVER_LIST("time.google.com", "pool.ntp.org", "time.cloudflare.com"));
+    config.sync_cb = on_time_sync;
+    esp_err_t err = esp_netif_sntp_init(&config);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "SNTP init: %s", esp_err_to_name(err));
+        return false;
+    }
+    return true;
+}
+
+void net_time_background(void)
+{
+    if (s_sntp_running) { return; }   /* already subscribed: lwIP is retrying */
+    s_sntp_running = sntp_start();
+    if (s_sntp_running) { ESP_LOGI(TAG, "SNTP running in the background"); }
+}
+
 bool net_time_sync(uint32_t timeout_ms)
 {
     /* A successful sync leaves SNTP subscribed, so a second call would fail on
      * ESP_ERR_INVALID_STATE. Drop it first: every call then waits for a fresh
      * packet, which is what makes this usable as a per-network probe rather than
      * a one-shot at boot. */
+    wdt_feed();   /* up to timeout_ms below */
     if (s_sntp_running) {
         esp_netif_sntp_deinit();
         s_sntp_running = false;
     }
 
-    /* Several reliable servers — phone hotspots often slow or drop NTP (UDP
-     * 123) to pool.ntp.org, so fall back to Google / Cloudflare time. */
-    esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(3,
-        ESP_SNTP_SERVER_LIST("time.google.com", "pool.ntp.org", "time.cloudflare.com"));
-    esp_err_t err = esp_netif_sntp_init(&config);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "SNTP init: %s", esp_err_to_name(err));
-        return false;
-    }
+    if (!sntp_start()) { return false; }
 
     /* Poll across the budget so a slow first response doesn't fail us. */
     const int   attempts = 3;

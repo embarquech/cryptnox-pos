@@ -66,6 +66,8 @@ static const char *const TAG = "settings";
 /* BUILD_ID of the newest firmware that has run on this unit — see
  * settings_wipe_if_new_build. */
 #define K_BUILD_ID    "build_id"
+/* The sale between broadcast and verdict — see settings_inflight_save. */
+#define K_INFLIGHT    "inflight"
 /* Payout addresses, each stored twice — see settings_get_payout. */
 #define K_PAY_ETH     "pay_eth"
 #define K_PAY_ETH2    "pay_eth_e"
@@ -707,4 +709,43 @@ void settings_factory_reset(void)
         nvs_close(h);
         ESP_LOGW(TAG, "settings: portal namespace cleared");
     }
+}
+
+bool settings_inflight_save(const void *rec, size_t n)
+{
+    if ((rec == NULL) || (n == 0U)) { return false; }
+    nvs_handle_t h;
+    if (nvs_open(NS_SETTINGS, NVS_READWRITE, &h) != ESP_OK) {
+        ESP_LOGE(TAG, "inflight: nvs_open failed - sale not persisted");
+        return false;
+    }
+    const bool ok = (nvs_set_blob(h, K_INFLIGHT, rec, n) == ESP_OK) &&
+                    (nvs_commit(h) == ESP_OK);
+    nvs_close(h);
+    if (!ok) { ESP_LOGE(TAG, "inflight: write failed - sale not persisted"); }
+    return ok;
+}
+
+bool settings_inflight_load(void *rec, size_t n)
+{
+    if ((rec == NULL) || (n == 0U)) { return false; }
+    nvs_handle_t h;
+    if (nvs_open(NS_SETTINGS, NVS_READONLY, &h) != ESP_OK) { return false; }
+    size_t len = n;
+    const esp_err_t err = nvs_get_blob(h, K_INFLIGHT, rec, &len);
+    nvs_close(h);
+    /* A size that does not match is a record from a different layout — which a
+     * new build cannot inherit anyway (settings_wipe_if_new_build), so this is
+     * belt and braces rather than a migration path. */
+    return (err == ESP_OK) && (len == n);
+}
+
+void settings_inflight_clear(void)
+{
+    nvs_handle_t h;
+    if (nvs_open(NS_SETTINGS, NVS_READWRITE, &h) != ESP_OK) { return; }
+    /* ESP_ERR_NVS_NOT_FOUND for a sale that never got as far as a broadcast is
+     * the ordinary case, and writes nothing. */
+    if (nvs_erase_key(h, K_INFLIGHT) == ESP_OK) { (void)nvs_commit(h); }
+    nvs_close(h);
 }

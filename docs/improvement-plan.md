@@ -153,7 +153,7 @@ note.
 
 ## Phase 2 — Unattended reliability
 
-### ☐ 9. Wi-Fi reconnects forever — **High**
+### ◐ 9. Wi-Fi reconnects forever — **High**
 - **Where:** `main/net.cpp:43, 83-91`
 - **Problem:** after `WIFI_MAX_RETRY` (2) immediate retries only `FAIL_BIT` is
   set; nothing tries again. A router reboot mid-shift leaves the terminal offline
@@ -161,8 +161,13 @@ note.
 - **Fix:** outside `net_wifi_connect()`, keep reconnecting from the disconnect
   handler / an `esp_timer` with backoff capped at 30–60 s. Show the state in the
   status band.
+- **Implemented:** `net.cpp` keeps any association that joined (and the one
+  `net_ap_stop` restores); past the immediate retries an `esp_timer` re-joins at
+  2, 4, 8, 16 s, then every 30 s. The band's dot is amber while it runs. A sale is
+  refused up front while offline or without a clock. *Bench:* reboot the router
+  mid-shift; the terminal must be back without a power cycle.
 
-### ☐ 10. Boot faults retry or reboot instead of stopping — **High**
+### ◐ 10. Boot faults retry or reboot instead of stopping — **High**
 - **Where:** `main/main.cpp:2073, 2079, 2139, 2149, 2181, 2251, 2395`, loop `2335-2372`
 - **Problem:** every boot fault `return`s from `app_main`; the failure screen's
   button posts to a queue nobody reads. After a power cut the router usually
@@ -171,21 +176,35 @@ note.
 - **Fix:** on a configured unit keep retrying the saved network, SNTP and RPC in
   the background with backoff; for NFC / RPC hardware faults `esp_restart()`
   after a delay.
+- **Implemented:** NFC, wallet and config.h faults show their screen and restart
+  after 30 s (`boot_fault`). A unit with a payout address and a saved network
+  comes up offline when the router is not there yet — background re-join +
+  `net_time_background()` — instead of entering setup; a saved network without
+  time is kept the same way. The RPC probe is a log warning. *Bench:* power the
+  terminal up with the router off, then turn the router on.
 
-### ☐ 11. Persist the in-flight payment — **Medium**
+### ◐ 11. Persist the in-flight payment — **Medium**
 - **Where:** `main/main.cpp:2552-2615`
 - **Problem:** the tx hash lives only in RAM; a brownout or panic during the
   poll loses whether the customer paid.
 - **Fix:** write `{hash, amount, chain, time}` to NVS just before broadcast,
   clear it on the final verdict, resume polling at boot and show the result.
   One write per sale — negligible wear.
+- **Implemented:** the whole `inflight_t` is written (`settings_inflight_save`)
+  just before the broadcast on both chains, cleared on Approved / Reverted /
+  expired / refused broadcast / operator Clear, and resumed by `settle_inflight`
+  at boot. *Bench:* pull the power during "Waiting for the block".
 
-### ☐ 12. Task watchdog resets the device — **Medium**
+### ◐ 12. Task watchdog resets the device — **Medium**
 - **Where:** `sdkconfig` `CONFIG_ESP_TASK_WDT_PANIC` (unset)
 - **Problem:** the TWDT only logs, and no app task is subscribed. A hung PN532
   I²C transaction, httpd or UI loop freezes the terminal.
 - **Fix:** set `CONFIG_ESP_TASK_WDT_PANIC=y` in `sdkconfig.defaults`, subscribe
   the main and UI loops, feed around known long waits (card wait, receipt poll).
+- **Implemented:** `CONFIG_ESP_TASK_WDT_PANIC=y`, 60 s timeout; main loop (from
+  Ready) and UI loop subscribed; `wdt_feed()` (`main/wdt.h`) in the card wait,
+  the receipt poll, every HTTPS request, Wi-Fi connect/scan and SNTP. *Bench:* a
+  full sale and a settings Wi-Fi change must not reset.
 
 ### ☑ 13. Tx hash truncated on "Approved" — **Medium, one-line fix**
 - **Where:** `main/ui.cpp:601` (`s_tx_info[64]`), `hash_short` at `ui.cpp:4301`
@@ -193,7 +212,7 @@ note.
   the 4-char suffix shown for explorer comparison is wrong on every sale.
 - **Fix:** `static char s_tx_info[72]`.
 
-### ☐ 14. OTA confirmation should not depend on finishing setup — **Medium** *(plausible)*
+### ◐ 14. OTA confirmation should not depend on finishing setup — **Medium** *(plausible)*
 - **Where:** `main/main.cpp:2412`, `main/settings.cpp:628-637`
 - **Problem:** a new build wipes NVS, so first boot runs the wizard and
   `ota_mark_valid()` only happens after full setup + an RPC round-trip. A power
@@ -201,8 +220,11 @@ note.
   again).
 - **Fix:** mark valid once panel, NFC and card stack are up; keep the RPC check
   as a warning.
+- **Implemented:** `ota_mark_valid()` right after `wallet.begin()`; the update
+  greeting moves onto the first-run welcome when setup runs. *Bench:* rerun
+  ota-testing §4 with the `abort()` placed before `wallet.begin()`.
 
-### ☐ 15. TLS: pinning and heap headroom — **Medium**
+### ◐ 15. TLS: pinning and heap headroom — **Medium**
 - **Where:** `sdkconfig.defaults:20-22`, `main/config.h` (`*_CA_CERT_PEM`
   undefined), `main/https_post.cpp:145, 195-218`, `sdkconfig:1801-1803`
 - **Problem:**
@@ -214,8 +236,12 @@ note.
 - **Fix:** pin every endpoint in release builds (or correct the comment/docs);
   enable `CONFIG_MBEDTLS_DYNAMIC_BUFFER` or reuse one keep-alive client; log
   `largest_free_block` periodically; return failure on a full buffer.
+- **Implemented:** comment corrected, and boot logs each unpinned endpoint (pins
+  are per deployment, so not forced); dynamic buffers on; heap line every 10 min
+  from the main loop; a filled-and-unfinished response now fails. *Bench:* a day
+  of uptime with the heap line flat.
 
-### ☐ 16. Smaller hardening items — **Low / Medium**
+### ◐ 16. Smaller hardening items — **Low / Medium**
 - **Admin code brute force** (`main/ui.cpp:3927-3934`): back-off caps at 60 s
   with a 4-digit minimum → ~720 guesses a night. Require 6 digits and keep
   escalating.
@@ -239,6 +265,16 @@ note.
 - `eth_addr.cpp`: reject the zero address.
 - Recovery-bit check (`main/main.cpp:1269-1275`) can be done locally instead of
   via RPC `ecrecover`.
+- **Implemented, all ten:** new admin codes need 6 digits (stored 4-digit codes
+  still unlock) and the penalty doubles to an hour; "Fee up to …" opposite "To"
+  on the confirm card; per-board keys by MAC (`tools/fe_keys.py`) — host-generated
+  rather than on-chip, which would end pre-encrypted serial flashing; fees
+  snapshotted once per sale (`s_sale_fee`); a recursive UI mutex and a provision
+  spinlock over the shared buffers; "Card moved" when the card no longer answers
+  after a failed verifyPin; `prov_stop` via `UI_EVENT_PROV_STOP` on main; stack
+  high-water logged after a Tron broadcast; zero address refused; v from
+  `eth_sig_parity` (host-tested on the EIP-155 vector, `test_eth_sig`). *Bench:*
+  one EVM and one Tron sale.
 
 ---
 

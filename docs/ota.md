@@ -69,9 +69,11 @@ device. The signature is.
    browser may propose, only the panel may accept. A version that goes
    *backwards* is called out in red.
 4. First boot after an update is on probation. `ota_mark_valid()` runs only once
-   the panel, the card reader, the wallet layer and one authenticated RPC
-   round-trip have all come up; a reset before that point returns the bootloader
-   to the previous slot.
+   the panel, the card reader and the wallet layer have all come up; a reset
+   before that point returns the bootloader to the previous slot. The network is
+   deliberately not part of it: the first boot after an update runs setup (the
+   update wipes the settings), and a power cut or an RPC outage during setup must
+   not roll back an image that works.
 
 ## Publishing a release
 

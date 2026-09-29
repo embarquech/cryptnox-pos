@@ -83,6 +83,11 @@ typedef enum {
                                      accepting on the panel before it boots. */
     UI_EVENT_TX_RECHECK,        /**< Recheck tapped on Unconfirmed: poll the
                                      same sale's receipt again.           */
+    UI_EVENT_PROV_STOP,         /**< The UI wants the config portal down
+                                     (closed card, refused/failed update,
+                                     admin window over). Main calls
+                                     prov_stop(): it blocks for up to ~2 s,
+                                     which froze the panel on the UI task. */
 } ui_event_t;
 
 /** @brief States shown on the transaction-status screen. */
@@ -108,6 +113,7 @@ typedef enum {
 typedef enum {
     UI_BOOT_ERR_NFC,      /**< PN532 did not answer — wiring/power/I2C.       */
     UI_BOOT_ERR_WALLET,   /**< Reader answered, wallet layer failed to start. */
+    UI_BOOT_ERR_CONFIG,   /**< A config.h address in this build is invalid.  */
 } ui_boot_err_t;
 
 /**
@@ -144,8 +150,11 @@ void ui_show_amount_entry(void);
  * @param[in] amount_units Amount in USDC base units (6 decimals).
  * @param[in] dest_addr    "0x..."-prefixed destination address; copied
  *                         internally, may be NULL for none.
+ * @param[in] fee          The network-fee ceiling as a line ("Fee up to 0.0013
+ *                         ETH"), copied; NULL or "" for none.
  */
-void ui_show_confirm(uint64_t amount_units, const char *dest_addr);
+void ui_show_confirm(uint64_t amount_units, const char *dest_addr,
+                     const char *fee);
 
 /**
  * @brief Switch to the transaction-status screen.

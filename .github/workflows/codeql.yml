@@ -47,11 +47,12 @@ jobs:
           # alongside a linter.
           queries: security-extended
 
-      # eth_json.cpp includes "cJSON.h", which ships inside ESP-IDF. The headers
-      # alone are enough to compile, and misra_check.yml already resolves them
-      # this way for clang-tidy.
-      - name: Install cJSON headers
-        run: sudo apt-get update && sudo apt-get install -y libcjson-dev
+      # eth_json.cpp includes "cJSON.h" and eth_sig.cpp "mbedtls/ecp.h", both of
+      # which ship inside ESP-IDF. The headers alone are enough to compile, and
+      # misra_check.yml already resolves cJSON this way for clang-tidy; the
+      # mbedTLS ones land on the default include path.
+      - name: Install cJSON and mbedTLS headers
+        run: sudo apt-get update && sudo apt-get install -y libcjson-dev libmbedtls-dev
 
       # main/config.h holds the per-deployment addresses and endpoints, so it is
       # gitignored and no runner has one. The template is the same header with
@@ -63,7 +64,7 @@ jobs:
 
       # Every test and fuzz harness is single-TU and #includes the production
       # source it covers, so compiling them reaches eth_addr, eth_rlp, eth_json,
-      # keccak256, tron_tx, hardening and the header-only parsers (form_parse,
+      # keccak256, eth_sig, tron_tx, hardening and the header-only parsers (form_parse,
       # json_out, addr_check, card_status, rpc_error, ota_version, chain).
       # Objects only: nothing here needs to link or run.
       - name: Build the host-compilable sources

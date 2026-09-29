@@ -28,6 +28,7 @@
 #include "esp_log.h"
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
+#include "wdt.h"            /* wdt_feed() — each request can block for a while */
 
 static const char *const TAG = "https";
 
@@ -146,6 +147,9 @@ bool https_post_json(const char *url, const char *body,
         (resp_buf_size < 2U)) {
         return false;
     }
+    /* Each socket step below may take up to timeout_ms, and the caller is on the
+     * task watchdog: feed once per request so a slow one is not a reset. */
+    wdt_feed();
 
     bool use_auth = ((user != NULL) && (user[0] != '\0') &&
                      (pass != NULL) && (pass[0] != '\0'));
@@ -206,16 +210,28 @@ bool https_post_json(const char *url, const char *body,
             goto cleanup;   /* success stays false */
         }
 
-        int total = 0;
-        int read;
+        wdt_feed();   /* the handshake and headers are done; the body follows */
+        int  total = 0;
+        int  read;
+        bool full  = false;
         do {
             int space = static_cast<int>(resp_buf_size - 1U) - total;
-            if (space <= 0) { break; }
+            if (space <= 0) { full = true; break; }
             read = esp_http_client_read(client, resp_buf + total, space);
             if (read > 0) { total += read; }
         } while (read > 0);
 
         resp_buf[total] = '\0';
+
+        /* A body that filled the buffer and was not finished is a truncated
+         * response, and used to be reported as success — JSON cut mid-string that
+         * the parsers then had to be lucky about. Failure instead: the callers
+         * already treat "no usable answer" as retry or Unconfirmed. */
+        if (full && !esp_http_client_is_complete_data_received(client)) {
+            ESP_LOGE(TAG, "response larger than %u bytes - dropped",
+                     static_cast<unsigned>(resp_buf_size - 1U));
+            goto cleanup;   /* success stays false */
+        }
 
         /* a 4xx/5xx body that happens to contain "result" must not
          * be mistaken for a successful response. */

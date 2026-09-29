@@ -15,7 +15,9 @@ build/flasher_args.json, so nothing is hard-coded.
 
 Prerequisites:
   - The flash-encryption key burned into the board's eFuse, and the SAME key
-    file kept here (default: secure_keys/flash_encryption_key.*).
+    file kept here. Found by the board's MAC
+    (secure_keys/flash_encryption_key_<mac>.bin, written by secure_provision.py),
+    else the older shared secure_keys/flash_encryption_key.*; --key overrides.
   - A build produced with the overlay:
       idf.py -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.flash_encryption" build
 
@@ -31,6 +33,8 @@ import json
 import os
 import subprocess
 import sys
+
+from fe_keys import board_key_path, board_mac
 
 # ESP32 classic default flash-encryption config (the IDF bootloader burns
 # FLASH_CRYPT_CONFIG to 0xF on first encrypted boot — host must match it).
@@ -51,7 +55,8 @@ def main():
     ap = argparse.ArgumentParser(
         description="Pre-encrypt + flash/package a secure build (classic ESP32).")
     ap.add_argument("--port", help="Serial port (required unless --package)")
-    ap.add_argument("--key", default=find_key(), help="Flash-encryption key file")
+    ap.add_argument("--key", default=None,
+                    help="Flash-encryption key file (default: this board's, by MAC)")
     ap.add_argument("--build-dir", default="build", help="IDF build directory")
     ap.add_argument("--app-only", action="store_true",
                     help="Encrypt/flash only the app image (the common case)")
@@ -64,6 +69,13 @@ def main():
 
     if not args.package and not args.port:
         ap.error("--port is required unless --package")
+    if args.key is None:
+        # The board's own key when it has one — the per-board scheme — else the
+        # shared file older boards were provisioned with. A package is not for
+        # one board, so it needs the shared key or an explicit --key.
+        per_board = board_key_path(board_mac(args.port)) if args.port else None
+        args.key = per_board if (per_board and os.path.isfile(per_board)) else find_key()
+    print("key: %s" % args.key)
     if not os.path.isfile(args.key):
         sys.exit("Key not found: %s (burn it once, keep the same file here)" % args.key)
     fa_path = os.path.join(args.build_dir, "flasher_args.json")

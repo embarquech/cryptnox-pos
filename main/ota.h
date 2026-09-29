@@ -56,8 +56,10 @@ extern "C" {
  * @brief Confirm the running image, cancelling the rollback armed by the
  *        bootloader.
  *
- * Call once, and only once bring-up has actually succeeded — panel, card reader
- * and uplink all up. Until it is called, a freshly installed image is on
+ * Call once, and only once the image has proven it can drive its own hardware —
+ * panel, card reader and wallet layer all up. Not the uplink: a router or RPC
+ * provider that is down during the first boot is the venue's problem, and
+ * waiting on it rolled good images back. Until it is called, a freshly installed image is on
  * probation: any reset that happens first (panic, watchdog, brown-out) sends the
  * next boot back to the slot that was working. Calling it early is the same as
  * not having rollback at all.

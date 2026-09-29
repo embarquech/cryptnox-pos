@@ -147,9 +147,15 @@ static volatile bool  s_authed       = false;
 static volatile bool  s_wifi_only    = false;
 
 /* A line for the page from the one party that knows why something did not work.
- * Written by the main task, read by the HTTP task; a torn read would show a garbled
- * sentence for 1.5 seconds until the next poll, which is not worth a mutex. */
+ * Written by the main task, read by the HTTP task. */
 static char           s_note[128] = "";
+
+/* Guards s_note and the scan list below: both are written by the main task and
+ * read by the HTTP task, and a torn scan record is an SSID glued to the wrong
+ * signal. A spinlock, not a mutex — the critical sections are plain copies of
+ * a few hundred bytes, and every formatting step happens on a local copy after
+ * the lock is let go. */
+static portMUX_TYPE   s_share_mux = portMUX_INITIALIZER_UNLOCKED;
 
 /* The Wi-Fi list handed over by the main task, and a generation counter so the
  * page knows to refetch it after a rescan without diffing the list itself. */
@@ -572,6 +578,14 @@ static esp_err_t state_get(httpd_req_t *req)
         char ssid_json[132] = "";
         (void)json_escape(ssid_json, sizeof(ssid_json), ssid);
 
+        char note[sizeof(s_note)];
+        taskENTER_CRITICAL(&s_share_mux);
+        (void)CW_Utils::safe_memcpy(reinterpret_cast<uint8_t *>(note), sizeof(note),
+                                    reinterpret_cast<const uint8_t *>(s_note),
+                                    sizeof(note));
+        taskEXIT_CRITICAL(&s_share_mux);
+        note[sizeof(note) - 1U] = '\0';
+
         (void)snprintf(body, sizeof(body),
                        "{\"mode\":\"%s\",\"step\":\"%s\",\"authed\":true,"
                        "\"auth_pending\":false,\"version\":\"%s\","
@@ -586,7 +600,7 @@ static esp_err_t state_get(httpd_req_t *req)
                        pay_eth, pay_trx, ct_eth, ct_trx,
                        ct_eth_own ? "true" : "false",
                        ct_trx_own ? "true" : "false",
-                       ssid_json, ask_label(ask), s_note,
+                       ssid_json, ask_label(ask), note,
                        settings_get_mainnet() ? "true" : "false",
                        static_cast<unsigned>(settings_get_max_fee_gwei()),
                        static_cast<unsigned>(settings_get_priority_fee_gwei()),
@@ -611,15 +625,22 @@ static esp_err_t scan_get(httpd_req_t *req)
     httpd_resp_set_type(req, "application/json");
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");
     (void)httpd_resp_sendstr_chunk(req, "{\"aps\":[");
-    for (uint16_t i = 0U; i < s_ap_count; i++) {
+    for (uint16_t i = 0U; ; i++) {
+        net_wifi_ap_t ap;
+        bool          have = false;
+        taskENTER_CRITICAL(&s_share_mux);
+        if (i < s_ap_count) { ap = s_aps[i]; have = true; }
+        taskEXIT_CRITICAL(&s_share_mux);
+        if (!have) { break; }
+        ap.ssid[sizeof(ap.ssid) - 1U] = '\0';
         char name[132] = "";
-        (void)json_escape(name, sizeof(name), s_aps[i].ssid);
+        (void)json_escape(name, sizeof(name), ap.ssid);
         char one[200];
         (void)snprintf(one, sizeof(one),
                        "%s{\"ssid\":\"%s\",\"rssi\":%d,\"open\":%s}",
                        (i == 0U) ? "" : ",", name,
-                       static_cast<int>(s_aps[i].rssi),
-                       s_aps[i].open ? "true" : "false");
+                       static_cast<int>(ap.rssi),
+                       ap.open ? "true" : "false");
         (void)httpd_resp_sendstr_chunk(req, one);
     }
     (void)httpd_resp_sendstr_chunk(req, "]}");
@@ -1469,23 +1490,30 @@ void prov_set_note(const char *note)
      * string literal, and a future caller pasting an SSID or an error string in
      * here should get a dropped character rather than a response the page cannot
      * parse. */
+    char   clean[sizeof(s_note)];
     size_t w = 0U;
     if (note != NULL) {
-        for (const char *p = note; (*p != '\0') && (w < (sizeof(s_note) - 1U)); p++) {
+        for (const char *p = note; (*p != '\0') && (w < (sizeof(clean) - 1U)); p++) {
             const unsigned char c = static_cast<unsigned char>(*p);
             if ((c == '"') || (c == '\\') || (c < 0x20U)) { continue; }
-            s_note[w++] = static_cast<char>(c);
+            clean[w++] = static_cast<char>(c);
         }
     }
-    s_note[w] = '\0';
+    clean[w] = '\0';
+    taskENTER_CRITICAL(&s_share_mux);
+    (void)CW_Utils::safe_memcpy(reinterpret_cast<uint8_t *>(s_note), sizeof(s_note),
+                                reinterpret_cast<const uint8_t *>(clean), w + 1U);
+    taskEXIT_CRITICAL(&s_share_mux);
 }
 
 void prov_set_scan(const net_wifi_ap_t *aps, uint16_t n)
 {
     if (aps == NULL) { n = 0U; }
     if (n > PROV_MAX_APS) { n = PROV_MAX_APS; }
+    taskENTER_CRITICAL(&s_share_mux);
     for (uint16_t i = 0U; i < n; i++) { s_aps[i] = aps[i]; }
     s_ap_count = n;
+    taskEXIT_CRITICAL(&s_share_mux);
     s_scan_gen++;   /* the page refetches when this moves */
 }
 

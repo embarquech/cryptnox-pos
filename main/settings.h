@@ -376,6 +376,26 @@ bool settings_set_contract(bool tron, const char *addr);
 void settings_factory_reset(void);
 
 /**
+ * @brief Persist the sale between broadcast and verdict (opaque record).
+ *
+ * Written once per sale, just before the transaction leaves the terminal, and
+ * cleared on the final verdict — so a brownout or a panic while the receipt is
+ * being polled does not lose whether the customer paid: the next boot resumes
+ * polling the same hash. The record's layout is main.cpp's; this module only
+ * stores it. Survives a power cut, not a firmware update (see
+ * @ref settings_wipe_if_new_build) or a factory reset.
+ *
+ * @return true once committed.
+ */
+bool settings_inflight_save(const void *rec, size_t n);
+
+/** @brief Read the persisted sale back. false if none, or not @p n bytes. */
+bool settings_inflight_load(void *rec, size_t n);
+
+/** @brief Drop the persisted sale. Writes nothing when there is none. */
+void settings_inflight_clear(void);
+
+/**
  * @brief Release identity of this image. **Bump at every release.**
  *
  * A plain counter rather than a hash or a version string: it is the one thing

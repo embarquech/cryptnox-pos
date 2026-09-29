@@ -71,6 +71,15 @@ bool eth_addr_parse(const char *hex, uint8_t out[ETH_ADDR_LEN])
         }
     }
 
+    /* The zero address is nobody's: a transfer to it burns the funds, and an
+     * all-zero string is what a blank or wiped setting decodes to. It is never
+     * a payee or a contract this terminal should act on. */
+    uint8_t any = 0U;
+    for (i = 0U; i < ETH_ADDR_LEN; i++) { any |= out[i]; }
+    if (any == 0U) {
+        return false;
+    }
+
     /* EIP-55: a mixed-case address carries a checksum, so verify it; an
      * all-lower or all-upper address is treated as un-checksummed and accepted
      * (standard lenient behaviour). A checksummed ADDR_TO thus rejects any

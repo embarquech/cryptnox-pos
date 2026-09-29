@@ -45,8 +45,8 @@ extern "C" {
  * @param[in]  hex Address string (with or without @c 0x prefix).
  * @param[out] out 20-byte decoded address; zeroed then left partially written
  *                 on failure — must not be used unless true is returned.
- * @return true on success, false on wrong length, non-hex character, or a
- *         failed EIP-55 checksum.
+ * @return true on success, false on wrong length, non-hex character, the
+ *         zero address, or a failed EIP-55 checksum.
  */
 bool eth_addr_parse(const char *hex, uint8_t out[ETH_ADDR_LEN]);
 

@@ -16,10 +16,30 @@ CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
 # NOTE: sdkconfig is gitignored and an existing value there WINS over this
 # default — delete your sdkconfig (or flip the line by hand) after pulling.
 #
-# Safe with the current pinning: RPC_CA_CERT_PEM pins the GTS WE1
-# intermediate (notAfter = Feb 20 14:00:00 2029 GMT), so server-side leaf
-# renewals keep working. Re-pin before Feb 2029 regardless.
+# Pinning is per deployment and OFF by default: RPC_CA_CERT_PEM,
+# POLY_CA_CERT_PEM and TRON_CA_CERT_PEM are optional config.h macros (see
+# config.template.h), and with none defined every endpoint trusts the full
+# ~150-CA bundle above. The boot log says which endpoints are unpinned. Pin an
+# intermediate rather than a leaf so the provider's leaf renewals keep working,
+# and note its notAfter — a pinned intermediate that expires stops every sale.
 CONFIG_MBEDTLS_HAVE_TIME_DATE=y
+
+# Allocate the TLS record buffers per handshake and size them to what the
+# peer actually sends, instead of holding a fixed 16 KB input buffer for the
+# life of every connection. No PSRAM here, a 48 KB LVGL pool beside it, and a
+# fresh handshake per RPC call: over a long uptime the fixed buffer is the
+# plausible way the heap fragments until a handshake cannot allocate. The main
+# loop logs largest-free-block every ten minutes to show whether it does.
+CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
+
+# Task watchdog RESETS the terminal instead of only logging. The main loop and
+# the UI loop subscribe (main.cpp, ui.cpp) and feed around their long waits
+# (card wait, receipt poll, each HTTPS request): a hung PN532 I2C transaction or
+# a wedged read used to freeze the panel until somebody pulled the plug. 60 s
+# because one HTTPS request may take up to ~45 s (connect, write and read at
+# 15 s each) between two feeds.
+CONFIG_ESP_TASK_WDT_PANIC=y
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=60
 
 # HTTPS support in the HTTP client
 CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS=y

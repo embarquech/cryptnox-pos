@@ -223,8 +223,9 @@ by pulling the plug (`ui.cpp:456–467`, `s_admin_lock_*`), and input is blocked
 for the penalty window (`ui.cpp:3253`). Shoulder-surfing at a counter remains
 the more realistic attack, and no PIN policy fixes that.
 
-**Fix:** consider raising the minimum to 6 for new setups. Existing units should
-not be forced mid-life.
+**Fix (done):** new codes need 6 digits and the penalty keeps doubling up to an
+hour per attempt; a code stored under the old 4-digit minimum still unlocks, so
+existing units are not forced mid-life.
 
 ---
 

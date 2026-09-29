@@ -32,14 +32,6 @@ extern "C" {
  * 2. Types
  ******************************************************************/
 
-/** @brief Result of the ecrecover parity probe (failures are explicit). */
-typedef enum {
-    ETH_RPC_PARITY_OK = 0,      /**< *v_out is valid (0 or 1)                    */
-    ETH_RPC_PARITY_MISMATCH,    /**< RPC answered but neither parity recovered
-                                     from_addr — wrong ADDR_FROM or wrong card   */
-    ETH_RPC_PARITY_RPC_ERROR,   /**< no usable RPC response for either parity    */
-} eth_rpc_parity_result_t;
-
 /** @brief Outcome of one eth_getTransactionReceipt poll. */
 typedef enum {
     ETH_RPC_RECEIPT_PENDING,   /**< result is null — not mined yet            */
@@ -171,27 +163,6 @@ bool eth_rpc_get_token_balance(const char *token_addr, uint64_t *units_out);
  * @return false on transport error, no contract code, or a malformed answer.
  */
 bool eth_rpc_get_token_decimals(const char *token_addr, uint64_t *dec_out);
-
-/**
- * @brief Determine the signature parity bit (v = 0 or 1).
- *
- * Calls the ecrecover precompile (address 0x01) via eth_call for both
- * parities and matches the recovered address against from_addr.
- *
- * @param[in]  hash  32-byte message hash that was signed.
- * @param[in]  r     32-byte big-endian ECDSA r component.
- * @param[in]  s     32-byte big-endian ECDSA s component.
- * @param[out] v_out Parity (0 or 1) on @ref ETH_RPC_PARITY_OK; untouched on
- *                   failure.
- * @retval ETH_RPC_PARITY_OK        *v_out is valid.
- * @retval ETH_RPC_PARITY_MISMATCH  The RPC answered but neither parity
- *                                  recovers from_addr.
- * @retval ETH_RPC_PARITY_RPC_ERROR No usable RPC response for either parity.
- */
-eth_rpc_parity_result_t eth_rpc_ecrecover_parity(const uint8_t hash[32],
-                                                 const uint8_t r[32],
-                                                 const uint8_t s[32],
-                                                 uint8_t *v_out);
 
 /**
  * @brief Broadcast a raw signed transaction (type-prefixed RLP bytes).

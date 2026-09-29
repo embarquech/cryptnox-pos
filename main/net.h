@@ -117,6 +117,24 @@ bool net_ap_start(const char *ssid, const char *pass);
 void net_ap_stop(void);
 
 /**
+ * @brief Hold on to the network last configured, even though it is down now.
+ *
+ * A join that succeeds already does this: from then on a drop past the immediate
+ * retries hands over to a background re-join (2 s doubling to every 30 s, for as
+ * long as it takes). This is for the unit that boots while its router is still
+ * coming up — the saved network was tried and failed, and should be tried again
+ * in the background rather than never. No-op while the SoftAP is up, and undone
+ * by @ref net_wifi_disconnect and @ref net_wifi_connect.
+ */
+void net_wifi_keep_trying(void);
+
+/** @brief true while the station holds an IP address. */
+bool net_wifi_online(void);
+
+/** @brief true while a kept network is down and the re-join is running. */
+bool net_wifi_reconnecting(void);
+
+/**
  * @brief Read the RSSI of the currently associated access point.
  *
  * @param[out] rssi_out Signal strength in dBm (closer to 0 = stronger);
@@ -148,6 +166,16 @@ bool net_wifi_rssi(int8_t *rssi_out);
  *         init error, timeout, or a back-dated clock.
  */
 bool net_time_sync(uint32_t timeout_ms);
+
+/**
+ * @brief Subscribe SNTP without waiting, so the clock is set whenever the
+ *        network comes back.
+ *
+ * For a boot that could not sync in the foreground. lwIP retries on its own;
+ * the build-time floor @ref net_time_sync enforces is applied to every update,
+ * so a back-dated packet clears the clock rather than setting it. Idempotent.
+ */
+void net_time_background(void);
 
 #ifdef __cplusplus
 }

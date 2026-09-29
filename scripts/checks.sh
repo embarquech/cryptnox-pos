@@ -49,6 +49,28 @@ else
   printf '  skip  test_eth_receipt (no cJSON: set IDF_PATH)\n'
 fi
 
+# The recovery bit is secp256k1 arithmetic on mbedTLS — ESP-IDF's own copy, built
+# for the host with its default config (which has the curve and the ECP module).
+MBT="${IDF_PATH:-/c/esp/v5.5.4/esp-idf}/components/mbedtls/mbedtls"
+if [ -f "$MBT/library/ecp.c" ]; then
+  mbt_ok=1
+  for f in bignum bignum_core bignum_mod bignum_mod_raw constant_time ecp \
+           ecp_curves ecp_curves_new platform_util platform; do
+    gcc -O1 -c -I"$MBT/include" -I"$MBT/library" "$MBT/library/$f.c" \
+        -o "$out/mbt_$f.o" 2>>"$out/mbedtls.log" || mbt_ok=0
+  done
+  if [ "$mbt_ok" = 1 ] &&
+     g++ -std=c++14 -Wall -Imain -Icryptnox-sdk-esp32/cryptnox-sdk-cpp -I"$MBT/include" \
+         tests/units/test_eth_sig.cpp "$out"/mbt_*.o -o "$out/test_eth_sig" \
+         2>"$out/test_eth_sig.log" && "$out/test_eth_sig" >/dev/null; then
+    ok "test_eth_sig"
+  else
+    bad "test_eth_sig"; sed 's/^/        /' "$out/test_eth_sig.log" "$out/mbedtls.log" 2>/dev/null
+  fi
+else
+  printf '  skip  test_eth_sig (no mbedTLS: set IDF_PATH)\n'
+fi
+
 step "config portal page"
 # The extractor doubles as the id-wiring check, and emits the script for the
 # render test so there is one extractor rather than two that could disagree.
