@@ -88,6 +88,7 @@ extern "C" {
 #include "ui.h"
 }
 
+#include "money.h"   /* calldata, fees, units -> wei: host-tested (test_money) */
 #include "config.h"
 
 /* Tron TRC-20 support post-dates the first config.h files in the field. An
@@ -197,12 +198,7 @@ static const char *const TAG = "cryptnox_pos";
 #define LED_G               GPIO_NUM_16
 #define LED_B               GPIO_NUM_17
 
-/* ── USDC ERC-20 transfer(address,uint256) selector + calldata ── */
-static const uint8_t TRANSFER_SELECTOR[4] = { 0xa9U, 0x05U, 0x9cU, 0xbbU };
-#define ABI_SELECTOR_LEN    4U     /* transfer(address,uint256) selector      */
-#define ABI_WORD_LEN        32U    /* one ABI-encoded argument word           */
-#define USDC_CALLDATA_LEN   (ABI_SELECTOR_LEN + (2U * ABI_WORD_LEN))  /* 68 */
-#define ABI_TO_OFFSET       (ABI_SELECTOR_LEN + (ABI_WORD_LEN - ETH_ADDR_LEN))
+/* The USDC transfer(address,uint256) calldata layout is in money.h. */
 
 /* ── Unsigned and signed tx buffers (EIP-1559 type 2) ─────────── */
 #define TX_BUF_SIZE 300U
@@ -589,39 +585,10 @@ static void ui_event_dispatch(ui_event_t event, uint64_t payload) {
 
 /******************************************************************
  * 4. Helpers
+ *
+ * build_usdc_calldata() lives in money.h, with the rest of the arithmetic a
+ * host test can check against an independent signer.
  ******************************************************************/
-
-/**
- * @brief Build the 68-byte ABI-encoded calldata for a USDC @c transfer call.
- *
- * Encodes the ERC-20 @c transfer(address,uint256) selector followed by the
- * ABI-encoded arguments:
- * @code
- * selector(4) | zeroes(12) | to(20) | zeroes(24) | amount_be(8)
- * @endcode
- *
- * @param[out] out    Output buffer of #USDC_CALLDATA_LEN bytes.
- * @param[in]  to     Recipient address, #ETH_ADDR_LEN bytes (already
- *                    parsed/validated).
- * @param[in]  amount Transfer amount in USDC base units (6 decimals).
- */
-static void build_usdc_calldata(uint8_t out[USDC_CALLDATA_LEN],
-                                const uint8_t to[ETH_ADDR_LEN],
-                                uint64_t amount)
-{
-    CW_Utils::secure_wipe(out, USDC_CALLDATA_LEN);
-    (void)CW_Utils::safe_memcpy(out, USDC_CALLDATA_LEN,
-                                TRANSFER_SELECTOR, ABI_SELECTOR_LEN);
-    (void)CW_Utils::safe_memcpy(out + ABI_TO_OFFSET,
-                                USDC_CALLDATA_LEN - ABI_TO_OFFSET,
-                                to, ETH_ADDR_LEN);
-
-    size_t j;
-    for (j = 0U; j < sizeof(amount); j++) {
-        out[(USDC_CALLDATA_LEN - 1U) - j] =
-            static_cast<uint8_t>((amount >> (8U * j)) & 0xFFU);
-    }
-}
 
 /******************************************************************
  * 5. Sign + broadcast for a given amount
@@ -876,23 +843,11 @@ static bool card_sign(CryptnoxWallet &wallet, CW_SecureSession &session,
 static void evm_fees_wei(bool polygon, uint64_t *max_fee, uint64_t *prio_fee)
 {
     /* Fees come from the settings menu (defaulting to the config.h values on
-     * first boot); config.h still owns the gas limit. The user edits Gwei, so
-     * scale to wei. Keep the tip <= the cap or the tx is malformed. */
-    uint64_t max_fee_wei  = (uint64_t)settings_get_max_fee_gwei()      * 1000000000ULL;
-    uint64_t prio_fee_wei = (uint64_t)settings_get_priority_fee_gwei() * 1000000000ULL;
-    if (prio_fee_wei > max_fee_wei) { prio_fee_wei = max_fee_wei; }
-    /* Polygon drops a transfer whose tip is under ~25 Gwei, and the fee knobs are
-     * shared with Ethereum where 20 is right. Raise the floor here rather than
-     * asking the operator to retune the Tx tab every time they switch networks —
-     * and lift the cap with it, or the clamp above would only put it back. */
-    if (polygon) {
-        const uint64_t floor_wei =
-            (uint64_t)POLY_MIN_PRIORITY_FEE_GWEI * 1000000000ULL;
-        if (prio_fee_wei < floor_wei) { prio_fee_wei = floor_wei; }
-        if (max_fee_wei  < prio_fee_wei) { max_fee_wei = prio_fee_wei; }
-    }
-    *max_fee  = max_fee_wei;
-    *prio_fee = prio_fee_wei;
+     * first boot); config.h still owns the gas limit. The arithmetic — Gwei to
+     * wei, the tip clamp, Polygon's floor — is evm_fees_from_gwei in money.h. */
+    evm_fees_from_gwei(settings_get_max_fee_gwei(),
+                       settings_get_priority_fee_gwei(), polygon,
+                       (uint32_t)POLY_MIN_PRIORITY_FEE_GWEI, max_fee, prio_fee);
 }
 
 /* The fees one sale offers, read ONCE — when its confirm screen is built — and
@@ -905,22 +860,7 @@ static struct {
     uint64_t prio_fee;   /* wei per gas */
 } s_sale_fee;
 
-/**
- * @brief "0.0013 ETH": @p v base units of a @p dec-decimal coin, to six places,
- *        rounded UP — it is a ceiling, and rounding down would understate it.
- */
-static void fmt_coin(char *out, size_t n, uint64_t v, unsigned dec, const char *coin)
-{
-    uint64_t div = 1U;
-    for (unsigned i = 6U; i < dec; i++) { div *= 10U; }
-    const uint64_t micro = (v / div) + (((v % div) != 0U) ? 1U : 0U);
-    char frac[8];
-    (void)snprintf(frac, sizeof(frac), "%06" PRIu64, micro % 1000000U);
-    size_t f = strlen(frac);
-    while ((f > 0U) && (frac[f - 1U] == '0')) { frac[--f] = '\0'; }
-    (void)snprintf(out, n, "%" PRIu64 "%s%s %s", micro / 1000000U,
-                   (f > 0U) ? "." : "", frac, coin);
-}
+/* fmt_coin() — the fee ceiling as text, rounded up — is in money.h. */
 
 /**
  * @brief The most network fee the customer's card can be charged on top of the
@@ -987,21 +927,19 @@ static bool evm_balance_ok(const pos_amount_t *amount, char *err, size_t err_max
         return true;
     }
 
-    if (have_wei < gas_cost) {
+    /* The arithmetic, overflow guard included, is evm_funds_check in money.h. */
+    const evm_funds_t funds =
+        evm_funds_check(native, have_wei, gas_cost, amount->amount_minor);
+    if (funds == EVM_FUNDS_SHORT_GAS) {
         (void)snprintf(err, err_max, "Not enough %s for the network fee", coin);
         return false;
     }
 
     if (native) {
-        /* Out of range for the keypad's own cap, which means something upstream
-         * is wrong rather than underfunded. Left to sign_and_broadcast, which
-         * refuses it by name — and the multiply below would overflow. */
-        if (amount->amount_minor > POS_AMOUNT_UNITS_MAX_NATIVE) { return true; }
-        const uint64_t value_wei = amount->amount_minor * 1000000000000ULL;
-        /* Subtracting rather than adding: value is capped at just under 2^64
-         * wei, so value + gas_cost is the one sum here that could overflow —
-         * and the gas is already known to be covered. */
-        if ((have_wei - gas_cost) < value_wei) {
+        /* EVM_FUNDS_UNKNOWN is an amount past the keypad's own cap, which means
+         * something upstream is wrong rather than underfunded. Left to
+         * sign_and_broadcast, which refuses it by name. */
+        if (funds == EVM_FUNDS_SHORT_VALUE) {
             (void)snprintf(err, err_max, "Not enough %s for this amount", coin);
             return false;
         }
@@ -1208,12 +1146,9 @@ static bcast_t sign_and_broadcast(CryptnoxWallet &wallet,
      * number is still ours, and a wrapped multiply signs a value nobody entered
      * (see POS_AMOUNT_UNITS_MAX_NATIVE). */
     uint64_t native_wei = 0U;
-    if (native) {
-        if (amount_units > POS_AMOUNT_UNITS_MAX_NATIVE) {
-            (void)snprintf(err_out, err_max, "Amount too large for this asset");
-            return BCAST_FAILED;
-        }
-        native_wei = amount_units * 1000000000000ULL;
+    if (native && !evm_units_to_wei(amount_units, &native_wei)) {
+        (void)snprintf(err_out, err_max, "Amount too large for this asset");
+        return BCAST_FAILED;
     }
 
     uint8_t calldata[USDC_CALLDATA_LEN];

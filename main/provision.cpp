@@ -50,6 +50,7 @@
 #include "ota.h"
 #include "portal_page.h"   /* PAGE_HTML + PAGE_JS — the document page_get serves */
 #include "settings.h"
+#include "settings_rules.h"   /* fee bounds, time-zone range — host-tested */
 #include "civil_time.h"   /* CIVIL_DST__COUNT — the clock's DST rules */
 
 static const char *const TAG = "prov";
@@ -80,12 +81,11 @@ static const char AP_PASS_ALPHABET[] = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 #define K_TLS_CRT     "tls_crt"
 #define K_TLS_KEY     "tls_key"
 
-/* Gas-cap bounds, in Gwei. The numbers the panel's +/- steppers used to enforce
- * before the fees moved to this page — kept identical so a value stored here is
- * one the terminal has always been able to hold. The page's own min/max attributes
- * say the same thing to the browser; these are what actually decide. */
-#define PROV_FEE_MIN_GWEI  1UL
-#define PROV_FEE_MAX_GWEI  500UL
+/* Gas-cap bounds, in Gwei: FEE_GWEI_MIN / _MAX in settings_rules.h. The numbers
+ * the panel's +/- steppers used to enforce before the fees moved to this page —
+ * kept identical so a value stored here is one the terminal has always been able
+ * to hold. The page's own min/max attributes say the same thing to the browser;
+ * the two constants are what actually decide. */
 
 /* Read this much of an upload at a time. 4 KB is a flash page-erase unit and one
  * lwIP window's worth, and it lives in .bss rather than on the httpd task's
@@ -808,12 +808,12 @@ static esp_err_t fees_post(httpd_req_t *req)
         return reply(req, "400 Bad Request", "Both fees have to be whole numbers "
                                              "of Gwei.");
     }
-    if ((max_gwei < PROV_FEE_MIN_GWEI) || (max_gwei > PROV_FEE_MAX_GWEI) ||
-        (prio_gwei < PROV_FEE_MIN_GWEI) || (prio_gwei > PROV_FEE_MAX_GWEI)) {
+    const fee_pair_t verdict = fee_pair_check(max_gwei, prio_gwei);
+    if (verdict == FEE_PAIR_OUT_OF_RANGE) {
         return reply(req, "400 Bad Request",
                      "Each fee has to be between 1 and 500 Gwei.");
     }
-    if (prio_gwei > max_gwei) {
+    if (verdict == FEE_PAIR_TIP_ABOVE_MAX) {
         return reply(req, "400 Bad Request",
                      "The tip cannot be higher than the max fee.");
     }
@@ -870,8 +870,7 @@ static esp_err_t clock_post(httpd_req_t *req)
     }
     char      *dend = NULL;
     const long dst  = strtol(dst_s, &dend, 10);   /* "" reads as 0: no DST */
-    if ((*dend != '\0') || (dst < 0) || (dst >= CIVIL_DST__COUNT) ||
-        (off < TZ_OFFSET_MIN) || (off > TZ_OFFSET_MAX)) {
+    if ((*dend != '\0') || !tz_dst_valid(dst) || !tz_offset_valid(off)) {
         return reply(req, "400 Bad Request",
                      "That is not a time zone the terminal can use.");
     }

@@ -51,5 +51,29 @@ A crash drops a `crash-<hash>` reproducer in the working directory; replay with
 ## Corpus
 
 Seed files live under `corpus/<target>/`. They are starting points — libFuzzer
-mutates and grows them. Add real captures (a live JSON-RPC body, a production
-RLP blob) for faster coverage.
+mutates and grows them.
+
+- `eth_rpc_json/*_mainnet.json` are live Ethereum mainnet responses captured
+  2026-09-30 from a public node: a USDC `Transfer` receipt, a balance, a fee
+  history, the USDC `decimals()` call, an unknown-hash `null`, and a node
+  refusing a malformed raw transaction. `error_nonce_too_low_geth.json` is
+  geth's wording, hand-written.
+- `eth_rlp/*.bin` follow the harness layout (six big-endian u64 scalars, the
+  20-byte `to`, one parity byte, calldata): USDC `transfer` on mainnet and
+  Polygon as the terminal builds them, a native ETH transfer, and all-ones
+  scalars.
+- `parse_address/` covers EIP-55 mixed case, a single flipped-case checksum
+  failure, all-lowercase, one nibble short, and surrounding whitespace.
+
+## Replaying the corpus without clang
+
+`replay_main.cpp` stands in for libFuzzer's `main` and feeds each file to the
+harness once, so the corpora double as a regression test with plain g++
+(Windows included). `scripts/checks.sh` runs all three this way:
+
+```sh
+g++ -std=c++14 -Icryptnox-sdk-esp32/cryptnox-sdk-cpp     fuzz/fuzz_eth_rlp.cpp fuzz/replay_main.cpp -o r && ./r fuzz/corpus/eth_rlp/*
+```
+
+CI (`.github/workflows/tests.yml`) runs each harness for 60 s under clang +
+ASan and keeps any `crash-*` input as a build artifact.

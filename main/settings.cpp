@@ -9,6 +9,7 @@
  */
 
 #include "settings.h"
+#include "settings_rules.h"   /* ranges, digest, normalisation — host-tested */
 #include "civil_time.h"   /* CIVIL_DST__COUNT */
 
 #include <atomic>     /* the chain / network caches, read across tasks */
@@ -59,7 +60,6 @@ static const char *const TAG = "settings";
 /* Touch calibration, one key per axis, packed min<<16 | max. */
 /* Minutes east of UTC, stored biased — see settings_get_tz_offset_min(). */
 #define K_TZ_OFFSET   "tz_off"
-#define TZ_OFFSET_BIAS 720
 #define K_TZ_DST      "tz_dst"
 #define K_TOUCH_X     "touch_x"
 #define K_TOUCH_Y     "touch_y"
@@ -85,12 +85,7 @@ static const char *const TAG = "settings";
 #define K_CT_TRX_M    "ct_trx_m"
 #define K_CT_TRX_M2   "ct_trx_me"
 
-#define ADMIN_SALT_LEN    16U
-#define ADMIN_HASH_LEN    32U
-/* Longest code that goes into the digest. Deliberately NOT ui.cpp's
- * ADMIN_CODE_MAX (9) — same name, different layer. Anything past this is
- * silently dropped from the hash, so keep it comfortably above the UI's cap. */
-#define ADMIN_CODE_HASH_MAX  32U
+/* ADMIN_SALT_LEN, ADMIN_HASH_LEN and ADMIN_CODE_HASH_MAX are in settings_rules.h. */
 
 #define DEFAULT_BRIGHTNESS  80U
 
@@ -252,30 +247,26 @@ int16_t settings_get_tz_offset_min(void)
     /* Stored biased by 720 so it fits the unsigned helpers the rest of this
      * file uses, and so a missing key reads as UTC rather than as UTC-12. */
     const uint32_t raw = nvs_u32_get(K_TZ_OFFSET, (uint32_t)TZ_OFFSET_BIAS);
-    if (raw > (uint32_t)(TZ_OFFSET_BIAS + TZ_OFFSET_MAX)) {
-        return 0;   /* nonsense in NVS is UTC, not a wild clock */
-    }
-    return (int16_t)((int32_t)raw - TZ_OFFSET_BIAS);
+    return tz_offset_decode(raw);   /* nonsense in NVS is UTC, not a wild clock */
 }
 
 bool settings_set_tz_offset_min(int16_t minutes)
 {
-    if ((minutes < TZ_OFFSET_MIN) || (minutes > TZ_OFFSET_MAX)) {
+    if (!tz_offset_valid(minutes)) {
         return false;
     }
-    nvs_u32_set(K_TZ_OFFSET, (uint32_t)((int32_t)minutes + TZ_OFFSET_BIAS));
+    nvs_u32_set(K_TZ_OFFSET, tz_offset_encode(minutes));
     return true;
 }
 
 uint8_t settings_get_tz_dst(void)
 {
-    const uint8_t r = nvs_u8_get(K_TZ_DST, (uint8_t)CIVIL_DST_NONE);
-    return (r < (uint8_t)CIVIL_DST__COUNT) ? r : (uint8_t)CIVIL_DST_NONE;
+    return tz_dst_decode(nvs_u8_get(K_TZ_DST, (uint8_t)CIVIL_DST_NONE));
 }
 
 bool settings_set_tz_dst(uint8_t rule)
 {
-    if (rule >= (uint8_t)CIVIL_DST__COUNT) { return false; }
+    if (!tz_dst_valid(rule)) { return false; }
     nvs_u8_set(K_TZ_DST, rule);
     return true;
 }
@@ -384,26 +375,7 @@ void settings_set_priority_fee_gwei(uint32_t gwei)
     nvs_u32_set(K_PRIO_FEE, gwei);
 }
 
-/**
- * @brief Derive the stored digest: a single keccak256 over salt || code.
- *
- * Not stretched, on purpose. The digest lives in the flash-encrypted NVS, so
- * reading it already means the encryption is defeated — and past that point no
- * KDF cost saves a 4-digit code anyway. The salt is still there so the same code
- * yields a different digest on every unit. Guessing at the panel is what the
- * escalating lockout in ui.cpp is for.
- */
-static void admin_derive(const char *code, const uint8_t *salt,
-                         uint8_t out[ADMIN_HASH_LEN])
-{
-    uint8_t buf[ADMIN_SALT_LEN + ADMIN_CODE_HASH_MAX];
-    const size_t clen = strnlen(code, ADMIN_CODE_HASH_MAX);
-
-    (void)memcpy(buf, salt, ADMIN_SALT_LEN);
-    (void)memcpy(buf + ADMIN_SALT_LEN, code, clen);
-    keccak256(buf, ADMIN_SALT_LEN + clen, out);
-    CW_Utils::secure_wipe(buf, sizeof(buf));
-}
+/* admin_derive() — keccak256(salt || code) — is in settings_rules.h. */
 
 static void admin_set_fails(uint8_t n)
 {
@@ -544,18 +516,10 @@ static bool dual_get(const char *k_val, const char *k_echo, const char *def,
 static bool dual_set(const char *k_val, const char *k_echo, bool tron,
                      const char *what, const char *addr)
 {
-    if ((addr == NULL) || (addr[0] == '\0')) { return false; }
-    if (strlen(addr) >= SETTINGS_PAYOUT_MAX) { return false; }
-
     /* Normalise to the form the getter hands back, so the echo comparison
      * compares like with like on the next boot. */
     char norm[SETTINGS_PAYOUT_MAX];
-    if (tron) {
-        (void)snprintf(norm, sizeof(norm), "%s", addr);
-    } else {
-        const bool prefixed = (addr[0] == '0') && ((addr[1] == 'x') || (addr[1] == 'X'));
-        (void)snprintf(norm, sizeof(norm), "0x%s", prefixed ? (addr + 2) : addr);
-    }
+    if (!settings_addr_normalise(tron, addr, norm)) { return false; }
 
     bool         ok = false;
     nvs_handle_t h;

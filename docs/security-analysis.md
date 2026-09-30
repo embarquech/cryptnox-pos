@@ -133,8 +133,19 @@ design choice and it is what makes the config page's weaker transport tolerable.
   `CLOCK_SKEW_MAX_S` refuses the transaction (`https_post.cpp:111–131`). Without
   network time at all, the terminal declines rather than guessing
   (`main.cpp:1203`).
+- **The node is not trusted for what gets signed.** Tron: the node-built
+  transaction is decoded field by field (`tron_tx.cpp`) — exactly one contract of
+  the expected type, byte-exact parameters, no memo / extra fields, bounded
+  expiration, exact fee limit — before the card signs its `txID`. EVM: the
+  transaction is built and hashed on the device, the recovery bit is computed
+  locally (`eth_sig.cpp`), and a receipt only counts when it is for that hash, to
+  the expected contract, with a `Transfer` log to the payee for exactly the
+  amount (`eth_json_receipt_check`).
 - **TLS with the ESP-IDF certificate bundle** for all RPC traffic
-  (`https_post.cpp:166–168`).
+  (`https_post.cpp`). This is **not pinning**: any CA in the ~150-entry bundle is
+  accepted. A deployment can pin an endpoint by defining `RPC_CA_CERT_PEM`,
+  `POLY_CA_CERT_PEM` or `TRON_CA_CERT_PEM` in `config.h`; none are defined by
+  default, and boot logs every endpoint that is left unpinned.
 
 ### Build and process
 
@@ -144,8 +155,9 @@ design choice and it is what makes the config page's weaker transport tolerable.
   protecting anything. See **F6**, which is why this bullet cannot be counted as
   a mitigation today.
 - **Host tests** for the security-relevant pure logic — address checks,
-  hardening sentinels, version comparison, RPC error mapping — runnable without
-  hardware (`bash scripts/checks.sh`).
+  hardening sentinels, Tron transaction decoding, receipt checks, version
+  comparison, RPC error mapping — runnable without hardware
+  (`bash scripts/checks.sh`), and run by CI (`.github/workflows/tests.yml`).
 - **Quiet boot in release**: `CONFIG_LOG_DEFAULT_LEVEL_NONE`, so nonces and tx
   hashes are not echoed over UART on a production unit.
 
@@ -272,9 +284,12 @@ Stated plainly so nobody reads more assurance into it than it carries:
   refusing to sign without a verified PIN, which is asserted, not verified here.
 - **No side-channel or fault-injection analysis** (glitching the integrity
   gates, EM analysis of the NFC exchange).
-- **The RPC providers are trusted** for chain state. A lying node can misreport a
-  receipt; the on-chain record is the truth, and the terminal's own display is
-  not authoritative for settlement.
+- **The RPC providers are trusted for chain state, not for what is signed.** A
+  lying node (or anyone holding a certificate from a bundled CA, since endpoints
+  are unpinned by default) cannot get the card to sign a different transfer, but
+  it can still fabricate a receipt for a transaction that never landed, or report
+  a balance that is not there. The on-chain record is the truth, and the
+  terminal's own display is not authoritative for settlement.
 - **Supply chain** — the ESP-IDF, LVGL and managed component versions are pinned
   (`dependencies.lock`) but not audited.
 

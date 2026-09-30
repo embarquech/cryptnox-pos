@@ -37,6 +37,7 @@
 #include "tap_icon.h"    /* the "tap your card" mark — tools/gen_tap_icon.py */
 #include "assets.h"      /* the per-asset table: ticker, standard, caption, network */
 #include "settings.h"
+#include "money.h"       /* keypad cents, the native cap, amount text — host-tested */
 #include "touch_cal.h"   /* two-point calibration arithmetic, host-tested */
 #include "civil_time.h"  /* civil_local_offset_min() — the clock's DST, host-tested */
 #include "provision.h"   /* QR payload + the pending payout-address handshake */
@@ -910,17 +911,8 @@ static void set_wifi_progress(const char *caption, const char *name) {
     s_wifi_name[sizeof(s_wifi_name) - 1] = '\0';
 }
 
-static void format_amount(uint64_t units, char *out, size_t n) {
-    uint64_t whole = units / 1000000ULL;
-    uint64_t cents = (units % 1000000ULL) / 10000ULL;
-    snprintf(out, n, "%" PRIu64 ".%02" PRIu64, whole, cents);
-}
-
-/* 9999.99: plenty for a counter terminal, and it keeps the figure, the cents
- * and the asset selector inside the amount row. */
-#define AMOUNT_CENTS_MAX  999999ULL   /* 9999.99 */
-/* 18.44 — POS_AMOUNT_UNITS_MAX_NATIVE expressed in the keypad's cents. */
-#define AMOUNT_CENTS_MAX_NATIVE  (POS_AMOUNT_UNITS_MAX_NATIVE / 10000ULL)
+/* amount_format, AMOUNT_CENTS_MAX(_NATIVE) and the keypad arithmetic are in
+ * money.h, where test_money can reach them. */
 
 /**
  * Ceiling on what the keypad will accept, for the asset currently selected.
@@ -932,8 +924,7 @@ static void format_amount(uint64_t units, char *out, size_t n) {
  * simply have declined, in front of a customer.
  */
 static uint64_t amount_cents_max(void) {
-    return pos_chain_is_native_evm(settings_get_chain()) ? AMOUNT_CENTS_MAX_NATIVE
-                                                         : AMOUNT_CENTS_MAX;
+    return amount_cents_cap(pos_chain_is_native_evm(settings_get_chain()));
 }
 
 /* From 100.00 up, the cents move to the small font. Five figures and cents in
@@ -1175,7 +1166,7 @@ static void amount_update_display(void) {
      * and the row is placed against both. */
     amount_row_place();
 
-    s_amount_units = s_amount_cents * 10000ULL;   /* cents -> 6-decimal base units */
+    s_amount_units = amount_cents_to_units(s_amount_cents);   /* -> 6-decimal base units */
 }
 
 /* The drawn backspace, in units of half its height — see kbd_backspace_draw_cb().
@@ -1345,13 +1336,12 @@ static void amount_kbd_cb(lv_event_t *e) {
 
     const uint64_t cap = amount_cents_max();
     if (strcmp(txt, LV_SYMBOL_BACKSPACE) == 0) {
-        s_amount_cents /= 10ULL;
+        s_amount_cents = amount_key_back(s_amount_cents);
     } else if (strcmp(txt, "00") == 0) {
-        uint64_t n = s_amount_cents * 100ULL;
-        s_amount_cents = (n > cap) ? cap : n;
+        s_amount_cents = amount_key_00(s_amount_cents, cap);
     } else if ((txt[0] >= '0') && (txt[0] <= '9') && (txt[1] == '\0')) {
-        uint64_t n = (s_amount_cents * 10ULL) + static_cast<uint64_t>(txt[0] - '0');
-        if (n <= cap) { s_amount_cents = n; }
+        s_amount_cents = amount_key_digit(s_amount_cents,
+                                          static_cast<unsigned>(txt[0] - '0'), cap);
     }
     amount_update_display();
 }
@@ -3679,7 +3669,7 @@ static void build_confirm(void) {
      * against a box wider than the one they are drawn in. */
     const lv_coord_t VW = CARD_W - (2 * CARD_PAD);
     char buf[24];
-    format_amount(s_confirm_amount, buf, sizeof(buf));
+    amount_format(s_confirm_amount, buf, sizeof(buf));
 
     /* The vertical budget, because it is fully spent and the rows below are not
      * free to drift. 262px of card: the Total block to 58, the two address rows
@@ -4408,26 +4398,35 @@ static void hash_short(const char *h, char *out, size_t n) {
 /* "<amount> [coin mark] <TICKER>" centred at offset y from the top.
  *
  * @p ticker names the asset beside its mark, the way the amount and confirm
- * screens do. It is on for the tap screen and off everywhere else: the mark
- * alone says which asset to somebody who already knows the logos, and the
- * screen where that assumption is worth least is the one asking for the card.
- * By the time the answer is "Approved" the sale is over and the row is a
- * receipt, so it stays short there.
+ * screens do. It is on for the tap screen and the "Approved" receipt: the mark
+ * alone only says which asset to somebody who already knows the logos.
  *
- * The nudge is what keeps the row centred: the label is placed from the
- * middle, and everything else hangs off its right edge, so the amount has to
- * start further left by half of whatever follows it. */
+ * A content-sized flex row, like the amount screen's, so the group centres
+ * itself: the figure, the badge and the ticker all change width from sale to
+ * sale, and a fixed nudge was only right for one of them. @p y is where the
+ * figure's line box starts; the badge is taller, so the row is lifted by half
+ * the difference to keep the figure where it was. */
 static void tx_amount_row(lv_obj_t *parent, const char *amt,
                           const lv_font_t *font, lv_coord_t y, bool ticker) {
-    lv_obj_t *al = make_label(parent, amt, COL_TEXT, font,
-                              LV_ALIGN_TOP_MID, ticker ? -36 : -16, y);
-    lv_obj_t *u  = make_asset_badge(parent, settings_get_chain());
-    lv_obj_align_to(u, al, LV_ALIGN_OUT_RIGHT_MID, 8, 0);
+    lv_obj_t *row = lv_obj_create(parent);
+    lv_obj_remove_style_all(row);
+    lv_obj_set_size(row, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(row, 6, LV_PART_MAIN);
+
+    lv_obj_t *al = make_label(row, amt, COL_TEXT, font, LV_ALIGN_DEFAULT, 0, 0);
+    (void)make_asset_badge(row, settings_get_chain());
     if (ticker) {
-        lv_obj_t *t = make_label(parent, asset_name(), COL_TEXT,
-                                 &font_inter_14_medium, LV_ALIGN_DEFAULT, 0, 0);
-        lv_obj_align_to(t, u, LV_ALIGN_OUT_RIGHT_MID, 4, 0);
+        (void)make_label(row, asset_name(), COL_TEXT, &font_inter_14_medium,
+                         LV_ALIGN_DEFAULT, 0, 0);
     }
+
+    lv_obj_update_layout(row);
+    lv_obj_align(row, LV_ALIGN_TOP_MID, 0,
+                 y - ((lv_obj_get_height(row) - lv_obj_get_height(al)) / 2));
 }
 
 static void build_tx_status(void) {
@@ -4437,7 +4436,7 @@ static void build_tx_status(void) {
     const lv_coord_t VW = CARD_W - (2 * CARD_PAD);
 
     char amt[24];
-    format_amount(s_confirm_amount, amt, sizeof(amt));
+    amount_format(s_confirm_amount, amt, sizeof(amt));
 
     if (s_tx_state == UI_TX_STATE_PLACE_CARD) {
         /* Total at 8 and the figure at 38: the badge is taller than the 28px
@@ -4464,7 +4463,7 @@ static void build_tx_status(void) {
         pop_in(chk);
         make_label(card, "Approved", COL_TEXT, &font_pjs_20_medium,
                    LV_ALIGN_TOP_MID, 0, 92);
-        tx_amount_row(card, amt, &font_pjs_28_semibold, 122, false);
+        tx_amount_row(card, amt, &font_pjs_28_semibold, 122, true);
 
         /* The hash main hands this screen with the DONE state. It used to be
          * dropped on the floor, which left the merchant a settled sale they

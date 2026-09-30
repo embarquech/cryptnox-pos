@@ -16,6 +16,20 @@ can never drift from the firmware and no build system is required.
 | `test_card_status` | `main/card_status.h` — is the tapped card initialised and seeded |
 | `test_chain`       | `main/settings.h` — which chain selections are Tron, which Polygon |
 | `test_rpc_error`   | `main/rpc_error.h` — a node's refusal turned into an operator instruction |
+| `test_networks`    | `main/config.h` — every contract parses (EIP-55) and mainnet/testnet chain ids differ |
+| `test_assets`      | `main/assets.h` — one complete descriptor row per asset |
+| `test_touch_cal`   | `main/touch_cal.h` — calibration arithmetic and its refusals |
+| `test_eth_hex`     | `main/eth_json.cpp` — JSON-RPC QUANTITY → balance, no silent wrap |
+| `test_eth_receipt` | `main/eth_json.cpp` — a receipt counts only for our tx, contract, payee and amount (needs cJSON) |
+| `test_eth_sig`     | `main/eth_sig.cpp` — the recovery bit, computed locally (needs mbedTLS) |
+| `test_civil_time`  | `fuzz/test_civil_time.cpp` — date arithmetic for the clock checks |
+| `test_eth_rlp`     | `main/eth_rlp.cpp` — EIP-1559 bytes, unsigned and signed, against eth-account |
+| `test_money`       | `main/money.h` — keypad cents, units to wei, fees, funds check, USDC calldata |
+| `test_settings_rules` | `main/settings_rules.h` — time zone, fee bounds, admin digest, address form |
+
+`test_eth_receipt` and `test_eth_sig` link against ESP-IDF's own cJSON and
+mbedTLS sources; `checks.sh` finds them through `IDF_PATH` and skips the two
+tests when it is unset.
 
 Run all of them, plus the config portal page checks, with:
 
@@ -28,7 +42,8 @@ Or one at a time, from the repo root (any C++14 compiler):
 ```sh
 for t in test_eth_addr test_hardening test_tron_tx test_prov_form test_addr_check \
          test_json_out test_ota_version test_card_status test_chain \
-         test_rpc_error; do
+         test_rpc_error test_networks test_assets test_touch_cal test_eth_hex \
+         test_eth_rlp test_money test_settings_rules; do
   g++ -std=c++14 -Wall -Imain -Icryptnox-sdk-esp32/cryptnox-sdk-cpp \
       tests/units/$t.cpp -o $t && ./$t || exit 1
 done
@@ -51,4 +66,3 @@ The second one matters more than it looks: which sections show is a hand-written
 pile of booleans, it decides whether setup can be completed at all, and a mistake
 there is invisible until somebody is standing in front of a blank phone.
 
-<!-- ponytail: no CMake/ctest wiring; add it when CI runs these. -->

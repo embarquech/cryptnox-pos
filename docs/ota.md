@@ -77,31 +77,17 @@ device. The signature is.
 
 ## Publishing a release
 
-`OTA_MANIFEST_URL` in `main/provision.cpp` points at a JSON file. Host it — and the
-`.bin` — somewhere that sends `Access-Control-Allow-Origin: *`, or the browser
-will refuse to hand the response to a page served from `http://192.168.4.1/`:
+There is no manifest and no URL compiled into the firmware: a release is a
+signed `cryptnox_pos.bin` put somewhere operators can download it (a GitHub
+release asset is fine), fetched *before* joining the terminal's AP and then
+picked with **Browse**.
 
-| Host | CORS | Notes |
-|---|---|---|
-| `raw.githubusercontent.com` | `*` | verified; simplest option |
-| GitHub Pages (`*.github.io`) | `*` | verified |
-| GitHub **release assets** | redirects to `objects.githubusercontent.com` | confirm from a real browser before relying on it |
-
-```json
-{
-  "version": "1.1.0",
-  "url": "https://raw.githubusercontent.com/Cryptnox/cryptnox-pos-releases/main/1.1.0/cryptnox_pos.bin",
-  "size": 1712345,
-  "notes": "USDT (TRC-20) fee cap raised to 30 TRX.\nFixes a stuck 'Confirming' screen after a dropped uplink."
-}
-```
-
-`version` is compared against the running firmware's, which comes from
-`version.txt` at the project root — bump it in the same commit as the release.
-Ordering is dotted-numeric with an optional leading `v`; anything after the
-numbers (`-rc1`, `+sha`) is ignored rather than ordered
-(`main/ota_version.h`, `tests/units/test_ota_version.cpp`). `size` and `notes`
-are shown to the operator; the device ignores both and trusts neither.
+The version shown on the panel comes from `version.txt` at the project root,
+embedded in the image — bump it in the same commit as the release. The panel
+compares the uploaded image's version with the running one and calls out a
+*downgrade* in red before anything is installed. Ordering is dotted-numeric with
+an optional leading `v`; anything after the numbers (`-rc1`, `+sha`) is ignored
+rather than ordered (`main/ota_version.h`, `tests/units/test_ota_version.cpp`).
 
 ## Signing — do not ship without this
 
