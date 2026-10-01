@@ -134,9 +134,9 @@ curl -sk -H "$H" $T/api/state
 curl -sk -o /dev/null -w '%{http_code} %{size_download}\n' $T/
 ```
 
-**Pass:** the JSON carries `"mode":"admin"`, `"authed":true`, `"version":"1.0.0"`,
+**Pass:** the JSON carries `"mode":"admin"`, `"authed":true`, `"version":"v1.0.0-91-gc10d526"` (your tag, count and hash),
 `"win":15`, and the stored addresses and contracts. `version` must match the About
-tab and `version.txt`. The page is a `200` of roughly 9 kB.
+tab and the `Firmware v…` line the build prints. The page is a `200` of roughly 9 kB.
 
 ### 2.2 Authorisation
 
@@ -242,10 +242,12 @@ For the impatient version, tap **Done** instead and check the same:
 Make a second build to install:
 
 ```bash
-echo 1.0.1 > version.txt
-cmd //c "C:\Cryptnox\cryptnox-pos\scripts\idf-build.bat"
+# The version is <tag>-<count>-g<hash> from git. POS_VERSION_TAG replaces the tag
+# part for a test build; touch makes CMake pick it up.
+touch CMakeLists.txt
+POS_VERSION_TAG=v1.0.1 cmd //c "C:\Cryptnox\cryptnox-pos\scripts\idf-build.bat"
 cp build/cryptnox_pos.bin /tmp/1.0.1.bin
-echo 1.0.0 > version.txt        # keep 1.0.0 around for the downgrade check
+touch CMakeLists.txt            # next build is back on the real tag, for the downgrade check
 ```
 
 ### 3.1 The file picker — the only path there is
@@ -332,8 +334,9 @@ New firmware clears the terminal's stored settings, so a unit that has just been
 updated is an unowned unit: no admin code, no Wi-Fi, no payout address, and the
 setup wizard in front of whoever is standing at it.
 
-**What counts as "new" is `BUILD_ID` in `main/settings.h`, a counter bumped at
-every release.** The running build stamps it into NVS; a boot that finds any
+**What counts as "new" is `BUILD_ID`: the build sets it to
+`git rev-list --count --first-parent HEAD` (project `CMakeLists.txt`), so every
+new commit has a new one and nobody can edit it back.** The running build stamps it into NVS; a boot that finds any
 *other* value there — or none — erases the partition, first thing in
 `app_main()`, before anything has opened NVS. It therefore fires the same way
 however the firmware arrived: browser update, cable `flash`, factory image.
@@ -354,17 +357,17 @@ layer beneath them, and it covers the case that is not an attack at all — an
 older release, an engineering build, a factory image, all of which leave settings
 behind that the next firmware has no business trusting.
 
-**Bump `BUILD_ID` when you cut a release.** Forget, and the update installs and
-keeps the old settings; two releases sharing an id are indistinguishable to the
-terminal. A rebuild during development does *not* wipe as long as the id is
-unchanged — to force one, `Factory reset` on the config page.
+**Every commit is a new `BUILD_ID`.** A rebuild of the same commit — uncommitted
+edits included — keeps the id and so keeps the settings; the first build after a
+new commit wipes them. To force a wipe without committing, `Factory reset` on the
+config page. CI must check out with `fetch-depth: 0`, or every build counts 1.
 
 #### The test
 
 1. Configure the terminal fully — admin code, Wi-Fi, payout address — and take a
    payment, so there is something to lose.
-2. Bump `BUILD_ID`, and the version so About tells you which is running. Install
-   the new build (§3.3, or a cable flash).
+2. Commit (any commit gives a new `BUILD_ID`, and the version on About shows the
+   new count and hash), build, and install it (§3.3, or a cable flash).
 3. Watch the first boot on the new image.
 
 **Pass — with no cable, on the panel alone:**
@@ -442,10 +445,10 @@ abort();
 ```
 
 ```bash
-echo 9.9.9 > version.txt        # unmistakable in the log
-cmd //c "C:\Cryptnox\cryptnox-pos\scripts\idf-build.bat"
+touch CMakeLists.txt
+POS_VERSION_TAG=v9.9.9 cmd //c "C:\Cryptnox\cryptnox-pos\scripts\idf-build.bat"   # unmistakable in the log
 cp build/cryptnox_pos.bin /tmp/broken.bin
-git checkout main/main.cpp && echo 1.0.1 > version.txt
+git checkout main/main.cpp && touch CMakeLists.txt
 ```
 
 Upload `/tmp/broken.bin`, accept it on the panel, and watch the serial log.

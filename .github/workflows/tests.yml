@@ -76,9 +76,16 @@ jobs:
     runs-on: ubuntu-latest
     container: espressif/idf:v5.5.4
     steps:
+      # Full history and tags: the version is <tag>-<first-parent count>-g<hash>
+      # and BUILD_ID is that count, so a shallow clone would build "-1-" forever.
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 0
+          fetch-tags: true
+      # The container runs as root on a checkout it did not create; without this
+      # git refuses the repository and CMake cannot read the count.
+      - run: git config --global --add safe.directory '*'
       - run: cp config.template.h main/config.h
       - name: idf.py build
         shell: bash

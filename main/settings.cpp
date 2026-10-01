@@ -66,6 +66,9 @@ static const char *const TAG = "settings";
 /* BUILD_ID of the newest firmware that has run on this unit — see
  * settings_wipe_if_new_build. */
 #define K_BUILD_ID    "build_id"
+#ifndef BUILD_ID
+#error "BUILD_ID is set from git by the project CMakeLists.txt"
+#endif
 /* The sale between broadcast and verdict — see settings_inflight_save. */
 #define K_INFLIGHT    "inflight"
 /* Payout addresses, each stored twice — see settings_get_payout. */

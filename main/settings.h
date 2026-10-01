@@ -395,14 +395,14 @@ bool settings_inflight_load(void *rec, size_t n);
 /** @brief Drop the persisted sale. Writes nothing when there is none. */
 void settings_inflight_clear(void);
 
-/**
- * @brief Release identity of this image. **Bump at every release.**
- *
- * A plain counter rather than a hash or a version string: it is the one thing
- * that survives every route firmware takes onto a unit — browser update, cable
- * `idf.py flash`, factory image. See @ref settings_wipe_if_new_build.
+/*
+ * BUILD_ID — release identity of this image — is not defined here. The build
+ * sets it to `git rev-list --count --first-parent HEAD` (project CMakeLists.txt),
+ * so every new commit gets a new one and nobody can edit it back. A plain counter
+ * rather than a hash or a version string: it is the one thing that survives every
+ * route firmware takes onto a unit — browser update, cable `idf.py flash`,
+ * factory image. See @ref settings_wipe_if_new_build.
  */
-#define BUILD_ID  2U
 
 /**
  * @brief Erase NVS unless this exact build is the one that wrote it.
@@ -415,12 +415,12 @@ void settings_inflight_clear(void);
  * A security control, not housekeeping. The firmware is open source, so an image
  * that is not this one can be built by anyone and can write anything it likes
  * into NVS — a payout address of its own, above all — for whatever runs next to
- * inherit. So the test is equality: a stamp that is not @ref BUILD_ID means the
+ * inherit. So the test is equality: a stamp that is not BUILD_ID means the
  * stored settings were last written by a different image, and this one erases
  * them rather than acting on them. Newer, older and absent all fail it.
  *
  * What it does NOT do, and cannot: a stamp in NVS does not authenticate itself.
- * An image that runs on the device can write @ref BUILD_ID's own value and be
+ * An image that runs on the device can write BUILD_ID's own value and be
  * inherited from. What stops a foreign image from running at all is Secure Boot
  * (and Flash Encryption in RELEASE mode, so the key cannot be read out); this
  * check is the layer under them, for state left by an image that was never

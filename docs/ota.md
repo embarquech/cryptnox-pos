@@ -82,8 +82,11 @@ signed `cryptnox_pos.bin` put somewhere operators can download it (a GitHub
 release asset is fine), fetched *before* joining the terminal's AP and then
 picked with **Browse**.
 
-The version shown on the panel comes from `version.txt` at the project root,
-embedded in the image — bump it in the same commit as the release. The panel
+The version is built from git, never from a file: `<latest tag>-<first-parent
+commit count>-g<short hash>`, e.g. `v1.0.0-91-gc10d526` (project
+`CMakeLists.txt`). A release is a tag — `git tag v1.1.0` on the release commit,
+then push the tag. The commit count doubles as `BUILD_ID`, which decides whether
+the terminal wipes its settings on first boot. The panel
 compares the uploaded image's version with the running one and calls out a
 *downgrade* in red before anything is installed. Ordering is dotted-numeric with
 an optional leading `v`; anything after the numbers (`-rc1`, `+sha`) is ignored

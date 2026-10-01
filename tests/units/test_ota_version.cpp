@@ -37,7 +37,7 @@ int main(void)
     /* Numeric, not lexicographic — the case that catches a naive strcmp. */
     assert(ota_version_cmp("9.0.0", "10.0.0") < 0);
 
-    /* A leading v is noise: `git describe` emits it, version.txt does not. */
+    /* A leading v is noise: `git describe` and the build's tag-based version emit it. */
     assert(ota_version_cmp("v1.2.3", "1.2.3") == 0);
     assert(ota_version_cmp("V1.2.4", "v1.2.3") > 0);
 
@@ -51,6 +51,13 @@ int main(void)
     assert(ota_version_cmp("1.2.3-rc1", "1.2.3") == 0);
     assert(ota_version_cmp("1.2.3+deadbeef", "1.2.3-dirty") == 0);
     assert(ota_version_cmp("1.2.4-rc1", "1.2.3") > 0);
+
+    /* The build's own form, <tag>-<first-parent count>-g<hash>: the tag decides,
+     * the count and hash are build identity (BUILD_ID), not ordering. */
+    assert(ota_version_cmp("v1.0.0-91-gc10d526", "1.0.0") == 0);
+    assert(ota_version_cmp("v1.0.0-91-gc10d526", "v1.0.0-12-gabcdef0") == 0);
+    assert(ota_version_cmp("v1.0.1-3-g0000000", "v1.0.0-91-gc10d526") > 0);
+    assert(ota_version_cmp("v0.0.0-91-gc10d526", "1.0.0") < 0);
 
     /* Fourth component still counts; a fifth is beyond what is compared. */
     assert(ota_version_cmp("1.2.3.4", "1.2.3.5") < 0);
@@ -86,6 +93,8 @@ int main(void)
     assert(strcmp(ota_version_display("1.0.0", buf, sizeof(buf)), "v1.0.0") == 0);
     /* Already prefixed, or not a version at all: left exactly as it is. */
     assert(strcmp(ota_version_display("v1.0.0", buf, sizeof(buf)), "v1.0.0") == 0);
+    assert(strcmp(ota_version_display("v1.0.0-91-gc10d526", buf, sizeof(buf)),
+                  "v1.0.0-91-gc10d526") == 0);
     assert(strcmp(ota_version_display("?", buf, sizeof(buf)), "?") == 0);
     assert(strcmp(ota_version_display("", buf, sizeof(buf)), "") == 0);
     assert(strcmp(ota_version_display(NULL, buf, sizeof(buf)), "") == 0);

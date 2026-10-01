@@ -23,3 +23,10 @@ idf_component_register(
 # Scope to C++ only: the flag is invalid for the C image sources (cc1 warns).
 target_compile_options(${COMPONENT_LIB} PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-enum-enum-conversion>)
+
+# BUILD_ID is the first-parent commit count, worked out in the project
+# CMakeLists.txt. Only settings.cpp reads it, so only settings.cpp is rebuilt
+# when a new commit changes it.
+idf_build_get_property(pos_build_id POS_BUILD_ID)
+set_source_files_properties(settings.cpp PROPERTIES
+    COMPILE_DEFINITIONS "BUILD_ID=${pos_build_id}U")
