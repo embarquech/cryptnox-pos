@@ -136,9 +136,9 @@ void build_prov(void) {
     make_label(host, eyebrow, COL_DIM, &font_inter_14,
                LV_ALIGN_TOP_MID, 0, 6 + dy);
     make_label(host, title, COL_TEXT, &font_pjs_20_medium,
-               LV_ALIGN_TOP_MID, 0, 22 + dy);
+               LV_ALIGN_TOP_MID, 0, 24 + dy);   /* 18px step line ends at 24 */
     make_label(host, hint, COL_DIM,
-               &font_inter_14, LV_ALIGN_TOP_MID, 0, 48 + dy);
+               &font_inter_14, LV_ALIGN_TOP_MID, 0, 50 + dy);
 
     /* The QR code and AP credentials are for joining, so they go once the phone
      * is let in; left up they would read as "scan this again". */
