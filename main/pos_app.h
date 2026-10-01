@@ -99,6 +99,7 @@ typedef struct {
     char       str[SETTINGS_PAYOUT_MAX];  /**< as configured: "0x…" or base58   */
     pos_addr_t addr;                      /**< 20 bytes; Tron without the 0x41  */
     bool       ok;                        /**< false until it parsed twice      */
+    bool       checked;                   /**< decimals() read and found to be 6 */
 } token_t;
 
 /* Where each token's contract comes from in config.h, both deployments. EVM
@@ -123,6 +124,7 @@ extern bool              s_payout_bad[2];
 
 token_t          *active_token(pos_chain_t chain = settings_get_chain());
 void              token_load(const token_cfg_t *cfg, CW_CryptoProvider &crypto);
+bool              token_decimals_ok(pos_chain_t chain, char *err, size_t err_max);
 const pos_addr_t *active_dest(void);
 
 /* The fees one sale offers, read ONCE when its confirm screen is built and used
@@ -262,7 +264,6 @@ void wifi_keep_or_drop(bool keep);
 void wait_for_ui_event(ui_event_t want);
 bool wifi_try_saved(void);
 bool wifi_picker(const char *note);
-bool proposal_decimals_ok(CW_CryptoProvider &crypto);
 bool run_wizard(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
                 CW_CryptoProvider &crypto, bool wifi_only);
 bool sync_time(void);

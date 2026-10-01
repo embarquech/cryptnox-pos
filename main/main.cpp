@@ -72,6 +72,12 @@ extern "C" void app_main(void)
     pos_amount_set(&pending_amount, 0U);
     ui_msg_t msg;
 
+    /* A card read from the admin page yields both addresses, but the panel shows
+     * one proposal at a time: the Tron one waits here until the Ethereum one is
+     * resolved, and the restart that applies a stored address waits for both. */
+    char card_tron[SETTINGS_PAYOUT_MAX] = "";
+    bool restart_due = false;
+
     /* On the task watchdog from here on: a loop that stops coming back to its
      * queue is a hung terminal, and resetting it beats a frozen panel. Boot above
      * is not subscribed — the wizard and the picker wait on people. */
@@ -134,6 +140,13 @@ extern "C" void app_main(void)
                 if ((tok != NULL) && !tok->ok) {
                     ui_show_tx_status(UI_TX_STATE_FAILED,
                                       "Token contract not configured");
+                    pos_amount_set(&pending_amount, 0U);
+                    break;
+                }
+                char dec_err[64];
+                if (!token_decimals_ok(settings_get_chain(), dec_err,
+                                       sizeof(dec_err))) {
+                    ui_show_tx_status(UI_TX_STATE_FAILED, dec_err);
                     pos_amount_set(&pending_amount, 0U);
                     break;
                 }
@@ -261,10 +274,19 @@ extern "C" void app_main(void)
                 break;
 
             case UI_EVENT_PROV_VALUE:
-                if (proposal_decimals_ok(cryptoProvider)) { ui_show_prov_confirm(); }
+                ui_show_prov_confirm();   /* decimals: see token_decimals_ok */
                 break;
 
             case UI_EVENT_PROV_VALUE_SET:
+            case UI_EVENT_PROV_VALUE_NO:
+                if (msg.event == UI_EVENT_PROV_VALUE_SET) { restart_due = true; }
+                /* The panel slot is free again: offer the parked Tron address. */
+                if (card_tron[0] != '\0') {
+                    (void)prov_propose(PROV_ASK_PAYOUT_TRON, card_tron);
+                    card_tron[0] = '\0';
+                    break;
+                }
+                if (!restart_due) { break; }
                 /* Stored. The recipient and contract dual stores are built at boot
                  * from validated strings, so the change applies through a restart
                  * rather than a second, re-validating path into the money code. */
@@ -305,12 +327,13 @@ extern "C" void app_main(void)
                     break;
                 }
                 ui_show_amount_entry();
-                /* One address at a time: accepting one restarts the terminal, so
-                 * the operator taps the card again for the other network. */
-                prov_set_note("Accept the address on the terminal screen. "
-                              "Tap the card again for the other network.");
+                prov_set_note("Accept each address on the terminal screen.");
+                /* Ethereum first if there is one; Tron waits in card_tron and is
+                 * offered when that proposal is resolved (see PROV_VALUE_SET). */
+                card_tron[0] = '\0';
                 if (c_eth[0] != '\0') {
                     (void)prov_propose(PROV_ASK_PAYOUT_ETH, c_eth);
+                    (void)snprintf(card_tron, sizeof(card_tron), "%s", c_tron);
                 } else if (c_tron[0] != '\0') {
                     (void)prov_propose(PROV_ASK_PAYOUT_TRON, c_tron);
                 }

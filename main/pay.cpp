@@ -85,12 +85,14 @@ void token_load(const token_cfg_t *cfg, CW_CryptoProvider &crypto) {
     token_t   *t    = &s_token[cfg->chain];
     const bool tron = pos_chain_is_tron(cfg->chain);
     if (settings_get_contract(cfg->chain, t->str, sizeof(t->str))) {
+        t->checked = false;   /* operator-set: token_decimals_ok asks the chain */
         if (token_parse(t, tron, crypto)) { return; }
         ESP_LOGW(TAG, "stored %s contract not usable - trying config.h",
                  pos_asset_of(cfg->chain)->ticker);
     }
     (void)snprintf(t->str, sizeof(t->str), "%s%s", tron ? "" : "0x",
                    settings_net_str(cfg->test, cfg->main));
+    t->checked = true;   /* config.h: part of the signed image, vetted at build */
     if (!token_parse(t, tron, crypto)) {
         const pos_asset_t *a = pos_asset_of(cfg->chain);
         ESP_LOGW(TAG, "%s not usable - %s on %s disabled", cfg->name, a->ticker,
@@ -98,6 +100,51 @@ void token_load(const token_cfg_t *cfg, CW_CryptoProvider &crypto) {
     }
 }
 
+/**
+ * @brief Before the first sale in an operator-set token, read its decimals()
+ *        and refuse anything but 6.
+ *
+ * Every amount is signed in 6-decimal base units, so an 18-decimal contract
+ * would be charged 10^-12 of the figure on the screen. Checked here rather than
+ * when the contract is proposed: the config page runs with the station down, so
+ * no node can be asked then. A read that fails refuses the sale too, and the
+ * next sale asks again. Once per boot per token.
+ *
+ * @return true when the token may be charged in.
+ */
+bool token_decimals_ok(pos_chain_t chain, char *err, size_t err_max)
+{
+    token_t *t = active_token(chain);
+    if ((t == NULL) || t->checked) { return true; }
+
+    uint64_t dec   = 0U;
+    bool     asked = false;
+    if (pos_chain_is_tron(chain)) {
+        uint8_t c21[CW_TRON_ADDRESS_BYTES];
+        c21[0] = CW_TRON_ADDRESS_PREFIX;
+        (void)CW_Utils::safe_memcpy(&c21[1], sizeof(c21) - 1U, t->addr.addr,
+                                    ETH_ADDR_LEN);
+        char hex[TRON_ADDR_HEX_LEN + 1U];
+        tron_addr_to_hex(c21, hex, sizeof(hex));
+        asked = tron_rpc_get_trc20_decimals(hex, &dec);
+    } else {
+        eth_rpc_select_for(pos_chain_is_polygon(chain));
+        asked = eth_rpc_get_token_decimals(t->str, &dec);
+        eth_rpc_select();
+    }
+    if (asked && (dec == 6U)) {
+        t->checked = true;
+        return true;
+    }
+    if (asked) {
+        (void)snprintf(err, err_max, "Token contract has %u decimals - set it again",
+                       static_cast<unsigned>((dec > 99U) ? 99U : dec));
+    } else {
+        (void)snprintf(err, err_max, "Could not check the token contract");
+    }
+    ESP_LOGW(TAG, "contract %s refused: %s", t->str, err);
+    return false;
+}
 
 /**
  * @brief Point the UI's address rows at the selected chain.
@@ -302,6 +349,11 @@ bcast_t pay_sign_and_broadcast(CryptnoxWallet &wallet, Pn532NfcTransport &transp
                                const char *pin, size_t pin_chars, inflight_t *fl,
                                char *err_out, size_t err_max)
 {
+    /* Again here, not only at the confirm step: free once checked, and no route
+     * to the card skips it. */
+    if (!token_decimals_ok(settings_get_chain(), err_out, err_max)) {
+        return BCAST_FAILED;
+    }
     return chain_is_tron()
         ? sign_and_broadcast_tron(wallet, transport, crypto, amount, &s_tron_dest,
                                   active_token(), pin, pin_chars, fl,

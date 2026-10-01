@@ -248,59 +248,6 @@ static bool resolve_evm_payout(bool *rejected)
 }
 
 /**
- * @brief Before a proposed token contract reaches the panel, read its
- *        decimals() and refuse anything but 6.
- *
- * Every amount is signed in 6-decimal base units, so an 18-decimal contract
- * accepted by mistake would be charged 10^-12 of the sum on the screen. A
- * contract that cannot be asked (no network, no code there) is refused too:
- * the page says why and the operator can propose it again.
- *
- * @return true if the proposal may be shown for accepting.
- */
-bool proposal_decimals_ok(CW_CryptoProvider &crypto)
-{
-    prov_ask_t kind = PROV_ASK_NONE;
-    char value[SETTINGS_PAYOUT_MAX] = "";
-    if (!prov_pending(&kind, NULL, 0U, value, sizeof(value))) { return true; }
-    if ((kind != PROV_ASK_CONTRACT_ETH) && (kind != PROV_ASK_CONTRACT_TRON)) {
-        return true;
-    }
-
-    uint64_t dec = 0U;
-    bool     asked = false;
-    if (kind == PROV_ASK_CONTRACT_ETH) {
-        eth_rpc_select_for(false);          /* the Ethereum USDC contract */
-        asked = eth_rpc_get_token_decimals(value, &dec);
-        eth_rpc_select();
-    } else {
-        uint8_t c21[CW_TRON_ADDRESS_BYTES];
-        if (CW_Tron::decodeAddress(value, crypto, c21)) {
-            char c_hex[TRON_ADDR_HEX_LEN + 1U];
-            tron_addr_to_hex(c21, c_hex, sizeof(c_hex));
-            asked = tron_rpc_get_trc20_decimals(c_hex, &dec);
-        }
-    }
-    if (asked && (dec == 6U)) { return true; }
-
-    char note[128];
-    if (asked) {
-        (void)snprintf(note, sizeof(note),
-                       "Refused: that contract has %u decimals. Only 6-decimal "
-                       "tokens (USDC, USDT) are supported.",
-                       static_cast<unsigned>((dec > 99U) ? 99U : dec));
-    } else {
-        (void)snprintf(note, sizeof(note),
-                       "Refused: could not read that contract's decimals. Check "
-                       "the address and the network, then try again.");
-    }
-    ESP_LOGW(TAG, "contract %s: %s", value, note);
-    (void)prov_pending_commit(false);
-    prov_set_note(note);
-    return false;
-}
-
-/**
  * @brief Run the browser wizard until the operator presses Finish.
  *
  *   1. admin code   on the panel  — done by the caller; its value is that it
@@ -444,7 +391,7 @@ bool run_wizard(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
             }
 
             case UI_EVENT_PROV_VALUE:
-                if (proposal_decimals_ok(crypto)) { ui_show_prov_confirm(); }
+                ui_show_prov_confirm();   /* decimals: see token_decimals_ok */
                 break;
 
             case UI_EVENT_PROV_VALUE_SET:
