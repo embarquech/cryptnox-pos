@@ -1,6 +1,5 @@
 var searchData=
 [
-  ['eth_5fjson_5freceipt_5ft_0',['eth_json_receipt_t',['../eth__json_8h.html#a812052cb324ba72b248eb240e2183db4',1,'eth_json.h']]],
-  ['eth_5frpc_5fparity_5fresult_5ft_1',['eth_rpc_parity_result_t',['../eth__rpc_8h.html#a2b203fce75e401f4f1976a448f53acd1',1,'eth_rpc.h']]],
-  ['eth_5frpc_5freceipt_5fresult_5ft_2',['eth_rpc_receipt_result_t',['../eth__rpc_8h.html#ab0a994aa8d532bdb14eceeebeb4d8750',1,'eth_rpc.h']]]
+  ['card_5fstate_5ft_0',['card_state_t',['../card__status_8h.html#a59396f6f6957c97c9a176135a28fdcc0',1,'card_status.h']]],
+  ['civil_5fdst_5ft_1',['civil_dst_t',['../civil__time_8h.html#a72b1be6cb5a080ecc08b42d13a6f8efd',1,'civil_time.h']]]
 ];

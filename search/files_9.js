@@ -1,5 +1,5 @@
 var searchData=
 [
-  ['ui_2ecpp_0',['ui.cpp',['../ui_8cpp.html',1,'']]],
-  ['ui_2eh_1',['ui.h',['../ui_8h.html',1,'']]]
+  ['logo_5fmid_2ec_0',['logo_mid.c',['../logo__mid_8c.html',1,'']]],
+  ['logo_5fmid_2eh_1',['logo_mid.h',['../logo__mid_8h.html',1,'']]]
 ];

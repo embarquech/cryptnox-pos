@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['troubleshooting_0',['Troubleshooting',['../index.html#troubleshooting',1,'']]]
+  ['readers_0',['NFC readers',['../index.html#nfc-readers',1,'']]]
 ];

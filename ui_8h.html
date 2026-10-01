@@ -134,7 +134,7 @@ Include dependency graph for ui.h:</div>
 </div><div class="textblock"><div class="dynheader">
 This graph shows which files directly or indirectly include this file:</div>
 <div class="dyncontent">
-<div class="center"><iframe scrolling="no" loading="lazy" frameborder="0" src="ui_8h__dep__incl.svg" width="254" height="110"><p><b>This browser is not able to show SVG: try Firefox, Chrome, Safari, or Opera instead.</b></p></iframe></div>
+<div class="center"><iframe scrolling="no" loading="lazy" frameborder="0" src="ui_8h__dep__incl.svg" width="2015" height="256"><p><b>This browser is not able to show SVG: try Firefox, Chrome, Safari, or Opera instead.</b></p></iframe></div>
 </div>
 </div>
 <p><a href="ui_8h_source.html">Go to the source code of this file.</a></p>
@@ -163,6 +163,9 @@ Enumerations</h2></td></tr>
 , <a class="el" href="#a4a96c66658390ff80fefe7027730cc25a57b2dcdf0a37a96462fce996f06b293c">UI_SCREEN_ADMIN_UNLOCK</a>
 , <br />
 &#160;&#160;<a class="el" href="#a4a96c66658390ff80fefe7027730cc25abfbc60e7b0a01e586b8810dd72b55341">UI_SCREEN_WELCOME</a>
+, <a class="el" href="#a4a96c66658390ff80fefe7027730cc25ab3f09a9dbbc8e99c1be6d7c318a74384">UI_SCREEN_PROV</a>
+, <a class="el" href="#a4a96c66658390ff80fefe7027730cc25afa8625247019ac35fcf8a938579c3533">UI_SCREEN_CARD_WAIT</a>
+, <a class="el" href="#a4a96c66658390ff80fefe7027730cc25a194211476b883a769482110d87547601">UI_SCREEN_TOUCH_CAL</a>
 <br />
  }</td></tr>
 <tr class="memdesc:a4a96c66658390ff80fefe7027730cc25"><td class="mdescLeft">&#160;</td><td class="mdescRight">Top-level screens of the payment flow.  <a href="#a4a96c66658390ff80fefe7027730cc25">More...</a><br /></td></tr>
@@ -178,6 +181,21 @@ Enumerations</h2></td></tr>
 , <a class="el" href="#a9a99e204659fdc9573b3dc140ffeedd3a52d8ee321f1b394c2dbc75c4a3c4a6da">UI_EVENT_ADMIN_SET</a>
 , <br />
 &#160;&#160;<a class="el" href="#a9a99e204659fdc9573b3dc140ffeedd3a6317d6177b1fd69b72c5486ae6ef4c49">UI_EVENT_WELCOME_DONE</a>
+, <a class="el" href="#a9a99e204659fdc9573b3dc140ffeedd3a22220a423c6f5b5e2ccc499aed4b0e36">UI_EVENT_PROV_AUTH</a>
+, <a class="el" href="#a9a99e204659fdc9573b3dc140ffeedd3aa6cace6d3c672a572d39d904ecb4bb57">UI_EVENT_PROV_VALUE</a>
+, <a class="el" href="#a9a99e204659fdc9573b3dc140ffeedd3ad461639409f10b0469a825ad47e8e420">UI_EVENT_PROV_VALUE_SET</a>
+, <br />
+&#160;&#160;<a class="el" href="#a9a99e204659fdc9573b3dc140ffeedd3a53e169c82dbf1cd6fe942da867cf6997">UI_EVENT_PROV_VALUE_NO</a>
+, <a class="el" href="#a9a99e204659fdc9573b3dc140ffeedd3a75ca2f4f0c6a9989c2ca81d1003c812e">UI_EVENT_PROV_CARD</a>
+, <a class="el" href="#a9a99e204659fdc9573b3dc140ffeedd3aa8d61d6763bc72dc20003c30e52a3d4a">UI_EVENT_PROV_SCAN</a>
+, <a class="el" href="#a9a99e204659fdc9573b3dc140ffeedd3ab30005754228a65983c34c01b6a78506">UI_EVENT_PROV_NEXT</a>
+, <br />
+&#160;&#160;<a class="el" href="#a9a99e204659fdc9573b3dc140ffeedd3a657d850d4f1f2af69ffec5dfce3aca31">UI_EVENT_PROV_FINISH</a>
+, <a class="el" href="#a9a99e204659fdc9573b3dc140ffeedd3a31e5c798a750d55193d76f4abef3c6fe">UI_EVENT_CARD_PIN</a>
+, <a class="el" href="#a9a99e204659fdc9573b3dc140ffeedd3a15cd2c18907d05435917becbfa4d68fe">UI_EVENT_OTA_STAGED</a>
+, <a class="el" href="#a9a99e204659fdc9573b3dc140ffeedd3af27890589f1cf1ac88f23d4fc1af4b8f">UI_EVENT_TX_RECHECK</a>
+, <br />
+&#160;&#160;<a class="el" href="#a9a99e204659fdc9573b3dc140ffeedd3ab577b82bb49527571cbb87e80b238c3a">UI_EVENT_PROV_STOP</a>
 <br />
  }</td></tr>
 <tr class="memdesc:a9a99e204659fdc9573b3dc140ffeedd3"><td class="mdescLeft">&#160;</td><td class="mdescRight">Events emitted by the UI task towards the main task.  <a href="#a9a99e204659fdc9573b3dc140ffeedd3">More...</a><br /></td></tr>
@@ -190,11 +208,13 @@ Enumerations</h2></td></tr>
 &#160;&#160;<a class="el" href="#a64b6bbe2fbeb96a8d689ba887b204fa1a30de1a39c3f17020a90aa8cf20d8f0cb">UI_TX_STATE_CONFIRMING</a>
 , <a class="el" href="#a64b6bbe2fbeb96a8d689ba887b204fa1a656b8d2e41e8420051e2ffb25c861e07">UI_TX_STATE_DONE</a>
 , <a class="el" href="#a64b6bbe2fbeb96a8d689ba887b204fa1ac69f70c4193dea6c5850f4416433455c">UI_TX_STATE_FAILED</a>
+, <a class="el" href="#a64b6bbe2fbeb96a8d689ba887b204fa1a06fdcd72f5774c9f66d9f1317b3c294d">UI_TX_STATE_UNCONFIRMED</a>
 <br />
  }</td></tr>
 <tr class="memdesc:a64b6bbe2fbeb96a8d689ba887b204fa1"><td class="mdescLeft">&#160;</td><td class="mdescRight">States shown on the transaction-status screen.  <a href="#a64b6bbe2fbeb96a8d689ba887b204fa1">More...</a><br /></td></tr>
 <tr class="memitem:a9fd79a31065507efd38b2c834862c12e" id="r_a9fd79a31065507efd38b2c834862c12e"><td class="memItemLeft">enum &#160;</td><td class="memItemRight"><a class="el" href="#a9fd79a31065507efd38b2c834862c12e">ui_boot_err_t</a> { <a class="el" href="#a9fd79a31065507efd38b2c834862c12eaf106efffda1ba69240c152ca490df6aa">UI_BOOT_ERR_NFC</a>
 , <a class="el" href="#a9fd79a31065507efd38b2c834862c12eaaf8d2293735ea31d383ce359a523f196">UI_BOOT_ERR_WALLET</a>
+, <a class="el" href="#a9fd79a31065507efd38b2c834862c12eac6d1530c3c0208acf18ad5896ef79156">UI_BOOT_ERR_CONFIG</a>
  }</td></tr>
 <tr class="memdesc:a9fd79a31065507efd38b2c834862c12e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Startup faults shown on <a class="el" href="#a4a96c66658390ff80fefe7027730cc25a25d7fe30af2e19d0eec7644899e4e04d" title="UI_SCREEN_BOOT_ERROR">UI_SCREEN_BOOT_ERROR</a>.  <a href="#a9fd79a31065507efd38b2c834862c12e">More...</a><br /></td></tr>
 </table><table class="memberdecls">
@@ -206,28 +226,54 @@ Functions</h2></td></tr>
 <tr class="memdesc:abef86a98c393280d5f6d51235b32e695"><td class="mdescLeft">&#160;</td><td class="mdescRight">Switch to the splash screen.  <br /></td></tr>
 <tr class="memitem:a8dff76fae85940e90f746f28ad01ff3d" id="r_a8dff76fae85940e90f746f28ad01ff3d"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#a8dff76fae85940e90f746f28ad01ff3d">ui_show_amount_entry</a> (void)</td></tr>
 <tr class="memdesc:a8dff76fae85940e90f746f28ad01ff3d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Switch to the amount-entry screen (forces a value redraw).  <br /></td></tr>
-<tr class="memitem:a545033814885a63565f3991d2c70d8e6" id="r_a545033814885a63565f3991d2c70d8e6"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#a545033814885a63565f3991d2c70d8e6">ui_show_confirm</a> (uint64_t amount_units, const char *dest_addr)</td></tr>
-<tr class="memdesc:a545033814885a63565f3991d2c70d8e6"><td class="mdescLeft">&#160;</td><td class="mdescRight">Switch to the confirm screen.  <br /></td></tr>
+<tr class="memitem:a257a4cf9b66267567d5e7dfc872c9225" id="r_a257a4cf9b66267567d5e7dfc872c9225"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#a257a4cf9b66267567d5e7dfc872c9225">ui_show_confirm</a> (uint64_t amount_units, const char *dest_addr, const char *fee)</td></tr>
+<tr class="memdesc:a257a4cf9b66267567d5e7dfc872c9225"><td class="mdescLeft">&#160;</td><td class="mdescRight">Switch to the confirm screen.  <br /></td></tr>
 <tr class="memitem:a876ff330ea0bf38a47969c689f6a0b83" id="r_a876ff330ea0bf38a47969c689f6a0b83"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#a876ff330ea0bf38a47969c689f6a0b83">ui_show_tx_status</a> (<a class="el" href="#a64b6bbe2fbeb96a8d689ba887b204fa1">ui_tx_state_t</a> state, const char *info)</td></tr>
 <tr class="memdesc:a876ff330ea0bf38a47969c689f6a0b83"><td class="mdescLeft">&#160;</td><td class="mdescRight">Switch to the transaction-status screen.  <br /></td></tr>
+<tr class="memitem:aba8c148ea266a224cee7108a73a19956" id="r_aba8c148ea266a224cee7108a73a19956"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#aba8c148ea266a224cee7108a73a19956">ui_set_tx_info</a> (const char *info)</td></tr>
+<tr class="memdesc:aba8c148ea266a224cee7108a73a19956"><td class="mdescLeft">&#160;</td><td class="mdescRight">Replace the transaction screen's info line without rebuilding it.  <br /></td></tr>
 <tr class="memitem:af3c14a388f70d71dc0b6ab53693d1a8a" id="r_af3c14a388f70d71dc0b6ab53693d1a8a"><td class="memItemLeft">size_t&#160;</td><td class="memItemRight"><a class="el" href="#af3c14a388f70d71dc0b6ab53693d1a8a">ui_take_pin</a> (char *out, size_t n)</td></tr>
 <tr class="memdesc:af3c14a388f70d71dc0b6ab53693d1a8a"><td class="mdescLeft">&#160;</td><td class="mdescRight">Copy the most recently entered PIN out and wipe the UI's copy.  <br /></td></tr>
 <tr class="memitem:a41ad2a2faa04f60e2e2a0b6333cd4c54" id="r_a41ad2a2faa04f60e2e2a0b6333cd4c54"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#a41ad2a2faa04f60e2e2a0b6333cd4c54">ui_show_wifi_list</a> (const <a class="el" href="structnet__wifi__ap__t.html">net_wifi_ap_t</a> *aps, uint16_t n, const char *note)</td></tr>
 <tr class="memdesc:a41ad2a2faa04f60e2e2a0b6333cd4c54"><td class="mdescLeft">&#160;</td><td class="mdescRight">Show the scanned Wi-Fi networks for the user to pick from.  <br /></td></tr>
 <tr class="memitem:aed523cd9db6cfe38217658dacbd2cbdc" id="r_aed523cd9db6cfe38217658dacbd2cbdc"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#aed523cd9db6cfe38217658dacbd2cbdc">ui_show_boot_error</a> (<a class="el" href="#a9fd79a31065507efd38b2c834862c12e">ui_boot_err_t</a> kind, const char *detail)</td></tr>
 <tr class="memdesc:aed523cd9db6cfe38217658dacbd2cbdc"><td class="mdescLeft">&#160;</td><td class="mdescRight">Show a startup fault, naming the cause and what to do about it.  <br /></td></tr>
-<tr class="memitem:aeeaa931df47c4d584b1a643097c27b9b" id="r_aeeaa931df47c4d584b1a643097c27b9b"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#aeeaa931df47c4d584b1a643097c27b9b">ui_set_addresses</a> (const char *usdc_contract, const char *dest_addr)</td></tr>
-<tr class="memdesc:aeeaa931df47c4d584b1a643097c27b9b"><td class="mdescLeft">&#160;</td><td class="mdescRight">Provide the USDC contract and destination addresses for the settings "Tx" tab (pointers stored as-is; pass static/literal).  <br /></td></tr>
+<tr class="memitem:a7abbf821eac8c326f232d9a94ce72536" id="r_a7abbf821eac8c326f232d9a94ce72536"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#a7abbf821eac8c326f232d9a94ce72536">ui_set_addresses</a> (const char *token_contract, const char *dest_addr)</td></tr>
+<tr class="memdesc:a7abbf821eac8c326f232d9a94ce72536"><td class="mdescLeft">&#160;</td><td class="mdescRight">Provide the token contract and destination addresses for the confirm screen and the settings "Tx" tab (pointers stored as-is; pass static/literal storage that outlives the call).  <br /></td></tr>
+<tr class="memitem:a97776cfef174c2231a510245b5b09474" id="r_a97776cfef174c2231a510245b5b09474"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#a97776cfef174c2231a510245b5b09474">ui_refresh_addresses</a> (void)</td></tr>
+<tr class="memdesc:a97776cfef174c2231a510245b5b09474"><td class="mdescLeft">&#160;</td><td class="mdescRight">Implemented by main: repoint those two rows at the selected chain.  <br /></td></tr>
+<tr class="memitem:a69601e06d3763c350f50da8c1f47b06b" id="r_a69601e06d3763c350f50da8c1f47b06b"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#a69601e06d3763c350f50da8c1f47b06b">ui_refresh_addresses_for</a> (uint8_t chain)</td></tr>
+<tr class="memdesc:a69601e06d3763c350f50da8c1f47b06b"><td class="mdescLeft">&#160;</td><td class="mdescRight">Same, for any chain (a <a class="el" href="settings_8h.html#ab65f4f90346e002c9018334aea79c725" title="Which chain (and therefore which asset) the terminal charges in.">pos_chain_t</a>) rather than the one sales use.  <br /></td></tr>
 <tr class="memitem:ae2278caf49fcb7affadd7c40ae3286e4" id="r_ae2278caf49fcb7affadd7c40ae3286e4"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#ae2278caf49fcb7affadd7c40ae3286e4">ui_show_wifi_connecting</a> (const char *ssid)</td></tr>
 <tr class="memdesc:ae2278caf49fcb7affadd7c40ae3286e4"><td class="mdescLeft">&#160;</td><td class="mdescRight">Show a "Connecting to &lt;ssid&gt;…" screen while main associates.  <br /></td></tr>
 <tr class="memitem:a3db450e73974ba379262c434734336f2" id="r_a3db450e73974ba379262c434734336f2"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#a3db450e73974ba379262c434734336f2">ui_set_boot_status</a> (const char *step)</td></tr>
 <tr class="memdesc:a3db450e73974ba379262c434734336f2"><td class="mdescLeft">&#160;</td><td class="mdescRight">Set the one-line progress note on the splash screen.  <br /></td></tr>
-<tr class="memitem:af063dee1c2e32c1c5cd20c5e85a85cd8" id="r_af063dee1c2e32c1c5cd20c5e85a85cd8"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#af063dee1c2e32c1c5cd20c5e85a85cd8">ui_show_welcome</a> (void)</td></tr>
-<tr class="memdesc:af063dee1c2e32c1c5cd20c5e85a85cd8"><td class="mdescLeft">&#160;</td><td class="mdescRight">Greet the operator at the start of first-run setup.  <br /></td></tr>
+<tr class="memitem:a8683f2eb73882c592583c2e9528dead8" id="r_a8683f2eb73882c592583c2e9528dead8"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#a8683f2eb73882c592583c2e9528dead8">ui_fees_changed</a> (void)</td></tr>
+<tr class="memdesc:a8683f2eb73882c592583c2e9528dead8"><td class="mdescLeft">&#160;</td><td class="mdescRight">Note that the stored gas caps have changed, so the Tx tab can catch up.  <br /></td></tr>
+<tr class="memitem:af6a7af03d1b92a586d68ed2a768f036a" id="r_af6a7af03d1b92a586d68ed2a768f036a"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#af6a7af03d1b92a586d68ed2a768f036a">ui_clock_changed</a> (void)</td></tr>
+<tr class="memdesc:af6a7af03d1b92a586d68ed2a768f036a"><td class="mdescLeft">&#160;</td><td class="mdescRight">Note that the stored UTC offset has changed, so the clock can catch up.  <br /></td></tr>
+<tr class="memitem:a38c62ac0a82c46557a2f743d98a2f08e" id="r_a38c62ac0a82c46557a2f743d98a2f08e"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#a38c62ac0a82c46557a2f743d98a2f08e">ui_show_welcome</a> (const char *sub)</td></tr>
+<tr class="memdesc:a38c62ac0a82c46557a2f743d98a2f08e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Greet the operator at the start of first-run setup, or after an update.  <br /></td></tr>
 <tr class="memitem:aa2e16dfdfda01546a1b44535b71ed626" id="r_aa2e16dfdfda01546a1b44535b71ed626"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#aa2e16dfdfda01546a1b44535b71ed626">ui_show_admin_set</a> (void)</td></tr>
 <tr class="memdesc:aa2e16dfdfda01546a1b44535b71ed626"><td class="mdescLeft">&#160;</td><td class="mdescRight">Run the first-run admin-code creation (enter, then confirm).  <br /></td></tr>
 <tr class="memitem:a739a9cae9614464d8306f4e6f84021fe" id="r_a739a9cae9614464d8306f4e6f84021fe"><td class="memItemLeft">size_t&#160;</td><td class="memItemRight"><a class="el" href="#a739a9cae9614464d8306f4e6f84021fe">ui_take_wifi_creds</a> (char *ssid, size_t ssid_n, char *pass, size_t pass_n)</td></tr>
 <tr class="memdesc:a739a9cae9614464d8306f4e6f84021fe"><td class="mdescLeft">&#160;</td><td class="mdescRight">Fetch the selected SSID + entered password and wipe the UI's copy.  <br /></td></tr>
+<tr class="memitem:a8be9ab2f28086223edc73cc0d4d5e76e" id="r_a8be9ab2f28086223edc73cc0d4d5e76e"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#a8be9ab2f28086223edc73cc0d4d5e76e">ui_stage_wifi_creds</a> (const char *ssid, const char *pass)</td></tr>
+<tr class="memdesc:a8be9ab2f28086223edc73cc0d4d5e76e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Load credentials into the same handoff buffers the picker fills.  <br /></td></tr>
+<tr class="memitem:a1f4faf26913f8811270f6b5a1f5220c6" id="r_a1f4faf26913f8811270f6b5a1f5220c6"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#a1f4faf26913f8811270f6b5a1f5220c6">ui_show_prov</a> (int step)</td></tr>
+<tr class="memdesc:a1f4faf26913f8811270f6b5a1f5220c6"><td class="mdescLeft">&#160;</td><td class="mdescRight">Show the setup screen: QR code, AP name and passphrase.  <br /></td></tr>
+<tr class="memitem:a90f330a693f0bf348b6edcb1c7a2c2de" id="r_a90f330a693f0bf348b6edcb1c7a2c2de"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#a90f330a693f0bf348b6edcb1c7a2c2de">ui_show_prov_confirm</a> (void)</td></tr>
+<tr class="memdesc:a90f330a693f0bf348b6edcb1c7a2c2de"><td class="mdescLeft">&#160;</td><td class="mdescRight">Raise the modal that asks the operator to accept a value a browser proposed, reading the pending proposal from <a class="el" href="provision_8h.html" title="The config portal: one web app for setting a terminal up and for administering it afterwards,...">provision.h</a>.  <br /></td></tr>
+<tr class="memitem:a33dc0f135ad9408f9e6fe0fdccdc2ee5" id="r_a33dc0f135ad9408f9e6fe0fdccdc2ee5"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#a33dc0f135ad9408f9e6fe0fdccdc2ee5">ui_show_prov_auth</a> (void)</td></tr>
+<tr class="memdesc:a33dc0f135ad9408f9e6fe0fdccdc2ee5"><td class="mdescLeft">&#160;</td><td class="mdescRight">Demand the admin code so a browser can be authorised.  <br /></td></tr>
+<tr class="memitem:a5c0aaac0d2e2f02db283ff8354cb7b2c" id="r_a5c0aaac0d2e2f02db283ff8354cb7b2c"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#a5c0aaac0d2e2f02db283ff8354cb7b2c">ui_show_card_pin</a> (void)</td></tr>
+<tr class="memdesc:a5c0aaac0d2e2f02db283ff8354cb7b2c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Ask for the card PIN before reading an address off a Cryptnox card.  <br /></td></tr>
+<tr class="memitem:a0e34fd94365e91727d458a6868fc6696" id="r_a0e34fd94365e91727d458a6868fc6696"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#a0e34fd94365e91727d458a6868fc6696">ui_set_prov_note</a> (const char *msg)</td></tr>
+<tr class="memdesc:a0e34fd94365e91727d458a6868fc6696"><td class="mdescLeft">&#160;</td><td class="mdescRight">Put a failure line on the setup screen, in red under the step title.  <br /></td></tr>
+<tr class="memitem:ae7ad1945a2589d9869aa3c87cc426aa6" id="r_ae7ad1945a2589d9869aa3c87cc426aa6"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#ae7ad1945a2589d9869aa3c87cc426aa6">ui_show_card_wait</a> (const char *note)</td></tr>
+<tr class="memdesc:ae7ad1945a2589d9869aa3c87cc426aa6"><td class="mdescLeft">&#160;</td><td class="mdescRight">"Hold your card to the reader" while the address is read.  <br /></td></tr>
+<tr class="memitem:a681bef31f50970b968efe5a52f450f2d" id="r_a681bef31f50970b968efe5a52f450f2d"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#a681bef31f50970b968efe5a52f450f2d">ui_show_ota_confirm</a> (void)</td></tr>
+<tr class="memdesc:a681bef31f50970b968efe5a52f450f2d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Raise the modal that asks the operator to accept a firmware image the update page has uploaded, reading it from <a class="el" href="ota_8h.html" title="Firmware slot handling: receive an image into the idle slot, verify it, and install it only once some...">ota.h</a>.  <br /></td></tr>
 </table>
 <a name="details" id="details"></a><h2 id="header-details" class="groupheader">Detailed Description</h2>
 <div class="textblock"><p>Touchscreen UI API: screens, events and transaction states for the CYD (ILI9341 + XPT2046) payment flow. </p>
@@ -256,7 +302,7 @@ Functions</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="ui_8h_source.html#l00095">95</a> of file <a class="el" href="ui_8h_source.html">ui.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8h_source.html#l00128">128</a> of file <a class="el" href="ui_8h_source.html">ui.h</a>.</p>
 
 </div>
 </div>
@@ -280,9 +326,11 @@ Functions</h2></td></tr>
 </td></tr>
 <tr><td class="fieldname"><a id="a9fd79a31065507efd38b2c834862c12eaaf8d2293735ea31d383ce359a523f196" name="a9fd79a31065507efd38b2c834862c12eaaf8d2293735ea31d383ce359a523f196"></a>UI_BOOT_ERR_WALLET&#160;</td><td class="fielddoc"><p>Reader answered, wallet layer failed to start. </p>
 </td></tr>
+<tr><td class="fieldname"><a id="a9fd79a31065507efd38b2c834862c12eac6d1530c3c0208acf18ad5896ef79156" name="a9fd79a31065507efd38b2c834862c12eac6d1530c3c0208acf18ad5896ef79156"></a>UI_BOOT_ERR_CONFIG&#160;</td><td class="fielddoc"><p>A config.h address in this build is invalid. </p>
+</td></tr>
 </table>
 
-<p class="definition">Definition at line <a class="el" href="ui_8h_source.html#l00081">81</a> of file <a class="el" href="ui_8h_source.html">ui.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8h_source.html#l00113">113</a> of file <a class="el" href="ui_8h_source.html">ui.h</a>.</p>
 
 </div>
 </div>
@@ -312,15 +360,39 @@ Functions</h2></td></tr>
 </td></tr>
 <tr><td class="fieldname"><a id="a9a99e204659fdc9573b3dc140ffeedd3a39d85ddff76d37945076baec0d72f0cb" name="a9a99e204659fdc9573b3dc140ffeedd3a39d85ddff76d37945076baec0d72f0cb"></a>UI_EVENT_WIFI_TRY&#160;</td><td class="fielddoc"><p>Wi-Fi creds entered; fetch via ui_take_wifi_creds. </p>
 </td></tr>
-<tr><td class="fieldname"><a id="a9a99e204659fdc9573b3dc140ffeedd3ad02010de6358696d9390fc93984d2323" name="a9a99e204659fdc9573b3dc140ffeedd3ad02010de6358696d9390fc93984d2323"></a>UI_EVENT_TX_RETRY&#160;</td><td class="fielddoc"><p>New payment tapped after Done/Failed. </p>
+<tr><td class="fieldname"><a id="a9a99e204659fdc9573b3dc140ffeedd3ad02010de6358696d9390fc93984d2323" name="a9a99e204659fdc9573b3dc140ffeedd3ad02010de6358696d9390fc93984d2323"></a>UI_EVENT_TX_RETRY&#160;</td><td class="fielddoc"><p>New sale after Done/Failed, or Clear on Unconfirmed. </p>
 </td></tr>
 <tr><td class="fieldname"><a id="a9a99e204659fdc9573b3dc140ffeedd3a52d8ee321f1b394c2dbc75c4a3c4a6da" name="a9a99e204659fdc9573b3dc140ffeedd3a52d8ee321f1b394c2dbc75c4a3c4a6da"></a>UI_EVENT_ADMIN_SET&#160;</td><td class="fielddoc"><p>Admin code created and stored (first run). </p>
 </td></tr>
 <tr><td class="fieldname"><a id="a9a99e204659fdc9573b3dc140ffeedd3a6317d6177b1fd69b72c5486ae6ef4c49" name="a9a99e204659fdc9573b3dc140ffeedd3a6317d6177b1fd69b72c5486ae6ef4c49"></a>UI_EVENT_WELCOME_DONE&#160;</td><td class="fielddoc"><p>Start tapped on the welcome screen. </p>
 </td></tr>
+<tr><td class="fieldname"><a id="a9a99e204659fdc9573b3dc140ffeedd3a22220a423c6f5b5e2ccc499aed4b0e36" name="a9a99e204659fdc9573b3dc140ffeedd3a22220a423c6f5b5e2ccc499aed4b0e36"></a>UI_EVENT_PROV_AUTH&#160;</td><td class="fielddoc"><p>A browser asked to be authorised; the admin code has to be taken on the panel. </p>
+</td></tr>
+<tr><td class="fieldname"><a id="a9a99e204659fdc9573b3dc140ffeedd3aa6cace6d3c672a572d39d904ecb4bb57" name="a9a99e204659fdc9573b3dc140ffeedd3aa6cace6d3c672a572d39d904ecb4bb57"></a>UI_EVENT_PROV_VALUE&#160;</td><td class="fielddoc"><p>A payout address or token contract was proposed; needs accepting on the panel. </p>
+</td></tr>
+<tr><td class="fieldname"><a id="a9a99e204659fdc9573b3dc140ffeedd3ad461639409f10b0469a825ad47e8e420" name="a9a99e204659fdc9573b3dc140ffeedd3ad461639409f10b0469a825ad47e8e420"></a>UI_EVENT_PROV_VALUE_SET&#160;</td><td class="fielddoc"><p>That value was accepted and stored. </p>
+</td></tr>
+<tr><td class="fieldname"><a id="a9a99e204659fdc9573b3dc140ffeedd3a53e169c82dbf1cd6fe942da867cf6997" name="a9a99e204659fdc9573b3dc140ffeedd3a53e169c82dbf1cd6fe942da867cf6997"></a>UI_EVENT_PROV_VALUE_NO&#160;</td><td class="fielddoc"><p>That value was rejected on the panel. Its own event so a caller holding a second value to offer is not left waiting on an accept that will never come. </p>
+</td></tr>
+<tr><td class="fieldname"><a id="a9a99e204659fdc9573b3dc140ffeedd3a75ca2f4f0c6a9989c2ca81d1003c812e" name="a9a99e204659fdc9573b3dc140ffeedd3a75ca2f4f0c6a9989c2ca81d1003c812e"></a>UI_EVENT_PROV_CARD&#160;</td><td class="fielddoc"><p>The page asked the terminal to read the payout addresses off a Cryptnox card. </p>
+</td></tr>
+<tr><td class="fieldname"><a id="a9a99e204659fdc9573b3dc140ffeedd3aa8d61d6763bc72dc20003c30e52a3d4a" name="a9a99e204659fdc9573b3dc140ffeedd3aa8d61d6763bc72dc20003c30e52a3d4a"></a>UI_EVENT_PROV_SCAN&#160;</td><td class="fielddoc"><p>The page asked for a fresh Wi-Fi scan. </p>
+</td></tr>
+<tr><td class="fieldname"><a id="a9a99e204659fdc9573b3dc140ffeedd3ab30005754228a65983c34c01b6a78506" name="a9a99e204659fdc9573b3dc140ffeedd3ab30005754228a65983c34c01b6a78506"></a>UI_EVENT_PROV_NEXT&#160;</td><td class="fielddoc"><p>Continue tapped in the browser wizard. </p>
+</td></tr>
+<tr><td class="fieldname"><a id="a9a99e204659fdc9573b3dc140ffeedd3a657d850d4f1f2af69ffec5dfce3aca31" name="a9a99e204659fdc9573b3dc140ffeedd3a657d850d4f1f2af69ffec5dfce3aca31"></a>UI_EVENT_PROV_FINISH&#160;</td><td class="fielddoc"><p>Finish tapped on the panel's last screen. </p>
+</td></tr>
+<tr><td class="fieldname"><a id="a9a99e204659fdc9573b3dc140ffeedd3a31e5c798a750d55193d76f4abef3c6fe" name="a9a99e204659fdc9573b3dc140ffeedd3a31e5c798a750d55193d76f4abef3c6fe"></a>UI_EVENT_CARD_PIN&#160;</td><td class="fielddoc"><p>PIN entered for a card <em>read</em>, not a payment; fetch via ui_take_pin. </p>
+</td></tr>
+<tr><td class="fieldname"><a id="a9a99e204659fdc9573b3dc140ffeedd3a15cd2c18907d05435917becbfa4d68fe" name="a9a99e204659fdc9573b3dc140ffeedd3a15cd2c18907d05435917becbfa4d68fe"></a>UI_EVENT_OTA_STAGED&#160;</td><td class="fielddoc"><p>Firmware uploaded and verified; needs accepting on the panel before it boots. </p>
+</td></tr>
+<tr><td class="fieldname"><a id="a9a99e204659fdc9573b3dc140ffeedd3af27890589f1cf1ac88f23d4fc1af4b8f" name="a9a99e204659fdc9573b3dc140ffeedd3af27890589f1cf1ac88f23d4fc1af4b8f"></a>UI_EVENT_TX_RECHECK&#160;</td><td class="fielddoc"><p>Recheck tapped on Unconfirmed: poll the same sale's receipt again. </p>
+</td></tr>
+<tr><td class="fieldname"><a id="a9a99e204659fdc9573b3dc140ffeedd3ab577b82bb49527571cbb87e80b238c3a" name="a9a99e204659fdc9573b3dc140ffeedd3ab577b82bb49527571cbb87e80b238c3a"></a>UI_EVENT_PROV_STOP&#160;</td><td class="fielddoc"><p>The UI wants the config portal down (closed card, refused/failed update, admin window over). Main calls <a class="el" href="provision_8cpp.html#ab17c39a33e4b7d4a34feaa9a353dadc9" title="Stop the portal, drop the AP, and withdraw anything unaccepted.">prov_stop()</a>: it blocks for up to ~2 s, which froze the panel on the UI task. </p>
+</td></tr>
 </table>
 
-<p class="definition">Definition at line <a class="el" href="ui_8h_source.html#l00052">52</a> of file <a class="el" href="ui_8h_source.html">ui.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8h_source.html#l00055">55</a> of file <a class="el" href="ui_8h_source.html">ui.h</a>.</p>
 
 </div>
 </div>
@@ -364,6 +436,12 @@ Functions</h2></td></tr>
 </td></tr>
 <tr><td class="fieldname"><a id="a4a96c66658390ff80fefe7027730cc25abfbc60e7b0a01e586b8810dd72b55341" name="a4a96c66658390ff80fefe7027730cc25abfbc60e7b0a01e586b8810dd72b55341"></a>UI_SCREEN_WELCOME&#160;</td><td class="fielddoc"><p>Greeting opening first-run setup. </p>
 </td></tr>
+<tr><td class="fieldname"><a id="a4a96c66658390ff80fefe7027730cc25ab3f09a9dbbc8e99c1be6d7c318a74384" name="a4a96c66658390ff80fefe7027730cc25ab3f09a9dbbc8e99c1be6d7c318a74384"></a>UI_SCREEN_PROV&#160;</td><td class="fielddoc"><p>QR + AP credentials for phone-based setup. </p>
+</td></tr>
+<tr><td class="fieldname"><a id="a4a96c66658390ff80fefe7027730cc25afa8625247019ac35fcf8a938579c3533" name="a4a96c66658390ff80fefe7027730cc25afa8625247019ac35fcf8a938579c3533"></a>UI_SCREEN_CARD_WAIT&#160;</td><td class="fielddoc"><p>"Tap your card" while an address is read. </p>
+</td></tr>
+<tr><td class="fieldname"><a id="a4a96c66658390ff80fefe7027730cc25a194211476b883a769482110d87547601" name="a4a96c66658390ff80fefe7027730cc25a194211476b883a769482110d87547601"></a>UI_SCREEN_TOUCH_CAL&#160;</td><td class="fielddoc"><p>Two-point touch calibration (Screen tab). </p>
+</td></tr>
 </table>
 
 <p class="definition">Definition at line <a class="el" href="ui_8h_source.html#l00035">35</a> of file <a class="el" href="ui_8h_source.html">ui.h</a>.</p>
@@ -396,15 +474,71 @@ Functions</h2></td></tr>
 </td></tr>
 <tr><td class="fieldname"><a id="a64b6bbe2fbeb96a8d689ba887b204fa1a656b8d2e41e8420051e2ffb25c861e07" name="a64b6bbe2fbeb96a8d689ba887b204fa1a656b8d2e41e8420051e2ffb25c861e07"></a>UI_TX_STATE_DONE&#160;</td><td class="fielddoc"><p>Receipt mined with status 0x1. </p>
 </td></tr>
-<tr><td class="fieldname"><a id="a64b6bbe2fbeb96a8d689ba887b204fa1ac69f70c4193dea6c5850f4416433455c" name="a64b6bbe2fbeb96a8d689ba887b204fa1ac69f70c4193dea6c5850f4416433455c"></a>UI_TX_STATE_FAILED&#160;</td><td class="fielddoc"><p>Any failure; info line says why. </p>
+<tr><td class="fieldname"><a id="a64b6bbe2fbeb96a8d689ba887b204fa1ac69f70c4193dea6c5850f4416433455c" name="a64b6bbe2fbeb96a8d689ba887b204fa1ac69f70c4193dea6c5850f4416433455c"></a>UI_TX_STATE_FAILED&#160;</td><td class="fielddoc"><p>Nothing was sent; info line says why. </p>
+</td></tr>
+<tr><td class="fieldname"><a id="a64b6bbe2fbeb96a8d689ba887b204fa1a06fdcd72f5774c9f66d9f1317b3c294d" name="a64b6bbe2fbeb96a8d689ba887b204fa1a06fdcd72f5774c9f66d9f1317b3c294d"></a>UI_TX_STATE_UNCONFIRMED&#160;</td><td class="fielddoc"><p>Sent, or maybe sent, and no verdict yet — info is the tx hash. Never "Declined": the payment may still land. </p>
 </td></tr>
 </table>
 
-<p class="definition">Definition at line <a class="el" href="ui_8h_source.html#l00065">65</a> of file <a class="el" href="ui_8h_source.html">ui.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8h_source.html#l00094">94</a> of file <a class="el" href="ui_8h_source.html">ui.h</a>.</p>
 
 </div>
 </div>
 <a name="doc-func-members" id="doc-func-members"></a><h2 id="header-doc-func-members" class="groupheader">Function Documentation</h2>
+<a id="af6a7af03d1b92a586d68ed2a768f036a" name="af6a7af03d1b92a586d68ed2a768f036a"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#af6a7af03d1b92a586d68ed2a768f036a">&#9670;&#160;</a></span>ui_clock_changed()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void ui_clock_changed </td>
+          <td>(</td>
+          <td class="paramtype">void</td>          <td class="paramname"><span class="paramname"><em></em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Note that the stored UTC offset has changed, so the clock can catch up. </p>
+<p>Same handoff as <a class="el" href="ui_8cpp.html#a8683f2eb73882c592583c2e9528dead8" title="ui_fees_changed">ui_fees_changed</a> and for the same reason: the config page writes the offset straight through from the HTTP task, and the band's clock caches it rather than opening NVS on every three-second tick. Without this the panel keeps the old hour until something rebuilds the screen.</p>
+<p>Safe from the HTTP task: applied by the UI task on its next pass. </p>
+
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l00788">788</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="ui__widgets_8cpp_source.html#l00419">s_tz_dirty</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="provision_8cpp_source.html#l00853">clock_post()</a>.</p>
+
+</div>
+</div>
+<a id="a8683f2eb73882c592583c2e9528dead8" name="a8683f2eb73882c592583c2e9528dead8"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a8683f2eb73882c592583c2e9528dead8">&#9670;&#160;</a></span>ui_fees_changed()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void ui_fees_changed </td>
+          <td>(</td>
+          <td class="paramtype">void</td>          <td class="paramname"><span class="paramname"><em></em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Note that the stored gas caps have changed, so the Tx tab can catch up. </p>
+<p>The caps are the one setting the config page writes straight through, and that page is opened from a card raised over the settings screen — so the two gas rows underneath keep the values they were built with until the operator leaves the screen and comes back. This retexts them in place.</p>
+<p>Safe from the HTTP task: applied by the UI task on its next pass, and a no-op when the rows are not on screen (any other screen, or Tron, which has no caps). </p>
+
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l00783">783</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00128">s_fees_dirty</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="provision_8cpp_source.html#l00790">fees_post()</a>.</p>
+
+</div>
+</div>
 <a id="a6ecfc755e46d8b6bffee458cf0439a69" name="a6ecfc755e46d8b6bffee458cf0439a69"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a6ecfc755e46d8b6bffee458cf0439a69">&#9670;&#160;</a></span>ui_init()</h2>
 
@@ -428,16 +562,71 @@ Functions</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01771">1771</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l00696">696</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00215">s_cb</a>, <a class="el" href="ui_8cpp_source.html#l00218">s_req_screen</a>, <a class="el" href="ui_8cpp_source.html#l00217">s_screen_dirty</a>, <a class="el" href="ui_8h_source.html#l00036">UI_SCREEN_SPLASH</a>, and <a class="el" href="ui_8cpp_source.html#l01686">ui_task()</a>.</p>
+<p class="reference">References <a class="el" href="provision_8cpp_source.html#l00121">s_cb</a>, <a class="el" href="ui_8cpp_source.html#l00034">s_req_screen</a>, <a class="el" href="ui_8cpp_source.html#l00033">s_screen_dirty</a>, <a class="el" href="ui_8cpp_source.html#l00222">s_ui_mx</a>, <a class="el" href="ui_8h_source.html#l00036">UI_SCREEN_SPLASH</a>, and <a class="el" href="ui_8cpp_source.html#l00521">ui_task()</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="boot_8cpp_source.html#l00496">pos_boot()</a>.</p>
 
 </div>
 </div>
-<a id="aeeaa931df47c4d584b1a643097c27b9b" name="aeeaa931df47c4d584b1a643097c27b9b"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#aeeaa931df47c4d584b1a643097c27b9b">&#9670;&#160;</a></span>ui_set_addresses()</h2>
+<a id="a97776cfef174c2231a510245b5b09474" name="a97776cfef174c2231a510245b5b09474"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a97776cfef174c2231a510245b5b09474">&#9670;&#160;</a></span>ui_refresh_addresses()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void ui_refresh_addresses </td>
+          <td>(</td>
+          <td class="paramtype">void</td>          <td class="paramname"><span class="paramname"><em></em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Implemented by main: repoint those two rows at the selected chain. </p>
+<p>The asset picker switches the chain on the UI task and rebuilds the page immediately, so it asks for the new pair here rather than posting an event and racing its own redraw. main owns the per-chain contract and payout strings; this only reads them. </p>
+
+<p class="definition">Definition at line <a class="el" href="pay_8cpp_source.html#l00170">170</a> of file <a class="el" href="pay_8cpp_source.html">pay.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="settings_8cpp_source.html#l00165">settings_get_chain()</a>, and <a class="el" href="pay_8cpp_source.html#l00155">ui_refresh_addresses_for()</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00051">app_main()</a>, <a class="el" href="ui_8cpp_source.html#l00306">btn_event_cb()</a>, and <a class="el" href="boot_8cpp_source.html#l00496">pos_boot()</a>.</p>
+
+</div>
+</div>
+<a id="a69601e06d3763c350f50da8c1f47b06b" name="a69601e06d3763c350f50da8c1f47b06b"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a69601e06d3763c350f50da8c1f47b06b">&#9670;&#160;</a></span>ui_refresh_addresses_for()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void ui_refresh_addresses_for </td>
+          <td>(</td>
+          <td class="paramtype">uint8_t</td>          <td class="paramname"><span class="paramname"><em>c</em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Same, for any chain (a <a class="el" href="settings_8h.html#ab65f4f90346e002c9018334aea79c725" title="Which chain (and therefore which asset) the terminal charges in.">pos_chain_t</a>) rather than the one sales use. </p>
+<p>Point the UI's address rows at the selected chain.</p>
+<p>The admin Tx tab browses another asset's contract and payout without switching what the terminal charges in.</p>
+<p>Same, for any chain (a <a class="el" href="settings_8h.html#ab65f4f90346e002c9018334aea79c725" title="Which chain (and therefore which asset) the terminal charges in.">pos_chain_t</a>) rather than the one sales use.</p>
+<p>Called on every entry to the confirm screen and from the asset picker, since the chain can be switched while this task is parked on its queue (see <a class="el" href="ui_8h.html" title="Touchscreen UI API: screens, events and transaction states for the CYD (ILI9341 + XPT2046) payment fl...">ui.h</a>). </p>
+
+<p class="definition">Definition at line <a class="el" href="pay_8cpp_source.html#l00155">155</a> of file <a class="el" href="pay_8cpp_source.html">pay.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="pay_8cpp_source.html#l00045">active_token()</a>, <a class="el" href="assets_8h_source.html#l00174">pos_chain_is_polygon()</a>, <a class="el" href="assets_8h_source.html#l00165">pos_chain_is_tron()</a>, <a class="el" href="pay_8cpp_source.html#l00027">s_payout_eth</a>, <a class="el" href="pay_8cpp_source.html#l00028">s_payout_tron</a>, <a class="el" href="pos__app_8h_source.html#l00099">token_t::str</a>, and <a class="el" href="ui_8cpp_source.html#l00764">ui_set_addresses()</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="ui__admin_8cpp_source.html#l00064">build_settings()</a>, and <a class="el" href="pay_8cpp_source.html#l00170">ui_refresh_addresses()</a>.</p>
+
+</div>
+</div>
+<a id="a7abbf821eac8c326f232d9a94ce72536" name="a7abbf821eac8c326f232d9a94ce72536"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a7abbf821eac8c326f232d9a94ce72536">&#9670;&#160;</a></span>ui_set_addresses()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -445,7 +634,7 @@ Functions</h2></td></tr>
         <tr>
           <td class="memname">void ui_set_addresses </td>
           <td>(</td>
-          <td class="paramtype">const char *</td>          <td class="paramname"><span class="paramname"><em>usdc_contract</em></span>, </td>
+          <td class="paramtype">const char *</td>          <td class="paramname"><span class="paramname"><em>token_contract</em></span>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -455,13 +644,13 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p>Provide the USDC contract and destination addresses for the settings "Tx" tab (pointers stored as-is; pass static/literal). </p>
+<p>Provide the token contract and destination addresses for the confirm screen and the settings "Tx" tab (pointers stored as-is; pass static/literal storage that outlives the call). </p>
 
-<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01830">1830</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l00764">764</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00289">s_addr_dest</a>, and <a class="el" href="ui_8cpp_source.html#l00288">s_addr_usdc</a>.</p>
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00168">s_addr_dest</a>, and <a class="el" href="ui_8cpp_source.html#l00167">s_addr_usdc</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="pay_8cpp_source.html#l00155">ui_refresh_addresses_for()</a>.</p>
 
 </div>
 </div>
@@ -489,11 +678,76 @@ Functions</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01840">1840</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l00776">776</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00260">s_boot_step</a>, and <a class="el" href="ui_8cpp_source.html#l00262">s_boot_step_dirty</a>.</p>
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00119">s_boot_step</a>, and <a class="el" href="ui_8cpp_source.html#l00121">s_boot_step_dirty</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>, and <a class="el" href="main_8cpp_source.html#l00529">ensure_wifi()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00051">app_main()</a>, <a class="el" href="boot_8cpp_source.html#l00496">pos_boot()</a>, <a class="el" href="boot_8cpp_source.html#l00269">run_wizard()</a>, and <a class="el" href="boot_8cpp_source.html#l00113">wifi_try_saved()</a>.</p>
+
+</div>
+</div>
+<a id="a0e34fd94365e91727d458a6868fc6696" name="a0e34fd94365e91727d458a6868fc6696"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a0e34fd94365e91727d458a6868fc6696">&#9670;&#160;</a></span>ui_set_prov_note()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void ui_set_prov_note </td>
+          <td>(</td>
+          <td class="paramtype">const char *</td>          <td class="paramname"><span class="paramname"><em>msg</em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Put a failure line on the setup screen, in red under the step title. </p>
+<p>For the card read: a refused card, a wrong PIN or sixty seconds with no tap all end with the panel back on the step it started from, and without a reason there that reads as the terminal having reset itself mid-read. The browser gets the same sentence through <code>prov_set_note</code> — this is the copy for the person actually holding the card.</p>
+<p>Cleared by <a class="el" href="ui_8cpp.html#a5c0aaac0d2e2f02db283ff8354cb7b2c" title="ui_show_card_pin">ui_show_card_pin</a>, so each attempt starts clean.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">msg</td><td>Message, copied. NULL or "" clears it. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l00880">880</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00136">s_prov_msg</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="boot_8cpp_source.html#l00269">run_wizard()</a>.</p>
+
+</div>
+</div>
+<a id="aba8c148ea266a224cee7108a73a19956" name="aba8c148ea266a224cee7108a73a19956"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aba8c148ea266a224cee7108a73a19956">&#9670;&#160;</a></span>ui_set_tx_info()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void ui_set_tx_info </td>
+          <td>(</td>
+          <td class="paramtype">const char *</td>          <td class="paramname"><span class="paramname"><em>info</em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Replace the transaction screen's info line without rebuilding it. </p>
+<p>For progress on a state that lasts: the receipt poll can run for two minutes, and calling <a class="el" href="ui_8cpp.html#a876ff330ea0bf38a47969c689f6a0b83" title="ui_show_tx_status">ui_show_tx_status</a> per pass would restart the spinner the operator is reading as "still working". No-op unless the transaction screen is up in one of its spinner states.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">info</td><td>Line to show; copied internally, may be NULL to clear. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l00910">910</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00047">s_tx_info</a>, and <a class="el" href="ui_8cpp_source.html#l00049">s_tx_info_dirty</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="pay_8cpp_source.html#l00255">settle_inflight()</a>, and <a class="el" href="pay__evm_8cpp_source.html#l00165">sign_and_broadcast()</a>.</p>
 
 </div>
 </div>
@@ -515,11 +769,11 @@ Functions</h2></td></tr>
 <p>Run the first-run admin-code creation (enter, then confirm). </p>
 <p>Deliberately has no way out: everything behind the burger menu — Wi-Fi, fees, factory reset — sits behind this code, so the terminal must not become usable without one. Emits <a class="el" href="#a9a99e204659fdc9573b3dc140ffeedd3a52d8ee321f1b394c2dbc75c4a3c4a6da" title="UI_EVENT_ADMIN_SET">UI_EVENT_ADMIN_SET</a> once stored. </p>
 
-<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01862">1862</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l00818">818</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00324">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00279">s_admin_confirming</a>, <a class="el" href="ui_8cpp_source.html#l00277">s_admin_first</a>, <a class="el" href="ui_8cpp_source.html#l00278">s_admin_note</a>, and <a class="el" href="ui_8h_source.html#l00046">UI_SCREEN_ADMIN_SET</a>.</p>
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00241">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00149">s_admin_confirming</a>, <a class="el" href="ui_8cpp_source.html#l00147">s_admin_first</a>, <a class="el" href="ui_8cpp_source.html#l00148">s_admin_note</a>, and <a class="el" href="ui_8h_source.html#l00046">UI_SCREEN_ADMIN_SET</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="boot_8cpp_source.html#l00496">pos_boot()</a>.</p>
 
 </div>
 </div>
@@ -540,11 +794,11 @@ Functions</h2></td></tr>
 
 <p>Switch to the amount-entry screen (forces a value redraw). </p>
 
-<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01784">1784</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l00711">711</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00324">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00234">s_amount_cents</a>, <a class="el" href="ui_8cpp_source.html#l00221">s_amount_units</a>, and <a class="el" href="ui_8h_source.html#l00037">UI_SCREEN_AMOUNT</a>.</p>
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00241">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00077">s_amount_cents</a>, <a class="el" href="ui_8cpp_source.html#l00037">s_amount_units</a>, and <a class="el" href="ui_8h_source.html#l00037">UI_SCREEN_AMOUNT</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00051">app_main()</a>.</p>
 
 </div>
 </div>
@@ -576,16 +830,74 @@ Functions</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01846">1846</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l00795">795</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00324">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00266">s_boot_detail</a>, <a class="el" href="ui_8cpp_source.html#l00265">s_boot_err</a>, and <a class="el" href="ui_8h_source.html#l00045">UI_SCREEN_BOOT_ERROR</a>.</p>
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00241">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00144">s_boot_detail</a>, <a class="el" href="ui_8cpp_source.html#l00143">s_boot_err</a>, and <a class="el" href="ui_8h_source.html#l00045">UI_SCREEN_BOOT_ERROR</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="boot_8cpp_source.html#l00223">boot_fault()</a>.</p>
 
 </div>
 </div>
-<a id="a545033814885a63565f3991d2c70d8e6" name="a545033814885a63565f3991d2c70d8e6"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a545033814885a63565f3991d2c70d8e6">&#9670;&#160;</a></span>ui_show_confirm()</h2>
+<a id="a5c0aaac0d2e2f02db283ff8354cb7b2c" name="a5c0aaac0d2e2f02db283ff8354cb7b2c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a5c0aaac0d2e2f02db283ff8354cb7b2c">&#9670;&#160;</a></span>ui_show_card_pin()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void ui_show_card_pin </td>
+          <td>(</td>
+          <td class="paramtype">void</td>          <td class="paramname"><span class="paramname"><em></em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Ask for the card PIN before reading an address off a Cryptnox card. </p>
+<p>The card will not export a public key without a verified PIN, so deriving a payout address needs one exactly as signing does. Emits <a class="el" href="#a9a99e204659fdc9573b3dc140ffeedd3a31e5c798a750d55193d76f4abef3c6fe" title="UI_EVENT_CARD_PIN">UI_EVENT_CARD_PIN</a>, or <a class="el" href="#a9a99e204659fdc9573b3dc140ffeedd3a07a32dd4ddc27478fb80eb73b946c9eb" title="UI_EVENT_CONFIRM_CANCEL">UI_EVENT_CONFIRM_CANCEL</a> if the operator backs out. </p>
+
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l00873">873</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00241">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00164">s_pin_for_card</a>, <a class="el" href="ui_8cpp_source.html#l00136">s_prov_msg</a>, and <a class="el" href="ui_8h_source.html#l00039">UI_SCREEN_PIN</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00051">app_main()</a>, and <a class="el" href="boot_8cpp_source.html#l00269">run_wizard()</a>.</p>
+
+</div>
+</div>
+<a id="ae7ad1945a2589d9869aa3c87cc426aa6" name="ae7ad1945a2589d9869aa3c87cc426aa6"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ae7ad1945a2589d9869aa3c87cc426aa6">&#9670;&#160;</a></span>ui_show_card_wait()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void ui_show_card_wait </td>
+          <td>(</td>
+          <td class="paramtype">const char *</td>          <td class="paramname"><span class="paramname"><em>note</em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>"Hold your card to the reader" while the address is read. </p>
+<p>Its own screen rather than the transaction one: nothing is being paid here, and the tx screen's wording and its Cancel semantics both belong to a sale.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">note</td><td>Optional line under the prompt, copied internally. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l00886">886</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00241">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00067">s_card_note</a>, and <a class="el" href="ui_8h_source.html#l00050">UI_SCREEN_CARD_WAIT</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="card__io_8cpp_source.html#l00079">card_connect()</a>.</p>
+
+</div>
+</div>
+<a id="a257a4cf9b66267567d5e7dfc872c9225" name="a257a4cf9b66267567d5e7dfc872c9225"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a257a4cf9b66267567d5e7dfc872c9225">&#9670;&#160;</a></span>ui_show_confirm()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -598,7 +910,12 @@ Functions</h2></td></tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">const char *</td>          <td class="paramname"><span class="paramname"><em>dest_addr</em></span>&#160;)</td>
+          <td class="paramtype">const char *</td>          <td class="paramname"><span class="paramname"><em>dest_addr</em></span>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const char *</td>          <td class="paramname"><span class="paramname"><em>fee</em></span>&#160;)</td>
         </tr>
       </table>
 </div><div class="memdoc">
@@ -608,15 +925,127 @@ Functions</h2></td></tr>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">amount_units</td><td>Amount in USDC base units (6 decimals). </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">dest_addr</td><td>"0x..."-prefixed destination address; copied internally, may be NULL for none. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">fee</td><td>The network-fee ceiling as a line ("Fee up to 0.0013
+                        ETH"), copied; NULL or "" for none. </td></tr>
   </table>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01790">1790</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l00718">718</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00324">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00225">s_confirm_addr</a>, <a class="el" href="ui_8cpp_source.html#l00224">s_confirm_amount</a>, and <a class="el" href="ui_8h_source.html#l00038">UI_SCREEN_CONFIRM</a>.</p>
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00241">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00041">s_confirm_addr</a>, <a class="el" href="ui_8cpp_source.html#l00040">s_confirm_amount</a>, <a class="el" href="ui_8cpp_source.html#l00042">s_confirm_fee</a>, and <a class="el" href="ui_8h_source.html#l00038">UI_SCREEN_CONFIRM</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00051">app_main()</a>.</p>
+
+</div>
+</div>
+<a id="a681bef31f50970b968efe5a52f450f2d" name="a681bef31f50970b968efe5a52f450f2d"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a681bef31f50970b968efe5a52f450f2d">&#9670;&#160;</a></span>ui_show_ota_confirm()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void ui_show_ota_confirm </td>
+          <td>(</td>
+          <td class="paramtype">void</td>          <td class="paramname"><span class="paramname"><em></em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Raise the modal that asks the operator to accept a firmware image the update page has uploaded, reading it from <a class="el" href="ota_8h.html" title="Firmware slot handling: receive an image into the idle slot, verify it, and install it only once some...">ota.h</a>. </p>
+<p>Call after <a class="el" href="#a9a99e204659fdc9573b3dc140ffeedd3a15cd2c18907d05435917becbfa4d68fe" title="UI_EVENT_OTA_STAGED">UI_EVENT_OTA_STAGED</a>. Accepting reboots into the new firmware and does not return; declining discards the staging and leaves the running firmware alone. The panel is the only place either can happen — an upload on its own changes nothing about what boots. </p>
+
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l00893">893</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00140">s_ota_modal_dirty</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00051">app_main()</a>.</p>
+
+</div>
+</div>
+<a id="a1f4faf26913f8811270f6b5a1f5220c6" name="a1f4faf26913f8811270f6b5a1f5220c6"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a1f4faf26913f8811270f6b5a1f5220c6">&#9670;&#160;</a></span>ui_show_prov()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void ui_show_prov </td>
+          <td>(</td>
+          <td class="paramtype">int</td>          <td class="paramname"><span class="paramname"><em>step</em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Show the setup screen: QR code, AP name and passphrase. </p>
+<p>The same screen at every wizard step, captioned with whichever one is current. There is deliberately no "use this screen instead" escape any more: the whole wizard past the admin code happens in the browser, so the panel's job here is to carry the QR code and to report progress.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">step</td><td>The <a class="el" href="provision_8h.html#aa06601a64098764264c21b231ab6ab96" title="Where the wizard has got to.">prov_step_t</a> the portal is serving. Typed as int to keep this header free of <a class="el" href="provision_8h.html" title="The config portal: one web app for setting a terminal up and for administering it afterwards,...">provision.h</a>, which includes this one. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l00850">850</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00241">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00132">s_prov_step</a>, and <a class="el" href="ui_8h_source.html#l00049">UI_SCREEN_PROV</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="boot_8cpp_source.html#l00269">run_wizard()</a>.</p>
+
+</div>
+</div>
+<a id="a33dc0f135ad9408f9e6fe0fdccdc2ee5" name="a33dc0f135ad9408f9e6fe0fdccdc2ee5"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a33dc0f135ad9408f9e6fe0fdccdc2ee5">&#9670;&#160;</a></span>ui_show_prov_auth()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void ui_show_prov_auth </td>
+          <td>(</td>
+          <td class="paramtype">void</td>          <td class="paramname"><span class="paramname"><em></em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Demand the admin code so a browser can be authorised. </p>
+<p>Same screen as the settings unlock, but a correct code calls prov_auth_resolve(true) instead of opening the menu, and backing out refuses the request rather than silently leaving the browser waiting. </p>
+
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l00861">861</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="ui__admin_8cpp_source.html#l00739">admin_penalty_ms()</a>, <a class="el" href="ui_8cpp_source.html#l00241">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00149">s_admin_confirming</a>, <a class="el" href="ui_8cpp_source.html#l00159">s_admin_for_portal</a>, <a class="el" href="ui_8cpp_source.html#l00156">s_admin_lock_ms</a>, <a class="el" href="ui_8cpp_source.html#l00155">s_admin_lock_start</a>, <a class="el" href="ui_8cpp_source.html#l00148">s_admin_note</a>, <a class="el" href="settings_8cpp_source.html#l00448">settings_admin_fail_count()</a>, and <a class="el" href="ui_8h_source.html#l00047">UI_SCREEN_ADMIN_UNLOCK</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00051">app_main()</a>, and <a class="el" href="boot_8cpp_source.html#l00269">run_wizard()</a>.</p>
+
+</div>
+</div>
+<a id="a90f330a693f0bf348b6edcb1c7a2c2de" name="a90f330a693f0bf348b6edcb1c7a2c2de"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a90f330a693f0bf348b6edcb1c7a2c2de">&#9670;&#160;</a></span>ui_show_prov_confirm()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void ui_show_prov_confirm </td>
+          <td>(</td>
+          <td class="paramtype">void</td>          <td class="paramname"><span class="paramname"><em></em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Raise the modal that asks the operator to accept a value a browser proposed, reading the pending proposal from <a class="el" href="provision_8h.html" title="The config portal: one web app for setting a terminal up and for administering it afterwards,...">provision.h</a>. </p>
+<p>Call after <a class="el" href="#a9a99e204659fdc9573b3dc140ffeedd3aa6cace6d3c672a572d39d904ecb4bb57" title="UI_EVENT_PROV_VALUE">UI_EVENT_PROV_VALUE</a>. Accepting emits <a class="el" href="#a9a99e204659fdc9573b3dc140ffeedd3ad461639409f10b0469a825ad47e8e420" title="UI_EVENT_PROV_VALUE_SET">UI_EVENT_PROV_VALUE_SET</a>; rejecting emits nothing and drops the proposal, so a caller waiting on the step stays where it is and can be offered another. </p>
+
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l00856">856</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00137">s_addr_modal_dirty</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00051">app_main()</a>, and <a class="el" href="boot_8cpp_source.html#l00269">run_wizard()</a>.</p>
 
 </div>
 </div>
@@ -637,11 +1066,11 @@ Functions</h2></td></tr>
 
 <p>Switch to the splash screen. </p>
 
-<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01780">1780</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l00706">706</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00324">request_screen()</a>, and <a class="el" href="ui_8h_source.html#l00036">UI_SCREEN_SPLASH</a>.</p>
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00241">request_screen()</a>, and <a class="el" href="ui_8h_source.html#l00036">UI_SCREEN_SPLASH</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="boot_8cpp_source.html#l00496">pos_boot()</a>.</p>
 
 </div>
 </div>
@@ -673,16 +1102,16 @@ Functions</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01884">1884</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l00898">898</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00324">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00229">s_tx_info</a>, <a class="el" href="ui_8cpp_source.html#l00228">s_tx_state</a>, and <a class="el" href="ui_8h_source.html#l00044">UI_SCREEN_TX_STATUS</a>.</p>
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00241">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00047">s_tx_info</a>, <a class="el" href="ui_8cpp_source.html#l00046">s_tx_state</a>, and <a class="el" href="ui_8h_source.html#l00044">UI_SCREEN_TX_STATUS</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>, and <a class="el" href="main_8cpp_source.html#l00230">sign_and_broadcast()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00051">app_main()</a>, <a class="el" href="card__io_8cpp_source.html#l00079">card_connect()</a>, <a class="el" href="pay_8cpp_source.html#l00255">settle_inflight()</a>, <a class="el" href="pay__evm_8cpp_source.html#l00165">sign_and_broadcast()</a>, and <a class="el" href="pay__tron_8cpp_source.html#l00125">sign_and_broadcast_tron()</a>.</p>
 
 </div>
 </div>
-<a id="af063dee1c2e32c1c5cd20c5e85a85cd8" name="af063dee1c2e32c1c5cd20c5e85a85cd8"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#af063dee1c2e32c1c5cd20c5e85a85cd8">&#9670;&#160;</a></span>ui_show_welcome()</h2>
+<a id="a38c62ac0a82c46557a2f743d98a2f08e" name="a38c62ac0a82c46557a2f743d98a2f08e"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a38c62ac0a82c46557a2f743d98a2f08e">&#9670;&#160;</a></span>ui_show_welcome()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -690,20 +1119,26 @@ Functions</h2></td></tr>
         <tr>
           <td class="memname">void ui_show_welcome </td>
           <td>(</td>
-          <td class="paramtype">void</td>          <td class="paramname"><span class="paramname"><em></em></span></td><td>)</td>
+          <td class="paramtype">const char *</td>          <td class="paramname"><span class="paramname"><em>sub</em></span></td><td>)</td>
           <td></td>
         </tr>
       </table>
 </div><div class="memdoc">
 
-<p>Greet the operator at the start of first-run setup. </p>
-<p>Shown on a virgin or factory-reset terminal, before the Wi-Fi and admin-code steps. Emits <a class="el" href="#a9a99e204659fdc9573b3dc140ffeedd3a6317d6177b1fd69b72c5486ae6ef4c49" title="UI_EVENT_WELCOME_DONE">UI_EVENT_WELCOME_DONE</a> when Start is tapped. </p>
+<p>Greet the operator at the start of first-run setup, or after an update. </p>
+<p>Shown on a virgin or factory-reset terminal, before the Wi-Fi and admin-code steps, and again on the first boot of a freshly installed image. Emits <a class="el" href="#a9a99e204659fdc9573b3dc140ffeedd3a6317d6177b1fd69b72c5486ae6ef4c49" title="UI_EVENT_WELCOME_DONE">UI_EVENT_WELCOME_DONE</a> when Start is tapped.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">sub</td><td>Line under the product name, copied internally. NULL keeps the first-run wording ("Let's configure your terminal."). </td></tr>
+  </table>
+  </dd>
+</dl>
 
-<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01857">1857</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l00807">807</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00324">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00280">s_welcome_sent</a>, and <a class="el" href="ui_8h_source.html#l00048">UI_SCREEN_WELCOME</a>.</p>
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00241">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00150">s_welcome_sent</a>, <a class="el" href="ui_8cpp_source.html#l00151">s_welcome_sub</a>, and <a class="el" href="ui_8h_source.html#l00048">UI_SCREEN_WELCOME</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="boot_8cpp_source.html#l00496">pos_boot()</a>.</p>
 
 </div>
 </div>
@@ -725,11 +1160,11 @@ Functions</h2></td></tr>
 <p>Show a "Connecting to &lt;ssid&gt;…" screen while main associates. </p>
 <p>Interactive picker only; unattended boot reports through <a class="el" href="ui_8cpp.html#a3db450e73974ba379262c434734336f2" title="ui_set_boot_status">ui_set_boot_status</a> and stays on the splash. </p>
 
-<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01835">1835</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l00770">770</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00324">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00330">set_wifi_progress()</a>, and <a class="el" href="ui_8h_source.html#l00042">UI_SCREEN_WIFI_CONNECTING</a>.</p>
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00241">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00247">set_wifi_progress()</a>, and <a class="el" href="ui_8h_source.html#l00042">UI_SCREEN_WIFI_CONNECTING</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>, and <a class="el" href="main_8cpp_source.html#l00529">ensure_wifi()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00051">app_main()</a>, <a class="el" href="boot_8cpp_source.html#l00269">run_wizard()</a>, and <a class="el" href="boot_8cpp_source.html#l00151">wifi_picker()</a>.</p>
 
 </div>
 </div>
@@ -767,11 +1202,48 @@ Functions</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01814">1814</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l00747">747</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00324">request_screen()</a>, <a class="el" href="ui_8cpp_source.html#l00245">s_ap_count</a>, <a class="el" href="ui_8cpp_source.html#l00244">s_aps</a>, <a class="el" href="ui_8cpp_source.html#l00248">s_wifi_note</a>, <a class="el" href="ui_8h_source.html#l00040">UI_SCREEN_WIFI_LIST</a>, and <a class="el" href="ui_8cpp_source.html#l00243">WIFI_MAX_APS</a>.</p>
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00241">request_screen()</a>, <a class="el" href="provision_8cpp_source.html#l00163">s_ap_count</a>, <a class="el" href="provision_8cpp_source.html#l00162">s_aps</a>, <a class="el" href="ui_8cpp_source.html#l00105">s_wifi_note</a>, <a class="el" href="ui_8h_source.html#l00040">UI_SCREEN_WIFI_LIST</a>, and <a class="el" href="ui__internal_8h_source.html#l00227">WIFI_MAX_APS</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>, and <a class="el" href="main_8cpp_source.html#l00529">ensure_wifi()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00051">app_main()</a>, and <a class="el" href="boot_8cpp_source.html#l00151">wifi_picker()</a>.</p>
+
+</div>
+</div>
+<a id="a8be9ab2f28086223edc73cc0d4d5e76e" name="a8be9ab2f28086223edc73cc0d4d5e76e"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a8be9ab2f28086223edc73cc0d4d5e76e">&#9670;&#160;</a></span>ui_stage_wifi_creds()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void ui_stage_wifi_creds </td>
+          <td>(</td>
+          <td class="paramtype">const char *</td>          <td class="paramname"><span class="paramname"><em>ssid</em></span>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const char *</td>          <td class="paramname"><span class="paramname"><em>pass</em></span>&#160;)</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Load credentials into the same handoff buffers the picker fills. </p>
+<p>Lets the setup page hand Wi-Fi credentials to main through the existing <a class="el" href="#a9a99e204659fdc9573b3dc140ffeedd3a39d85ddff76d37945076baec0d72f0cb" title="UI_EVENT_WIFI_TRY">UI_EVENT_WIFI_TRY</a> path, so a form submission and a screen tap reach the connect-and-verify loop identically. The caller emits the event afterwards.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">ssid</td><td>Network name. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">pass</td><td>Passphrase; the caller wipes its own copy. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l00842">842</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00104">s_wifi_pass</a>, and <a class="el" href="ui_8cpp_source.html#l00103">s_wifi_ssid</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="provision_8cpp_source.html#l00965">wifi_post()</a>.</p>
 
 </div>
 </div>
@@ -805,11 +1277,11 @@ Functions</h2></td></tr>
 </dl>
 <dl class="section return"><dt>Returns</dt><dd>number of PIN digits copied (0 if none available). </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01801">1801</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l00733">733</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00239">s_pin</a>, and <a class="el" href="ui_8cpp_source.html#l00240">s_pin_len</a>.</p>
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00099">s_pin</a>, and <a class="el" href="ui_8cpp_source.html#l00100">s_pin_len</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00051">app_main()</a>, and <a class="el" href="boot_8cpp_source.html#l00269">run_wizard()</a>.</p>
 
 </div>
 </div>
@@ -855,11 +1327,11 @@ Functions</h2></td></tr>
 </dl>
 <dl class="section return"><dt>Returns</dt><dd>length of the SSID (0 if none available). </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l01870">1870</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ui_8cpp_source.html#l00827">827</a> of file <a class="el" href="ui_8cpp_source.html">ui.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00247">s_wifi_pass</a>, and <a class="el" href="ui_8cpp_source.html#l00246">s_wifi_ssid</a>.</p>
+<p class="reference">References <a class="el" href="ui_8cpp_source.html#l00104">s_wifi_pass</a>, and <a class="el" href="ui_8cpp_source.html#l00103">s_wifi_ssid</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>, and <a class="el" href="main_8cpp_source.html#l00529">ensure_wifi()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00051">app_main()</a>, <a class="el" href="boot_8cpp_source.html#l00269">run_wizard()</a>, and <a class="el" href="boot_8cpp_source.html#l00151">wifi_picker()</a>.</p>
 
 </div>
 </div>

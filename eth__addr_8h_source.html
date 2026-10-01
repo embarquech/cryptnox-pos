@@ -140,14 +140,17 @@ document.addEventListener('DOMContentLoaded',() => { initNavTree('eth__addr_8h_s
 <div class="line"><a id="l00034" name="l00034"></a><span class="lineno"><a class="line" href="eth__addr_8h.html#a7234733ce1719ff96362dd68e5531c85">   34</a></span><span class="preprocessor">#define ETH_ADDR_HEX_LEN ((size_t)ETH_ADDR_LEN * 2U)</span></div>
 <div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span></div>
 <div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span><span class="keywordtype">bool</span> <a class="code hl_function" href="eth__addr_8h.html#a9ce8e7f1cc688daa27688b8ea06c4e19">eth_addr_parse</a>(<span class="keyword">const</span> <span class="keywordtype">char</span> *hex, uint8_t out[<a class="code hl_define" href="eth__addr_8h.html#a78fc3e3fe5c33412e9f47a214f6e0415">ETH_ADDR_LEN</a>]);</div>
-<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span> </div>
-<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span><span class="preprocessor">#ifdef __cplusplus</span></div>
-<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>}</div>
-<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span><span class="preprocessor">#endif</span></div>
-<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span> </div>
-<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span><span class="preprocessor">#endif </span><span class="comment">/* ETH_ADDR_H */</span><span class="preprocessor"></span></div>
+<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span></div>
+<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span><span class="keywordtype">bool</span> <a class="code hl_function" href="eth__addr_8h.html#ae8aec0f65244b60aa5f227baa42af02b">eth_addr_format</a>(<span class="keyword">const</span> uint8_t addr[<a class="code hl_define" href="eth__addr_8h.html#a78fc3e3fe5c33412e9f47a214f6e0415">ETH_ADDR_LEN</a>], <span class="keywordtype">char</span> *out, <span class="keywordtype">size_t</span> n);</div>
+<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span> </div>
+<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span><span class="preprocessor">#ifdef __cplusplus</span></div>
+<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>}</div>
+<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span><span class="preprocessor">#endif</span></div>
+<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span> </div>
+<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span><span class="preprocessor">#endif </span><span class="comment">/* ETH_ADDR_H */</span><span class="preprocessor"></span></div>
 <div class="ttc" id="aeth__addr_8h_html_a78fc3e3fe5c33412e9f47a214f6e0415"><div class="ttname"><a href="eth__addr_8h.html#a78fc3e3fe5c33412e9f47a214f6e0415">ETH_ADDR_LEN</a></div><div class="ttdeci">#define ETH_ADDR_LEN</div><div class="ttdoc">Length of a raw (binary) Ethereum address, in bytes.</div><div class="ttdef"><b>Definition</b> <a href="#l00025">eth_addr.h:25</a></div></div>
 <div class="ttc" id="aeth__addr_8h_html_a9ce8e7f1cc688daa27688b8ea06c4e19"><div class="ttname"><a href="eth__addr_8h.html#a9ce8e7f1cc688daa27688b8ea06c4e19">eth_addr_parse</a></div><div class="ttdeci">bool eth_addr_parse(const char *hex, uint8_t out[ETH_ADDR_LEN])</div><div class="ttdoc">Parse a 20-byte Ethereum address from a hex string.</div><div class="ttdef"><b>Definition</b> <a href="eth__addr_8cpp_source.html#l00034">eth_addr.cpp:34</a></div></div>
+<div class="ttc" id="aeth__addr_8h_html_ae8aec0f65244b60aa5f227baa42af02b"><div class="ttname"><a href="eth__addr_8h.html#ae8aec0f65244b60aa5f227baa42af02b">eth_addr_format</a></div><div class="ttdeci">bool eth_addr_format(const uint8_t addr[ETH_ADDR_LEN], char *out, size_t n)</div><div class="ttdoc">Render a 20-byte address as an EIP-55 mixed-case &quot;0x...&quot; string.</div><div class="ttdef"><b>Definition</b> <a href="eth__addr_8cpp_source.html#l00109">eth_addr.cpp:109</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 </div><!-- doc-content -->
 </div><!-- container -->

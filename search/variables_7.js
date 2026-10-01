@@ -1,6 +1,6 @@
 var searchData=
 [
-  ['nonce_0',['nonce',['../structeth__tx__t.html#aaf2fd7bf4fa4970abab1b23db88d18be',1,'eth_tx_t']]],
-  ['note_5fjoin_5ffailed_1',['NOTE_JOIN_FAILED',['../main_8cpp.html#a88b510df1910f36e55455c327249b36a',1,'main.cpp']]],
-  ['note_5fno_5ftime_2',['NOTE_NO_TIME',['../main_8cpp.html#a6d9acdc42c8d329f287ac14e86b36fc2',1,'main.cpp']]]
+  ['hash_0',['hash',['../structinflight__t.html#a33e07920c8274f8c442e892fce9b2c2d',1,'inflight_t']]],
+  ['have_1',['have',['../structtouch__jump__t.html#ae1988828b83f2224c91965844fa333af',1,'touch_jump_t']]],
+  ['hex_2',['hex',['../structpb__t.html#a35db54541e312624b0098bb1efb770e1',1,'pb_t']]]
 ];

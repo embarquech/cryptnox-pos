@@ -1,9 +1,11 @@
 var searchData=
 [
-  ['fee_5fget_0',['fee_get',['../settings_8cpp.html#acf3e8802d1c040b4443c9188ea26a237',1,'settings.cpp']]],
-  ['fee_5fset_1',['fee_set',['../settings_8cpp.html#a3c1abbe2fff2b493394c2cb8a8df8108',1,'settings.cpp']]],
-  ['fee_5fstep_5fcb_2',['fee_step_cb',['../ui_8cpp.html#a3206df4017ad229a9a237762296902e4',1,'ui.cpp']]],
-  ['fee_5fupdate_5flabels_3',['fee_update_labels',['../ui_8cpp.html#a320919cbdb0cca79ebb2d18caf7338b7',1,'ui.cpp']]],
-  ['fields_5fsane_4',['fields_sane',['../civil__time_8cpp.html#a72069f35bafb3ba8a85c4f3f04885040',1,'civil_time.cpp']]],
-  ['format_5famount_5',['format_amount',['../ui_8cpp.html#ae5d80dbb2586ff23ea69e3f733648110',1,'ui.cpp']]]
+  ['fee_5fget_0',['fee_get',['../settings_8cpp.html#a238514bf09e65fad50536997b4201e3e',1,'settings.cpp']]],
+  ['fee_5fpair_5fcheck_1',['fee_pair_check',['../settings__rules_8h.html#ad7ea5ae4092325cdbd5d2863bd610868',1,'settings_rules.h']]],
+  ['fees_5fpost_2',['fees_post',['../provision_8cpp.html#aa8d5022339f0f374508da752576f9655',1,'provision.cpp']]],
+  ['fields_5fsane_3',['fields_sane',['../civil__time_8cpp.html#a72069f35bafb3ba8a85c4f3f04885040',1,'civil_time.cpp']]],
+  ['fmt_5fcoin_4',['fmt_coin',['../money_8h.html#a711b3418579cf43e58568f806d329d56',1,'money.h']]],
+  ['form_5ffield_5',['form_field',['../form__parse_8h.html#ae95a501e126ca686f288535f85aff62b',1,'form_parse.h']]],
+  ['form_5fhexval_6',['form_hexval',['../form__parse_8h.html#affd5ea9dea41d5086c1466b6402f7f7b',1,'form_parse.h']]],
+  ['from_5fno_5fprefix_7',['from_no_prefix',['../eth__rpc_8cpp.html#abbd5b7edf02519bb65eadea121f6b33e',1,'eth_rpc.cpp']]]
 ];

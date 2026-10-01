@@ -125,30 +125,30 @@ document.addEventListener('DOMContentLoaded',() => { initNavTree('eth__rpc_8h.ht
 <div class="textblock"><code>#include &lt;stdint.h&gt;</code><br />
 <code>#include &lt;stddef.h&gt;</code><br />
 <code>#include &lt;stdbool.h&gt;</code><br />
+<code>#include &quot;<a class="el" href="eth__json_8h_source.html">eth_json.h</a>&quot;</code><br />
 </div><div class="textblock"><div class="dynheader">
 Include dependency graph for eth_rpc.h:</div>
 <div class="dyncontent">
-<div class="center"><iframe scrolling="no" loading="lazy" frameborder="0" src="eth__rpc_8h__incl.svg" width="288" height="110"><p><b>This browser is not able to show SVG: try Firefox, Chrome, Safari, or Opera instead.</b></p></iframe></div>
+<div class="center"><iframe scrolling="no" loading="lazy" frameborder="0" src="eth__rpc_8h__incl.svg" width="294" height="183"><p><b>This browser is not able to show SVG: try Firefox, Chrome, Safari, or Opera instead.</b></p></iframe></div>
 </div>
 </div><div class="textblock"><div class="dynheader">
 This graph shows which files directly or indirectly include this file:</div>
 <div class="dyncontent">
-<div class="center"><iframe scrolling="no" loading="lazy" frameborder="0" src="eth__rpc_8h__dep__incl.svg" width="288" height="110"><p><b>This browser is not able to show SVG: try Firefox, Chrome, Safari, or Opera instead.</b></p></iframe></div>
+<div class="center"><iframe scrolling="no" loading="lazy" frameborder="0" src="eth__rpc_8h__dep__incl.svg" width="898" height="183"><p><b>This browser is not able to show SVG: try Firefox, Chrome, Safari, or Opera instead.</b></p></iframe></div>
 </div>
 </div>
 <p><a href="eth__rpc_8h_source.html">Go to the source code of this file.</a></p>
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 id="header-enum-members" class="groupheader"><a id="enum-members" name="enum-members"></a>
 Enumerations</h2></td></tr>
-<tr class="memitem:a2b203fce75e401f4f1976a448f53acd1" id="r_a2b203fce75e401f4f1976a448f53acd1"><td class="memItemLeft">enum &#160;</td><td class="memItemRight"><a class="el" href="#a2b203fce75e401f4f1976a448f53acd1">eth_rpc_parity_result_t</a> { <a class="el" href="#a2b203fce75e401f4f1976a448f53acd1a6270366e38059494a3ca0953ddfabdce">ETH_RPC_PARITY_OK</a> = 0
-, <a class="el" href="#a2b203fce75e401f4f1976a448f53acd1a827090b49ca8f6076ee4a337fd4a83b9">ETH_RPC_PARITY_MISMATCH</a>
-, <a class="el" href="#a2b203fce75e401f4f1976a448f53acd1aab2797eda6f5bf0391c8a950ff9848dd">ETH_RPC_PARITY_RPC_ERROR</a>
- }</td></tr>
-<tr class="memdesc:a2b203fce75e401f4f1976a448f53acd1"><td class="mdescLeft">&#160;</td><td class="mdescRight">Result of the ecrecover parity probe (failures are explicit).  <a href="#a2b203fce75e401f4f1976a448f53acd1">More...</a><br /></td></tr>
-<tr class="memitem:ab0a994aa8d532bdb14eceeebeb4d8750" id="r_ab0a994aa8d532bdb14eceeebeb4d8750"><td class="memItemLeft">enum &#160;</td><td class="memItemRight"><a class="el" href="#ab0a994aa8d532bdb14eceeebeb4d8750">eth_rpc_receipt_result_t</a> { <a class="el" href="#ab0a994aa8d532bdb14eceeebeb4d8750ad4d01b363055230b965ff6b4a8c1422e">ETH_RPC_RECEIPT_PENDING</a>
+<tr class="memitem:ab0a994aa8d532bdb14eceeebeb4d8750" id="r_ab0a994aa8d532bdb14eceeebeb4d8750"><td class="memItemLeft">enum &#160;</td><td class="memItemRight"><a class="el" href="#ab0a994aa8d532bdb14eceeebeb4d8750">eth_rpc_receipt_result_t</a> { <br />
+&#160;&#160;<a class="el" href="#ab0a994aa8d532bdb14eceeebeb4d8750ad4d01b363055230b965ff6b4a8c1422e">ETH_RPC_RECEIPT_PENDING</a>
 , <a class="el" href="#ab0a994aa8d532bdb14eceeebeb4d8750afe85c42a3dc19fd282af630958c82a28">ETH_RPC_RECEIPT_SUCCESS</a>
 , <a class="el" href="#ab0a994aa8d532bdb14eceeebeb4d8750a4b79717f46b7637cb4b379a3a0c63614">ETH_RPC_RECEIPT_REVERTED</a>
 , <a class="el" href="#ab0a994aa8d532bdb14eceeebeb4d8750a35c7795a1825feeef8f0ee5908243555">ETH_RPC_RECEIPT_RPC_ERROR</a>
+, <br />
+&#160;&#160;<a class="el" href="#ab0a994aa8d532bdb14eceeebeb4d8750a408f415065df3afa739e4f3a0f304c95">ETH_RPC_RECEIPT_MISMATCH</a>
+<br />
  }</td></tr>
 <tr class="memdesc:ab0a994aa8d532bdb14eceeebeb4d8750"><td class="mdescLeft">&#160;</td><td class="mdescRight">Outcome of one eth_getTransactionReceipt poll.  <a href="#ab0a994aa8d532bdb14eceeebeb4d8750">More...</a><br /></td></tr>
 </table><table class="memberdecls">
@@ -156,50 +156,32 @@ Enumerations</h2></td></tr>
 Functions</h2></td></tr>
 <tr class="memitem:a6480c18de6bd8d4f47fb8b61d53cdd1c" id="r_a6480c18de6bd8d4f47fb8b61d53cdd1c"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#a6480c18de6bd8d4f47fb8b61d53cdd1c">eth_rpc_init</a> (const char *rpc_url, const char *from_addr)</td></tr>
 <tr class="memdesc:a6480c18de6bd8d4f47fb8b61d53cdd1c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Set the RPC URL and the from-address used for nonce queries and ecrecover comparison.  <br /></td></tr>
+<tr class="memitem:af44e923b52ce0f8aa663b54390975bc6" id="r_af44e923b52ce0f8aa663b54390975bc6"><td class="memItemLeft">bool&#160;</td><td class="memItemRight"><a class="el" href="#af44e923b52ce0f8aa663b54390975bc6">eth_rpc_set_from</a> (const char *addr)</td></tr>
+<tr class="memdesc:af44e923b52ce0f8aa663b54390975bc6"><td class="mdescLeft">&#160;</td><td class="mdescRight">Replace the from-address — the account a sale spends from.  <br /></td></tr>
 <tr class="memitem:a693b336658d1f72dc3a3f233f8353dac" id="r_a693b336658d1f72dc3a3f233f8353dac"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#a693b336658d1f72dc3a3f233f8353dac">eth_rpc_set_auth</a> (const char *project_id, const char *api_secret)</td></tr>
 <tr class="memdesc:a693b336658d1f72dc3a3f233f8353dac"><td class="mdescLeft">&#160;</td><td class="mdescRight">Optional: set Infura-style HTTP Basic Auth credentials.  <br /></td></tr>
 <tr class="memitem:acabcedc1e08b643fb161f872b5ce2b98" id="r_acabcedc1e08b643fb161f872b5ce2b98"><td class="memItemLeft">void&#160;</td><td class="memItemRight"><a class="el" href="#acabcedc1e08b643fb161f872b5ce2b98">eth_rpc_set_ca_cert</a> (const char *ca_pem)</td></tr>
 <tr class="memdesc:acabcedc1e08b643fb161f872b5ce2b98"><td class="mdescLeft">&#160;</td><td class="mdescRight">Optional: pin the RPC endpoint's TLS certificate.  <br /></td></tr>
 <tr class="memitem:a42216d313b51019c1163ff0b5c02efb7" id="r_a42216d313b51019c1163ff0b5c02efb7"><td class="memItemLeft">bool&#160;</td><td class="memItemRight"><a class="el" href="#a42216d313b51019c1163ff0b5c02efb7">eth_rpc_get_nonce</a> (uint64_t *nonce_out)</td></tr>
-<tr class="memdesc:a42216d313b51019c1163ff0b5c02efb7"><td class="mdescLeft">&#160;</td><td class="mdescRight">Fetch the pending transaction count (nonce) for from_addr.  <br /></td></tr>
-<tr class="memitem:a97f43d754ff8e6028b303447c808c518" id="r_a97f43d754ff8e6028b303447c808c518"><td class="memItemLeft"><a class="el" href="#a2b203fce75e401f4f1976a448f53acd1">eth_rpc_parity_result_t</a>&#160;</td><td class="memItemRight"><a class="el" href="#a97f43d754ff8e6028b303447c808c518">eth_rpc_ecrecover_parity</a> (const uint8_t hash[32], const uint8_t r[32], const uint8_t s[32], uint8_t *v_out)</td></tr>
-<tr class="memdesc:a97f43d754ff8e6028b303447c808c518"><td class="mdescLeft">&#160;</td><td class="mdescRight">Determine the signature parity bit (v = 0 or 1).  <br /></td></tr>
-<tr class="memitem:a0261890549fe937d44611cbbcc6f0743" id="r_a0261890549fe937d44611cbbcc6f0743"><td class="memItemLeft">bool&#160;</td><td class="memItemRight"><a class="el" href="#a0261890549fe937d44611cbbcc6f0743">eth_rpc_send_raw_tx</a> (const uint8_t *tx, size_t tx_len, char *tx_hash_out, size_t tx_hash_max)</td></tr>
-<tr class="memdesc:a0261890549fe937d44611cbbcc6f0743"><td class="mdescLeft">&#160;</td><td class="mdescRight">Broadcast a raw signed transaction (type-prefixed RLP bytes).  <br /></td></tr>
-<tr class="memitem:ac45020a8c61153e810ccea2698ba44f9" id="r_ac45020a8c61153e810ccea2698ba44f9"><td class="memItemLeft"><a class="el" href="#ab0a994aa8d532bdb14eceeebeb4d8750">eth_rpc_receipt_result_t</a>&#160;</td><td class="memItemRight"><a class="el" href="#ac45020a8c61153e810ccea2698ba44f9">eth_rpc_get_tx_receipt</a> (const char *tx_hash)</td></tr>
-<tr class="memdesc:ac45020a8c61153e810ccea2698ba44f9"><td class="mdescLeft">&#160;</td><td class="mdescRight">Poll the receipt of a broadcast transaction (one shot).  <br /></td></tr>
+<tr class="memdesc:a42216d313b51019c1163ff0b5c02efb7"><td class="mdescLeft">&#160;</td><td class="mdescRight">Fetch the confirmed transaction count (nonce) for from_addr.  <br /></td></tr>
+<tr class="memitem:aaa4d0c79179831d0556cb3495ab69260" id="r_aaa4d0c79179831d0556cb3495ab69260"><td class="memItemLeft">bool&#160;</td><td class="memItemRight"><a class="el" href="#aaa4d0c79179831d0556cb3495ab69260">eth_rpc_get_balance</a> (uint64_t *wei_out)</td></tr>
+<tr class="memdesc:aaa4d0c79179831d0556cb3495ab69260"><td class="mdescLeft">&#160;</td><td class="mdescRight">Fetch the native balance of from_addr, in wei.  <br /></td></tr>
+<tr class="memitem:aad5d6a7af151bb169cc985b1bd5efedd" id="r_aad5d6a7af151bb169cc985b1bd5efedd"><td class="memItemLeft">bool&#160;</td><td class="memItemRight"><a class="el" href="#aad5d6a7af151bb169cc985b1bd5efedd">eth_rpc_get_token_balance</a> (const char *token_addr, uint64_t *units_out)</td></tr>
+<tr class="memdesc:aad5d6a7af151bb169cc985b1bd5efedd"><td class="mdescLeft">&#160;</td><td class="mdescRight">Fetch from_addr's balance of an ERC-20, via <code>balanceOf</code> over eth_call.  <br /></td></tr>
+<tr class="memitem:aa6b457e974f0d58bc3d40c5919d90493" id="r_aa6b457e974f0d58bc3d40c5919d90493"><td class="memItemLeft">bool&#160;</td><td class="memItemRight"><a class="el" href="#aa6b457e974f0d58bc3d40c5919d90493">eth_rpc_get_token_decimals</a> (const char *token_addr, uint64_t *dec_out)</td></tr>
+<tr class="memdesc:aa6b457e974f0d58bc3d40c5919d90493"><td class="mdescLeft">&#160;</td><td class="mdescRight">Read an ERC-20 contract's <code>decimals()</code>.  <br /></td></tr>
+<tr class="memitem:ab3428dc341f73282af042051ef4ac42d" id="r_ab3428dc341f73282af042051ef4ac42d"><td class="memItemLeft">bool&#160;</td><td class="memItemRight"><a class="el" href="#ab3428dc341f73282af042051ef4ac42d">eth_rpc_send_raw_tx</a> (const uint8_t *tx, size_t tx_len, char *tx_hash_out, size_t tx_hash_max, char *err_out, size_t err_max)</td></tr>
+<tr class="memdesc:ab3428dc341f73282af042051ef4ac42d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Broadcast a raw signed transaction (type-prefixed RLP bytes).  <br /></td></tr>
+<tr class="memitem:a2440b1b221af1483bca3e51c13756a1a" id="r_a2440b1b221af1483bca3e51c13756a1a"><td class="memItemLeft"><a class="el" href="#ab0a994aa8d532bdb14eceeebeb4d8750">eth_rpc_receipt_result_t</a>&#160;</td><td class="memItemRight"><a class="el" href="#a2440b1b221af1483bca3e51c13756a1a">eth_rpc_get_tx_receipt</a> (const <a class="el" href="structeth__receipt__expect__t.html">eth_receipt_expect_t</a> *want)</td></tr>
+<tr class="memdesc:a2440b1b221af1483bca3e51c13756a1a"><td class="mdescLeft">&#160;</td><td class="mdescRight">Poll the receipt of a broadcast transaction (one shot).  <br /></td></tr>
+<tr class="memitem:ab608d3ad21cf75d9ed3973ca8c43ed2c" id="r_ab608d3ad21cf75d9ed3973ca8c43ed2c"><td class="memItemLeft">bool&#160;</td><td class="memItemRight"><a class="el" href="#ab608d3ad21cf75d9ed3973ca8c43ed2c">eth_rpc_err_already_known</a> (const char *node_err)</td></tr>
+<tr class="memdesc:ab608d3ad21cf75d9ed3973ca8c43ed2c"><td class="mdescLeft">&#160;</td><td class="mdescRight">true if a broadcast error message means the node already HAS this transaction ("already known", "known transaction") — i.e. an earlier attempt whose answer was lost got through.  <br /></td></tr>
 </table>
 <a name="details" id="details"></a><h2 id="header-details" class="groupheader">Detailed Description</h2>
 <div class="textblock"><p>Ethereum JSON-RPC client over HTTPS (nonce / ecrecover parity / raw-tx broadcast / receipt polling). Network bring-up (Wi-Fi, SNTP) lives in <a class="el" href="net_8h.html" title="Network bring-up: Wi-Fi station (init/scan/connect/RSSI) and SNTP time sync. No application-protocol ...">net.h</a>. </p>
 
 <p class="definition">Definition in file <a class="el" href="eth__rpc_8h_source.html">eth_rpc.h</a>.</p>
 </div><a name="doc-enum-members" id="doc-enum-members"></a><h2 id="header-doc-enum-members" class="groupheader">Enumeration Type Documentation</h2>
-<a id="a2b203fce75e401f4f1976a448f53acd1" name="a2b203fce75e401f4f1976a448f53acd1"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a2b203fce75e401f4f1976a448f53acd1">&#9670;&#160;</a></span>eth_rpc_parity_result_t</h2>
-
-<div class="memitem">
-<div class="memproto">
-      <table class="memname">
-        <tr>
-          <td class="memname">enum <a class="el" href="#a2b203fce75e401f4f1976a448f53acd1">eth_rpc_parity_result_t</a></td>
-        </tr>
-      </table>
-</div><div class="memdoc">
-
-<p>Result of the ecrecover parity probe (failures are explicit). </p>
-<table class="fieldtable">
-<tr><th colspan="2">Enumerator</th></tr><tr><td class="fieldname"><a id="a2b203fce75e401f4f1976a448f53acd1a6270366e38059494a3ca0953ddfabdce" name="a2b203fce75e401f4f1976a448f53acd1a6270366e38059494a3ca0953ddfabdce"></a>ETH_RPC_PARITY_OK&#160;</td><td class="fielddoc"><p>*v_out is valid (0 or 1) </p>
-</td></tr>
-<tr><td class="fieldname"><a id="a2b203fce75e401f4f1976a448f53acd1a827090b49ca8f6076ee4a337fd4a83b9" name="a2b203fce75e401f4f1976a448f53acd1a827090b49ca8f6076ee4a337fd4a83b9"></a>ETH_RPC_PARITY_MISMATCH&#160;</td><td class="fielddoc"><p>RPC answered but neither parity recovered from_addr — wrong ADDR_FROM or wrong card </p>
-</td></tr>
-<tr><td class="fieldname"><a id="a2b203fce75e401f4f1976a448f53acd1aab2797eda6f5bf0391c8a950ff9848dd" name="a2b203fce75e401f4f1976a448f53acd1aab2797eda6f5bf0391c8a950ff9848dd"></a>ETH_RPC_PARITY_RPC_ERROR&#160;</td><td class="fielddoc"><p>no usable RPC response for either parity </p>
-</td></tr>
-</table>
-
-<p class="definition">Definition at line <a class="el" href="eth__rpc_8h_source.html#l00034">34</a> of file <a class="el" href="eth__rpc_8h_source.html">eth_rpc.h</a>.</p>
-
-</div>
-</div>
 <a id="ab0a994aa8d532bdb14eceeebeb4d8750" name="ab0a994aa8d532bdb14eceeebeb4d8750"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#ab0a994aa8d532bdb14eceeebeb4d8750">&#9670;&#160;</a></span>eth_rpc_receipt_result_t</h2>
 
@@ -222,67 +204,69 @@ Functions</h2></td></tr>
 </td></tr>
 <tr><td class="fieldname"><a id="ab0a994aa8d532bdb14eceeebeb4d8750a35c7795a1825feeef8f0ee5908243555" name="ab0a994aa8d532bdb14eceeebeb4d8750a35c7795a1825feeef8f0ee5908243555"></a>ETH_RPC_RECEIPT_RPC_ERROR&#160;</td><td class="fielddoc"><p>transport or parse error (transient) </p>
 </td></tr>
+<tr><td class="fieldname"><a id="ab0a994aa8d532bdb14eceeebeb4d8750a408f415065df3afa739e4f3a0f304c95" name="ab0a994aa8d532bdb14eceeebeb4d8750a408f415065df3afa739e4f3a0f304c95"></a>ETH_RPC_RECEIPT_MISMATCH&#160;</td><td class="fielddoc"><p>mined, but not the payment asked for </p>
+</td></tr>
 </table>
 
-<p class="definition">Definition at line <a class="el" href="eth__rpc_8h_source.html#l00042">42</a> of file <a class="el" href="eth__rpc_8h_source.html">eth_rpc.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="eth__rpc_8h_source.html#l00036">36</a> of file <a class="el" href="eth__rpc_8h_source.html">eth_rpc.h</a>.</p>
 
 </div>
 </div>
 <a name="doc-func-members" id="doc-func-members"></a><h2 id="header-doc-func-members" class="groupheader">Function Documentation</h2>
-<a id="a97f43d754ff8e6028b303447c808c518" name="a97f43d754ff8e6028b303447c808c518"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a97f43d754ff8e6028b303447c808c518">&#9670;&#160;</a></span>eth_rpc_ecrecover_parity()</h2>
+<a id="ab608d3ad21cf75d9ed3973ca8c43ed2c" name="ab608d3ad21cf75d9ed3973ca8c43ed2c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ab608d3ad21cf75d9ed3973ca8c43ed2c">&#9670;&#160;</a></span>eth_rpc_err_already_known()</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname"><a class="el" href="#a2b203fce75e401f4f1976a448f53acd1">eth_rpc_parity_result_t</a> eth_rpc_ecrecover_parity </td>
+          <td class="memname">bool eth_rpc_err_already_known </td>
           <td>(</td>
-          <td class="paramtype">const uint8_t</td>          <td class="paramname"><span class="paramname"><em>hash</em></span>[32], </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
+          <td class="paramtype">const char *</td>          <td class="paramname"><span class="paramname"><em>node_err</em></span></td><td>)</td>
           <td></td>
-          <td class="paramtype">const uint8_t</td>          <td class="paramname"><span class="paramname"><em>r</em></span>[32], </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">const uint8_t</td>          <td class="paramname"><span class="paramname"><em>s</em></span>[32], </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">uint8_t *</td>          <td class="paramname"><span class="paramname"><em>v_out</em></span>&#160;)</td>
         </tr>
       </table>
 </div><div class="memdoc">
 
-<p>Determine the signature parity bit (v = 0 or 1). </p>
-<p>Calls the ecrecover precompile (address 0x01) via eth_call for both parities and matches the recovered address against from_addr.</p>
+<p>true if a broadcast error message means the node already HAS this transaction ("already known", "known transaction") — i.e. an earlier attempt whose answer was lost got through. </p>
+
+<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00377">377</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="pay__evm_8cpp_source.html#l00165">sign_and_broadcast()</a>.</p>
+
+</div>
+</div>
+<a id="aaa4d0c79179831d0556cb3495ab69260" name="aaa4d0c79179831d0556cb3495ab69260"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aaa4d0c79179831d0556cb3495ab69260">&#9670;&#160;</a></span>eth_rpc_get_balance()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">bool eth_rpc_get_balance </td>
+          <td>(</td>
+          <td class="paramtype">uint64_t *</td>          <td class="paramname"><span class="paramname"><em>wei_out</em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Fetch the native balance of from_addr, in wei. </p>
+<p>For the pre-flight check that refuses a sale the payer cannot fund before the customer is asked for anything — see <code>evm_balance_ok</code> in <a class="el" href="main_8cpp.html" title="cryptnox-pos entry point: touchscreen USDC payment terminal.">main.cpp</a>. Without it the first news of an empty account is the node's refusal <em>after</em> the PIN, the tap and the signature.</p>
+<p>Saturating at <code>UINT64_MAX</code> (see <a class="el" href="eth__json_8h.html#a66d4f37447527e040abfdf75717fb0fb" title="eth_json_hex_quantity">eth_json_hex_quantity</a>): 20 ETH does not fit a uint64 of wei, and over-reporting can only fail to refuse.</p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramdir">[in]</td><td class="paramname">hash</td><td>32-byte message hash that was signed. </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">r</td><td>32-byte big-endian ECDSA r component. </td></tr>
-    <tr><td class="paramdir">[in]</td><td class="paramname">s</td><td>32-byte big-endian ECDSA s component. </td></tr>
-    <tr><td class="paramdir">[out]</td><td class="paramname">v_out</td><td>Parity (0 or 1) on <a class="el" href="#a2b203fce75e401f4f1976a448f53acd1a6270366e38059494a3ca0953ddfabdce" title="ETH_RPC_PARITY_OK">ETH_RPC_PARITY_OK</a>; untouched on failure. </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">wei_out</td><td>Balance on success; untouched on failure. </td></tr>
   </table>
   </dd>
 </dl>
-<dl class="retval"><dt>Return values</dt><dd>
-  <table class="retval">
-    <tr><td class="paramname">ETH_RPC_PARITY_OK</td><td>*v_out is valid. </td></tr>
-    <tr><td class="paramname">ETH_RPC_PARITY_MISMATCH</td><td>The RPC answered but neither parity recovers from_addr. </td></tr>
-    <tr><td class="paramname">ETH_RPC_PARITY_RPC_ERROR</td><td>No usable RPC response for either parity. </td></tr>
-  </table>
-  </dd>
-</dl>
+<dl class="section return"><dt>Returns</dt><dd>true on success, false on transport or parse error. </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00361">361</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00212">212</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00288">bytes_to_hex()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00176">do_post()</a>, <a class="el" href="eth__json_8cpp_source.html#l00018">eth_json_result_string()</a>, <a class="el" href="eth__rpc_8h_source.html#l00036">ETH_RPC_PARITY_MISMATCH</a>, <a class="el" href="eth__rpc_8h_source.html#l00035">ETH_RPC_PARITY_OK</a>, <a class="el" href="eth__rpc_8h_source.html#l00038">ETH_RPC_PARITY_RPC_ERROR</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00275">hex_nibble()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00042">HEX_PER_BYTE</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00039">RESP_BUF_SIZE</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00046">RESP_LOG_MAX</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00053">RESULT_STR_MAX</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00067">s_from_addr</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00036">TAG</a>.</p>
+<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00077">do_post()</a>, <a class="el" href="eth__json_8h_source.html#l00135">eth_json_hex_quantity()</a>, <a class="el" href="eth__json_8cpp_source.html#l00018">eth_json_result_string()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00036">RESP_BUF_SIZE</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00043">RESP_LOG_MAX</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00050">RESULT_STR_MAX</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00057">s_from_addr</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00033">TAG</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00230">sign_and_broadcast()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="pay__evm_8cpp_source.html#l00091">evm_balance_ok()</a>.</p>
 
 </div>
 </div>
@@ -301,7 +285,8 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p>Fetch the pending transaction count (nonce) for from_addr. </p>
+<p>Fetch the confirmed transaction count (nonce) for from_addr. </p>
+<p>"latest", not "pending": a sale whose broadcast answer was lost may still be in the mempool, and a retry must REPLACE it (same nonce, only one can land) rather than queue behind it as a second payment.</p>
 <p>Responses with an HTTP status other than 200, malformed JSON, or a nonce above 2^32-1 are rejected.</p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
@@ -311,16 +296,93 @@ Functions</h2></td></tr>
 </dl>
 <dl class="section return"><dt>Returns</dt><dd>true on success, false on transport, parse or range error. </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00321">321</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00157">157</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00176">do_post()</a>, <a class="el" href="eth__json_8cpp_source.html#l00018">eth_json_result_string()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00050">NONCE_MAX</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00039">RESP_BUF_SIZE</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00046">RESP_LOG_MAX</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00053">RESULT_STR_MAX</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00067">s_from_addr</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00036">TAG</a>.</p>
+<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00077">do_post()</a>, <a class="el" href="eth__json_8cpp_source.html#l00018">eth_json_result_string()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00047">NONCE_MAX</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00036">RESP_BUF_SIZE</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00043">RESP_LOG_MAX</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00050">RESULT_STR_MAX</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00057">s_from_addr</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00033">TAG</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>, and <a class="el" href="main_8cpp_source.html#l00230">sign_and_broadcast()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="boot_8cpp_source.html#l00496">pos_boot()</a>, and <a class="el" href="pay__evm_8cpp_source.html#l00165">sign_and_broadcast()</a>.</p>
 
 </div>
 </div>
-<a id="ac45020a8c61153e810ccea2698ba44f9" name="ac45020a8c61153e810ccea2698ba44f9"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ac45020a8c61153e810ccea2698ba44f9">&#9670;&#160;</a></span>eth_rpc_get_tx_receipt()</h2>
+<a id="aad5d6a7af151bb169cc985b1bd5efedd" name="aad5d6a7af151bb169cc985b1bd5efedd"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aad5d6a7af151bb169cc985b1bd5efedd">&#9670;&#160;</a></span>eth_rpc_get_token_balance()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">bool eth_rpc_get_token_balance </td>
+          <td>(</td>
+          <td class="paramtype">const char *</td>          <td class="paramname"><span class="paramname"><em>token_addr</em></span>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">uint64_t *</td>          <td class="paramname"><span class="paramname"><em>units_out</em></span>&#160;)</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Fetch from_addr's balance of an ERC-20, via <code>balanceOf</code> over eth_call. </p>
+<p>The token half of the same check, and the one that saves more: a transfer of more tokens than the account holds is not refused by the node at all. It is broadcast, mined, reverted, and charged for — so the customer waits through the whole confirmation only to be declined, and pays the gas for the privilege.</p>
+<p>Saturating, like <a class="el" href="eth__rpc_8cpp.html#aaa4d0c79179831d0556cb3495ab69260" title="eth_rpc_get_balance">eth_rpc_get_balance</a>.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">token_addr</td><td>"0x..."-prefixed contract address to call. </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">units_out</td><td>Balance in the token's base units on success; untouched on failure. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>true on success, false on transport or parse error, or if the configured from_addr is not a 20-byte hex address. </dd></dl>
+
+<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00239">239</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00077">do_post()</a>, <a class="el" href="eth__json_8h_source.html#l00135">eth_json_hex_quantity()</a>, <a class="el" href="eth__json_8cpp_source.html#l00018">eth_json_result_string()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00203">from_no_prefix()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00036">RESP_BUF_SIZE</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00043">RESP_LOG_MAX</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00050">RESULT_STR_MAX</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00057">s_from_addr</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00033">TAG</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="pay__evm_8cpp_source.html#l00091">evm_balance_ok()</a>.</p>
+
+</div>
+</div>
+<a id="aa6b457e974f0d58bc3d40c5919d90493" name="aa6b457e974f0d58bc3d40c5919d90493"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aa6b457e974f0d58bc3d40c5919d90493">&#9670;&#160;</a></span>eth_rpc_get_token_decimals()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">bool eth_rpc_get_token_decimals </td>
+          <td>(</td>
+          <td class="paramtype">const char *</td>          <td class="paramname"><span class="paramname"><em>token_addr</em></span>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">uint64_t *</td>          <td class="paramname"><span class="paramname"><em>dec_out</em></span>&#160;)</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Read an ERC-20 contract's <code>decimals()</code>. </p>
+<p>Every amount this terminal signs is in 6-decimal base units, so a contract with any other precision would be charged the wrong sum — 10^12 too little for an 18-decimal token. Checked before such a contract can be accepted.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">token_addr</td><td>"0x"-prefixed contract address. </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">dec_out</td><td>decimals() on success; untouched on failure. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>false on transport error, no contract code, or a malformed answer. </dd></dl>
+
+<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00354">354</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00077">do_post()</a>, <a class="el" href="eth__json_8h_source.html#l00135">eth_json_hex_quantity()</a>, <a class="el" href="eth__json_8cpp_source.html#l00018">eth_json_result_string()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00036">RESP_BUF_SIZE</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00043">RESP_LOG_MAX</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00050">RESULT_STR_MAX</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00033">TAG</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="pay_8cpp_source.html#l00115">token_decimals_ok()</a>.</p>
+
+</div>
+</div>
+<a id="a2440b1b221af1483bca3e51c13756a1a" name="a2440b1b221af1483bca3e51c13756a1a"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a2440b1b221af1483bca3e51c13756a1a">&#9670;&#160;</a></span>eth_rpc_get_tx_receipt()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -328,7 +390,7 @@ Functions</h2></td></tr>
         <tr>
           <td class="memname"><a class="el" href="#ab0a994aa8d532bdb14eceeebeb4d8750">eth_rpc_receipt_result_t</a> eth_rpc_get_tx_receipt </td>
           <td>(</td>
-          <td class="paramtype">const char *</td>          <td class="paramname"><span class="paramname"><em>tx_hash</em></span></td><td>)</td>
+          <td class="paramtype">const <a class="el" href="structeth__receipt__expect__t.html">eth_receipt_expect_t</a> *</td>          <td class="paramname"><span class="paramname"><em>want</em></span></td><td>)</td>
           <td></td>
         </tr>
       </table>
@@ -338,25 +400,26 @@ Functions</h2></td></tr>
 <p>Calls eth_getTransactionReceipt. A broadcast acceptance only means the tx entered the mempool — a POS must wait for the mined receipt (status 0x1) before declaring the payment approved.</p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramdir">[in]</td><td class="paramname">tx_hash</td><td>"0x..."-prefixed transaction hash from <a class="el" href="eth__rpc_8cpp.html#a0261890549fe937d44611cbbcc6f0743" title="eth_rpc_send_raw_tx">eth_rpc_send_raw_tx</a>. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">want</td><td>What the receipt must show (see <a class="el" href="eth__json_8h.html" title="JSON-RPC response parsing helpers — kept in their own unit (cJSON + CW_Utils only,...">eth_json.h</a>); its <code>tx_hash</code> is the hash computed on the device, not the node's answer to the broadcast. </td></tr>
   </table>
   </dd>
 </dl>
 <dl class="retval"><dt>Return values</dt><dd>
   <table class="retval">
     <tr><td class="paramname">ETH_RPC_RECEIPT_PENDING</td><td>Not mined yet — poll again later. </td></tr>
-    <tr><td class="paramname">ETH_RPC_RECEIPT_SUCCESS</td><td>Mined, execution succeeded. </td></tr>
+    <tr><td class="paramname">ETH_RPC_RECEIPT_SUCCESS</td><td>Mined, execution succeeded, and it is our transfer. </td></tr>
     <tr><td class="paramname">ETH_RPC_RECEIPT_REVERTED</td><td>Mined but reverted — funds NOT moved. </td></tr>
     <tr><td class="paramname">ETH_RPC_RECEIPT_RPC_ERROR</td><td>Transport/parse error (may be transient). </td></tr>
+    <tr><td class="paramname">ETH_RPC_RECEIPT_MISMATCH</td><td>A receipt that is not our payment. </td></tr>
   </table>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00499">499</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00385">385</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00176">do_post()</a>, <a class="el" href="eth__json_8h_source.html#l00025">ETH_JSON_RECEIPT_ERROR</a>, <a class="el" href="eth__json_8h_source.html#l00028">ETH_JSON_RECEIPT_PENDING</a>, <a class="el" href="eth__json_8h_source.html#l00030">ETH_JSON_RECEIPT_REVERTED</a>, <a class="el" href="eth__json_8cpp_source.html#l00039">eth_json_receipt_status()</a>, <a class="el" href="eth__json_8h_source.html#l00029">ETH_JSON_RECEIPT_SUCCESS</a>, <a class="el" href="eth__rpc_8h_source.html#l00043">ETH_RPC_RECEIPT_PENDING</a>, <a class="el" href="eth__rpc_8h_source.html#l00045">ETH_RPC_RECEIPT_REVERTED</a>, <a class="el" href="eth__rpc_8h_source.html#l00046">ETH_RPC_RECEIPT_RPC_ERROR</a>, and <a class="el" href="eth__rpc_8h_source.html#l00044">ETH_RPC_RECEIPT_SUCCESS</a>.</p>
+<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00077">do_post()</a>, <a class="el" href="eth__json_8cpp_source.html#l00162">eth_json_receipt_check()</a>, <a class="el" href="eth__json_8h_source.html#l00027">ETH_JSON_RECEIPT_ERROR</a>, <a class="el" href="eth__json_8h_source.html#l00033">ETH_JSON_RECEIPT_MISMATCH</a>, <a class="el" href="eth__json_8h_source.html#l00030">ETH_JSON_RECEIPT_PENDING</a>, <a class="el" href="eth__json_8h_source.html#l00032">ETH_JSON_RECEIPT_REVERTED</a>, <a class="el" href="eth__json_8h_source.html#l00031">ETH_JSON_RECEIPT_SUCCESS</a>, <a class="el" href="eth__rpc_8h_source.html#l00041">ETH_RPC_RECEIPT_MISMATCH</a>, <a class="el" href="eth__rpc_8h_source.html#l00037">ETH_RPC_RECEIPT_PENDING</a>, <a class="el" href="eth__rpc_8h_source.html#l00039">ETH_RPC_RECEIPT_REVERTED</a>, <a class="el" href="eth__rpc_8h_source.html#l00040">ETH_RPC_RECEIPT_RPC_ERROR</a>, <a class="el" href="eth__rpc_8h_source.html#l00038">ETH_RPC_RECEIPT_SUCCESS</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00043">RESP_LOG_MAX</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00033">TAG</a>, and <a class="el" href="eth__json_8h_source.html#l00041">eth_receipt_expect_t::tx_hash</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="pay_8cpp_source.html#l00255">settle_inflight()</a>.</p>
 
 </div>
 </div>
@@ -390,16 +453,16 @@ Functions</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00304">304</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00122">122</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00067">s_from_addr</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00066">s_rpc_url</a>.</p>
+<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00057">s_from_addr</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00056">s_rpc_url</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="pay__evm_8cpp_source.html#l00026">eth_rpc_select_for()</a>.</p>
 
 </div>
 </div>
-<a id="a0261890549fe937d44611cbbcc6f0743" name="a0261890549fe937d44611cbbcc6f0743"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a0261890549fe937d44611cbbcc6f0743">&#9670;&#160;</a></span>eth_rpc_send_raw_tx()</h2>
+<a id="ab3428dc341f73282af042051ef4ac42d" name="ab3428dc341f73282af042051ef4ac42d"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ab3428dc341f73282af042051ef4ac42d">&#9670;&#160;</a></span>eth_rpc_send_raw_tx()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -422,7 +485,17 @@ Functions</h2></td></tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">size_t</td>          <td class="paramname"><span class="paramname"><em>tx_hash_max</em></span>&#160;)</td>
+          <td class="paramtype">size_t</td>          <td class="paramname"><span class="paramname"><em>tx_hash_max</em></span>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">char *</td>          <td class="paramname"><span class="paramname"><em>err_out</em></span>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">size_t</td>          <td class="paramname"><span class="paramname"><em>err_max</em></span>&#160;)</td>
         </tr>
       </table>
 </div><div class="memdoc">
@@ -434,16 +507,19 @@ Functions</h2></td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">tx_len</td><td>Length of <code class="param">tx</code> in bytes. </td></tr>
     <tr><td class="paramdir">[out]</td><td class="paramname">tx_hash_out</td><td>"0x..."-prefixed tx hash on success; must be at least 68 bytes (2 + 64 + NUL). </td></tr>
     <tr><td class="paramdir">[in]</td><td class="paramname">tx_hash_max</td><td>Capacity of <code class="param">tx_hash_out</code>. </td></tr>
+    <tr><td class="paramdir">[out]</td><td class="paramname">err_out</td><td>On failure, the node's own <code>error.message</code> when it sent one ("insufficient funds for gas * price +
+                        value", "nonce too low", …), truncated to fit; set to "" when the failure was a transport or parse error with no message to report. May be NULL. </td></tr>
+    <tr><td class="paramdir">[in]</td><td class="paramname">err_max</td><td>Capacity of <code class="param">err_out</code>. </td></tr>
   </table>
   </dd>
 </dl>
 <dl class="section return"><dt>Returns</dt><dd>true on success, false on transport error, JSON-RPC error response, or undersized <code class="param">tx_hash_out</code>. </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00444">444</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00286">286</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00288">bytes_to_hex()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00176">do_post()</a>, <a class="el" href="eth__json_8cpp_source.html#l00018">eth_json_result_string()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00042">HEX_PER_BYTE</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00039">RESP_BUF_SIZE</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00046">RESP_LOG_MAX</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00053">RESULT_STR_MAX</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00036">TAG</a>.</p>
+<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00106">bytes_to_hex()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00077">do_post()</a>, <a class="el" href="eth__json_8cpp_source.html#l00039">eth_json_error_message()</a>, <a class="el" href="eth__json_8cpp_source.html#l00018">eth_json_result_string()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00039">HEX_PER_BYTE</a>, <a class="el" href="provision_8cpp_source.html#l00414">ok()</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00036">RESP_BUF_SIZE</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00043">RESP_LOG_MAX</a>, <a class="el" href="eth__rpc_8cpp_source.html#l00050">RESULT_STR_MAX</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00033">TAG</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00230">sign_and_broadcast()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="pay__evm_8cpp_source.html#l00165">sign_and_broadcast()</a>.</p>
 
 </div>
 </div>
@@ -476,11 +552,11 @@ Functions</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00310">310</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00146">146</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00069">s_api_secret</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00068">s_project_id</a>.</p>
+<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00059">s_api_secret</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00058">s_project_id</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="pay__evm_8cpp_source.html#l00026">eth_rpc_select_for()</a>.</p>
 
 </div>
 </div>
@@ -508,11 +584,45 @@ Functions</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00316">316</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00152">152</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00070">s_ca_cert</a>.</p>
+<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00060">s_ca_cert</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="main_8cpp_source.html#l00606">app_main()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="pay__evm_8cpp_source.html#l00026">eth_rpc_select_for()</a>.</p>
+
+</div>
+</div>
+<a id="af44e923b52ce0f8aa663b54390975bc6" name="af44e923b52ce0f8aa663b54390975bc6"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#af44e923b52ce0f8aa663b54390975bc6">&#9670;&#160;</a></span>eth_rpc_set_from()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">bool eth_rpc_set_from </td>
+          <td>(</td>
+          <td class="paramtype">const char *</td>          <td class="paramname"><span class="paramname"><em>addr</em></span></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Replace the from-address — the account a sale spends from. </p>
+<p>The payer is the card on the reader, so it is not known until somebody taps. <a class="el" href="eth__rpc_8cpp.html#a6480c18de6bd8d4f47fb8b61d53cdd1c" title="eth_rpc_init">eth_rpc_init</a>'s <code class="param">from_addr</code> is only the boot-time default (the config.h literal, used for the startup reachability probe); this is the per-tap override, and everything that reads the sender — the nonce, the balance, the ecrecover comparison — follows it.</p>
+<p>Unlike every other setter in this header the string is <b>copied</b>, because its caller derives it into a stack buffer inside one sale.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramdir">[in]</td><td class="paramname">addr</td><td>"0x"-prefixed, 40 hex characters. A malformed one is refused rather than silently leaving the previous payer in force — the next nonce would otherwise be somebody else's. </td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>true if the address was accepted and is now in force. </dd></dl>
+
+<p class="definition">Definition at line <a class="el" href="eth__rpc_8cpp_source.html#l00133">133</a> of file <a class="el" href="eth__rpc_8cpp_source.html">eth_rpc.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="eth__rpc_8cpp_source.html#l00057">s_from_addr</a>, and <a class="el" href="eth__rpc_8cpp_source.html#l00131">s_from_buf</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="pay__evm_8cpp_source.html#l00165">sign_and_broadcast()</a>.</p>
 
 </div>
 </div>

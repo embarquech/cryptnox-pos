@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['flow_0',['Payment flow',['../index.html#payment-flow',1,'']]]
+  ['documentation_0',['Documentation',['../index.html#documentation',1,'']]]
 ];
