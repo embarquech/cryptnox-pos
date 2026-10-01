@@ -28,15 +28,12 @@ extern "C" {
 
 #include "config.h"   /* MAX_FEE / MAX_PRIORITY_FEE — compile-time fee defaults */
 
-/* Same guard main.cpp carries: Tron TRC-20 support post-dates the first config.h
- * files in the field, so an absent contract compiles to an empty string that
- * fails its decode and disables the asset, rather than breaking the build. */
+/* Same guard main.cpp carries: a config.h without the contract compiles to an
+ * empty string that fails its decode and disables the asset. */
 #ifndef TRON_ADDR_USDT
 #define TRON_ADDR_USDT  ""
 #endif
-/* And the mainnet halves of both pairs, for a config.h written before the
- * production networks were selectable. Empty means the asset is refused on
- * mainnet and works on the testnet exactly as it did. */
+/* Mainnet halves of both pairs: empty means the asset is refused on mainnet. */
 #ifndef TRON_ADDR_USDT_MAIN
 #define TRON_ADDR_USDT_MAIN  ""
 #endif
@@ -57,14 +54,13 @@ static const char *const TAG = "settings";
 #define K_ADMIN_FAILS "adm_fails"
 #define K_CHAIN       "chain"
 #define K_MAINNET     "mainnet"
-/* Touch calibration, one key per axis, packed min<<16 | max. */
 /* Minutes east of UTC, stored biased — see settings_get_tz_offset_min(). */
 #define K_TZ_OFFSET   "tz_off"
 #define K_TZ_DST      "tz_dst"
+/* Touch calibration, one key per axis, packed min<<16 | max. */
 #define K_TOUCH_X     "touch_x"
 #define K_TOUCH_Y     "touch_y"
-/* BUILD_ID of the newest firmware that has run on this unit — see
- * settings_wipe_if_new_build. */
+/* BUILD_ID of the image that last wrote NVS — see settings_wipe_if_new_build. */
 #define K_BUILD_ID    "build_id"
 #ifndef BUILD_ID
 #error "BUILD_ID is set from git by the project CMakeLists.txt"
@@ -76,9 +72,8 @@ static const char *const TAG = "settings";
 #define K_PAY_ETH2    "pay_eth_e"
 #define K_PAY_TRX     "pay_trx"
 #define K_PAY_TRX2    "pay_trx_e"
-/* Token contracts, same treatment — see settings_get_contract. One pair of keys
- * per network per deployment: the mainnet USDC and the Sepolia one are different
- * addresses, and sharing a slot would carry one across a network switch. */
+/* Token contracts, same treatment — see settings_get_contract. One key pair per
+ * deployment, so a network switch never carries a testnet contract to mainnet. */
 #define K_CT_ETH      "ct_eth"
 #define K_CT_ETH2     "ct_eth_e"
 #define K_CT_TRX      "ct_trx"
@@ -100,15 +95,8 @@ static const char *const TAG = "settings";
 /******************************************************************
  * NVS scalar helpers
  *
- * Every scalar setting below is the same eight lines — open, read or write,
- * commit, close — differing only in the key, the width and the default. Written
- * once here so a getter is one line and the failure behaviour (fall back to the
- * default, never guess) cannot drift between them.
- *
- * A failed open is not logged on the read path on purpose: the callers each have
- * a default that is correct, and the reads happen often enough that a warning
- * would be noise. The write path does log — a setting that silently did not
- * persist is the kind of thing an operator reports as "it forgot".
+ * A failed read falls back to the default, never a guess, and is not logged
+ * (reads are frequent and the default is correct). A failed write is logged.
  ******************************************************************/
 static uint8_t nvs_u8_get(const char *key, uint8_t def)
 {
@@ -157,22 +145,12 @@ static void nvs_u32_set(const char *key, uint32_t val)
 }
 
 /******************************************************************
- * The two settings that are read constantly
+ * Chain and network caches
  *
- * The chain and the network flag are asked for on nearly every pass of the UI —
- * the asset badge, the ticker, the network subtitle, the keypad's ceiling — and
- * the keypad's ceiling means an NVS open per typed digit. Cached in RAM, with
- * -1 standing for "not read yet" so a factory-fresh unit still resolves through
- * the read path exactly once and lands on the documented default.
- *
- * Atomic because the writer is the UI task (the asset picker) and one reader is
- * the main task, mid-payment. Cheap: a 16-bit aligned load on this core.
- *
- * Safe to cache for opposite reasons. The chain is written only through
- * settings_set_chain(), so the cache is written through there and cannot go
- * stale. The network flag cannot change at all without a restart — the config
- * page reboots the terminal to apply it (provision.cpp, network_post) — so one
- * read per boot is the whole story.
+ * Read on nearly every UI pass (per keypad digit), so cached in RAM; -1 means
+ * "not read yet". Atomic: the UI task writes, the main task reads mid-payment.
+ * The chain cache is written through settings_set_chain(). The network cache
+ * keeps the boot value until restart (provision.cpp reboots to apply it).
  ******************************************************************/
 static std::atomic<int16_t> s_chain_cache{-1};
 static std::atomic<int8_t>  s_mainnet_cache{-1};
@@ -189,10 +167,10 @@ pos_chain_t settings_get_chain(void)
     const int16_t cached = s_chain_cache.load();
     if (cached >= 0) { return (pos_chain_t)cached; }
 
-    pos_chain_t chain = POS_CHAIN_ETH_SEPOLIA;
+    pos_chain_t chain = POS_CHAIN_ETH_USDC;
     /* Unknown value = a downgrade or a corrupt cell; fall back to the default
      * rather than charge on a chain no code path can handle. */
-    const uint8_t stored = nvs_u8_get(K_CHAIN, (uint8_t)POS_CHAIN_ETH_SEPOLIA);
+    const uint8_t stored = nvs_u8_get(K_CHAIN, (uint8_t)POS_CHAIN_ETH_USDC);
     if (stored < (uint8_t)POS_CHAIN__COUNT) {
         chain = (pos_chain_t)stored;
     }
@@ -213,10 +191,8 @@ bool settings_get_mainnet(void)
     const int8_t cached = s_mainnet_cache.load();
     if (cached >= 0) { return (cached != 0); }
 
-    /* Defaults true, and the read is written so that every way of not knowing —
-     * no key, an unopenable namespace, a factory-fresh unit — lands on the
-     * production networks. A terminal that guesses "testnet" takes a shift's
-     * worth of payments that settle nowhere and reports each one as done. */
+    /* Every way of not knowing (no key, unopenable namespace) lands on mainnet:
+     * a terminal that guesses "testnet" reports payments that settle nowhere. */
     const bool mainnet = (nvs_u8_get(K_MAINNET, 1U) != 0U);
     s_mainnet_cache.store(mainnet ? 1 : 0);
     return mainnet;
@@ -294,9 +270,8 @@ void settings_get_touch_cal(uint16_t *x_min, uint16_t *x_max,
 void settings_set_touch_cal(uint16_t x_min, uint16_t x_max,
                             uint16_t y_min, uint16_t y_max)
 {
-    /* A span under this is a double-tap on one spot, not a calibration, and
-     * storing it maps the whole panel onto a few pixels — after which nothing,
-     * including the calibration screen, can be tapped again. */
+    /* A smaller span is a double-tap on one spot; storing it would leave the
+     * panel, calibration screen included, untappable. */
     const uint16_t MIN_SPAN = 500U;
     if ((x_max < x_min + MIN_SPAN) || (y_max < y_min + MIN_SPAN)) {
         ESP_LOGW(TAG, "touch cal rejected: span too small");
@@ -360,9 +335,9 @@ void settings_set_wifi(const char *ssid, const char *pass)
     }
 }
 
-/* The bounds are settings_rules.h's, enforced here rather than by the one caller:
- * these feed tx.max_fee, the gas ceiling the customer's card pays. Out of range in
- * flash is a corrupt cell, and reads as the default. */
+/* Fee bounds (settings_rules.h) are enforced here, not by the caller: these feed
+ * tx.max_fee, the gas ceiling the customer's card pays. Out of range in flash is
+ * a corrupt cell and reads as the default. */
 static uint32_t fee_get(const char *key, uint32_t dflt)
 {
     const uint32_t v = nvs_u32_get(key, dflt);
@@ -475,11 +450,9 @@ uint8_t settings_admin_fail_count(void)
     return nvs_u8_get(K_ADMIN_FAILS, 0U);
 }
 
-/* Money-carrying addresses — the payout recipient and the token contract. Two
- * keys each: the value and an echo copy, read back and compared, so a torn write
- * or a flipped bit in NVS cannot silently redirect a payment or point the terminal
- * at a different asset. See the settings.h contract for why the compile-time
- * address does not need this and a stored one does. */
+/* Money-carrying addresses (payout recipient, token contract): a value and an
+ * echo copy, compared on read, so a torn write or flipped bit in NVS cannot
+ * silently redirect a payment or switch the asset. */
 
 /**
  * @brief Read a dual-stored address, falling back to @p def on any doubt.
@@ -573,9 +546,14 @@ bool settings_set_payout(bool tron, const char *addr)
         : dual_set(K_PAY_ETH, K_PAY_ETH2, false, "payout(eth)",  addr);
 }
 
-bool settings_get_contract(bool tron, char *out, size_t n)
+bool settings_get_contract(pos_chain_t chain, char *out, size_t n)
 {
     const bool m = settings_get_mainnet();
+    const bool tron = (chain == POS_CHAIN_TRON_USDT);
+    if (!tron && (chain != POS_CHAIN_ETH_USDC)) {
+        if ((out != NULL) && (n > 0U)) { out[0] = '\0'; }
+        return false;
+    }
     return tron
         ? dual_get(m ? K_CT_TRX_M : K_CT_TRX, m ? K_CT_TRX_M2 : K_CT_TRX2,
                    m ? TRON_ADDR_USDT_MAIN : TRON_ADDR_USDT,
@@ -585,9 +563,11 @@ bool settings_get_contract(bool tron, char *out, size_t n)
                    "contract(eth)",  out, n);
 }
 
-bool settings_set_contract(bool tron, const char *addr)
+bool settings_set_contract(pos_chain_t chain, const char *addr)
 {
     const bool m = settings_get_mainnet();
+    const bool tron = (chain == POS_CHAIN_TRON_USDT);
+    if (!tron && (chain != POS_CHAIN_ETH_USDC)) { return false; }
     return tron
         ? dual_set(m ? K_CT_TRX_M : K_CT_TRX, m ? K_CT_TRX_M2 : K_CT_TRX2,
                    true,  "contract(tron)", addr)
@@ -603,21 +583,10 @@ bool settings_wipe_if_new_build(void)
         (void)nvs_get_u32(h, K_BUILD_ID, &stored);
         nvs_close(h);
     }
-    /* Equal, and only equal, keeps the settings: that is a power-cycle of the
-     * image that wrote them. Everything else — a newer build, an older one, no
-     * stamp at all — means this NVS was last written by a different image, and
-     * the firmware is open source, so "a different image" includes one somebody
-     * built to leave a payout address behind for the official firmware to find
-     * and pay out to. State from an image that is not this one is not state this
-     * one may act on.
-     *
-     * Ordering was the earlier rule and it was wrong for exactly that reason: a
-     * hostile image only had to stamp a large number to be treated as a rollback
-     * and keep everything it had planted.
-     *
-     * Logged either way — "the update did not clear the settings" is
-     * indistinguishable from a broken check unless both numbers are on the
-     * console. */
+    /* Only equality keeps the settings. Newer, older or no stamp means another
+     * image wrote this NVS, possibly one built to plant a payout address. An
+     * ordering test would let such an image stamp a large number and keep it.
+     * Logged either way so both numbers are on the console. */
     if (stored == BUILD_ID) {
         ESP_LOGI(TAG, "build %u - settings written by this build, kept",
                  (unsigned)BUILD_ID);
@@ -629,26 +598,20 @@ bool settings_wipe_if_new_build(void)
     esp_err_t err = nvs_flash_erase();
     if (err == ESP_OK) { err = nvs_flash_init(); }
     if (err != ESP_OK) {
-        /* Nothing was written, so the next boot sees the same older stamp and
-         * tries again rather than recording a half-done wipe as finished. The
-         * terminal meanwhile keeps working on its old settings: a unit that
-         * still takes payments beats a brick. */
+        /* No stamp written, so the next boot retries. Meanwhile the unit keeps
+         * its old settings: one that still takes payments beats a brick. */
         ESP_LOGE(TAG, "NVS erase failed (%s) - settings kept", esp_err_to_name(err));
         return false;
     }
 
-    /* Stamp straight away — the erase took the old value with it, and an
-     * unwritten stamp means a wipe on every boot, so the operator would re-run
-     * setup after each power cut. */
+    /* Stamp straight away: without it every boot would wipe again. */
     if (nvs_open(NS_SETTINGS, NVS_READWRITE, &h) == ESP_OK) {
         (void)nvs_set_u32(h, K_BUILD_ID, (uint32_t)BUILD_ID);
         (void)nvs_commit(h);
         nvs_close(h);
     }
-    /* Whatever the caches hold describes a partition that no longer exists. This
-     * runs before anything reads them today, so it is belt and braces — but it is
-     * the ordering that makes it safe, and an invalidation here does not depend on
-     * that ordering staying true. */
+    /* The caches describe the erased partition. Nothing has read them yet at
+     * this point, but invalidating does not rely on that ordering. */
     cache_invalidate();
     return true;
 }
@@ -658,14 +621,10 @@ void settings_factory_reset(void)
     nvs_handle_t h;
     if (nvs_open(NS_SETTINGS, NVS_READWRITE, &h) == ESP_OK) {
         /* Drops brightness, Wi-Fi creds, the admin code and any operator-set
-         * payout address, so a reset terminal comes back up into first-run setup
-         * and pays out to the config.h recipient again — plus the now-unused
-         * "auto_bl" key left on units provisioned before auto-brightness went. */
+         * payout address, so the terminal comes back up in first-run setup. */
         (void)nvs_erase_all(h);
-        /* Put the build stamp straight back: erase_all took it with the rest, and
-         * without it the next boot reads 0, wipes again and greets the operator
-         * with "Updated to ... settings are cleared" for an update that never
-         * happened. */
+        /* Restore the build stamp, or the next boot would wipe again and report
+         * an update that never happened. */
         (void)nvs_set_u32(h, K_BUILD_ID, (uint32_t)BUILD_ID);
         (void)nvs_commit(h);
         nvs_close(h);
@@ -673,12 +632,8 @@ void settings_factory_reset(void)
     }
     cache_invalidate();   /* the chain and network flag went with the erase */
 
-    /* provision.cpp's own namespace. Nothing in it is load-bearing any more — the
-     * AP passphrase is drawn per session and never leaves RAM, and the admin
-     * page's TLS identity is gone with the TLS — so what this clears is whatever
-     * an older build of this firmware left behind on the unit. Erased here rather
-     * than in provision.cpp because this is the function that means "forget the
-     * operator", and a new one must not inherit any of the last one's keys. */
+    /* provision.cpp's namespace, cleared here because this function means
+     * "forget the operator" and a new one must not inherit any stored keys. */
     if (nvs_open("prov", NVS_READWRITE, &h) == ESP_OK) {
         (void)nvs_erase_all(h);
         (void)nvs_commit(h);
@@ -710,9 +665,8 @@ bool settings_inflight_load(void *rec, size_t n)
     size_t len = n;
     const esp_err_t err = nvs_get_blob(h, K_INFLIGHT, rec, &len);
     nvs_close(h);
-    /* A size that does not match is a record from a different layout — which a
-     * new build cannot inherit anyway (settings_wipe_if_new_build), so this is
-     * belt and braces rather than a migration path. */
+    /* A size mismatch is a different layout; settings_wipe_if_new_build already
+     * prevents inheriting one, so this is belt and braces, not migration. */
     return (err == ESP_OK) && (len == n);
 }
 
@@ -720,8 +674,7 @@ void settings_inflight_clear(void)
 {
     nvs_handle_t h;
     if (nvs_open(NS_SETTINGS, NVS_READWRITE, &h) != ESP_OK) { return; }
-    /* ESP_ERR_NVS_NOT_FOUND for a sale that never got as far as a broadcast is
-     * the ordinary case, and writes nothing. */
+    /* NOT_FOUND (no broadcast happened) is the ordinary case; writes nothing. */
     if (nvs_erase_key(h, K_INFLIGHT) == ESP_OK) { (void)nvs_commit(h); }
     nvs_close(h);
 }

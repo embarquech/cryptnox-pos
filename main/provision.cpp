@@ -567,8 +567,8 @@ static esp_err_t state_get(httpd_req_t *req)
          * omission. Nothing is disclosed: the contract is in the signed image, on
          * the panel, and public on-chain, and this body only reaches a browser that
          * has already had the admin code typed on the terminal. */
-        const bool ct_eth_own = settings_get_contract(false, ct_eth, sizeof(ct_eth));
-        const bool ct_trx_own = settings_get_contract(true,  ct_trx, sizeof(ct_trx));
+        const bool ct_eth_own = settings_get_contract(POS_CHAIN_ETH_USDC, ct_eth, sizeof(ct_eth));
+        const bool ct_trx_own = settings_get_contract(POS_CHAIN_TRON_USDT, ct_trx, sizeof(ct_trx));
         /* An asset the build never configured falls back to the placeholder still
          * sitting in config.h, which is a string and not an address. main.cpp
          * refuses that asset over it; showing it here as the contract in use would
@@ -1579,9 +1579,9 @@ bool prov_pending_commit(bool accept)
             case PROV_ASK_PAYOUT_TRON:
                 stored = settings_set_payout(true, s_ask_val);    break;
             case PROV_ASK_CONTRACT_ETH:
-                stored = settings_set_contract(false, s_ask_val); break;
+                stored = settings_set_contract(POS_CHAIN_ETH_USDC, s_ask_val);  break;
             case PROV_ASK_CONTRACT_TRON:
-                stored = settings_set_contract(true, s_ask_val);  break;
+                stored = settings_set_contract(POS_CHAIN_TRON_USDT, s_ask_val); break;
             default: break;
         }
     }

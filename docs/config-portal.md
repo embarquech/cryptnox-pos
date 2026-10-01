@@ -118,7 +118,7 @@ Steps 1 and 6 are on the panel, and the four in between are in the browser. Ther
 is deliberately **no "use this screen instead"** escape: typing a payout address or
 a venue passphrase on a resistive 240x320 panel is the thing this module exists to
 avoid, and a second, worse path meant maintaining two of everything. The panel
-picker still exists (`wifi_picker()` in `main/main.cpp`) but it is now the
+picker still exists (`wifi_picker()` in `main/boot.cpp`) but it is now the
 settings-menu route and the fallback for when the SoftAP itself will not come up.
 
 **A configured terminal whose network has gone** gets `2 → 5 → 6`, and no admin code:
@@ -178,7 +178,7 @@ card PIN on the keypad first, exactly as signing does.
 **A card that was never set up is named as such.** A card out of its envelope has
 no PIN and no key, and the applet says so in the clear in its SELECT response —
 so that is read before the secure channel, on the payment path as well as this one
-(`main/card_status.h`, `card_fault()` in `main/main.cpp`). Without it the holder of
+(`main/card_status.h`, `card_fault()` in `main/card_io.cpp`). Without it the holder of
 a blank card is told *"Wrong card PIN"*, which is the one message that sends them
 off to type it again. A response this cannot judge — a card type it has not been
 told about, a SELECT that did not answer `90 00` — is not a refusal: the ordinary
@@ -200,7 +200,7 @@ looking entirely normal. Three things changed:
   rather than hiding the row;
 * the Tx tab says in red when the recipient shown is the built-in default;
 * boot corrects a stored chain selection whose payout address was never set,
-  switching to one that was (`main/main.cpp`, after the address resolution).
+  switching to one that was (`main/boot.cpp`, after the address resolution).
 
 `settings_has_payout()` is the question being asked, and it means *stored*, not
 *resolvable* — the `config.h` fallback still supplies the value, it just no longer

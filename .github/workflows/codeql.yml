@@ -8,8 +8,8 @@ name: CodeQL
 #
 # Findings land in the repository's Security tab.
 #
-# Scope note: CodeQL only sees what the compiler sees, and main.cpp,
-# provision.cpp and ui.cpp cannot be compiled on a runner without a ~1 GB
+# Scope note: CodeQL only sees what the compiler sees, and the app sources
+# (main, boot, pay*, card_io, provision, ui*) cannot be compiled without a ~1 GB
 # ESP-IDF install. The analysed set is therefore the host-buildable sources —
 # which is also where the attacker-controlled input actually lands.
 

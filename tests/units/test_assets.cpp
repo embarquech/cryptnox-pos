@@ -116,14 +116,25 @@ int main(void)
 
     /* Spot-check the strings the operator actually reads, so a well-formed table
      * that says the wrong thing still fails. */
-    assert(strcmp(pos_asset_of(POS_CHAIN_TRON_NILE)->ticker, "TRX") == 0);
+    assert(strcmp(pos_asset_of(POS_CHAIN_TRON_TRX)->ticker, "TRX") == 0);
     assert(strcmp(pos_asset_of(POS_CHAIN_POLY_NATIVE)->ticker, "POL") == 0);
-    assert(strcmp(pos_asset_of(POS_CHAIN_ETH_SEPOLIA)->ticker, "USDC") == 0);
+    assert(strcmp(pos_asset_of(POS_CHAIN_ETH_USDC)->ticker, "USDC") == 0);
     assert(strcmp(pos_asset_of(POS_CHAIN_ETH_USDT)->caption,
                   "USDT contract") == 0);
     assert(strcmp(pos_asset_of(POS_CHAIN_TRON_USDT)->caption,
                   "Token contract") == 0);
     assert(pos_net_of(POS_CHAIN_POLY_USDT) == POS_NET_POLY);
+
+    /* Decimals and marks. 18 is the one that turns a keypad amount into wei with
+     * a 10^12 multiply, so only the EVM coins may carry it; and every token wears
+     * a mark of its own — the old ticker lookup put USDC on anything not USDT. */
+    for (size_t i = 0U; i < POS_ASSET_COUNT; i++) {
+        const pos_asset_t *a = &POS_ASSETS[i];
+        assert(a->decimals == (pos_chain_is_native_evm(a->chain) ? 18U : 6U));
+        assert((a->coin == POS_COIN_NET) == a->native);
+        if (a->coin == POS_COIN_USDC) { assert(strcmp(a->ticker, "USDC") == 0); }
+        if (a->coin == POS_COIN_USDT) { assert(strcmp(a->ticker, "USDT") == 0); }
+    }
 
     printf("test_assets OK\n");
     return 0;

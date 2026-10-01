@@ -14,16 +14,14 @@
  * shipped a row that rendered wrong or named the wrong contract. The facts are
  * data, so they live in a table and the switches became lookups.
  *
- * Deliberately NOT here:
+ * The family predicates (pos_chain_is_tron and friends) are derived from it, so
+ * which network an asset is on is said once. Deliberately NOT here:
  *
- *   - the family predicates (pos_chain_is_tron and friends). They stay in
- *     settings.h where they are already pinned by tests/units/test_chain.cpp,
- *     and they steer signing paths rather than describing an asset.
- *   - the icons. Those are lv_img_dsc_t, and this header is kept free of LVGL
+ *   - the images. Those are lv_img_dsc_t, and this header is kept free of LVGL
  *     and of ESP-IDF so a host test can reach it (tests/units/test_assets.cpp).
- *     ui.cpp maps ticker and network to an image; the table says which.
- *   - which storage slot holds a token's contract. That is main.cpp's business
- *     (see active_erc20_token) and the stores are different types.
+ *     The row says which mark (@ref pos_coin_t); ui.cpp maps it to an image.
+ *   - the contracts. Those are config.h macros, which a host test cannot see;
+ *     main.cpp keeps them in TOKEN_CFG, next to the one store per row.
  *
  * The table is indexed by nothing: it is ordered for the picker — grouped by
  * network, native coin first, exactly as the three tables it replaced were — and
@@ -57,6 +55,13 @@ typedef enum {
     POS_NET__COUNT
 } pos_net_t;
 
+/** @brief Which mark an asset wears. A native coin wears its network's. */
+typedef enum {
+    POS_COIN_NET = 0,
+    POS_COIN_USDC,
+    POS_COIN_USDT,
+} pos_coin_t;
+
 /** @brief One selectable asset. */
 typedef struct {
     pos_chain_t chain;
@@ -72,6 +77,8 @@ typedef struct {
     const char *caption;
     pos_net_t   net;
     bool        native;    /**< the network's own coin, not a token */
+    unsigned    decimals;  /**< on-chain: 18 for ETH/POL, 6 for TRX and tokens */
+    pos_coin_t  coin;
 } pos_asset_t;
 
 /**
@@ -94,25 +101,27 @@ typedef struct {
  * order and filters on `net`, so the order here IS the order on screen. */
 static const pos_asset_t POS_ASSETS[] = {
     { POS_CHAIN_ETH_NATIVE,  "ETH",  "Native coin", "Asset",
-      POS_NET_ETH,  true  },
-    { POS_CHAIN_ETH_SEPOLIA, "USDC", "ERC-20",      "USDC contract",
-      POS_NET_ETH,  false },
+      POS_NET_ETH,  true,  18U, POS_COIN_NET  },
+    { POS_CHAIN_ETH_USDC,    "USDC", "ERC-20",      "USDC contract",
+      POS_NET_ETH,  false, 6U,  POS_COIN_USDC },
     { POS_CHAIN_ETH_USDT,    "USDT", "ERC-20",      "USDT contract",
-      POS_NET_ETH,  false },
+      POS_NET_ETH,  false, 6U,  POS_COIN_USDT },
 
     { POS_CHAIN_POLY_NATIVE, "POL",  "Native coin", "Asset",
-      POS_NET_POLY, true  },
+      POS_NET_POLY, true,  18U, POS_COIN_NET  },
     { POS_CHAIN_POLY_USDC,   "USDC", "ERC-20",      "USDC contract",
-      POS_NET_POLY, false },
+      POS_NET_POLY, false, 6U,  POS_COIN_USDC },
     { POS_CHAIN_POLY_USDT,   "USDT", "ERC-20",      "USDT contract",
-      POS_NET_POLY, false },
+      POS_NET_POLY, false, 6U,  POS_COIN_USDT },
 
-    { POS_CHAIN_TRON_NILE,   "TRX",  "Native coin", "Asset",
-      POS_NET_TRON, true  },
+    { POS_CHAIN_TRON_TRX,    "TRX",  "Native coin", "Asset",
+      POS_NET_TRON, true,  6U,  POS_COIN_NET  },
     { POS_CHAIN_TRON_USDT,   "USDT", "TRC-20",      "Token contract",
-      POS_NET_TRON, false },
+      POS_NET_TRON, false, 6U,  POS_COIN_USDT },
+    /* Testnet only: Circle stopped minting USDC on Tron in Feb 2024, so mainnet
+     * leaves its contract unset and the asset is refused. */
     { POS_CHAIN_TRON_USDC,   "USDC", "TRC-20",      "Token contract",
-      POS_NET_TRON, false },
+      POS_NET_TRON, false, 6U,  POS_COIN_USDC },
 };
 
 #define POS_ASSET_COUNT  (sizeof(POS_ASSETS) / sizeof(POS_ASSETS[0]))
@@ -145,6 +154,36 @@ static inline const pos_asset_t *pos_asset_of(pos_chain_t chain)
 static inline pos_net_t pos_net_of(pos_chain_t chain)
 {
     return pos_asset_of(chain)->net;
+}
+
+/**
+ * @brief true for the Tron selections; every other one is EVM.
+ *
+ * This decides which signing path runs, which payout is spent and which endpoint
+ * is called — pinned per enumerator in tests/units/test_chain.cpp.
+ */
+static inline bool pos_chain_is_tron(pos_chain_t c)
+{
+    return pos_net_of(c) == POS_NET_TRON;
+}
+
+/**
+ * @brief true for the Polygon selections. EVM like Ethereum, but its own
+ *        endpoint, chain id and contracts.
+ */
+static inline bool pos_chain_is_polygon(pos_chain_t c)
+{
+    return pos_net_of(c) == POS_NET_POLY;
+}
+
+/**
+ * @brief true for ETH and POL: no contract, the amount goes in @c value, 21000
+ *        gas, 18 decimals. Native TRX is not one — Tron signs on its own path.
+ */
+static inline bool pos_chain_is_native_evm(pos_chain_t c)
+{
+    const pos_asset_t *a = pos_asset_of(c);
+    return a->native && (a->net != POS_NET_TRON);
 }
 
 /** @brief Names for @p net, or Ethereum's for a value out of range. */

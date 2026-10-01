@@ -18,571 +18,9 @@
  * 1. Included files
  ******************************************************************/
 
-#include "ui.h"
+#include "ui_internal.h"
 
-#include <Arduino.h>
-#include <SPI.h>
-#include <TFT_eSPI.h>
-#include <XPT2046_Touchscreen.h>
-#include <stdio.h>
-#include <string.h>
-#include <inttypes.h>
-#include <time.h>        /* the status-band clock */
-
-#include "lvgl.h"
-#include "logo_img.h"
-#include "logo_small.h"
-#include "logo_mid.h"    /* 80px, the welcome card — tools/gen_logo_mid.py */
-#include "chain_icons.h"
-#include "tap_icon.h"    /* the "tap your card" mark — tools/gen_tap_icon.py */
-#include "assets.h"      /* the per-asset table: ticker, standard, caption, network */
-#include "settings.h"
-#include "money.h"       /* keypad cents, the native cap, amount text — host-tested */
-#include "touch_cal.h"   /* two-point calibration arithmetic, host-tested */
-#include "civil_time.h"  /* civil_local_offset_min() — the clock's DST, host-tested */
-#include "provision.h"   /* QR payload + the pending payout-address handshake */
-#include "ota.h"         /* running version + the update window and its handshake */
-#include "ota_version.h" /* ota_version_display() — the 'v' is added for the screen */
-
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/semphr.h"   /* s_ui_mx */
-#include "esp_timer.h"
-#include "wdt.h"               /* the UI loop is on the task watchdog */
-#include "esp_log.h"
-#include "esp_system.h"   /* esp_restart() for factory reset */
-#include "driver/ledc.h"
-
-#include "CW_Utils.h"   /* hardened memory primitives (CODING_RULES §1.4) */
-
-/* Plus Jakarta Sans for titles, buttons and figures, Inter for small text;
- * one weight per role — main/fonts/, tools/gen_fonts.py.
- * Spelled out rather than LV_FONT_DECLARE, which cppcheck cannot expand
- * without the LVGL headers (unknownMacro fails CI). */
-extern const lv_font_t font_inter_14;         /* Inter Regular: body, captions */
-extern const lv_font_t font_inter_14_medium;  /* Inter Medium: values, clock   */
-extern const lv_font_t font_pjs_20_medium;    /* Medium: titles and messages  */
-extern const lv_font_t font_pjs_20_semibold;  /* SemiBold: button labels      */
-extern const lv_font_t font_pjs_28_semibold;  /* SemiBold: amounts            */
-extern const lv_font_t font_pjs_28_light;     /* Light: keypad digits         */
-extern const lv_font_t font_icons_48;         /* LV_SYMBOL_OK/CLOSE/WARNING   */
-
-static const char *TAG = "ui";
-
-/******************************************************************
- * 2. Hardware — panel (TFT_eSPI) and touch (XPT2046, separate SPI bus)
- ******************************************************************/
-#define T_CS    33
-#define T_IRQ   36
-#define T_CLK   25
-#define T_MOSI  32
-#define T_MISO  39
-
-/* Portrait orientation (240x320) — natural for a hand-held POS terminal. */
-#define SCR_W   240
-#define SCR_H   320
-
-/* Splash logo X trim, tuned by eye on the panel: the bitmap is geometrically
- * centred, but 0 reads as too far right. A calibration value — do not "correct"
- * it from the image geometry. */
-#define LOGO_X_NUDGE (-4)
-
-static TFT_eSPI            tft;
-static SPIClass            touchSPI(VSPI);
-static XPT2046_Touchscreen touch(T_CS, T_IRQ);
-
-/******************************************************************
- * 3. Theme — light, minimal: white bg, black ink
- ******************************************************************/
-#define COL_BG       lv_color_hex(0xFFFFFF)   /* white — page background       */
-#define COL_SURFACE  lv_color_hex(0xF2F2F2)   /* light grey — cards/secondary  */
-#define COL_TEXT     lv_color_hex(0x000000)   /* black — primary text          */
-#define COL_DIM      lv_color_hex(0x9A9A9A)   /* grey — secondary labels       */
-#define COL_TITLE    lv_color_hex(0x424242)   /* dark grey — screen titles     */
-/* Slate, not black. Full black is what the flat 2010s "minimal" look does, and a
- * 44px slab of #000 under a grey-on-white card reads as a placeholder rather than
- * a product. Nothing here is invented: the hue is the one the setup portal and
- * the docs site already use, so the panel and the browser page a technician
- * opens beside it match.
- *
- * WHICH slate, though, is a panel decision and not a web one. The portal's light
- * ink #2C3E50 was tried here first and came out pale — black sits at a contrast
- * of 21:1 on white and that value at 11:1, and halving the contrast on a 2.8"
- * TFT whose blacks are already lifted and whose gamma is soft reads as washed
- * out rather than as a deep navy. This is the portal's DARK-scheme accent
- * (--accf) instead: same hue, 13.5:1, which holds up on the panel.
- *
- * So: pick from the portal palette, but pick the dark end of it. A colour that
- * looks right in a browser is not evidence about this display.
- *
- * Text ON it stays COL_BG — white on this is 13.5:1, well past AA. */
-#define COL_ACCENT   lv_color_hex(0x22303D)   /* slate — chrome, tabs, controls */
-/* The sale's two buttons: the one that commits is filled, the one that backs
- * out is the card's own white with a hairline — an outline button, which is
- * what it was before it was tinted.
- *
- * COL_ACTION is charcoal blue, so the label on it is WHITE (16.4:1). Black on
- * it would be 1.3:1 — illegible. Cancel keeps black on white, 21:1. Anything
- * put on these later gets measured the same way.
- *
- * Cancel's fill is the card's fill, so the fill alone does not describe where
- * that button is: the hairline in make_ghost_button() is load-bearing rather
- * than decorative. Do not drop it as redundant. */
-#define COL_ACTION      lv_color_hex(0x101F2E)  /* charcoal blue — Charge, Confirm */
-/* The page behind the white card: a vertical ramp, pale sky at the top
- * deepening into COL_PAGE_GRAD at the bottom.
- *
- * Two things this has to keep doing, whatever the hue:
- *
- *   * separate the card. #E2F5FF is only 8 levels off white on the blue channel
- *     and less on the others, so the TOP of the page barely does — the ramp is
- *     what earns the separation, and it earns it lower down the screen. Do not
- *     flatten it back to one colour.
- *   * not swallow the home indicator, which is COL_DIM. It stays far darker than
- *     either end of this ramp, so the swipe-up affordance survives.
- *
- * Anything drawn ON the page gets rechecked whenever these two move. */
-#define COL_PAGE      lv_color_hex(0xE2F5FF)    /* pale sky — head of the ramp */
-#define COL_PAGE_GRAD lv_color_hex(0xA8D8F0)    /* deeper sky — foot of it     */
-/* The admin side has no page colour of its own: it is plain COL_BG, which is
- * what clear_screen() and the rising sheet already paint. The grey ramp the
- * pale sky replaced is still in mockups/mockup.py as RAMP_GREY if it is ever
- * wanted back. */
-#define COL_HOME_BAR COL_DIM       /* grey — the swipe handle           */
-#define COL_WARN     lv_color_hex(0xE39A2D)   /* amber — "not confirmed yet"   */
-#define COL_SUCCESS  lv_color_hex(0x1E9E50)   /* green — "Sent"                */
-#define COL_DANGER   lv_color_hex(0xD63A3A)   /* red — failures / reset        */
-#define COL_BORDER   lv_color_hex(0xE0E0E0)   /* light grey — hairlines        */
-#define COL_TRON     lv_color_hex(0xE7392E)   /* Tron red — TRX asset badge    */
-#define COL_USDT     lv_color_hex(0x26A17B)   /* Tether green — USDT badge     */
-#define COL_ETH      lv_color_hex(0x627EEA)   /* Ethereum periwinkle — net chip*/
-
-/******************************************************************
- * 3a. LVGL theme — extends the built-in default rather than replacing it
- *
- * Everything this file draws by hand already speaks one language: full-radius
- * pills, hairline greys, no chrome. The widgets it does NOT style by hand came
- * out in LVGL's defaults instead, and the tab bar is the one people notice —
- * the default tabview is flat rectangular buttons with a hard indicator, which
- * is what made the admin section look older than the screens around it.
- *
- * So: a theme, parented to the default one, that restyles the tab bar as a
- * segmented control and thins the scrollbars. A theme rather than more
- * hand-styling because it applies at creation, to every tabview this firmware
- * ever adds, instead of to the one place somebody remembered to touch.
- *
- * Deliberately narrow. It does not repaint buttons, pills or cards — those are
- * already explicit at each call site, and a theme fighting an explicit style is
- * a look that changes depending on which one ran last.
- ******************************************************************/
-#define TAB_SEG_INSET   5      /* pill inset inside the 42px bar, top+bottom */
-#define TAB_SEG_GAP     4      /* gap between segments                       */
-#define SCROLLBAR_W     4      /* hairline, not the default block            */
-/* Corner radius for every button on the panel — see make_button. Declared up
- * here rather than with the card metrics because the tab bar is styled before
- * that section is reached, and a tab that commits to a different corner to the
- * buttons under it is the shape mismatch this number exists to stop. */
-#define BTN_RADIUS      6
-
-static lv_theme_t s_theme;
-static lv_style_t s_st_tabbar;    /* the bar the segments sit on   */
-static lv_style_t s_st_tab;       /* one segment, not selected     */
-static lv_style_t s_st_tab_sel;   /* the selected segment          */
-static lv_style_t s_st_tabview;   /* the tabview container itself  */
-static lv_style_t s_st_scrollbar;
-static lv_style_t s_st_track;     /* slider/arc/spinner background */
-static lv_style_t s_st_ink;       /* their filled part and knob    */
-static lv_style_t s_st_field;     /* text entry                    */
-static lv_style_t s_st_key;       /* one key of the keyboard       */
-
-static void theme_styles_init(void)
-{
-    /* The bar itself stays white: the selected pill is the only ink, which is
-     * what keeps a four-tab bar from reading as a toolbar on a 320px screen. */
-    lv_style_init(&s_st_tabbar);
-    lv_style_set_bg_color(&s_st_tabbar, COL_BG);
-    lv_style_set_bg_opa(&s_st_tabbar, LV_OPA_COVER);
-    lv_style_set_border_width(&s_st_tabbar, 0);
-    lv_style_set_pad_ver(&s_st_tabbar, TAB_SEG_INSET);
-    lv_style_set_pad_hor(&s_st_tabbar, TAB_SEG_GAP);
-    lv_style_set_pad_column(&s_st_tabbar, TAB_SEG_GAP);
-
-    lv_style_init(&s_st_tab);
-    lv_style_set_bg_opa(&s_st_tab, LV_OPA_TRANSP);
-    lv_style_set_border_width(&s_st_tab, 0);
-    lv_style_set_radius(&s_st_tab, BTN_RADIUS);
-    lv_style_set_text_color(&s_st_tab, COL_DIM);
-    lv_style_set_text_font(&s_st_tab, &font_inter_14_medium);
-
-    /* Filled pill, same shape AND the same colour as the action buttons: the
-     * admin panel's buttons are all COL_ACTION, and the selected tab is the
-     * one piece of chrome that sits in the same band as them. */
-    lv_style_init(&s_st_tab_sel);
-    lv_style_set_bg_color(&s_st_tab_sel, COL_ACTION);
-    lv_style_set_bg_opa(&s_st_tab_sel, LV_OPA_COVER);
-    lv_style_set_radius(&s_st_tab_sel, BTN_RADIUS);
-    lv_style_set_text_color(&s_st_tab_sel, COL_BG);
-    lv_style_set_border_width(&s_st_tab_sel, 0);
-
-    lv_style_init(&s_st_tabview);
-    lv_style_set_bg_color(&s_st_tabview, COL_BG);
-    lv_style_set_bg_opa(&s_st_tabview, LV_OPA_COVER);
-    lv_style_set_border_width(&s_st_tabview, 0);
-
-    lv_style_init(&s_st_scrollbar);
-    lv_style_set_bg_color(&s_st_scrollbar, COL_BORDER);
-    lv_style_set_bg_opa(&s_st_scrollbar, LV_OPA_COVER);
-    lv_style_set_radius(&s_st_scrollbar, LV_RADIUS_CIRCLE);
-    lv_style_set_width(&s_st_scrollbar, SCROLLBAR_W);
-    lv_style_set_pad_right(&s_st_scrollbar, 2);
-
-    /* Colour and radius only, from here down. Nothing below sets a size, a pad
-     * or a length: these widgets sit in layouts positioned by hand at their
-     * call sites, and a theme that moves geometry breaks a screen that works. */
-    lv_style_init(&s_st_track);
-    lv_style_set_bg_color(&s_st_track, COL_BORDER);
-    lv_style_set_bg_opa(&s_st_track, LV_OPA_COVER);
-    lv_style_set_radius(&s_st_track, LV_RADIUS_CIRCLE);
-    lv_style_set_arc_color(&s_st_track, COL_BORDER);
-
-    lv_style_init(&s_st_ink);
-    lv_style_set_bg_color(&s_st_ink, COL_ACCENT);
-    lv_style_set_bg_opa(&s_st_ink, LV_OPA_COVER);
-    lv_style_set_radius(&s_st_ink, LV_RADIUS_CIRCLE);
-    lv_style_set_arc_color(&s_st_ink, COL_ACCENT);
-    lv_style_set_border_width(&s_st_ink, 0);
-    lv_style_set_shadow_width(&s_st_ink, 0);   /* software-rendered: not free */
-
-    /* A field reads as a filled grey rounded box rather than a bordered one —
-     * the same surface the pills and cards use. */
-    lv_style_init(&s_st_field);
-    lv_style_set_bg_color(&s_st_field, COL_SURFACE);
-    lv_style_set_bg_opa(&s_st_field, LV_OPA_COVER);
-    lv_style_set_radius(&s_st_field, 10);
-    lv_style_set_border_width(&s_st_field, 0);
-    lv_style_set_text_color(&s_st_field, COL_TEXT);
-
-    /* Default LVGL keys are flat grey blocks butted together, which is the most
-     * dated surface left. White rounded keys on the grey field read current. */
-    lv_style_init(&s_st_key);
-    lv_style_set_bg_color(&s_st_key, COL_BG);
-    lv_style_set_bg_opa(&s_st_key, LV_OPA_COVER);
-    lv_style_set_radius(&s_st_key, 8);
-    lv_style_set_border_width(&s_st_key, 0);
-    lv_style_set_text_color(&s_st_key, COL_TEXT);
-}
-
-static void theme_apply(lv_theme_t *th, lv_obj_t *obj)
-{
-    LV_UNUSED(th);
-
-    lv_obj_add_style(obj, &s_st_scrollbar, LV_PART_SCROLLBAR);
-
-    if (lv_obj_check_type(obj, &lv_tabview_class)) {
-        lv_obj_add_style(obj, &s_st_tabview, LV_PART_MAIN);
-        return;
-    }
-
-    /* The tab bar is a button matrix, and so is the PIN pad. The parent is what
-     * tells them apart — without this check the keypad becomes a segmented
-     * control too, which is a very confusing way to type a PIN. */
-    if (lv_obj_check_type(obj, &lv_btnmatrix_class)) {
-        lv_obj_t *parent = lv_obj_get_parent(obj);
-        if ((parent != NULL) && lv_obj_check_type(parent, &lv_tabview_class)) {
-            lv_obj_add_style(obj, &s_st_tabbar, LV_PART_MAIN);
-            lv_obj_add_style(obj, &s_st_tab, LV_PART_ITEMS);
-            lv_obj_add_style(obj, &s_st_tab_sel,
-                             LV_PART_ITEMS | LV_STATE_CHECKED);
-        }
-        return;
-    }
-
-    if (lv_obj_check_type(obj, &lv_slider_class)) {
-        lv_obj_add_style(obj, &s_st_track, LV_PART_MAIN);
-        lv_obj_add_style(obj, &s_st_ink, LV_PART_INDICATOR);
-        lv_obj_add_style(obj, &s_st_ink, LV_PART_KNOB);
-    } else if (lv_obj_check_type(obj, &lv_arc_class)
-               || lv_obj_check_type(obj, &lv_spinner_class)) {
-        lv_obj_add_style(obj, &s_st_track, LV_PART_MAIN);
-        lv_obj_add_style(obj, &s_st_ink, LV_PART_INDICATOR);
-    } else if (lv_obj_check_type(obj, &lv_textarea_class)) {
-        lv_obj_add_style(obj, &s_st_field, LV_PART_MAIN);
-    } else if (lv_obj_check_type(obj, &lv_keyboard_class)) {
-        lv_obj_add_style(obj, &s_st_field, LV_PART_MAIN);
-        lv_obj_add_style(obj, &s_st_key, LV_PART_ITEMS);
-    }
-}
-
-/**
- * @brief Install the theme. After lv_disp_drv_register(), before any object.
- *
- * Copied from the active theme and parented to it, so the default styling still
- * runs first and this only adds on top — the pattern LVGL documents for
- * extending a theme rather than writing one from nothing.
- */
-static void theme_init(void)
-{
-    theme_styles_init();
-
-    /* Re-initialised with the UI font: the one LVGL built it with is a
-     * Kconfig built-in, and every widget not styled by hand inherits it. */
-    lv_theme_t *base = lv_disp_get_theme(NULL);
-    base = lv_theme_default_init(NULL, base->color_primary, base->color_secondary,
-                                 LV_THEME_DEFAULT_DARK, &font_inter_14);
-    s_theme = *base;
-    lv_theme_set_parent(&s_theme, base);
-    lv_theme_set_apply_cb(&s_theme, theme_apply);
-    lv_disp_set_theme(NULL, &s_theme);
-}
-
-/******************************************************************
- * 3b. Layout metrics — shared so every screen's header lines up
- ******************************************************************/
-#define HDR_TITLE_Y     11     /* title offset — optically centred in the
-                                  42px band above the divider (font_pjs_20_medium) */
-#define HDR_DIVIDER_Y   42     /* rule under the title                */
-#define ACT_BTN_H       46     /* bottom action-button height         */
-#define ACT_BTN_Y       (-8)   /* bottom action-button offset         */
-/* Every text field's vertical inset, and so its height: one line of type plus
- * twice this. Not in the theme's s_st_field with the rest of the field's look,
- * because that style is on the Wi-Fi keyboard too and a pad there moves keys —
- * and because the block it lives in undertakes to set no geometry. */
-#define FIELD_PAD_V     8
-#define MENU_BTN_W      42
-#define MENU_BTN_H      30
-#define MENU_BTN_X      4
-#define MENU_BTN_Y      6
-/* Asset selector — on the amount's own row, hard right. Centred above the figure
- * it read as a heading for it; beside it, it reads as the currency of the figure,
- * which is what somebody about to charge 12.50 is looking for.
- *
- * It carries the ticker, and the figure beside it is a bare number. The ticker
- * used to ride on the figure instead, which put the currency in two places at
- * once — a mark on the pill and a word on the amount — and neither said which one
- * you tap to change it. One says both now: what is being charged, and that it is
- * a control.
- *
- * No fixed width any more, because the ticker's is not fixed: the pill is
- * content-sized flex, and amount_row_place() measures what it came out as rather
- * than being told. Written as constants, a four-letter ticker in a pill sized for
- * three is a dot-elided "USD…" on the row that says which money. 42 tall is 3px of
- * air above and below the 36px badge (BADGE_SZ, with the icon helpers below). */
-#define ASSET_BTN_H     42
-/* Both in CARD coordinates — the amount screen builds into the white card. */
-#define ASSET_BTN_X     (-8)   /* right edge inset                     */
-#define ASSET_BTN_Y     10     /* the figure's row is centred on THIS  */
-/* The figure's row shares the selector's line, clear of the keypad at 90 — but
- * neither of its offsets is a constant any more, because both depend on what has
- * been typed. See amount_row_place(). */
-#define ASSET_BTN_PAD   8      /* badge inset from the left edge       */
-#define TAB_PAD         12     /* settings tab page padding           */
-#define TAB_W           (SCR_W - (2 * TAB_PAD))   /* usable tab width */
-
-/******************************************************************
- * 4. LVGL display + input plumbing
- ******************************************************************/
-#define LV_TICK_PERIOD_MS  2
-/* Partial draw buffer — 40 lines (no PSRAM on the CYD, keep it small). */
-static lv_color_t        s_buf[SCR_W * 40];
-static lv_disp_draw_buf_t s_draw_buf;
-static lv_disp_drv_t      s_disp_drv;
-static lv_indev_drv_t     s_indev_drv;
-
-static void disp_flush(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *px) {
-    uint32_t w = (area->x2 - area->x1 + 1);
-    uint32_t h = (area->y2 - area->y1 + 1);
-
-    tft.startWrite();
-    tft.setAddrWindow(area->x1, area->y1, w, h);
-    /* swap=true converts LVGL's native 16-bit order to the panel's. If colours
-     * come out byte-swapped/garbled, flip this bool or set CONFIG_LV_COLOR_16_SWAP. */
-    tft.pushColors(reinterpret_cast<uint16_t *>(&px->full), w * h, true);
-    tft.endWrite();
-
-    lv_disp_flush_ready(drv);
-}
-
-/* Raw XPT2046 counts at the panel's edges. Cached from NVS rather than read per
- * sample: indev_read runs every few milliseconds and is no place to open flash.
- * The defaults are the 200/3800 this file used to hardcode — right enough on
- * most CYDs to reach the calibration screen on a panel nobody has calibrated. */
-static uint16_t s_cal_xmin = 200U, s_cal_xmax = 3800U;
-static uint16_t s_cal_ymin = 200U, s_cal_ymax = 3800U;
-
-static void touch_cal_load(void) {
-    settings_get_touch_cal(&s_cal_xmin, &s_cal_xmax, &s_cal_ymin, &s_cal_ymax);
-}
-
-/* Uncalibrated sample, for the calibration screen itself — the only caller that
- * must not go through the mapping it is measuring. */
-static bool touch_raw(int16_t *rx, int16_t *ry) {
-    if (!touch.tirqTouched() || !touch.touched()) { return false; }
-    TS_Point p = touch.getPoint();
-    *rx = p.x;
-    *ry = p.y;
-    return true;
-}
-
-/* @p sz is the raw pressure, for the second-contact guard — see
- * touch_jump_filter(). Higher means lower resistance across the panel, which is
- * a harder press or, the case that matters here, one more finger. */
-static bool touch_to_screen(int16_t *sx, int16_t *sy, int16_t *sz) {
-    if (!touch.tirqTouched() || !touch.touched()) {
-        return false;
-    }
-    TS_Point p = touch.getPoint();
-    *sz = (int16_t)p.z;
-    int16_t mx = map(p.x, s_cal_xmin, s_cal_xmax, 0, SCR_W);
-    int16_t my = map(p.y, s_cal_ymin, s_cal_ymax, 0, SCR_H);
-    if (mx < 0)      { mx = 0; }
-    if (mx >= SCR_W) { mx = SCR_W - 1; }
-    if (my < 0)      { my = 0; }
-    if (my >= SCR_H) { my = SCR_H - 1; }
-    *sx = mx;
-    *sy = my;
-    return true;
-}
-
-/* Swallow taps carried over from the screen we just left: a press is ignored
- * until this tick (ms) AND until the finger has been released at least once.
- * Set on every screen (re)build in render_requested_screen(). */
-static uint32_t s_input_block_until = 0;
-static bool     s_wait_release      = false;
-
-/* The white card the sale-flow screens draw into — see build_page(). NULL on
- * every other screen, which is how the driver below tells the two apart. */
-static lv_obj_t *s_page_card = NULL;
-
-/* Second-contact guard — see touch_jump_filter(). Sale screens only: every
- * control there is a tap, so nothing legitimately jumps, while the admin panel's
- * sliders and scrolling lists cross far more than 25px in a 30ms read period. */
-static touch_jump_t s_jump = { 0, 0, 0, false };
-static bool         s_jump_logged = false;   /* one log line per press */
-
-/* Swipe up from the bottom edge — the admin panel's door now that the burger is
- * gone. Detected here, in the driver, rather than as an LVGL gesture: the screen
- * it has to work on is covered by a keypad and a Charge button, and a gesture
- * delivered to a button is one the screen underneath never sees.
- *
- * The travel is deliberately longer than a fat-finger slip on the Charge button
- * directly above the handle — that button commits a sale, so the two must not be
- * confusable in either direction. */
-#define SWIPE_BAND_H   44    /* press must START in this bottom band */
-#define SWIPE_MIN_DY   58    /* ...and travel at least this far up   */
-static bool          s_swipe_armed  = false;
-static int16_t       s_swipe_y0     = 0;
-static volatile bool s_swipe_admin  = false;   /* handed to the UI task loop */
-
-static void indev_read(lv_indev_drv_t *drv, lv_indev_data_t *data) {
-    (void)drv;
-    int16_t x, y, z = 0;
-    bool pressed = touch_to_screen(&x, &y, &z);
-
-    /* Two fingers read as one point between them — hold the first one's. Ahead
-     * of the swipe so an artifact cannot arm that either. It stays on for an
-     * armed press too, so a thumb resting in the band and never swiping is still
-     * guarded; the swipe's travel is measured off the raw point instead, since
-     * that drag is the one place a sale screen moves a finger far in one read
-     * period, and a false swipe only opens a PIN-locked screen. */
-    const int16_t raw_x = x, raw_y = y;
-    if (!pressed || (s_page_card != NULL)) {
-        touch_jump_filter(&s_jump, pressed, z, &x, &y);
-    }
-
-    /* The numbers TOUCH_Z_STEP_PCT is set from. Once per press, not per read —
-     * the guard firing is an event, and at INFO because the log is capped there
-     * (CONFIG_LOG_MAXIMUM_LEVEL=3), which compiles ESP_LOGD/V away entirely.
-     * Never fires with a thumb down: lower the percentage. Fires on ordinary
-     * one-finger taps: raise it. */
-    if (!pressed) {
-        s_jump_logged = false;
-    } else if (!s_jump_logged && ((x != raw_x) || (y != raw_y))) {
-        s_jump_logged = true;
-        ESP_LOGI(TAG, "second contact: %d,%d held at %d,%d (z=%d, z_min=%d)",
-                 (int)raw_x, (int)raw_y, (int)x, (int)y, (int)z,
-                 (int)s_jump.z_min);
-    }
-
-    /* Bottom-edge swipe up. Armed on a press that starts in the band, fired
-     * once it has travelled far enough; the rest of the drag is swallowed via
-     * s_wait_release so the button under the finger never sees a click. The
-     * screen it is allowed on is decided by the handler, not here. */
-    if (pressed) {
-        if (!s_swipe_armed && (y >= (SCR_H - SWIPE_BAND_H))) {
-            s_swipe_armed = true;
-            s_swipe_y0    = y;
-        } else if (s_swipe_armed && ((s_swipe_y0 - raw_y) >= SWIPE_MIN_DY)) {
-            s_swipe_armed  = false;
-            s_swipe_admin  = true;
-            s_wait_release = true;
-            data->state    = LV_INDEV_STATE_REL;
-            return;
-        }
-    } else {
-        s_swipe_armed = false;
-    }
-
-    /* After a screen change, ignore a lingering or reflexive tap from the old
-     * screen (e.g. cancelling the tx right after validating the PIN). */
-    if (lv_tick_get() < s_input_block_until || s_wait_release) {
-        if (!pressed) { s_wait_release = false; }   /* finger lifted — re-arm */
-        data->state = LV_INDEV_STATE_REL;
-        return;
-    }
-
-    if (pressed) {
-        data->state   = LV_INDEV_STATE_PR;
-        data->point.x = x;
-        data->point.y = y;
-    } else {
-        data->state = LV_INDEV_STATE_REL;
-    }
-}
-
-static void tick_cb(void *arg) {
-    (void)arg;
-    lv_tick_inc(LV_TICK_PERIOD_MS);
-}
-
-/******************************************************************
- * 4b. Backlight — LEDC PWM dimming on the CYD's GPIO 21
- ******************************************************************/
-#define BL_GPIO        21
-#define BL_LEDC_MODE   LEDC_LOW_SPEED_MODE
-#define BL_LEDC_TIMER  LEDC_TIMER_0
-#define BL_LEDC_CH     LEDC_CHANNEL_0
-#define BL_LEDC_RES    LEDC_TIMER_10_BIT   /* duty 0..1023            */
-#define BL_PWM_HZ      5000                /* above the audible range */
-
-static uint8_t s_brightness = 80;   /* backlight %, restored from NVS */
-
-static void backlight_set_pct(uint8_t pct) {
-    if (pct > 100U) { pct = 100U; }
-    uint32_t duty = (1023U * pct) / 100U;
-    (void)ledc_set_duty(BL_LEDC_MODE, BL_LEDC_CH, duty);
-    (void)ledc_update_duty(BL_LEDC_MODE, BL_LEDC_CH);
-}
-
-static void backlight_init(uint8_t pct) {
-    ledc_timer_config_t t = {};
-    t.speed_mode      = BL_LEDC_MODE;
-    t.duty_resolution = BL_LEDC_RES;
-    t.timer_num       = BL_LEDC_TIMER;
-    t.freq_hz         = BL_PWM_HZ;
-    t.clk_cfg         = LEDC_AUTO_CLK;
-    (void)ledc_timer_config(&t);
-
-    ledc_channel_config_t c = {};
-    c.gpio_num   = BL_GPIO;
-    c.speed_mode = BL_LEDC_MODE;
-    c.channel    = BL_LEDC_CH;
-    c.timer_sel  = BL_LEDC_TIMER;
-    c.duty       = 0;
-    c.hpoint     = 0;
-    (void)ledc_channel_config(&c);
-
-    backlight_set_pct(pct);
-}
+const char *TAG = "ui";
 
 /* No ambient-light sensing: the enclosure covers the LDR on GPIO 34, so any
  * reading is of the inside of the case. Brightness is the slider only. */
@@ -590,293 +28,197 @@ static void backlight_init(uint8_t pct) {
 /******************************************************************
  * 5. Shared state (written by ui_show_* on the main task, read by ui_task)
  ******************************************************************/
-static ui_event_cb_t s_cb = NULL;
+ui_event_cb_t s_cb = NULL;
 
 static volatile bool        s_screen_dirty = true;
-static volatile ui_screen_t s_req_screen   = UI_SCREEN_SPLASH;
+volatile ui_screen_t s_req_screen   = UI_SCREEN_SPLASH;
 
 /* Amount entry — parsed from the keypad string; starts empty (0). */
-static uint64_t s_amount_units = 0ULL;
+uint64_t s_amount_units = 0ULL;
 
 /* Confirm-screen payload */
-static uint64_t s_confirm_amount = 0ULL;
-static char     s_confirm_addr[64] = "";
-static char     s_confirm_fee[40]  = "";   /* "Fee up to 0.0013 ETH", or "" */
+uint64_t s_confirm_amount = 0ULL;
+char     s_confirm_addr[64] = "";
+char     s_confirm_fee[40]  = "";   /* "Fee up to 0.0013 ETH", or "" */
 
-/* Tx-status payload. The info line is updated in place while the screen is up
- * (the confirmation countdown) — a request_screen per tick would restart the
- * spinner, so the label is held and s_tx_info_dirty drives a targeted set, the
- * same hand-off the boot step uses. */
-static ui_tx_state_t s_tx_state    = UI_TX_STATE_PLACE_CARD;
-static char          s_tx_info[72] = "";   /* holds a 66-char EVM hash */
-static lv_obj_t     *s_tx_info_lbl = NULL;
+/* Tx-status payload. The info line is retexted in place via s_tx_info_dirty
+ * (the confirmation countdown): a rebuild per tick would restart the spinner. */
+ui_tx_state_t s_tx_state    = UI_TX_STATE_PLACE_CARD;
+char          s_tx_info[72] = "";   /* holds a 66-char EVM hash */
+lv_obj_t     *s_tx_info_lbl = NULL;
 static volatile bool s_tx_info_dirty = false;
-
-/* Touch calibration. Two targets: two points are the whole of the linear map
- * touch_to_screen() applies, so a four-corner routine would be averaging away a
- * tilt this driver cannot express anyway.
- * ponytail: two-point linear. If a panel turns out skewed rather than offset
- * and scaled, the upgrade is an affine map and four corners.
- *
- * Steps 0 and 1 capture a corner each; step 2 applies the result live and asks
- * the operator to confirm it by tapping a button with it. That tap is the test:
- * a calibration bad enough to make Save unreachable is never stored, and the
- * deadline puts the old numbers back for the operator who cannot hit anything
- * at all. */
-#define CAL_INSET       20      /* target centre, in from each corner       */
-#define CAL_VERIFY_MS   20000U  /* un-confirmed calibration reverts after this */
-static uint8_t  s_cal_step = 0U;
-static int16_t  s_cal_raw[2][2] = {{0, 0}, {0, 0}};
-static bool     s_cal_pressed = false;
-static int16_t  s_cal_last_x = 0, s_cal_last_y = 0;
+uint8_t  s_cal_step = 0U;
+int16_t  s_cal_raw[2][2] = {{0, 0}, {0, 0}};
+bool     s_cal_pressed = false;
+int16_t  s_cal_last_x = 0;
+int16_t  s_cal_last_y = 0;
 static uint16_t s_cal_prev[4] = {0, 0, 0, 0};   /* restored on cancel/timeout */
-static uint32_t s_cal_deadline = 0U;
-static lv_obj_t *s_cal_countdown = NULL;
+uint32_t s_cal_deadline = 0U;
+lv_obj_t *s_cal_countdown = NULL;
 
-/* The sheet that rises on a swipe up. While it is set, build_admin_screen()
- * builds into it and does NOT clear the screen — the sale screen has to stay
- * put underneath or there is nothing for the sheet to slide over, which is the
- * entire point of the gesture. Live only for the length of one dispatch in
- * render_requested_screen(); the object itself outlives the pointer. */
-static lv_obj_t     *s_sheet         = NULL;
-static volatile bool s_sheet_pending = false;
+/* The sheet that rises on a swipe up. While set, build_admin_screen() builds
+ * into it and does NOT clear the screen, so the sale screen stays underneath.
+ * Valid only for one dispatch in render_requested_screen(). */
+lv_obj_t     *s_sheet         = NULL;
+volatile bool s_sheet_pending = false;
 
-/* The card-wait note. Its own buffer, not the transaction screen's: those are
- * the two screens a card is held to, one of them is a sale and the other is
- * setup, and sharing 64 bytes let "Reading your payout addresses" turn up under
- * a spinner on a payment. */
-static char          s_card_note[64] = "";
+/* The card-wait note. Its own buffer, not the transaction screen's, so a setup
+ * message cannot turn up under the spinner on a payment. */
+char          s_card_note[64] = "";
 
 /* Amount entry — keypad input string (e.g. "12.50") and its display label. The
  * cents are their own label so they can be set in a smaller font past 100; below
  * that they stay in the main label and this one holds "". */
-static lv_obj_t *s_amount_label = NULL;
-static lv_obj_t *s_amount_cents_label = NULL;
+lv_obj_t *s_amount_label = NULL;
+lv_obj_t *s_amount_cents_label = NULL;
 /* The flex row the two of them sit in — kept because its placement is not
  * fixed: see amount_row_place(). */
-static lv_obj_t *s_amount_row = NULL;
-static uint64_t  s_amount_cents = 0;      /* amount entered, in cents          */
+lv_obj_t *s_amount_row = NULL;
+uint64_t  s_amount_cents = 0;      /* amount entered, in cents          */
 
 /* The asset selector on the amount row, and the chevron it drops when it has to
  * make room. Both die with the screen — cleared in clear_screen(). */
-static lv_obj_t *s_asset_btn   = NULL;
-static lv_obj_t *s_asset_arrow = NULL;
+lv_obj_t *s_asset_btn   = NULL;
+lv_obj_t *s_asset_arrow = NULL;
 
 /* The Charge button, kept because it is enabled and disabled as digits arrive
  * and leave — see charge_set_enabled(). */
-static lv_obj_t *s_charge_btn  = NULL;
+lv_obj_t *s_charge_btn  = NULL;
 
-/* The status band's clock. Built per screen by build_page(), so it exists on the
- * sale flow and nowhere else — the admin page's tab bar owns y=0..42 and the
- * setup screens own their own headers, which is the same collision that took the
- * Wi-Fi mark off those screens. Retexted in place by the status timer. */
-static lv_obj_t *s_clock_lbl   = NULL;
-/* ...and whether it has already been tapped and is waiting on main. Its own
- * flag rather than reading the button's state, because the keypad is still live
- * during that wait and amount_update_display() would otherwise hand the button
- * straight back on the next digit — see charge_set_busy(). */
-static bool      s_charge_busy = false;
+/* The status band's clock. Built by build_page(), so only on the sale flow (the
+ * admin tab bar and setup headers own that band). Retexted by the status timer. */
+lv_obj_t *s_clock_lbl   = NULL;
+/* Whether Charge was tapped and is waiting on main. A flag, not the button's
+ * state: the keypad stays live and amount_update_display() would otherwise
+ * re-enable it on the next digit — see charge_set_busy(). */
+bool      s_charge_busy = false;
 
 /* PIN entry — the textarea (password mode) is the live input; s_pin is the
  * handoff buffer read by main via ui_take_pin() and wiped on read. */
-static lv_obj_t *s_pin_ta      = NULL;
-static char      s_pin[16]     = {0};
-static uint8_t   s_pin_len     = 0;
-
-/* Wi-Fi picker */
-#define WIFI_MAX_APS 16
-static net_wifi_ap_t s_aps[WIFI_MAX_APS];
-static uint16_t      s_ap_count = 0;
-static char          s_wifi_ssid[33] = {0};   /* selected network          */
-static char          s_wifi_pass[65] = {0};   /* entered passphrase (handoff) */
-static char          s_wifi_note[64] = {0};   /* why the picker reopened (may be empty) */
-static lv_obj_t     *s_wifi_pass_ta  = NULL;
-static lv_obj_t     *s_wifi_eye_lbl  = NULL;   /* glyph swapped on reveal/hide */
-static lv_obj_t     *s_pin_eye_lbl   = NULL;   /* same, on the card-PIN keypad */
-static lv_obj_t     *s_admin_eye_lbl = NULL;   /* same, on the admin-code keypad */
+lv_obj_t *s_pin_ta      = NULL;
+char      s_pin[16]     = {0};
+uint8_t   s_pin_len     = 0;
+net_wifi_ap_t s_aps[WIFI_MAX_APS];
+uint16_t      s_ap_count = 0;
+char          s_wifi_ssid[33] = {0};   /* selected network          */
+char          s_wifi_pass[65] = {0};   /* entered passphrase (handoff) */
+char          s_wifi_note[64] = {0};   /* why the picker reopened (may be empty) */
+lv_obj_t     *s_wifi_pass_ta  = NULL;
+lv_obj_t     *s_wifi_eye_lbl  = NULL;   /* glyph swapped on reveal/hide */
+lv_obj_t     *s_pin_eye_lbl   = NULL;   /* same, on the card-PIN keypad */
+lv_obj_t     *s_admin_eye_lbl = NULL;   /* same, on the admin-code keypad */
 
 /* Progress screen (UI_SCREEN_WIFI_CONNECTING), two pieces rather than one
  * preformatted line: the name is stored raw so the label elides it by real
  * glyph width, which no character budget can do for every SSID. */
-static char          s_wifi_caption[24] = {0};  /* "Scanning..." / "Connecting to" */
-static char          s_wifi_name[33]    = {0};  /* network name; empty for none    */
+char          s_wifi_caption[24] = {0};  /* "Scanning..." / "Connecting to" */
+char          s_wifi_name[33]    = {0};  /* network name; empty for none    */
 
 /* Splash progress line. Written by the main task, applied by the UI task
  * (LVGL is not thread-safe) — same hand-off shape as request_screen(). */
-static char          s_boot_step[40]     = {0};
-static lv_obj_t     *s_boot_step_lbl     = NULL;
+char          s_boot_step[40]     = {0};
+lv_obj_t     *s_boot_step_lbl     = NULL;
 static volatile bool s_boot_step_dirty   = false;
 
-/* The Tx tab's two gas rows, same hand-off again. The caps are written straight
- * through from the config page on the HTTP task, and the page is reached from a
- * card raised OVER this screen — so the rows are retexted where they stand
- * rather than by rebuilding the screen, which would take that card down with it
- * while the operator is still reading the address off it. */
-static lv_obj_t     *s_fee_max_lbl       = NULL;
-static lv_obj_t     *s_fee_prio_lbl      = NULL;
+/* The Tx tab's two gas rows, same hand-off. The config page (HTTP task) writes
+ * the caps while its card is raised over this screen, so the rows are retexted
+ * in place: a rebuild would take that card down. */
+lv_obj_t     *s_fee_max_lbl       = NULL;
+lv_obj_t     *s_fee_prio_lbl      = NULL;
 static volatile bool s_fees_dirty        = false;
 
-/* Phone setup (UI_SCREEN_PROV). The step is an int, not a prov_step_t, for the
- * same reason ui_show_prov takes one — provision.h includes ui.h. Both are
- * written by the main task and read by the UI task, like the splash line above. */
-static volatile int  s_prov_step         = 0;
-/* Why the last card read came to nothing, shown on the setup screen. The reason
- * also goes to the browser (prov_set_note), but the person who just tapped is
- * looking at the panel — and without this the panel simply snapped back to the
- * step it came from, which reads as the terminal resetting mid-read. Cleared
- * whenever a fresh read starts. */
-static char          s_prov_msg[64]      = "";
+/* Phone setup (UI_SCREEN_PROV). An int, not a prov_step_t: provision.h
+ * includes ui.h. Written by the main task, read by the UI task. */
+volatile int  s_prov_step         = 0;
+/* Why the last card read came to nothing, shown on the setup screen (the
+ * browser gets it too, but the person who tapped is looking at the panel).
+ * Cleared whenever a fresh read starts. */
+char          s_prov_msg[64]      = "";
 static volatile bool s_addr_modal_dirty  = false;
 /* Firmware uploaded from a browser and waiting to be accepted here. Same
  * handoff as the address modal above: the HTTP task never touches LVGL. */
 static volatile bool s_ota_modal_dirty   = false;
 
 /* Startup fault (UI_SCREEN_BOOT_ERROR). */
-static ui_boot_err_t s_boot_err            = UI_BOOT_ERR_NFC;
-static char          s_boot_detail[64]     = {0};
-
-/* Admin code (burger-menu lock). Six digits for a new code: with the penalty
- * capped at a minute, four digits were ~720 guesses over an unattended night —
- * a fair share of a 10^4 space, and the code opens the payout addresses. Six
- * digits under the escalating penalty below (capped at an hour) is a few dozen
- * guesses a night against 10^6. The merchant can choose a longer one, up to
- * ADMIN_CODE_MAX.
- *
- * The unlock screen still takes four: a code set before the minimum went up
- * has to keep opening the menu — it gates the factory reset too — so only the
- * creation screen enforces the new floor. */
-#define ADMIN_CODE_MIN        6
-#define ADMIN_CODE_MIN_STORED 4   /* shortest code an older build could store */
-#define ADMIN_CODE_MAX        9
-static lv_obj_t     *s_admin_ta      = NULL;
-static lv_obj_t     *s_admin_note_lbl = NULL;
-static char          s_admin_first[ADMIN_CODE_MAX + 1] = {0};  /* 1st of 2 passes */
-static char          s_admin_note[48] = {0};
-static bool          s_admin_confirming = false;   /* 2nd pass of the creation */
+ui_boot_err_t s_boot_err            = UI_BOOT_ERR_NFC;
+char          s_boot_detail[64]     = {0};
+lv_obj_t     *s_admin_ta      = NULL;
+lv_obj_t     *s_admin_note_lbl = NULL;
+char          s_admin_first[ADMIN_CODE_MAX + 1] = {0};  /* 1st of 2 passes */
+char          s_admin_note[48] = {0};
+bool          s_admin_confirming = false;   /* 2nd pass of the creation */
 static bool          s_welcome_sent     = false;   /* Start already reported */
-static char          s_welcome_sub[96]  = {0};     /* line under the brand: fits main's update greeting */
+char          s_welcome_sub[96]  = {0};     /* line under the brand: fits main's update greeting */
 /* Penalty clock, monotonic since boot (lv_tick_elaps handles the wrap). The
  * attempt count itself lives in NVS, so power-cycling shortens the current wait
  * but never resets the escalation. */
-static uint32_t      s_admin_lock_start = 0;
-static uint32_t      s_admin_lock_ms    = 0;
-/* What a correct code on the unlock screen is for. The escalating penalty, the
- * note band and the keypad are identical either way — only the thing the code
- * opens differs, so one screen serves both rather than a near-copy that could
- * drift on the lockout. */
-static bool          s_admin_for_portal = false;
+uint32_t      s_admin_lock_start = 0;
+uint32_t      s_admin_lock_ms    = 0;
+/* What a correct code on the unlock screen is for (admin panel or portal). One
+ * screen serves both so the lockout cannot drift between two copies. */
+bool          s_admin_for_portal = false;
 
 /* Whether the PIN keypad is collecting a card PIN for a *read* (deriving a payout
  * address) rather than for a payment. Same reason as above: the card refuses to
  * export a public key without a verified PIN, so the screen is the same one. */
-static bool          s_pin_for_card     = false;
+bool          s_pin_for_card     = false;
 
 /* Destination info shown on the settings "Tx" tab (set by main, static). */
-static const char *s_addr_usdc = NULL;
-static const char *s_addr_dest = NULL;
+const char *s_addr_usdc = NULL;
+const char *s_addr_dest = NULL;
 
 /* Settings bottom-bar buttons (Reset shares the line with Close on About). */
-static lv_obj_t *s_reset_btn = NULL;
-static lv_obj_t *s_close_btn = NULL;
+lv_obj_t *s_reset_btn = NULL;
+lv_obj_t *s_close_btn = NULL;
 
-/******************************************************************
- * 6. Button actions
- ******************************************************************/
-enum BtnAction {
-    ACT_CONFIRM, ACT_CANCEL, ACT_SEND, ACT_NEW, ACT_TX_RECHECK,
-    ACT_CLOSE, ACT_PIN_CANCEL, ACT_PIN_REVEAL,
-    ACT_WIFI, ACT_WIFI_CANCEL, ACT_WIFI_PASS_REVEAL,
-    ACT_ADMIN_CANCEL, ACT_ADMIN_REVEAL, ACT_WELCOME_OK,
-    /* Config portal: accept/reject a proposed value, finish the wizard. */
-    ACT_PROV_OK, ACT_PROV_NO, ACT_PROV_FINISH,
-    ACT_RESET, ACT_RESET_CONFIRM, ACT_MODAL_CLOSE,
-    /* Asset selector (amount screen and the Tx tab): network, then the coin. */
-    ACT_NET_PICK, ACT_NET_ETH, ACT_NET_POLY, ACT_NET_TRON,
-    /* The admin web page: open it (QR to scan), close it, resolve an upload. */
-    ACT_PORTAL, ACT_PORTAL_CLOSE, ACT_OTA_OK, ACT_OTA_NO,
-    /* Touch calibration: start it, keep the result, put the old one back. */
-    ACT_TOUCH_CAL, ACT_CAL_SAVE, ACT_CAL_CANCEL,
-    /* One action per chain, contiguous, so an action's offset from here IS its
-     * pos_chain_t (ACT_CHAIN_OF below, decoded in btn_event_cb). Seven assets
-     * would otherwise be seven enumerators and a seven-armed switch that says
-     * nothing the picker's own table does not already say. KEEP LAST: the block
-     * runs to POS_CHAIN__COUNT and nothing may share its numbers. */
-    ACT_CHAIN_BASE,
-};
+/* The networks the picker offers are pos_net_t (assets.h); several chains share
+ * one (USDC and USDT are both Ethereum). */
 
-/** The action that selects @p chain. */
-#define ACT_CHAIN_OF(chain) \
-    static_cast<BtnAction>(ACT_CHAIN_BASE + static_cast<int>(chain))
-
-/* Settings — defined in section 7 (uses the widget helpers). */
-static void settings_persist(void);
-static void open_reset_confirm(void);
-/* The networks the picker offers are pos_net_t (assets.h) — step 1 of the picker
- * is a network, and several chains share one (USDC and USDT are both Ethereum).
- * This file used to carry its own copy of that enum. */
-
-static void open_network_picker(void);
-static void open_coin_picker(pos_net_t net);
-static void open_portal_window(void);
-static void open_ota_gone(void);
-static void close_modal(void);
-static void pop_in(lv_obj_t *obj);   /* defined in section 8 (animations) */
-/* Defined with the icon helpers; called from amount_update_display() above them. */
-static void asset_btn_set_compact(bool compact);
-static uint32_t admin_penalty_ms(uint8_t fails);   /* defined with the admin screens */
 static ui_screen_t s_settings_return = UI_SCREEN_AMOUNT;   /* screen to go back to */
-/* Which tab a (re)built settings page opens on. Zeroed when the burger opens the
- * page, kept when something inside it forces a rebuild — picking an asset on the
- * Tx tab has to come back to the Tx tab, not to Screen. */
-static uint16_t s_settings_tab = 0U;
+/* Which tab a (re)built settings page opens on. Zeroed on a fresh open, kept
+ * across rebuilds from inside the page (an asset pick returns to the Tx tab). */
+uint16_t s_settings_tab = 0U;
 
-#define SETTINGS_TAB_COUNT  4
-#define TAB_ABOUT           3
-
-/* The chain is read straight from NVS wherever it is needed — the asset badge,
- * the picker pill and main's signing path all ask the same question, so there is
- * no UI-side copy to keep in sync. */
-/* The asset the admin Tx tab is showing. Its own, not the sale's: an operator
- * looking up another asset's contract there must not change what the next
- * customer is charged in. Seeded from the sale's asset on each fresh open. */
-static pos_chain_t s_view_chain = POS_CHAIN_ETH_SEPOLIA;
+/* The sale's chain is read from NVS wherever needed; there is no UI-side copy. */
+/* The asset the admin Tx tab is showing. Its own, not the sale's: looking up
+ * another asset there must not change what the next customer is charged in.
+ * Seeded from the sale's asset on each fresh open. */
+pos_chain_t s_view_chain = POS_CHAIN_ETH_USDC;
 
 /** An asset's row — ticker, standard, caption, network. Default: the sale's. */
-static const pos_asset_t *asset(pos_chain_t c = settings_get_chain()) {
+const pos_asset_t *asset(pos_chain_t c) {
     return pos_asset_of(c);
 }
 
 /** Ticker of the asset being charged, for the selector and the amount screens. */
-static const char *asset_name(pos_chain_t c = settings_get_chain()) {
+const char *asset_name(pos_chain_t c) {
     return asset(c)->ticker;
 }
 
 /**
  * Which network that asset lives on — the selector's subtitle.
  *
- * Names the deployment, not just the family: "Ethereum" and "Ethereum Sepolia"
- * differ by the only thing that decides whether a sale settles in money, and this
- * subtitle is where an operator finds out which one the terminal is on.
+ * Names the deployment, not just the family ("Ethereum" vs "Ethereum Sepolia"):
+ * it decides whether a sale settles in real money.
  */
-static const char *asset_network(pos_chain_t c = settings_get_chain()) {
+const char *asset_network(pos_chain_t c) {
     const pos_net_info_t *ni = pos_net_info(asset(c)->net);
     return settings_net_str(ni->long_test, ni->long_main);
 }
 
 /** Caption for the address row above "Send to": TRX has no contract to show. */
-static const char *asset_caption(pos_chain_t c = settings_get_chain()) {
+const char *asset_caption(pos_chain_t c) {
     return asset(c)->caption;
 }
 
 /* The buffers above are written by the main task (and a few by the HTTP task)
  * through the public ui_* calls, and read by the UI task while it builds a
- * screen. A screen built mid-strncpy showed half of one message and half of the
- * next — or, for the Wi-Fi list, a record torn between two scans. So the UI task
- * holds this for each pass of its loop (render, the targeted label updates and
- * lv_timer_handler with its event callbacks), and every public call that writes
- * shared state holds it for the copy. Recursive: an event callback that reaches
- * back into a public ui_* call on the UI task already owns it. Writers wait for
- * at most one pass of the loop, a few milliseconds. */
+ * screen; without a lock a screen could show a torn message or Wi-Fi record.
+ * The UI task holds this for each pass of its loop (render, the targeted label
+ * updates and lv_timer_handler with its event callbacks), and every public call
+ * that writes shared state holds it for the copy. Recursive: an event callback
+ * that reaches back into a public ui_* call on the UI task already owns it.
+ * Writers wait for at most one pass of the loop, a few milliseconds. */
 static SemaphoreHandle_t s_ui_mx = NULL;
 
 struct UiLock {
@@ -886,11 +228,9 @@ struct UiLock {
     UiLock &operator=(const UiLock &) = delete;
 };
 
-/* prov_stop() takes up to ~2 s (httpd teardown, the AP going down) and used to
- * run here, on the UI task, freezing the panel for all of it. It is main's call
- * now: the UI asks, main does it between events. Rate-limited, because the
- * deadline check below would otherwise ask every 5 ms until main gets round to
- * it — and a request that fell off a full queue is simply asked again. */
+/* prov_stop() takes up to ~2 s, so main runs it, not the UI task: the UI only
+ * asks. Rate-limited to once a second, since the deadline check would otherwise
+ * ask every 5 ms; a request lost to a full queue is simply asked again. */
 static uint32_t s_prov_stop_at = 0U;
 
 static void request_prov_stop(void) {
@@ -898,14 +238,13 @@ static void request_prov_stop(void) {
     s_prov_stop_at = lv_tick_get() | 1U;   /* never 0 once asked */
     if (s_cb != NULL) { s_cb(UI_EVENT_PROV_STOP, 0); }
 }
-
-static void request_screen(ui_screen_t s) {
+void request_screen(ui_screen_t s) {
     s_req_screen   = s;
     s_screen_dirty = true;
 }
 
 /* Sets both pieces at once, so no caller can leave a stale name behind. */
-static void set_wifi_progress(const char *caption, const char *name) {
+void set_wifi_progress(const char *caption, const char *name) {
     strncpy(s_wifi_caption, (caption != NULL) ? caption : "",
             sizeof(s_wifi_caption) - 1);
     s_wifi_caption[sizeof(s_wifi_caption) - 1] = '\0';
@@ -920,453 +259,11 @@ static void set_wifi_progress(const char *caption, const char *name) {
  * Ceiling on what the keypad will accept, for the asset currently selected.
  *
  * ETH and POL are 18-decimal and the signed value is a uint64 of wei, so a sale
- * stops at 18.44 of either (see POS_AMOUNT_UNITS_MAX_NATIVE). Enforced here, on
- * the way in, rather than at the confirm step: an operator who can key 9999.99
- * and only then be told no has been allowed to make a mistake the keypad could
- * simply have declined, in front of a customer.
+ * stops at 18.44 of either (see POS_AMOUNT_UNITS_MAX_NATIVE). Enforced at the
+ * keypad rather than at the confirm step, so the mistake is never keyed.
  */
-static uint64_t amount_cents_max(void) {
+uint64_t amount_cents_max(void) {
     return amount_cents_cap(pos_chain_is_native_evm(settings_get_chain()));
-}
-
-/* From 100.00 up, the cents move to the small font. Five figures and cents in
- * font_pjs_28_semibold is ~150 of 240 pixels, and the asset button now shares the row —
- * so the change gives up its size to the part anybody actually reads. Below 100
- * there is room for all of it, and "7.50" with shrunken cents would just look
- * like a typographic tic. */
-#define AMOUNT_SMALL_CENTS_FROM  10000ULL   /* 100.00 in cents */
-
-/* Air between the figure and the selector, so they read as two things. */
-#define AMOUNT_ROW_GAP  8
-
-/* Left gutter the figure may never cross — see amount_row_place(). */
-#define AMOUNT_ROW_MIN_X  4
-
-/******************************************************************
- * 6b. Sale-flow page chrome
- *
- * Teal page, step dashes across the top, white rounded card, and the home
- * indicator at the bottom that is the admin panel's handle. Screens built with
- * build_page() place their children into the CARD, so their coordinates are the
- * card's own — (0,0) is its top-left corner, not the screen's.
- *
- * Only the sale runs on this chrome. The admin panel behind the swipe keeps the
- * full-screen white it had: it is a settings app, not part of the customer's
- * transaction, and the two reading differently is the point.
- ******************************************************************/
-#define CARD_X    8
-#define CARD_Y    28
-#define CARD_W    (SCR_W - (2 * CARD_X))   /* 224 */
-#define CARD_H    262                      /* 28..290; home bar sits below */
-#define CARD_PAD  10
-/* Bottom action button, in card coordinates. */
-#define CARD_BTN_H  44
-#define CARD_BTN_Y  (-10)
-#define CARD_BTN_W  (CARD_W - (2 * CARD_PAD))
-
-/* The status band, left to right: clock, the TEST chip when there is one, the
- * Wi-Fi mark.
- *
- * Fixed zones, not measured ones. Every occupant is a known string in a known
- * font, so nothing in the band moves when the minute ticks from 09:59 to 10:00
- * — a band that twitches on its own is the thing this layout exists to stop.
- *
- * Everything sits on one optical centre line at y≈12.5: font_inter_14_medium
- * draws an 18px box with its 11px cap 4 down (so text at 3 puts the cap at
- * 7..18), the Wi-Fi mark is 13 tall at 6. Move one and move the other.
- *
- * CLOCK_W and CHIP_W are reserves rather than the real widths — "00:00", the
- * widest time, measures ~40 against 42, "TEST" with its pads ~48 against 56. */
-#define BAND_Y      3      /* text top: clock and chip                  */
-#define CLOCK_X     10
-#define CLOCK_Y     BAND_Y
-#define CLOCK_W     42
-#define CHIP_X      (CLOCK_X + CLOCK_W + 6)
-#define CHIP_W      56
-#define CHIP_Y      3      /* 20px tall, so 3 centres it on the band    */
-
-/* Steps of one sale. Nothing draws them since the progress rail came out, but
- * the flow still names where it is, and build_page() still takes it. */
-enum {
-    PAY_STEP_NONE   = -1,
-    PAY_STEP_AMOUNT = 0,
-    PAY_STEP_REVIEW,
-    PAY_STEP_AUTH,
-    PAY_STEP_TAP,
-    PAY_STEP__COUNT
-};
-
-/**
- * Place the figure's row: on the screen's centre line, and on the coin's.
- *
- * Vertically: the row's measured height against the selector's 42, so the two
- * boxes share a centre line and the digits' middle IS the coin's. The y used to be
- * that sum written out by hand and it was wrong — 50 against a 30px line box put
- * the figure's middle at 64 against the coin's 67. Measured now, so it also
- * survives a change of font. (The box is not the ink: font_pjs_28_semibold puts
- * the baseline 25 into a 32px box and draws '0' 22 tall, so the ink runs 3..25
- * and its middle sits 2 above the box's. amount_ink_shift() reads that off the
- * font's own '0', so the digits and not the box land on the coin's centre.)
- *
- * Horizontally: the screen's centre, the same one the keypad and the Charge button
- * below already sit on. An earlier cut centred the row in the line *left of the
- * selector* instead, which is collision-proof but puts the figure 41px left of
- * everything under it, and a till whose amount does not line up with its own keypad
- * looks broken in a way no measurement will talk you out of.
- *
- * Which leaves the collision to handle, because a screen-centred row runs out of
- * room before the digits do. What gives way is the centring, by as little as it
- * takes: the row slides left only far enough to clear the selector, so a typical
- * amount stays centred and a five-figure one drifts. Both ends of that sum are
- * measured rather than predicted — the digits because the font decides them, and
- * the selector because its ticker and its chevron both change its width.
- *
- * Nothing on this row is ever dropped to make it fit. The figure is money; the
- * ticker that says which money lives on the selector, where it does not have to
- * compete with the digits for the same 240 pixels.
- */
-/* How far below the line box's middle the middle of a digit's ink sits. */
-static lv_coord_t amount_ink_shift(const lv_font_t *f) {
-    lv_font_glyph_dsc_t g;
-    if (!lv_font_get_glyph_dsc(f, &g, '0', 0)) { return 0; }
-    const lv_coord_t ink_mid = f->line_height - f->base_line - g.ofs_y - (g.box_h / 2);
-    return (f->line_height / 2) - ink_mid;
-}
-
-static void amount_row_place(void) {
-    if (s_amount_row == NULL) { return; }
-
-    /* Centred, then measured there — whether it fits is a question about the pill
-     * and the string that were just set, not about arithmetic. Both are
-     * content-sized, so both are measured: the pill drops its chevron once there is
-     * an amount, and the ticker inside it is 3 or 4 characters wide. */
-    lv_obj_align(s_amount_row, LV_ALIGN_TOP_MID, 0, ASSET_BTN_Y);
-    lv_obj_update_layout(s_amount_row);
-
-    /* Measured off the pill's own left edge rather than recomputed from the
-     * screen width: the row lives on the card now, so a figure derived from
-     * SCR_W would be answering about the wrong box. Everything here is in
-     * absolute coordinates, which is what lv_obj_get_coords reports. */
-    lv_area_t   r, pr;
-    lv_obj_get_coords(s_amount_row, &r);
-    lv_coord_t  stop = r.x2;
-    if (s_asset_btn != NULL) {
-        lv_obj_get_coords(s_asset_btn, &pr);
-        stop = pr.x1 - AMOUNT_ROW_GAP;
-    }
-    lv_coord_t  x = (r.x2 > stop) ? (stop - r.x2) : 0;
-
-    /* ...but never off the left edge. The shift above is measured against the
-     * pill alone, so a figure wide enough simply kept sliding until its leading
-     * digits were outside the screen — and the leading digits are the ones that
-     * decide what the customer is charged. Losing the right-hand end to the
-     * pill is survivable; losing the left-hand end silently is not, so the
-     * clamp wins and the two overlap instead.
-     *
-     * Against the row's PARENT, not the screen: that parent is the white card,
-     * inset from both edges, so the gutter the figure must not cross is the
-     * card's and not the panel's. */
-    lv_area_t cr;
-    lv_obj_get_coords(lv_obj_get_parent(s_amount_row), &cr);
-    if ((r.x1 + x) < (cr.x1 + AMOUNT_ROW_MIN_X)) {
-        x = (cr.x1 + AMOUNT_ROW_MIN_X) - r.x1;
-    }
-
-    lv_obj_align(s_amount_row, LV_ALIGN_TOP_MID, x,
-                 ASSET_BTN_Y + ((ASSET_BTN_H - lv_area_get_height(&r)) / 2)
-                     + amount_ink_shift(&font_pjs_28_semibold));
-}
-
-/**
- * Charge is available only once there is something to charge.
- *
- * 0.00 is not a sale, and the button was fully lit for it — the operator's tap
- * did nothing and the screen said nothing about why, which on a resistive panel
- * reads as a missed touch rather than as a refusal. btn_event_cb has always
- * dropped the event; this is what makes that visible.
- *
- * LV_STATE_DISABLED rather than hiding the button: LVGL's hit test drops taps on
- * a disabled object (lv_obj_pos.c), so the state IS the whole gate, and a greyed
- * button still holds the place the operator is about to aim at. The label is
- * recoloured by hand because make_button() sets its colour on the label itself,
- * where the button's state does not reach it — the same reason pill_disable()
- * walks its children.
- */
-static void charge_set_enabled(bool on) {
-    if (s_charge_btn == NULL) { return; }   /* not the amount screen */
-
-    if (on) { lv_obj_clear_state(s_charge_btn, LV_STATE_DISABLED); }
-    else    { lv_obj_add_state(s_charge_btn, LV_STATE_DISABLED); }
-
-    lv_obj_set_style_bg_color(s_charge_btn, on ? COL_ACTION : COL_SURFACE,
-                              LV_PART_MAIN);
-    lv_obj_t *lbl = lv_obj_get_child(s_charge_btn, 0);
-    if (lbl != NULL) {
-        lv_obj_set_style_text_color(lbl, on ? COL_BG : COL_DIM, LV_PART_MAIN);
-    }
-}
-
-/**
- * Charge has been tapped: inert until this screen is next built.
- *
- * A gate, not a look — it does not repaint the button. What it guards against is
- * a second UI_EVENT_AMOUNT_CONFIRMED queued behind the first. The duplicate is
- * harmless where it is raised, since main answers it with the same confirm
- * screen, but it outlives the screen it was meant for: an operator who
- * double-tapped Charge and then tapped Confirm gets pulled back out of the PIN
- * keypad by the echo of their own first tap.
- *
- * It used to grey the button and relabel it "Checking...", from when the balance
- * check ran at this point and took a network round trip to answer. That check
- * moved to the card tap, where the payer is actually known — so there is nothing
- * to wait for here and nothing to announce. The screen changes immediately, and
- * a button that repaints on its way out is a flicker, not feedback.
- */
-static void charge_set_busy(void) {
-    if (s_charge_btn == NULL) { return; }
-    s_charge_busy = true;
-    /* LVGL's hit test drops taps on a disabled object (lv_obj_pos.c), so the
-     * state alone is the whole gate. */
-    lv_obj_add_state(s_charge_btn, LV_STATE_DISABLED);
-}
-
-static void amount_update_display(void) {
-    char buf[24];
-    const bool split = (s_amount_cents >= AMOUNT_SMALL_CENTS_FROM);
-
-    if (s_amount_label != NULL) {
-        if (split) {
-            snprintf(buf, sizeof(buf), "%" PRIu64, s_amount_cents / 100ULL);
-        } else {
-            snprintf(buf, sizeof(buf), "%" PRIu64 ".%02" PRIu64,
-                     s_amount_cents / 100ULL, s_amount_cents % 100ULL);
-        }
-        lv_label_set_text(s_amount_label, buf);
-    }
-    if (s_amount_cents_label != NULL) {
-        snprintf(buf, sizeof(buf), ".%02" PRIu64, s_amount_cents % 100ULL);
-        /* "" rather than the hidden flag: an empty label measures zero and the
-         * flex row re-centres on its own, with no rule to remember about how
-         * hidden children are laid out. */
-        lv_label_set_text(s_amount_cents_label, split ? buf : "");
-    }
-
-    /* Nothing entered yet: the selector is the only thing to do on the screen, so
-     * it keeps its chevron. Once there is an amount, it gets out of its way and the
-     * digits take the room back. The ticker stays either way — it is on the pill,
-     * not on the figure, so it costs the digits nothing. */
-    asset_btn_set_compact(s_amount_cents != 0ULL);
-    /* Left alone while a tap is in flight: this runs on every keypress and the
-     * keypad stays live, so a digit typed in that window would otherwise re-arm
-     * a button that has already asked. Skipped rather than called with false,
-     * so the button keeps its ordinary look on the way out. */
-    if (!s_charge_busy) {
-        charge_set_enabled(s_amount_cents != 0ULL);
-    }
-
-    /* Last: the pill has just changed width and the labels have just changed text,
-     * and the row is placed against both. */
-    amount_row_place();
-
-    s_amount_units = amount_cents_to_units(s_amount_cents);   /* -> 6-decimal base units */
-}
-
-/* The drawn backspace, in units of half its height — see kbd_backspace_draw_cb().
- * The tag is 2*BSP_H tall and BSP_W wide with a BSP_NOSE-deep point on the left,
- * which is the outline the LVGL symbol draws solid. */
-#define BSP_W     16   /* half-length; 32 wide against 18 tall reads as the
-                        * conventional backspace proportion, where the 26 this
-                        * started at looked stubby beside the 28px digits */
-#define BSP_H      9
-#define BSP_NOSE   6
-#define BSP_CROSS  4
-#define BSP_LINE   2
-/* The corner radius. The two right-hand corners are rounded over two segments
- * each; the nose's two are chamfered, and the point is left alone.
- *
- * WHY NOT ALL THREE KINDS THE SAME. A chamfer at a right angle is a flat cut and
- * looks like one — that is what the first pass at this shipped and what came
- * back. A chamfer at the nose's 124-degree turn is a 1 px deviation from the
- * fillet it stands in for, invisible at this size, and a fillet there is not:
- * the tangent length at that angle is 5.6 px, which is most of a 6 px nose. So
- * the corners that read as flat get rounded and the ones that do not, do not.
- *
- * WHY LINES AND NOT lv_draw_arc, which is what the two right-hand corners were.
- * The corners came back as jittery, and an arc at this size is why: a 2 px ring
- * on a 3 px radius is about three pixels of ink per corner, laid down by a
- * different primitive from the seven straight runs it has to meet. Its ends are
- * flat where the lines' are round, its coverage comes from a radius mask rather
- * than a line mask, and the top corner (270..360) and the bottom (0..90) do not
- * even land on the same side of their shared angle boundary — so the two ends of
- * the same tag antialiased differently and the eye read the difference as the
- * corner shifting. Two segments through the 45-degree point deviate from a true
- * quarter-circle by 0.4 px, which is under half a pixel and therefore not a
- * thing anyone can see, and they are drawn by the same lv_draw_line with the
- * same round caps as the rest of the outline — so the corners match the edges
- * they join, and the top matches the bottom exactly.
- *
- * INTEGERS everywhere, which was the fix for the pass before that. The cuts were
- * computed by walking BSP_R along each edge in floats and truncating, which
- * rounds toward zero — so the cut above the centre line landed on a different
- * pixel from the one below it and the mark came out lopsided. The nose's (2,3)
- * is one third of its 6:9 slope, ~3.6 px: near enough to BSP_R and exact in both
- * directions. */
-#define BSP_R        3
-#define BSP_R45      2   /* round(BSP_R * sin 45) — the fillet's middle point */
-#define BSP_NOSE_DX  2   /* the nose's cut, one third of its run... */
-#define BSP_NOSE_DY  3   /* ...and one third of its rise */
-
-/* Keys tile the pad top to bottom. The default theme gives a btnmatrix a card's
- * ~13 px padding and ~8 px between rows, and a touch in either lands on no key —
- * which left a 28 px digit with about a pixel of key above it. */
-static void kbd_fill_rows(lv_obj_t *kb) {
-    lv_obj_set_style_pad_ver(kb, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_row(kb, 0, LV_PART_MAIN);
-}
-
-/**
- * Draw the keypad's backspace as an outline rather than a solid glyph.
- *
- * LV_SYMBOL_BACKSPACE is a filled FontAwesome shape, and at the 28px the digits
- * are set in it lands as a black slab in a row of thin numerals — the heaviest
- * mark on a screen whose figure is the thing to read. The outline carries the
- * same meaning at a fraction of the ink, and it is the one key here that is not
- * a digit, so looking different is correct.
- *
- * It keeps the digits' colour. Dimming it was the other way to lighten it and
- * it was worse: grey reads as disabled, and the key that undoes a mistyped
- * amount is one an operator needs to believe is available.
- *
- * Drawn here rather than shipped as a glyph because a btnmatrix key holds text,
- * not an image, and the symbol font has no outline backspace. LV_EVENT_DRAW_PART
- * gives both halves of what that needs: BEGIN to suppress the built-in glyph,
- * END to draw over the key in its own measured area — no cell geometry is
- * computed here, so the theme's padding cannot put the mark in the wrong place.
- *
- * Attached to every keypad that has a backspace — the amount, the card PIN and
- * the admin code — so the key that undoes a keystroke is one mark across the
- * panel. Matched on the key's TEXT, not its index: the three maps put it in
- * different cells.
- */
-static void kbd_backspace_draw_cb(lv_event_t *e) {
-    lv_obj_draw_part_dsc_t *dsc = lv_event_get_draw_part_dsc(e);
-    if ((dsc == NULL) || (dsc->class_p != &lv_btnmatrix_class) ||
-        (dsc->type != LV_BTNMATRIX_DRAW_PART_BTN)) {
-        return;
-    }
-    const char *key = lv_btnmatrix_get_btn_text(lv_event_get_target(e), dsc->id);
-    if ((key == NULL) || (strcmp(key, LV_SYMBOL_BACKSPACE) != 0)) { return; }
-
-    /* The glyph is still in the map — amount_kbd_cb() matches on that string —
-     * so it is hidden at draw time instead of removed. */
-    if (lv_event_get_code(e) == LV_EVENT_DRAW_PART_BEGIN) {
-        if (dsc->label_dsc != NULL) { dsc->label_dsc->opa = LV_OPA_TRANSP; }
-        return;
-    }
-
-    const lv_coord_t cx = (dsc->draw_area->x1 + dsc->draw_area->x2) / 2;
-    const lv_coord_t cy = (dsc->draw_area->y1 + dsc->draw_area->y2) / 2;
-
-    lv_draw_line_dsc_t ld;
-    lv_draw_line_dsc_init(&ld);
-    ld.color = COL_TEXT;          /* the digits' own ink, as asked */
-    ld.width = BSP_LINE;
-    ld.round_start = 1;
-    ld.round_end   = 1;
-
-    /* Every coordinate the outline uses, named once. Held in lv_coord_t rather
-     * than written into the point list as expressions: the arithmetic promotes
-     * to int, and an int inside a braced initialiser is a narrowing conversion
-     * the compiler is entitled to refuse. */
-    const lv_coord_t xr = (lv_coord_t)(cx + BSP_W);                 /* right edge */
-    const lv_coord_t xt = (lv_coord_t)(cx - BSP_W);                 /* the point  */
-    const lv_coord_t nx = (lv_coord_t)(cx - BSP_W + BSP_NOSE);      /* nose's base*/
-    const lv_coord_t xn = (lv_coord_t)(nx - BSP_NOSE_DX);           /* its cut    */
-    const lv_coord_t l  = (lv_coord_t)(nx + BSP_R);   /* straight runs start/end */
-    const lv_coord_t r  = (lv_coord_t)(xr - BSP_R);
-    const lv_coord_t t  = (lv_coord_t)(cy - BSP_H);
-    const lv_coord_t b  = (lv_coord_t)(cy + BSP_H);
-    const lv_coord_t tr = (lv_coord_t)(t + BSP_R);    /* where the arcs take over */
-    const lv_coord_t br = (lv_coord_t)(b - BSP_R);
-    const lv_coord_t tn = (lv_coord_t)(t + BSP_NOSE_DY);
-    const lv_coord_t bn = (lv_coord_t)(b - BSP_NOSE_DY);
-    /* The 45-degree point of each right-hand fillet: its centre is (r, tr) at the
-     * top and (r, br) at the bottom, and this steps BSP_R45 out and BSP_R-BSP_R45
-     * back along the other axis. Written from t and b rather than tr and br so
-     * the two are mirror images by construction. */
-    const lv_coord_t xd = (lv_coord_t)(r + BSP_R45);
-    const lv_coord_t td = (lv_coord_t)(t + BSP_R - BSP_R45);
-    const lv_coord_t bd = (lv_coord_t)(b - BSP_R + BSP_R45);
-
-    /* The whole outline in one primitive, clockwise from the top: straight run,
-     * fillet, right edge, fillet, straight run, then the nose. */
-    const lv_point_t seg[11][2] = {
-        { { l,  t  }, { r,  t  } },
-        { { r,  t  }, { xd, td } },
-        { { xd, td }, { xr, tr } },
-        { { xr, tr }, { xr, br } },
-        { { xr, br }, { xd, bd } },
-        { { xd, bd }, { r,  b  } },
-        { { r,  b  }, { l,  b  } },
-        { { l,  b  }, { xn, bn } },
-        { { xn, bn }, { xt, cy } },
-        { { xt, cy }, { xn, tn } },
-        { { xn, tn }, { l,  t  } },
-    };
-    for (int i = 0; i < 11; i++) {
-        lv_draw_line(dsc->draw_ctx, &ld, &seg[i][0], &seg[i][1]);
-    }
-
-    /* The cross inside, centred in the square end. That centre is
-     * cx + BSP_NOSE/2 whatever BSP_W is, so lengthening the tag leaves it
-     * correctly placed without a second number to keep in step. */
-    const lv_coord_t kx = cx + (BSP_NOSE / 2);
-    const lv_point_t a1 = { (lv_coord_t)(kx - BSP_CROSS), (lv_coord_t)(cy - BSP_CROSS) };
-    const lv_point_t a2 = { (lv_coord_t)(kx + BSP_CROSS), (lv_coord_t)(cy + BSP_CROSS) };
-    const lv_point_t b1 = { (lv_coord_t)(kx + BSP_CROSS), (lv_coord_t)(cy - BSP_CROSS) };
-    const lv_point_t b2 = { (lv_coord_t)(kx - BSP_CROSS), (lv_coord_t)(cy + BSP_CROSS) };
-    lv_draw_line(dsc->draw_ctx, &ld, &a1, &a2);
-    lv_draw_line(dsc->draw_ctx, &ld, &b1, &b2);
-}
-
-/* Keypad on the amount screen — cents entry: each digit shifts in
- * from the right (1 -> 0.01, 12 -> 0.12, 1250 -> 12.50). No decimal point. */
-static void amount_kbd_cb(lv_event_t *e) {
-    lv_obj_t *bm = lv_event_get_target(e);
-    const char *txt = lv_btnmatrix_get_btn_text(bm, lv_btnmatrix_get_selected_btn(bm));
-    if (txt == NULL) { return; }
-
-    const uint64_t cap = amount_cents_max();
-    if (strcmp(txt, LV_SYMBOL_BACKSPACE) == 0) {
-        s_amount_cents = amount_key_back(s_amount_cents);
-    } else if (strcmp(txt, "00") == 0) {
-        s_amount_cents = amount_key_00(s_amount_cents, cap);
-    } else if ((txt[0] >= '0') && (txt[0] <= '9') && (txt[1] == '\0')) {
-        s_amount_cents = amount_key_digit(s_amount_cents,
-                                          static_cast<unsigned>(txt[0] - '0'), cap);
-    }
-    amount_update_display();
-}
-
-/**
- * Flip a masked field between hidden and shown, and swap its eye glyph to match.
- *
- * Toggled in place, never via request_screen(): rebuilding the screen would
- * discard what has been typed, which on the PIN keypad costs the operator an
- * attempt the card is counting. The glyph shows what the next tap does.
- *
- * Both callers may pass NULL — the action can only be raised from the screen that
- * built the field, but that is a fact about two files agreeing rather than
- * something the compiler checks.
- */
-static void code_field_reveal(lv_obj_t *ta, lv_obj_t *eye_lbl) {
-    if (ta == NULL) { return; }
-    const bool masked = lv_textarea_get_password_mode(ta);
-    lv_textarea_set_password_mode(ta, !masked);
-    if (eye_lbl != NULL) {
-        lv_label_set_text(eye_lbl, masked ? LV_SYMBOL_EYE_CLOSE
-                                          : LV_SYMBOL_EYE_OPEN);
-    }
 }
 
 /**
@@ -1377,14 +274,11 @@ static void code_field_reveal(lv_obj_t *ta, lv_obj_t *eye_lbl) {
  * from a customer left alone with the terminal.
  *
  * No code stored means first-run setup has not finished, so the request is
- * ignored rather than let through. main creates the code before anything else,
- * so this state is never reachable for long — but it WAS reachable, by backing
- * out of the first-run Wi-Fi picker onto the amount screen while main was still
- * waiting.
+ * ignored rather than let through (reachable by backing out of the first-run
+ * Wi-Fi picker onto the amount screen).
  *
- * The swipe is now the only caller — the burger it replaced is gone. It still
- * arms the same lock the button did: a gesture that skipped the penalty would
- * be a cheaper way in than the control it replaced.
+ * Called from the swipe gesture, which arms the full lockout penalty: a gesture
+ * that skipped it would be a cheaper way in.
  */
 static void open_admin_entry(void) {
     s_settings_return = s_req_screen;   /* remember where we came from */
@@ -1394,24 +288,22 @@ static void open_admin_entry(void) {
     s_admin_confirming = false;
     s_admin_for_portal = false;
     s_admin_note[0]    = '\0';
-    /* Re-arm the wait from the persisted attempt count. The wait itself has to
-     * live in RAM — persisting a deadline would need a trustworthy absolute
-     * clock, and the wall clock is exactly what an attacker on the network can
-     * move — so a power cycle used to clear it and bring the cost of one guess
-     * down to a single reboot. Deriving it here instead makes the escalation
-     * survive reboots, at no extra write. */
+    /* Re-arm the wait from the persisted attempt count. The wait itself lives
+     * in RAM — persisting a deadline would need a trustworthy absolute clock,
+     * and the wall clock is what an attacker on the network can move. Deriving
+     * it from the NVS count makes the escalation survive reboots, so a power
+     * cycle cannot cut the cost of a guess to one reboot. */
     s_admin_lock_ms    = admin_penalty_ms(settings_admin_fail_count());
     s_admin_lock_start = lv_tick_get();
-    /* Arrive as a sheet: the gesture pulled it up, so it should look pulled up.
-     * Set here rather than at the gesture, so the early return above cannot
-     * leave the flag armed for an unrelated visit to this screen. */
+    /* Arrive as a sheet. Set here rather than at the gesture, so the early
+     * return above cannot leave the flag armed for an unrelated visit. */
     s_sheet_pending = true;
     request_screen(UI_SCREEN_ADMIN_UNLOCK);
 }
 
 /* Runs on the UI task (inside lv_timer_handler), so touching shared state and
  * invoking s_cb (which only posts to a queue) is safe here. */
-static void btn_event_cb(lv_event_t *e) {
+void btn_event_cb(lv_event_t *e) {
     BtnAction act = static_cast<BtnAction>(
         reinterpret_cast<intptr_t>(lv_event_get_user_data(e)));
 
@@ -1427,25 +319,20 @@ static void btn_event_cb(lv_event_t *e) {
             return;
         }
         settings_set_chain(picked);
-        /* The entered amount outlives the picker, so switching from a 6-decimal
-         * token to an 18-decimal coin can leave a figure on screen that the new
-         * asset cannot carry. Clamp it to the new ceiling here — the alternative
-         * is a keypad showing 500.00 that refuses every further digit. */
+        /* The entered amount outlives the picker, so switching to an 18-decimal
+         * coin can leave a figure the new asset cannot carry. Clamp it to the
+         * new ceiling. */
         if (s_amount_cents > amount_cents_max()) {
             s_amount_cents = amount_cents_max();
         }
         close_modal();
-        /* The contract and payout strings belong to the chain, not to the
-         * widgets, so repoint them before the rebuild reads them — otherwise the
-         * Tx tab redraws with the previous asset's contract and, across the
-         * Ethereum/Tron divide, the previous network's payout address. */
+        /* Repoint the contract and payout strings before the rebuild reads
+         * them, or the Tx tab shows the previous asset's contract and, across
+         * the Ethereum/Tron divide, the previous network's payout address. */
         ui_refresh_addresses();
-        /* Rebuild whatever screen the picker was opened from — the amount
-         * screen's selector and ticker name the chain, and so do the Tx tab's
-         * asset row, contract address and fee rows. s_req_screen is that screen:
-         * a modal is drawn over the current one, never instead of it. The entered
-         * amount survives either way; it lives in s_amount_cents, not in the
-         * widgets. */
+        /* Rebuild the screen the picker was opened from (s_req_screen: a modal
+         * is drawn over it, never instead of it). The amount survives; it lives
+         * in s_amount_cents, not in the widgets. */
         request_screen(s_req_screen);
         return;
     }
@@ -1453,10 +340,9 @@ static void btn_event_cb(lv_event_t *e) {
     switch (act) {
         case ACT_CONFIRM:
             if (s_cb != NULL && s_amount_units > 0ULL) {
-                /* Before the callback, not after. What main does with the event
-                 * is its business — it may answer in a microsecond or after a
-                 * network round trip — and this screen must have stopped taking
-                 * taps by the time either can happen. */
+                /* Before the callback, not after: main may answer at once or
+                 * after a network round trip, and the screen must stop taking
+                 * taps before either. */
                 charge_set_busy();
                 s_cb(UI_EVENT_AMOUNT_CONFIRMED, s_amount_units);
             }
@@ -1465,9 +351,9 @@ static void btn_event_cb(lv_event_t *e) {
             if (s_cb != NULL) { s_cb(UI_EVENT_CONFIRM_CANCEL, 0); }
             break;
         case ACT_SEND:
-            /* The PIN is no longer hard-coded: collect it on the keypad screen
-             * before signing. Cleared explicitly, so a card read abandoned by any
-             * route cannot leave the payment keypad reporting the wrong event. */
+            /* Collect the PIN on the keypad screen before signing. Cleared
+             * explicitly, so a card read abandoned by any route cannot leave the
+             * payment keypad reporting the wrong event. */
             s_pin_for_card = false;
             request_screen(UI_SCREEN_PIN);
             break;
@@ -1491,10 +377,8 @@ static void btn_event_cb(lv_event_t *e) {
             if (s_cb != NULL) { s_cb(UI_EVENT_TX_RECHECK, 0); }
             break;
         case ACT_WELCOME_OK:
-            /* main answers by showing the code screen straight away, so there is
-             * nothing to fill here. Guarded all the same: request_screen only
-             * takes effect on the UI task's next pass, so a double tap could
-             * otherwise emit twice. */
+            /* Guarded: request_screen only takes effect on the UI task's next
+             * pass, so a double tap could otherwise emit twice. */
             if (!s_welcome_sent) {
                 s_welcome_sent = true;
                 if (s_cb != NULL) { s_cb(UI_EVENT_WELCOME_DONE, 0); }
@@ -1504,9 +388,8 @@ static void btn_event_cb(lv_event_t *e) {
             CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_admin_first),
                                   sizeof(s_admin_first));
             if (s_admin_for_portal) {
-                /* Refuse the browser rather than leave it polling "waiting for the
-                 * admin code" for as long as the page stays open. Back to the QR
-                 * screen, which is where the wizard was. */
+                /* Refuse the browser rather than leave it polling "waiting for
+                 * the admin code". Back to the QR screen in wizard mode. */
                 prov_auth_resolve(false);
                 s_admin_for_portal = false;
                 request_screen((prov_mode() == PROV_MODE_WIZARD)
@@ -1521,8 +404,8 @@ static void btn_event_cb(lv_event_t *e) {
             break;
         case ACT_TOUCH_CAL:
             settings_persist();
-            /* Keep what is in force, so a cancel — or an operator who can no
-             * longer hit anything — gets the working panel back. */
+            /* Keep what is in force, so a cancel — or an operator who cannot
+             * hit anything — gets the working panel back. */
             s_cal_prev[0] = s_cal_xmin; s_cal_prev[1] = s_cal_xmax;
             s_cal_prev[2] = s_cal_ymin; s_cal_prev[3] = s_cal_ymax;
             s_cal_step    = 0U;
@@ -1577,10 +460,9 @@ static void btn_event_cb(lv_event_t *e) {
             break;
         case ACT_PROV_OK:
         case ACT_PROV_NO:
-            /* The panel is the only place a payout address or a token contract can
-             * be accepted; the browser that proposed one only got as far as this
-             * modal. Commit (or drop) before closing, so it cannot outlive the
-             * card. */
+            /* The panel is the only place a payout address or token contract
+             * proposed by the browser can be accepted. Commit (or drop) before
+             * closing, so it cannot outlive the card. */
             (void)prov_pending_commit(act == ACT_PROV_OK);
             close_modal();
             break;
@@ -1609,13 +491,9 @@ static void btn_event_cb(lv_event_t *e) {
              * success — it reboots into the new slot. */
             close_modal();
             if (!ota_commit(true)) {
-                /* It said Install and nothing happened, which is exactly the
-                 * report this whole path came from. Two ways to get here now that
-                 * the portal closing no longer withdraws a staged image: the
-                 * terminal rebooted since the upload (staging is RAM), or the slot
-                 * refused to become bootable. Either way, say so — a card that
-                 * just closes is indistinguishable from a successful update that
-                 * silently did not happen. */
+                /* Nothing to install: the terminal rebooted since the upload
+                 * (staging is RAM), or the slot refused to become bootable. Say
+                 * so — a card that just closes looks like a silent success. */
                 request_prov_stop();
                 open_ota_gone();
             }
@@ -1638,3247 +516,6 @@ static void btn_event_cb(lv_event_t *e) {
 }
 
 /******************************************************************
- * 7. Widget helpers
- ******************************************************************/
-static lv_obj_t *make_button(lv_obj_t *parent, const char *label, lv_color_t bg,
-                             lv_color_t fg, lv_coord_t w, lv_coord_t h,
-                             lv_align_t align, lv_coord_t x, lv_coord_t y,
-                             BtnAction act, const lv_font_t *font) {
-    lv_obj_t *btn = lv_btn_create(parent);
-    lv_obj_set_size(btn, w, h);
-    lv_obj_align(btn, align, x, y);
-
-    /* Base look — FLAT fill (kill the default theme's gradient, which washes a
-     * dark fill toward light), no default border.
-     *
-     * BTN_RADIUS is 6, down from 10. At 44px tall a 10px radius is a quarter of
-     * the height gone to corner on each side, which is the shape a toy app uses;
-     * 6 still reads as softened but leaves the button a rectangle, which is what
-     * a terminal taking money should look like. The full-radius pill stays where
-     * it belongs — the asset selector and the chips, which are not actions. */
-    lv_obj_set_style_bg_color(btn, bg, LV_PART_MAIN);
-    lv_obj_set_style_bg_grad_dir(btn, LV_GRAD_DIR_NONE, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_radius(btn, BTN_RADIUS, LV_PART_MAIN);
-    lv_obj_set_style_border_width(btn, 0, LV_PART_MAIN);
-
-    /* Flat — no drop shadow (light, minimal look). */
-    lv_obj_set_style_shadow_width(btn, 0, LV_PART_MAIN);
-
-    /* Secondary (surface) buttons get a hairline border to lift them off the bg.
-     * (Compare the raw RGB565 value — lv_color_eq isn't in this LVGL build.) */
-    if (bg.full == COL_SURFACE.full) {
-        lv_obj_set_style_border_width(btn, 1, LV_PART_MAIN);
-        lv_obj_set_style_border_color(btn, COL_BORDER, LV_PART_MAIN);
-    }
-
-    /* Pressed feedback: darken the fill — except on the near-black COL_ACTION,
-     * where darker than #101F2E is no visible change at all, so it lightens
-     * instead. The press is the only thing a resistive panel says back. */
-    lv_obj_set_style_bg_color(btn,
-                              (bg.full == COL_ACTION.full)
-                                  ? lv_color_mix(lv_color_white(), bg, 40)
-                                  : lv_color_mix(lv_color_black(), bg, 70),
-                              LV_PART_MAIN | LV_STATE_PRESSED);
-
-    lv_obj_add_event_cb(btn, btn_event_cb, LV_EVENT_CLICKED,
-                        reinterpret_cast<void *>(static_cast<intptr_t>(act)));
-
-    lv_obj_t *lbl = lv_label_create(btn);
-    lv_label_set_text(lbl, label);
-    lv_obj_set_style_text_color(lbl, fg, LV_PART_MAIN);
-    lv_obj_set_style_text_font(lbl, font, LV_PART_MAIN);
-    lv_obj_center(lbl);
-    return btn;
-}
-
-static lv_obj_t *make_label(lv_obj_t *parent, const char *txt, lv_color_t color,
-                            const lv_font_t *font, lv_align_t align,
-                            lv_coord_t x, lv_coord_t y) {
-    lv_obj_t *lbl = lv_label_create(parent);
-    lv_label_set_text(lbl, txt);
-    lv_obj_set_style_text_color(lbl, color, LV_PART_MAIN);
-    lv_obj_set_style_text_font(lbl, font, LV_PART_MAIN);
-    lv_obj_align(lbl, align, x, y);
-    return lbl;
-}
-
-/* The sale's secondary button: white, with a hairline. Cancel on a payment
- * screen is the answer that costs nothing, so it should read as available
- * without competing with the one that commits — and an outline button is the
- * weakest thing that still reads as a button.
- *
- * The hairline is the whole of it: the fill is the card's own white, so the
- * border is what says where the button is. */
-static lv_obj_t *make_ghost_button(lv_obj_t *parent, const char *label,
-                                   lv_coord_t w, lv_align_t align,
-                                   lv_coord_t x, lv_coord_t y, BtnAction act) {
-    lv_obj_t *b = make_button(parent, label, COL_BG, COL_TEXT, w,
-                              CARD_BTN_H,
-                              align, x, y, act, &font_pjs_20_semibold);
-    lv_obj_set_style_border_width(b, 1, LV_PART_MAIN);
-    lv_obj_set_style_border_color(b, COL_BORDER, LV_PART_MAIN);
-    lv_obj_set_style_border_opa(b, LV_OPA_COVER, LV_PART_MAIN);
-    return b;
-}
-
-/* Thin horizontal rule under a screen title, for visual structure. */
-static void make_divider(lv_obj_t *parent, lv_coord_t y) {
-    lv_obj_t *d = lv_obj_create(parent);
-    lv_obj_set_size(d, SCR_W - 48, 2);
-    lv_obj_align(d, LV_ALIGN_TOP_MID, 0, y);
-    lv_obj_set_style_bg_color(d, COL_BORDER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(d, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(d, 1, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(d, 0, LV_PART_MAIN);
-    lv_obj_clear_flag(d, LV_OBJ_FLAG_SCROLLABLE);
-}
-
-/* Round icon disc with a glyph — the coin mark in a pill's left slot, and (at
- * CHIP_SZ) the network chip clipped to its corner. Never clickable: it sits
- * inside a pill button, and a clickable child would swallow that tap. */
-#define COIN_SZ   30
-#define CHIP_SZ   16
-#define BADGE_SZ  (COIN_SZ + 6)   /* room for the chip to hang off the corner */
-
-static lv_obj_t *make_glyph_disc(lv_obj_t *parent, const char *sym,
-                                 lv_color_t bg, lv_coord_t sz) {
-    lv_obj_t *d = lv_obj_create(parent);
-    lv_obj_remove_style_all(d);
-    lv_obj_set_size(d, sz, sz);
-    lv_obj_set_style_bg_color(d, bg, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(d, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-    lv_obj_clear_flag(d, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_clear_flag(d, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_t *l = lv_label_create(d);
-    lv_label_set_text(l, sym);
-    lv_obj_set_style_text_color(l, COL_BG, LV_PART_MAIN);
-    lv_obj_set_style_text_font(l, &font_inter_14, LV_PART_MAIN);
-    lv_obj_center(l);
-    return d;
-}
-
-/* Coin mark, optionally with a network chip on its bottom-right corner, the way
- * wallets badge a token with the chain it lives on — so "USDC" (Sepolia) and a
- * TRC-20 are told apart by the icon and not only by the subtitle.
- *
- * All four marks are real logos (tools/gen_chain_icons.py draws the TRON
- * triangle, the Tether stem and the Ethereum octahedron; Circle artwork is
- * Circle artwork). The chips carry their white ring in the bitmap.
- *
- * @p chip may be NULL — a bare network mark needs no chip of itself, and the
- * box then shrinks to COIN_SZ.
- *
- * The COIN is centred in the box and the chip hangs off the corner, so the box's
- * centre IS the mark's centre: every caller centres the box against a figure or
- * inside a pill and gets the mark centred, with no per-site nudge for the 6px the
- * chip adds. (It used to sit top-left, which drew the mark 3px high everywhere.)
- *
- * Returns the box for the caller to position; the children ride along. */
-static lv_obj_t *make_icon_box(lv_obj_t *parent, const lv_img_dsc_t *coin_src,
-                               const lv_img_dsc_t *chip_src) {
-    lv_obj_t *box = lv_obj_create(parent);
-    lv_obj_remove_style_all(box);
-    lv_obj_set_size(box, (chip_src != NULL) ? BADGE_SZ : COIN_SZ,
-                         (chip_src != NULL) ? BADGE_SZ : COIN_SZ);
-    lv_obj_clear_flag(box, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_clear_flag(box, LV_OBJ_FLAG_CLICKABLE);
-
-    lv_obj_t *coin = lv_img_create(box);
-    lv_img_set_src(coin, coin_src);
-    lv_obj_center(coin);
-
-    if (chip_src != NULL) {
-        lv_obj_t *chip = lv_img_create(box);
-        lv_img_set_src(chip, chip_src);
-        lv_obj_align(chip, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
-    }
-    return box;
-}
-
-/* The network's own mark, and the little chip that says which network a token
- * lives on. Indexed by pos_net_t, so the order here follows assets.h. The images
- * are the one asset fact that cannot live in that table — they are LVGL types,
- * and the table is kept host-testable. */
-static const lv_img_dsc_t *const NET_ICON[POS_NET__COUNT] = {
-    &icon_eth, &icon_poly, &icon_tron
-};
-static const lv_img_dsc_t *const NET_CHIP[POS_NET__COUNT] = {
-    &chip_eth, &chip_poly, &chip_tron
-};
-
-/* A token's own mark, by ticker. Two of them, so a lookup rather than a table —
- * and USDC is the fallback for the same reason the old switch defaulted to it. */
-static const lv_img_dsc_t *coin_icon(const char *ticker) {
-    return (strcmp(ticker, "USDT") == 0) ? &icon_usdt : &icon_usdc;
-}
-
-/* The selected asset. A native coin IS its network, so it carries no chip —
- * the chip only says "this token lives over there", which is meaningless
- * stacked on the network's own logo. */
-static lv_obj_t *make_asset_badge(lv_obj_t *parent, pos_chain_t chain) {
-    const pos_asset_t *a = pos_asset_of(chain);
-    const int n = (int)a->net;
-    /* The network's own coin wears its network mark and no chip: a chip says
-     * "this token, on that network", and there is no second thing to say when
-     * the asset IS the network. */
-    if (a->native) { return make_icon_box(parent, NET_ICON[n], NULL); }
-    return make_icon_box(parent, coin_icon(a->ticker), NET_CHIP[n]);
-}
-
-/* The asset selector itself: the badge above turned into a tappable pill, at the
- * right-hand end of the amount's row — mark, ticker, chevron.
- *
- * A flex row at LV_SIZE_CONTENT rather than three aligned children in a fixed box.
- * The ticker is 3 or 4 characters depending on the asset, so the pill's width is
- * not a number this file can know; LVGL measures it, the align keeps the right
- * edge pinned, and amount_row_place() reads back what it came out as. The old
- * fixed widths existed because the pill was wordless and every one of its children
- * was a known size. */
-static lv_obj_t *make_asset_button(lv_obj_t *parent) {
-    s_asset_btn = lv_btn_create(parent);
-    lv_obj_set_size(s_asset_btn, LV_SIZE_CONTENT, ASSET_BTN_H);
-    lv_obj_align(s_asset_btn, LV_ALIGN_TOP_RIGHT, ASSET_BTN_X, ASSET_BTN_Y);
-    lv_obj_set_style_bg_color(s_asset_btn, COL_SURFACE, LV_PART_MAIN);
-    lv_obj_set_style_bg_grad_dir(s_asset_btn, LV_GRAD_DIR_NONE, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(s_asset_btn, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_radius(s_asset_btn, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-    lv_obj_set_style_border_width(s_asset_btn, 0, LV_PART_MAIN);
-    lv_obj_set_style_shadow_width(s_asset_btn, 0, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(s_asset_btn,
-                              lv_color_mix(lv_color_black(), COL_SURFACE, 20),
-                              LV_PART_MAIN | LV_STATE_PRESSED);
-    lv_obj_add_event_cb(s_asset_btn, btn_event_cb, LV_EVENT_CLICKED,
-                        reinterpret_cast<void *>(
-                            static_cast<intptr_t>(ACT_NET_PICK)));
-
-    /* Pads and gap written out: the theme's button padding is what used to shove
-     * the badge on top of the chevron, and a flex row obeys them rather than
-     * ignoring them the way aligned children did. */
-    lv_obj_set_flex_flow(s_asset_btn, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(s_asset_btn, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_all(s_asset_btn, ASSET_BTN_PAD, LV_PART_MAIN);
-    lv_obj_set_style_pad_column(s_asset_btn, 5, LV_PART_MAIN);
-    lv_obj_clear_flag(s_asset_btn, LV_OBJ_FLAG_SCROLLABLE);
-
-    (void)make_asset_badge(s_asset_btn, settings_get_chain());
-    make_label(s_asset_btn, asset_name(), COL_TEXT, &font_inter_14_medium,
-               LV_ALIGN_DEFAULT, 0, 0);
-    s_asset_arrow = make_label(s_asset_btn, LV_SYMBOL_RIGHT, COL_DIM,
-                               &font_inter_14, LV_ALIGN_DEFAULT, 0, 0);
-    return s_asset_btn;
-}
-
-/* Chevron off once there is an amount to read, so the digits get its width back.
- * The ticker stays: it is the one thing on this row that says which money, and it
- * only becomes worth reading once there is a figure beside it. Hidden rather than
- * deleted, and the pill re-measures itself — right-aligned, so only the left edge
- * moves and the thing under the thumb stays where it was. */
-static void asset_btn_set_compact(bool compact) {
-    if (s_asset_arrow == NULL) { return; }   /* not the amount screen */
-    if (compact) { lv_obj_add_flag(s_asset_arrow, LV_OBJ_FLAG_HIDDEN); }
-    else         { lv_obj_clear_flag(s_asset_arrow, LV_OBJ_FLAG_HIDDEN); }
-}
-
-/* The bare network mark, for the network picker's own rows — no coin is chosen
- * at that step, so there is nothing to badge it with. */
-static lv_obj_t *make_net_badge(lv_obj_t *parent, pos_net_t net) {
-    return make_icon_box(parent, NET_ICON[(int)net], NULL);
-}
-
-/* "Tap here" mark — the contactless waves and a hand presenting a card, in an
- * oval. The artwork is assets/contactless-icon.png; tools/gen_tap_icon.py
- * downsamples it into main/tap_icon.c, so change the asset and re-run the
- * script.
- *
- * AN ASSET RATHER THAN GEOMETRY, after several passes the other way. The mark
- * was authored here from rectangles and arcs, then from measurements taken off
- * a reference, and the hand sank both: at the size this box allows it came out
- * as four capsules pretending to be knuckles. A drawn hand is what the
- * composition needs and what a generator this size cannot give it.
- *
- * ON PROVENANCE, because "just use a public-domain icon" is a trap worth
- * writing down. Two separate rights are in play and a PD licence settles only
- * one of them:
- *
- *   Copyright — any particular drawing of this composition is somebody's work.
- *   This one is UXWing's, whose terms allow personal, commercial and client
- *   use without attribution. Not a public-domain dedication: a licence, which
- *   the site can change, so the file in this tree is the copy those terms
- *   applied to. (assets/carte.png was this mark for one revision, arrived with
- *   no licence in it at all, and is no longer referenced.)
- *
- *   Trademark — EMVCo's Contactless Indicator is the four bare arcs, and no
- *   copyright licence, CC0 included, grants anything against a mark. A "public
- *   domain" contactless icon is therefore no safer to ship than this one, and
- *   drawing the arcs by hand was never safer either. What answers this question
- *   is the product: a terminal that takes contactless payments is what licenses
- *   the indicator, usually through scheme certification.
- *
- * ALPHA_8BIT: one alpha byte per pixel, coloured at draw time from the object's
- * img_recolor style. LVGL's fast path for that format does not support angle or
- * zoom — set either and it falls back to a path with no decoded data and draws
- * nothing — so this must stay an untransformed image. Aligned TOP_MID at @p y,
- * occupying TAP_MARK_W x TAP_MARK_H.
- *
- * SIZED BY THE ARTWORK, not by this file: the generator crops the asset to its
- * ink, scales it to the height PX_H asks for, and asserts the width that falls
- * out still fits the card. Nothing lays out against these two — the image
- * carries its own size, and they are here to be read, not to be set. The one
- * thing that DOES depend on them is the y this mark is placed at, which keeps
- * it centred in its band: see build_card_wait(). */
-#define TAP_MARK_W    109
-#define TAP_MARK_H    65
-
-/* The mark's ink, and the one place to change it. The rule, not the value:
- * THIS TRACKS THE ARTWORK'S WEIGHT, and it has moved both ways.
- *
- * Solid strokes get COL_TITLE. A 96px block of solid line art on a card whose
- * text is otherwise grey reads as a separate object dropped onto the screen;
- * grey pulls it back into the ramp. The outline version — two hairlines per
- * stroke around a hollow middle — took COL_TEXT instead, because at a third of
- * the ink grey hairlines landed where COL_DIM always would have: faint enough
- * to read as disabled, which is wrong for the one thing on the screen the
- * customer is being asked to act on.
- *
- * The mark is back to solid strokes, and so is this — and then to black. Grey
- * pulled it into the ramp as intended and took the mark with it: at 128px of
- * hairline artwork, #424242 over a pale-sky ground is a washed-out mark rather
- * than a quiet one. The amount keeps full black either way, and so does the one
- * thing on the screen the customer is being asked to act on. */
-#define COL_TAP_MARK  COL_TEXT
-
-static void make_tap_mark(lv_obj_t *parent, lv_coord_t y) {
-    lv_obj_t *img = lv_img_create(parent);
-    lv_img_set_src(img, &tap_icon);
-    lv_obj_clear_flag(img, LV_OBJ_FLAG_CLICKABLE);
-    /* The mask carries shape only; this is where its colour comes from. */
-    lv_obj_set_style_img_recolor(img, COL_TAP_MARK, LV_PART_MAIN);
-    lv_obj_set_style_img_recolor_opa(img, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_align(img, LV_ALIGN_TOP_MID, 0, y);
-}
-
-/* Selector row in the style of button_style.png: full-radius grey pill, round
- * icon on the left, title over a dim subtitle, chevron on the right. The icon
- * is left to the caller (asset badge or glyph disc):
- *
- *   lv_obj_t *p = make_pill(...);
- *   lv_obj_align(make_asset_badge(p, chain), LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
- *
- * @p w is in pixels on purpose — lv_pct() cannot be measured for the subtitle. */
-#define PILL_H       52
-#define PILL_TEXT_X  52          /* clears the BADGE_SZ icon at PILL_ICON_X */
-#define PILL_ICON_X  10
-/* Right-hand reserve for the chevron (drawn at -14, ~8px wide). Was 30, which
- * ate enough of a 196px pill to dot-elide "Tron Nile TRC-20"; 24 clears the
- * glyph and gives the subtitle the room back. */
-#define PILL_TEXT_PAD_R  24
-
-static lv_obj_t *make_pill(lv_obj_t *parent, const char *title, const char *sub,
-                           lv_coord_t w, lv_coord_t y, BtnAction act,
-                           bool leaf = false) {
-    lv_obj_t *btn = lv_btn_create(parent);
-    lv_obj_set_size(btn, w, PILL_H);
-    lv_obj_align(btn, LV_ALIGN_TOP_MID, 0, y);
-    lv_obj_set_style_bg_color(btn, COL_SURFACE, LV_PART_MAIN);
-    lv_obj_set_style_bg_grad_dir(btn, LV_GRAD_DIR_NONE, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_radius(btn, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-    lv_obj_set_style_border_width(btn, 0, LV_PART_MAIN);
-    lv_obj_set_style_shadow_width(btn, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(btn, 0, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(btn,
-                              lv_color_mix(lv_color_black(), COL_SURFACE, 20),
-                              LV_PART_MAIN | LV_STATE_PRESSED);
-    lv_obj_add_event_cb(btn, btn_event_cb, LV_EVENT_CLICKED,
-                        reinterpret_cast<void *>(static_cast<intptr_t>(act)));
-
-    if (sub != NULL) {
-        make_label(btn, title, COL_TEXT, &font_pjs_20_medium,
-                   LV_ALIGN_TOP_LEFT, PILL_TEXT_X, 7);
-        lv_obj_t *sl = make_label(btn, sub, COL_DIM, &font_inter_14,
-                                  LV_ALIGN_TOP_LEFT, PILL_TEXT_X, 30);
-        /* A leaf row's subtitle is left at LV_SIZE_CONTENT — it is one of our
-         * own fixed strings and it must be readable in full. Only the rows that
-         * open something get a width cap, because those show an SSID, which can
-         * be 32 characters and has to elide somewhere. */
-        if (!leaf) {
-            lv_obj_set_width(sl, w - PILL_TEXT_X - PILL_TEXT_PAD_R);
-            lv_label_set_long_mode(sl, LV_LABEL_LONG_DOT);
-        }
-    } else {
-        make_label(btn, title, COL_TEXT, &font_pjs_20_medium,
-                   LV_ALIGN_LEFT_MID, PILL_TEXT_X, 0);
-    }
-    /* The chevron means "this opens something". A leaf row is the choice
-     * itself, so it gets no chevron — and hands the space to the subtitle. */
-    if (!leaf) {
-        make_label(btn, LV_SYMBOL_RIGHT, COL_DIM, &font_inter_14,
-                   LV_ALIGN_RIGHT_MID, -14, 0);
-    }
-    return btn;
-}
-
-/* A read-only row on the settings tabs: dim caption over its value, as one
- * flex item. The tabs are flex columns (see build_settings), so a row's
- * position is where it was appended and not a y this file works out — which is
- * what the fourteen hand-computed offsets here used to be, every one of them
- * re-derived whenever a row above it wrapped to a second line or disappeared on
- * Tron. Returns the value label, for the callers that update it in place.
- *
- * Values wrap by default: these are addresses. An SSID wants LV_LABEL_LONG_DOT
- * instead, which the caller sets — 32 arbitrary characters over two lines push
- * the rows below them about for no gain. */
-static lv_obj_t *make_field(lv_obj_t *parent, const char *caption,
-                            const char *value, lv_color_t col = COL_TEXT) {
-    lv_obj_t *box = lv_obj_create(parent);
-    lv_obj_remove_style_all(box);
-    lv_obj_set_size(box, TAB_W, LV_SIZE_CONTENT);
-    lv_obj_clear_flag(box, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_flex_flow(box, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(box, 4, LV_PART_MAIN);
-
-    make_label(box, caption, COL_DIM, &font_inter_14,
-               LV_ALIGN_DEFAULT, 0, 0);
-    lv_obj_t *v = make_label(box, value, col, &font_inter_14_medium,
-                             LV_ALIGN_DEFAULT, 0, 0);
-    lv_obj_set_width(v, TAB_W);
-    lv_label_set_long_mode(v, LV_LABEL_LONG_WRAP);
-    return v;
-}
-
-static void sheet_y_cb(void *obj, int32_t v) {
-    lv_obj_set_y(static_cast<lv_obj_t *>(obj), static_cast<lv_coord_t>(v));
-}
-
-/* Full-screen opaque panel parked one screen-height below the fold.
- *
- * SQUARE CORNERS, and it had a 16px radius until the screen under it stopped
- * matching. A sheet that comes to rest flush with all four screen edges has
- * nowhere to put a rounded corner except over the page behind it, so each
- * corner is a hole: while this sheet was painted with the sale flow's ramp the
- * hole showed the same ramp and nobody saw it, and the moment the admin screens
- * went white it was four blue notches at the screen's corners. The rise is what
- * reads as a sheet; the corners were never doing that work. */
-static lv_obj_t *sheet_open(void) {
-    lv_obj_t *sh = lv_obj_create(lv_scr_act());
-    lv_obj_remove_style_all(sh);   /* radius 0 among the rest — see above */
-    lv_obj_set_size(sh, SCR_W, SCR_H);
-    lv_obj_set_pos(sh, 0, SCR_H);
-    lv_obj_set_style_bg_color(sh, COL_BG, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(sh, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_clear_flag(sh, LV_OBJ_FLAG_SCROLLABLE);
-    /* Clickable (the LVGL default) on purpose: it must swallow taps meant for
-     * the screen it is covering, which is still fully built underneath. */
-    return sh;
-}
-
-static void sheet_slide_in(lv_obj_t *sh) {
-    lv_anim_t a;
-    lv_anim_init(&a);
-    lv_anim_set_var(&a, sh);
-    lv_anim_set_exec_cb(&a, sheet_y_cb);
-    lv_anim_set_values(&a, SCR_H, 0);
-    lv_anim_set_time(&a, 260);
-    /* Decelerating, like every sheet anybody has used on a phone — a linear
-     * slide reads as mechanical at this size. */
-    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
-    lv_anim_start(&a);
-}
-
-/* Scrub a secret field's heap strings before lv_obj_clean frees them unwiped:
- * the real text (pwd_tmp while masked, the label while revealed) and the label,
- * which holds the last digit in clear during its echo. Copies LVGL's per-digit
- * reallocs left behind are out of reach. */
-static void code_field_wipe(lv_obj_t *ta) {
-    if (ta == NULL) { return; }
-    char *t = const_cast<char *>(lv_textarea_get_text(ta));
-    if (t != NULL) { CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(t), strlen(t)); }
-    char *l = lv_label_get_text(lv_textarea_get_label(ta));
-    if (l != NULL) { CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(l), strlen(l)); }
-}
-
-static void clear_screen(void) {
-    lv_obj_t *scr = lv_scr_act();
-    code_field_wipe(s_pin_ta);
-    code_field_wipe(s_admin_ta);
-    code_field_wipe(s_wifi_pass_ta);
-    lv_obj_clean(scr);
-    lv_obj_set_style_bg_color(scr, COL_BG, LV_PART_MAIN);
-    /* build_page() leaves a gradient on the screen, and the screen object
-     * outlives the screens built on it — without this the ramp follows onto
-     * the flat white pages. */
-    lv_obj_set_style_bg_grad_dir(scr, LV_GRAD_DIR_NONE, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, LV_PART_MAIN);
-    s_amount_label = NULL;
-    s_amount_cents_label = NULL;
-    s_amount_row   = NULL;
-    s_asset_btn    = NULL;
-    s_asset_arrow  = NULL;
-    s_charge_btn   = NULL;
-    s_charge_busy  = false;   /* the button the flag was about is gone */
-    s_clock_lbl    = NULL;
-    s_pin_ta       = NULL;   /* deleted by lv_obj_clean — drop the dangling ref */
-    s_pin_eye_lbl  = NULL;
-    s_wifi_pass_ta = NULL;
-    s_wifi_eye_lbl   = NULL;
-    s_boot_step_lbl  = NULL;
-    s_tx_info_lbl    = NULL;
-    s_cal_countdown  = NULL;
-    s_page_card      = NULL;
-    s_fee_max_lbl    = NULL;
-    s_fee_prio_lbl   = NULL;
-    s_admin_ta       = NULL;
-    s_admin_note_lbl = NULL;
-    s_reset_btn    = NULL;
-    s_close_btn    = NULL;
-}
-
-/* The UTC offset the clock adds, cached. settings_get_tz_offset_min() opens
- * NVS, and clock_refresh() runs every three seconds — the same argument the
- * touch calibration makes about indev_read. Reloaded when the config page
- * stores a new one, through ui_clock_changed(). */
-static int16_t       s_tz_off_min = 0;
-static uint8_t       s_tz_dst     = 0;
-static volatile bool s_tz_dirty   = true;
-
-/**
- * @brief Retext the band's clock from the system clock plus the stored offset.
- *
- * "--:--" until the time is real. SNTP sets it a few seconds into boot, and
- * before that the clock reads 1970 — a till showing a confident wrong time is
- * worse than one admitting it has none, and the 1970 case is exactly what a
- * terminal that came up without an uplink would display all day.
- *
- * gmtime_r on an already-offset instant rather than localtime_r on a timezone:
- * tzset and localtime pull in newlib's timezone machinery, which measured 64 KB
- * of the app slot. DST comes from civil_local_offset_min() instead — the stored
- * region's rule applied to the stored standard offset.
- *
- * Minute resolution, so the 3 s status timer that drives the Wi-Fi mark is
- * ample and no second timer is needed.
- */
-static void clock_refresh(void) {
-    if (s_clock_lbl == NULL) { return; }
-
-    if (s_tz_dirty) {
-        s_tz_dirty   = false;
-        s_tz_off_min = settings_get_tz_offset_min();
-        s_tz_dst     = settings_get_tz_dst();
-    }
-
-    const time_t utc = time(NULL);
-    /* Nov 2023, comfortably after any build and before any real sale. Tested on
-     * the unshifted instant: whether the clock has been set is a question about
-     * SNTP, and a -12:00 offset would drag a just-set clock back under a
-     * threshold applied after it. */
-    if (utc < (time_t)1700000000) {
-        lv_label_set_text(s_clock_lbl, "--:--");
-        return;
-    }
-
-    const time_t local = utc + ((time_t)civil_local_offset_min(
-                                    utc, s_tz_off_min, s_tz_dst) * 60);
-    struct tm    tmv;
-    if (gmtime_r(&local, &tmv) == NULL) {
-        lv_label_set_text(s_clock_lbl, "--:--");
-        return;
-    }
-    char b[8];
-    (void)snprintf(b, sizeof(b), "%02d:%02d", tmv.tm_hour, tmv.tm_min);
-    lv_label_set_text(s_clock_lbl, b);
-}
-
-/**
- * @brief Lay the sale-flow chrome and return the white card to build into.
- *
- * @param step Which step of the sale this is (PAY_STEP_*). Nothing draws it
- *        since the progress rail was removed; kept because the callers already
- *        know it and a later indicator would want it again.
- * @return The card. Children placed in it use ITS coordinates, so (0,0) is the
- *         card's top-left corner — CARD_W x CARD_H, not the screen.
- */
-/* The page ramp, on whatever is acting as the page: the screen on the sale
- * flow and the admin panel, the rising sheet when the admin code is typed into
- * one. Anything laid over it that wants the ramp to show through has to say so
- * — LVGL's own defaults are opaque, which is what the transparency overrides
- * in build_settings() are for. */
-static void paint_page(lv_obj_t *obj) {
-    lv_obj_set_style_bg_color(obj, COL_PAGE, LV_PART_MAIN);
-    lv_obj_set_style_bg_grad_color(obj, COL_PAGE_GRAD, LV_PART_MAIN);
-    lv_obj_set_style_bg_grad_dir(obj, LV_GRAD_DIR_VER, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, LV_PART_MAIN);
-}
-
-/* There is deliberately no paint_panel() beside this. The admin panel is white, and white is what clear_screen() already leaves
- * — including resetting this ramp's gradient direction, which outlives the
- * screen it was set on. A function to paint white over white is a line of code
- * that can only ever go wrong. */
-
-/* The sale flow's white card, on @p parent (the screen, or the admin sheet). */
-static lv_obj_t *make_card(lv_obj_t *parent) {
-    lv_obj_t *card = lv_obj_create(parent);
-    lv_obj_remove_style_all(card);
-    lv_obj_set_size(card, CARD_W, CARD_H);
-    lv_obj_set_pos(card, CARD_X, CARD_Y);
-    lv_obj_set_style_bg_color(card, COL_BG, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_radius(card, 14, LV_PART_MAIN);
-    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
-    return card;
-}
-
-/* @p band false for the first-run setup screens that borrow the card: no
- * clock and no home bar. Nothing is configured yet — the clock would read
- * --:-- and the swipe the bar advertises is off anywhere but the amount screen. */
-static lv_obj_t *build_page(int step, bool band = true) {
-    (void)step;   /* ponytail: no progress indicator on the band any more */
-    clear_screen();
-    paint_page(lv_scr_act());
-
-    /* The clock, left end of the status band. Built here so it lives exactly
-     * where the band does — on the sale flow — and retexted by the status timer
-     * rather than by rebuilding the screen every minute. */
-    if (band) {
-        s_clock_lbl = make_label(lv_scr_act(), "", COL_TITLE,
-                                 &font_inter_14_medium,
-                                 LV_ALIGN_TOP_LEFT, CLOCK_X, CLOCK_Y);
-        clock_refresh();
-    }
-
-    lv_obj_t *card = make_card(lv_scr_act());
-
-    /* The handle the admin panel is behind. Drawn rather than merely implied:
-     * a gesture with nothing on screen saying it exists is a gesture nobody
-     * finds, and this one replaced a button that was visibly there. */
-    if (band) {
-        lv_obj_t *home = lv_obj_create(lv_scr_act());
-        lv_obj_remove_style_all(home);
-        lv_obj_set_size(home, 84, 5);
-        lv_obj_align(home, LV_ALIGN_BOTTOM_MID, 0, -9);
-        lv_obj_set_style_radius(home, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(home, LV_OPA_COVER, LV_PART_MAIN);
-        lv_obj_set_style_bg_color(home, COL_HOME_BAR, LV_PART_MAIN);
-    }
-
-    s_page_card = card;
-    return card;
-}
-
-/******************************************************************
- * 7b. Settings — full-screen page (swipe up from the bottom edge)
- ******************************************************************/
-/* Brightness only. It is the one setting this page still changes — the fee caps
- * moved to the config page, which writes them itself. */
-static void settings_persist(void) {
-    settings_set_brightness(s_brightness);
-}
-
-static void brightness_event_cb(lv_event_t *e) {
-    lv_obj_t *sl  = lv_event_get_target(e);
-    lv_obj_t *lbl = static_cast<lv_obj_t *>(lv_event_get_user_data(e));
-    s_brightness  = static_cast<uint8_t>(lv_slider_get_value(sl));
-    backlight_set_pct(s_brightness);
-    if (lbl != NULL) {
-        char b[8];
-        snprintf(b, sizeof(b), "%u%%", static_cast<unsigned>(s_brightness));
-        lv_label_set_text(lbl, b);
-    }
-}
-
-/* Show the Reset button (and shrink Close) only on the About tab. Driven by the
- * tab index rather than by an event, so the rebuild path can call it directly
- * instead of faking a tab change. */
-static void settings_bottom_bar(uint16_t tab) {
-    const bool about = (tab == TAB_ABOUT);
-    if (s_reset_btn != NULL) {
-        if (about) { lv_obj_clear_flag(s_reset_btn, LV_OBJ_FLAG_HIDDEN); }
-        else       { lv_obj_add_flag(s_reset_btn, LV_OBJ_FLAG_HIDDEN); }
-    }
-    if (s_close_btn != NULL) {
-        if (about) {
-            lv_obj_set_width(s_close_btn, 108);
-            lv_obj_align(s_close_btn, LV_ALIGN_BOTTOM_RIGHT, -10, ACT_BTN_Y);
-        } else {
-            lv_obj_set_width(s_close_btn, 232);
-            lv_obj_align(s_close_btn, LV_ALIGN_BOTTOM_MID, 0, ACT_BTN_Y);
-        }
-    }
-}
-
-static void tab_change_cb(lv_event_t *e) {
-    lv_obj_t *tabbar = lv_event_get_target(e);
-    /* Only a real press names a button; anything else reports
-     * LV_BTNMATRIX_BTN_NONE (0xFFFF), which must not be mistaken for a tab. */
-    uint16_t sel = lv_btnmatrix_get_selected_btn(tabbar);
-    if (sel >= SETTINGS_TAB_COUNT) { return; }
-    s_settings_tab = sel;
-    settings_bottom_bar(sel);
-}
-
-static void build_settings(void) {
-    clear_screen();   /* white, full screen — see the note by paint_page() */
-
-    lv_obj_t *tv = lv_tabview_create(lv_scr_act(), LV_DIR_TOP, 42);
-    lv_obj_set_size(tv, SCR_W, SCR_H - 54);
-    lv_obj_align(tv, LV_ALIGN_TOP_MID, 0, 0);
-    /* Tabview and tab bar are the theme's (section 3a) — the underline this
-     * used to draw by hand is now a filled pill, on every tabview.
-     *
-     * Both are painted COL_BG by that theme, and the tabview covers the whole
-     * screen, so the ramp is behind three opaque layers: the tabview, the tab
-     * bar and each page. All three go transparent here rather than in the
-     * theme, which every other tabview this firmware might add still wants
-     * white. */
-    lv_obj_set_style_bg_opa(tv, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(lv_tabview_get_tab_btns(tv), LV_OPA_TRANSP,
-                            LV_PART_MAIN);
-
-    lv_obj_t *t_screen = lv_tabview_add_tab(tv, "Screen");
-    lv_obj_t *t_wifi   = lv_tabview_add_tab(tv, "Wi-Fi");
-    lv_obj_t *t_tx     = lv_tabview_add_tab(tv, "Tx");
-    lv_obj_t *t_about  = lv_tabview_add_tab(tv, "About");
-    lv_obj_t *pages[4] = { t_screen, t_wifi, t_tx, t_about };
-    for (int i = 0; i < 4; i++) {
-        lv_obj_set_style_bg_opa(pages[i], LV_OPA_TRANSP, LV_PART_MAIN);
-        lv_obj_set_style_border_width(pages[i], 0, LV_PART_MAIN);
-        lv_obj_set_style_pad_all(pages[i], TAB_PAD, LV_PART_MAIN);
-        lv_obj_clear_flag(pages[i], LV_OBJ_FLAG_SCROLLABLE);
-    }
-    /* About and Tx can overflow — let them scroll vertically with a scrollbar. */
-    lv_obj_t *scrollable[2] = { t_about, t_tx };
-    for (int i = 0; i < 2; i++) {
-        lv_obj_add_flag(scrollable[i], LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_set_scroll_dir(scrollable[i], LV_DIR_VER);
-        lv_obj_set_scrollbar_mode(scrollable[i], LV_SCROLLBAR_MODE_AUTO);
-    }
-    /* Three of the four tabs are a stack of rows, so they are flex columns and
-     * every row below is appended rather than placed. What this replaces is the
-     * point: fourteen hand-computed y offsets, two of them conditional on
-     * whether the chain has gas fees and whether the last update rolled back,
-     * plus align_to fixups for the rows that wrap. Nearly every comment in this
-     * function used to be about a label that overprinted the one under it.
-     *
-     * Screen keeps its two offsets: a caption, a percentage aligned to the
-     * opposite edge and a slider is a layout, not a stack of rows. */
-    lv_obj_t *columns[3] = { t_wifi, t_tx, t_about };
-    for (int i = 0; i < 3; i++) {
-        lv_obj_set_flex_flow(columns[i], LV_FLEX_FLOW_COLUMN);
-        lv_obj_set_style_pad_row(columns[i], 14, LV_PART_MAIN);
-    }
-    /* About is centred on its logo; the other two read left. */
-    lv_obj_set_flex_align(t_about, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
-
-    /* ── Screen tab: brightness ── */
-    make_label(t_screen, "Brightness", COL_TEXT, &font_inter_14_medium,
-               LV_ALIGN_TOP_LEFT, 0, 0);
-    lv_obj_t *pct = make_label(t_screen, "", COL_DIM, &font_inter_14,
-                               LV_ALIGN_TOP_RIGHT, 0, 0);
-    lv_obj_t *sl = lv_slider_create(t_screen);
-    lv_obj_set_width(sl, 196);
-    lv_obj_align(sl, LV_ALIGN_TOP_MID, 0, 32);
-    lv_slider_set_range(sl, 10, 100);   /* never fully dark */
-    lv_slider_set_value(sl, s_brightness, LV_ANIM_OFF);
-    lv_obj_set_style_bg_color(sl, COL_BORDER, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(sl, COL_ACCENT, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(sl, COL_ACCENT, LV_PART_KNOB);
-    lv_obj_add_event_cb(sl, brightness_event_cb, LV_EVENT_VALUE_CHANGED, pct);
-
-    char b[8];
-    snprintf(b, sizeof(b), "%u%%", static_cast<unsigned>(s_brightness));
-    lv_label_set_text(pct, b);
-
-    /* The other thing about this screen that varies per unit. Resistive
-     * overlays are not identical board to board, and the answer used to be
-     * "edit ui.cpp and rebuild" — which is not an answer an operator has. */
-    lv_obj_t *calpill = make_pill(t_screen, "Touch", "Calibrate the panel",
-                                  TAB_W, 76, ACT_TOUCH_CAL);
-    lv_obj_align(make_glyph_disc(calpill, LV_SYMBOL_EDIT, COL_ACCENT, COIN_SZ),
-                 LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
-
-    /* ── Wi-Fi tab: show the currently configured network, then a Scan button ── */
-    char cur_ssid[33] = {0};
-    char cur_pass[65];
-    bool have_wifi = settings_get_wifi(cur_ssid, sizeof(cur_ssid),
-                                       cur_pass, sizeof(cur_pass));
-    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(cur_pass), sizeof(cur_pass));
-
-    /* Read-only, and a caption/value pair rather than a pill: the network is set
-     * from the Configure page below, so a grey pill with a chevron — this page's
-     * own "tap me" — was an invitation to type a venue passphrase on a resistive
-     * panel, which is the thing the browser flow exists to avoid. The on-device
-     * picker still exists for the one case that cannot go through a browser: the
-     * terminal cannot re-join and raises it by itself (see main's wifi_picker). */
-    lv_obj_t *wl = make_field(t_wifi, "Network",
-                              have_wifi ? cur_ssid : "Not configured");
-    /* An SSID is 32 arbitrary characters; elide it on real glyph widths. */
-    lv_label_set_long_mode(wl, LV_LABEL_LONG_DOT);
-
-    /* Link quality of the live association (snapshot at settings open),
-     * as a caption/value pair like every other field. */
-    int8_t rssi = 0;
-    if (net_wifi_rssi(&rssi)) {
-        const char *qual = (rssi >= -50) ? "Excellent" :
-                           (rssi >= -60) ? "Good"      :
-                           (rssi >= -70) ? "Fair"      : "Weak";
-        char sig[32];
-        snprintf(sig, sizeof(sig), "%s (%d dBm)", qual,
-                 static_cast<int>(rssi));
-        (void)make_field(t_wifi, "Signal", sig);
-    }
-
-    /* Everything else lives in a browser, and this is the row that gets you
-     * there: it raises the config page and shows a QR code to scan. Same row on
-     * the About tab, because "update the firmware" and "change the addresses" are
-     * two things on one page and an operator should reach it from either. */
-    /* Subtitle held to make_pill's cap, like the Update row on the About tab:
-     * TAB_W - PILL_TEXT_X - PILL_TEXT_PAD_R = 140px, and font_inter_14 renders
-     * "Scan to open in a browser" at 184px — so it arrived dot-elided, which on
-     * the row that explains the feature reads as a bug. This is 131px, and it
-     * says where the operator ends up rather than naming a QR code they have not
-     * been shown yet; the screen this opens is what shows them the code. Reads as
-     * a pair with the About tab's "From a browser". */
-    lv_obj_t *cpill = make_pill(t_wifi, "Configure", "Open in a browser",
-                                TAB_W, 0, ACT_PORTAL);
-    lv_obj_align(make_glyph_disc(cpill, LV_SYMBOL_SETTINGS, COL_ACCENT, COIN_SZ),
-                 LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
-
-    /* ── Transaction tab: which asset, what it will call, where the funds go and
-     * what gas it will pay.
-     *
-     * All read-only. The stored settings — contract, payout address, fee caps —
-     * are proposed from the config page and accepted on this panel, because a
-     * resistive screen is the wrong place to retype an address. The selector at
-     * the top picks which asset's rows to show (s_view_chain); what a sale is
-     * charged in is chosen on the amount row, not here. ── */
-    const bool tron = pos_chain_is_tron(s_view_chain);
-    ui_refresh_addresses_for(static_cast<uint8_t>(s_view_chain));
-    /* Ticker over network, not "Asset" over "USDC on Ethereum Sepolia": that line
-     * measured ~178px against make_pill's 140px cap, so the row that says which
-     * chain the terminal is charging on arrived dot-elided as "USDC on Ethereum
-     * Sep...". Split across the pill's two lines both fit at full length, and the
-     * badge beside them already says "asset". */
-    lv_obj_t *apill = make_pill(t_tx, asset_name(s_view_chain),
-                                asset_network(s_view_chain),
-                                TAB_W, 0, ACT_NET_PICK);
-    lv_obj_align(make_asset_badge(apill, s_view_chain),
-                 LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
-
-    (void)make_field(t_tx, asset_caption(s_view_chain),
-                     (s_addr_usdc != NULL) ? s_addr_usdc : "-");
-    (void)make_field(t_tx, "Send to",
-                     (s_addr_dest != NULL) ? s_addr_dest : "-");
-
-    /* Say out loud when the recipient is the compile-time one rather than an
-     * address somebody chose. This is the row an operator checks to answer "where
-     * does my money go", and "the default" is a different answer from "mine".
-     * The address above is still shown, because it is what the row is for — but
-     * the sale is refused at the confirm step, so say that and not "in use". */
-    if (!settings_has_payout(tron)) {
-        lv_obj_t *w = make_label(t_tx, "Not configured - this terminal cannot "
-                                       "take payments. Set it from the "
-                                       "Configure page.",
-                                 COL_DANGER, &font_inter_14,
-                                 LV_ALIGN_DEFAULT, 0, 0);
-        lv_obj_set_width(w, TAB_W);
-        lv_label_set_long_mode(w, LV_LABEL_LONG_WRAP);
-    }
-
-    /* The gas the terminal is willing to pay, reported as two more read-only rows.
-     * Tron has no such setting at all — a transfer there is paid in bandwidth and
-     * the token's energy cap is compile-time — so on Tron the rows are simply not
-     * there, rather than a paragraph explaining an absent control. */
-    if (!tron) {
-        char fee[16];
-        snprintf(fee, sizeof(fee), "%u",
-                 static_cast<unsigned>(settings_get_max_fee_gwei()));
-        s_fee_max_lbl = make_field(t_tx, "Max fee (Gwei)", fee);
-
-        snprintf(fee, sizeof(fee), "%u",
-                 static_cast<unsigned>(settings_get_priority_fee_gwei()));
-        s_fee_prio_lbl = make_field(t_tx, "Priority fee (Gwei)", fee);
-    }
-
-    /* The way out of a read-only tab. Without it the fees above are two numbers an
-     * operator can see and has no way to reach — "set it from the Configure page"
-     * is only an instruction if the page is one tap from the rows it is about.
-     * Same action as the Wi-Fi tab's row and the About tab's Update: one config
-     * page, reachable from wherever somebody went looking for the setting.
-     *
-     * The subtitle names the fees on the chains that have them, because that is
-     * what this row was added for; on Tron there are none, so it falls back to
-     * saying where it goes. Both sit inside make_pill's 140px subtitle cap — "Set
-     * fees in a browser" does not, and arrived dot-elided. */
-    lv_obj_t *tpill = make_pill(t_tx, "Configure",
-                                tron ? "Open in a browser" : "Fees in a browser",
-                                TAB_W, 0, ACT_PORTAL);
-    lv_obj_align(make_glyph_disc(tpill, LV_SYMBOL_SETTINGS, COL_ACCENT, COIN_SZ),
-                 LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
-
-    /* ── About tab: small C logo, name, version, info ── */
-    lv_obj_t *blogo = lv_img_create(t_about);
-    lv_img_set_src(blogo, &logo_small);   /* 40px dedicated image */
-
-    make_label(t_about, "cryptnox-pos", COL_TEXT, &font_pjs_20_medium,
-               LV_ALIGN_DEFAULT, 0, 0);
-    /* Straight out of the running image's header rather than a #define, so that
-     * after an update this reads as the firmware that is actually executing. */
-    char about_ver[OTA_VERSION_SHOWN_MAX];
-    make_label(t_about,
-               ota_version_display(ota_running_version(), about_ver,
-                                   sizeof(about_ver)),
-               COL_DIM, &font_inter_14, LV_ALIGN_DEFAULT, 0, 0);
-
-    /* An update that installed, booted and was then reverted leaves this tab
-     * reading the old version with nothing to say why — which is how "I updated
-     * it and nothing happened" gets reported about a mechanism that worked
-     * exactly as designed. One red line, under the version it is about. It clears
-     * itself: the next update overwrites the slot this verdict is read from.
-     *
-     * The rows below shift down by the line's height when it is there, rather
-     * than the line being squeezed into the gap: this tab scrolls, so there is
-     * somewhere for them to go, and a warning overlapping the Update button is
-     * worse than no warning. The column does that shift by itself now — it was
-     * the y_update/y_about pair of ternaries. */
-    if (ota_last_update_failed()) {
-        make_label(t_about, "Last update rolled back", COL_DANGER,
-                   &font_inter_14, LV_ALIGN_DEFAULT, 0, 0);
-    }
-
-    /* The update row. Tapping it opens the config page on the venue network and
-     * shows a QR code to scan, so it belongs behind the admin code with the rest
-     * of the settings. Same action as the Configure row on the Wi-Fi tab — one
-     * page, reachable from wherever the operator went looking for it. */
-    /* Subtitle kept short deliberately: make_pill caps it at
-     * TAB_W - PILL_TEXT_X - PILL_TEXT_PAD_R = 140 px and dot-elides the rest,
-     * and a row whose own label is cut off reads as a bug. */
-    lv_obj_t *upill = make_pill(t_about, "Update", "From a browser",
-                                TAB_W, 0, ACT_PORTAL);
-    lv_obj_align(make_glyph_disc(upill, LV_SYMBOL_DOWNLOAD, COL_ACCENT, COIN_SZ),
-                 LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
-
-    /* Deliberately says nothing about which assets or which networks. That list
-     * changes with the firmware and this label cannot be edited from anywhere, so
-     * a terminal a year from now would be reading out a stale one — and the Tx tab
-     * already answers the question from the live settings. */
-    lv_obj_t *about = make_label(t_about,
-                                 "Crypto payment terminal\n"
-                                 "for Cryptnox cards\n\n"
-                                 "Based on cryptnox-sdk-esp32 1.0.0\n"
-                                 "(c) Cryptnox 2026 - Educational use only\n\n"
-                                 "Licensed under LGPL-3.0-or-later\n\n"
-                                 "Third-party: ESP-IDF (Apache-2.0),\n"
-                                 "LVGL (MIT), TFT_eSPI (FreeBSD/MIT),\n"
-                                 "XPT2046_Touchscreen (MIT)",
-                                 COL_DIM, &font_inter_14,
-                                 LV_ALIGN_DEFAULT, 0, 0);
-    lv_label_set_long_mode(about, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(about, 210);
-    lv_obj_set_style_text_align(about, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-
-    /* Bottom bar: Close always; on the About tab a Reset joins it on the same
-     * line (Reset left, Close right). On other tabs Close is full-width. */
-    s_close_btn = make_button(lv_scr_act(), "Close", COL_ACTION, COL_BG, 232, ACT_BTN_H,
-                              LV_ALIGN_BOTTOM_MID, 0, ACT_BTN_Y, ACT_CLOSE,
-                              &font_pjs_20_semibold);
-    s_reset_btn = make_button(lv_scr_act(), "Reset", COL_DANGER, COL_TEXT, 108, ACT_BTN_H,
-                              LV_ALIGN_BOTTOM_LEFT, 10, ACT_BTN_Y, ACT_RESET,
-                              &font_pjs_20_semibold);
-    /* Shape comes from make_button — BTN_RADIUS, the same corner as Charge.
-     * These two used to be full-radius pills, which made the bottom bar of the
-     * admin panel the one place on the panel where a button was a different
-     * shape to every other button. */
-    lv_obj_add_event_cb(lv_tabview_get_tab_btns(tv), tab_change_cb,
-                        LV_EVENT_VALUE_CHANGED, NULL);
-
-    /* Back to the tab the operator was on. A rebuild is how this page applies a
-     * changed asset, and landing on Screen afterwards reads as the page having
-     * closed and reopened by itself. */
-    if (s_settings_tab != 0U) {
-        lv_tabview_set_act(tv, s_settings_tab, LV_ANIM_OFF);
-    }
-    settings_bottom_bar(s_settings_tab);
-}
-
-/******************************************************************
- * 7c. Touch calibration
- *
- * The one constant in this file that cannot be a constant: resistive overlays
- * vary unit to unit, and the README used to answer a panel that taps 15px off
- * with "edit ui.cpp and rebuild". Two targets, then the operator confirms the
- * result by tapping a button drawn with it.
- ******************************************************************/
-
-static void build_header(const char *title);   /* defined with the screens */
-
-/* Crosshair rather than a filled dot: the target is the centre, and a dot
- * hides it under the finger that is aiming at it. */
-static void cal_target(lv_coord_t cx, lv_coord_t cy) {
-    const lv_coord_t arm = 12;
-    static lv_point_t h[2], v[2];
-    h[0] = { (lv_coord_t)(cx - arm), cy }; h[1] = { (lv_coord_t)(cx + arm), cy };
-    v[0] = { cx, (lv_coord_t)(cy - arm) }; v[1] = { cx, (lv_coord_t)(cy + arm) };
-    for (int i = 0; i < 2; i++) {
-        lv_obj_t *l = lv_line_create(lv_scr_act());
-        lv_line_set_points(l, (i == 0) ? h : v, 2);
-        lv_obj_set_style_line_width(l, 2, LV_PART_MAIN);
-        lv_obj_set_style_line_color(l, COL_DANGER, LV_PART_MAIN);
-        lv_obj_set_pos(l, 0, 0);
-    }
-}
-
-/* Turn the two captured corners into the edge-to-edge range touch_to_screen()
- * maps against, and put it in force without storing it. Returns false on a
- * pair too close together to be two deliberate taps — which is what a stuck
- * panel or an impatient double-tap on one spot looks like. */
-static bool cal_apply(void) {
-    touch_cal_t c;
-    if (!touch_cal_from_corners(s_cal_raw[0][0], s_cal_raw[0][1],
-                                s_cal_raw[1][0], s_cal_raw[1][1],
-                                CAL_INSET, SCR_W, SCR_H, &c)) {
-        return false;
-    }
-    s_cal_xmin = c.x_min; s_cal_xmax = c.x_max;
-    s_cal_ymin = c.y_min; s_cal_ymax = c.y_max;
-    return true;
-}
-
-static void build_touch_cal(void) {
-    clear_screen();
-
-    if (s_cal_step < 2U) {
-        const bool first = (s_cal_step == 0U);
-        /* No header on these two: the targets sit in the corners, and the one
-         * at the top left lands under a title bar's divider. Nothing is drawn
-         * near a corner except the cross being aimed at. */
-        lv_obj_t *ask = make_label(lv_scr_act(),
-                   first ? "Tap the cross\nat the top left"
-                         : "Now the one at\nthe bottom right",
-                   COL_TEXT, &font_pjs_20_medium, LV_ALIGN_CENTER, 0, -10);
-        lv_obj_set_style_text_align(ask, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        lv_obj_align(ask, LV_ALIGN_CENTER, 0, -10);
-        lv_obj_t *hint = make_label(lv_scr_act(),
-                                    "Use a stylus or a fingernail - the centre "
-                                    "of the cross, not near it.",
-                                    COL_DIM, &font_inter_14,
-                                    LV_ALIGN_CENTER, 0, 60);
-        lv_obj_set_width(hint, 200);
-        lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);
-        lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        lv_obj_align(hint, LV_ALIGN_CENTER, 0, 60);
-
-        cal_target(first ? CAL_INSET : (SCR_W - 1 - CAL_INSET),
-                   first ? CAL_INSET : (SCR_H - 1 - CAL_INSET));
-        return;
-    }
-
-    /* Both corners captured. */
-    build_header("Calibrate touch");
-    if (!cal_apply()) {
-        lv_obj_t *no = make_label(lv_scr_act(),
-                   "Those two taps were\ntoo close together.\n\n"
-                   "Nothing was changed.",
-                   COL_DANGER, &font_pjs_20_medium, LV_ALIGN_CENTER, 0, -20);
-        lv_obj_set_style_text_align(no, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        lv_obj_align(no, LV_ALIGN_CENTER, 0, -20);
-        make_button(lv_scr_act(), "Back", COL_ACTION, COL_BG, 232, ACT_BTN_H,
-                    LV_ALIGN_BOTTOM_MID, 0, ACT_BTN_Y, ACT_CAL_CANCEL,
-                    &font_pjs_20_semibold);
-        return;
-    }
-
-    /* The new map is live from here. Tapping Keep with it IS the test. */
-    lv_obj_t *q = make_label(lv_scr_act(), "Keep this\ncalibration?", COL_TEXT,
-                             &font_pjs_20_medium, LV_ALIGN_TOP_MID, 0, 70);
-    lv_obj_set_style_text_align(q, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_align(q, LV_ALIGN_TOP_MID, 0, 70);
-    s_cal_countdown = make_label(lv_scr_act(), "", COL_DIM,
-                                 &font_inter_14,
-                                 LV_ALIGN_TOP_MID, 0, 140);
-    s_cal_deadline = lv_tick_get() + CAL_VERIFY_MS;
-
-    make_button(lv_scr_act(), "Discard", COL_ACTION, COL_BG, 104, ACT_BTN_H,
-                LV_ALIGN_BOTTOM_LEFT, 10, ACT_BTN_Y, ACT_CAL_CANCEL,
-                &font_pjs_20_semibold);
-    make_button(lv_scr_act(), "Keep", COL_ACTION, COL_BG, 104, ACT_BTN_H,
-                LV_ALIGN_BOTTOM_RIGHT, -10, ACT_BTN_Y, ACT_CAL_SAVE,
-                &font_pjs_20_semibold);
-}
-
-/* Sampling runs on the UI task, outside LVGL's input device: the calibration
- * screen is the one place that must read the panel before the mapping it is
- * measuring. The sample taken is the last one before release — a resistive
- * panel's first reading as the finger lands is its worst. */
-static void touch_cal_poll(void) {
-    if (s_cal_step >= 2U) { return; }
-
-    int16_t rx, ry;
-    if (touch_raw(&rx, &ry)) {
-        s_cal_pressed = true;
-        s_cal_last_x  = rx;
-        s_cal_last_y  = ry;
-        return;
-    }
-    if (!s_cal_pressed) { return; }
-
-    s_cal_pressed = false;
-    s_cal_raw[s_cal_step][0] = s_cal_last_x;
-    s_cal_raw[s_cal_step][1] = s_cal_last_y;
-    s_cal_step++;
-    request_screen(UI_SCREEN_TOUCH_CAL);   /* next target, then the verify */
-}
-
-/* Modal overlays (factory-reset confirmation, network picker). One at a time:
- * both are full-screen and both are opened from the settings page. */
-static lv_obj_t *s_modal = NULL;
-
-/* Whether the modal on screen belongs to the config portal. The admin page shuts
- * itself down after PROV_WINDOW_MIN whether or not anybody is watching, and a card
- * left behind after that would wedge the terminal: these overlays swallow every
- * touch, so a terminal nobody came back to could not take a payment again until it
- * was power-cycled. The UI task uses this to clear the card when the window closes
- * underneath it. */
-static bool s_portal_modal = false;
-
-static void close_modal(void) {
-    if (s_modal != NULL) {
-        lv_obj_del(s_modal);
-        s_modal = NULL;
-    }
-    s_portal_modal = false;
-}
-
-/* Dimmed overlay + centred card on the top layer, so it floats above the
- * settings page. Returns the card for the caller to fill. */
-static lv_obj_t *open_modal(lv_coord_t w, lv_coord_t h) {
-    close_modal();
-
-    s_modal = lv_obj_create(lv_layer_top());
-    lv_obj_remove_style_all(s_modal);
-    lv_obj_set_size(s_modal, SCR_W, SCR_H);
-    lv_obj_set_style_bg_color(s_modal, lv_color_black(), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(s_modal, LV_OPA_70, LV_PART_MAIN);
-    lv_obj_clear_flag(s_modal, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(s_modal, LV_OBJ_FLAG_CLICKABLE);
-
-    lv_obj_t *card = lv_obj_create(s_modal);
-    lv_obj_set_size(card, w, h);
-    lv_obj_center(card);
-    lv_obj_set_style_bg_color(card, COL_BG, LV_PART_MAIN);
-    lv_obj_set_style_radius(card, 14, LV_PART_MAIN);
-    lv_obj_set_style_border_width(card, 1, LV_PART_MAIN);
-    lv_obj_set_style_border_color(card, COL_BORDER, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(card, 8, LV_PART_MAIN);
-    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(card, LV_OBJ_FLAG_CLICKABLE);
-    return card;
-}
-
-static void open_reset_confirm(void) {
-    lv_obj_t *card = open_modal(224, 210);
-
-    lv_obj_t *msg = make_label(card,
-                               "Erase all settings\n"
-                               "(Wi-Fi, brightness, fees)\n"
-                               "and reboot?",
-                               COL_TEXT, &font_inter_14,
-                               LV_ALIGN_TOP_MID, 0, 12);
-    lv_obj_set_style_text_align(msg, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-
-    make_button(card, "Erase", COL_DANGER, COL_TEXT, 196, 40,
-                LV_ALIGN_BOTTOM_MID, 0, -50, ACT_RESET_CONFIRM, &font_pjs_20_semibold);
-    make_button(card, "Cancel", COL_ACTION, COL_BG, 196, 40,
-                LV_ALIGN_BOTTOM_MID, 0, -2, ACT_MODAL_CLOSE, &font_pjs_20_semibold);
-}
-
-/**
- * Open the config page and show the operator how to reach it.
- *
- * A QR code, not a typed address: the page is served on the venue network on a
- * device with no name to look up, so the address is the only way anyone can find
- * it — and reading a dotted quad off a 2.8" panel into a phone is the step that
- * goes wrong. The URL is printed underneath for the camera that will not play
- * along, and because a laptop has no camera to point.
- */
-/* Card geometry for the two update modals. 228 wide leaves 212 inside the 8 px
- * pad; wrapped text gets 200 so it clears the rounded corners.
- *
- * Neither card has a hand-measured layout, because the version, the running
- * version and the address are all substituted at runtime and none of them has a
- * known length: blocks stack with lv_obj_align_to(), then ota_fit_card() grows
- * the card to whatever height the text turned out to need. Sized by eye, these
- * fitted on the strings they were written with and put text under the buttons on
- * the next ones. */
-#define OTA_CARD_W   228
-#define OTA_TEXT_W   200
-#define OTA_GAP      8
-#define OTA_CARD_PAD 8   /* open_modal()'s pad_all */
-
-/** Wrapped, centred body text stacked under @p above (or the card top). */
-static lv_obj_t *ota_text(lv_obj_t *card, lv_obj_t *above, const char *txt,
-                          lv_color_t col, const lv_font_t *font) {
-    lv_obj_t *l = make_label(card, txt, col, font, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_set_width(l, OTA_TEXT_W);
-    lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    if (above == NULL) {
-        lv_obj_align(l, LV_ALIGN_TOP_MID, 0, 4);
-    } else {
-        /* align_to() reads the base's current coordinates, and a label that has
-         * just been given a width has not been laid out yet — without this the
-         * wrapped height is still the pre-wrap one and every block below stacks
-         * against a stale bottom edge. */
-        lv_obj_update_layout(card);
-        lv_obj_align_to(l, above, LV_ALIGN_OUT_BOTTOM_MID, 0, OTA_GAP);
-    }
-    return l;
-}
-
-/**
- * Resize the card to the text it ended up with, leaving room for the buttons.
- *
- * @p buttons_h is how far the button block reaches up from the content bottom —
- * 42 for one 40 px button at -2, 86 for two. Clamped to the screen, so a
- * pathological string elides off the bottom rather than drawing a card taller
- * than the panel.
- */
-static void ota_fit_card(lv_obj_t *card, lv_obj_t *last, lv_coord_t buttons_h) {
-    lv_obj_update_layout(card);
-    lv_coord_t need = lv_obj_get_y(last) + lv_obj_get_height(last)
-                      + OTA_GAP + buttons_h + (2 * OTA_CARD_PAD);
-    if (need > (SCR_H - 16)) { need = SCR_H - 16; }
-    lv_obj_set_height(card, need);
-    lv_obj_center(card);
-}
-
-static void open_portal_window(void) {
-    /* Started here, on the UI task, the same way this screen already calls
-     * settings_factory_reset() and prov_pending_commit() directly. The event
-     * callback is handed over so a submission can come back to the panel. */
-    const bool up = prov_start(PROV_MODE_ADMIN, s_cb);
-
-    if (!up) {
-        lv_obj_t *card = open_modal(OTA_CARD_W, 200);
-        lv_obj_t *m = ota_text(card, NULL,
-                 "The terminal's own Wi-Fi would not come up, so there is "
-                 "nothing for a phone to join.\n\nRestart and try again.",
-                 COL_TEXT, &font_inter_14);
-        ota_fit_card(card, m, 42);
-        make_button(card, "Close", COL_ACTION, COL_BG, OTA_TEXT_W, 40,
-                    LV_ALIGN_BOTTOM_MID, 0, -2, ACT_MODAL_CLOSE,
-                    &font_pjs_20_semibold);
-        return;
-    }
-
-    lv_obj_t *card = open_modal(OTA_CARD_W, 300);
-
-    /* No caption over the code. A QR code on a payment terminal does not need to be
-     * told to a person holding a phone, and the line was the one thing on the card
-     * that named a device: the credentials underneath are equally for a laptop.
-     *
-     * The same "WIFI:..." code the setup screen shows: the page is on the
-     * terminal's own AP, so joining it is the whole journey and a camera does that
-     * from the code directly. 104 px is 26 modules at 4 px, which holds the SSID
-     * and the passphrase. The white quiet zone is not optional: a code drawn hard
-     * against an edge is a code half the scanners in the world will not see. */
-    lv_obj_t *qr = lv_qrcode_create(card, 104, COL_TEXT, COL_BG);
-    if (qr != NULL) {
-        const char *payload = prov_qr_payload();
-        (void)lv_qrcode_update(qr, payload, strlen(payload));
-        lv_obj_set_style_border_color(qr, COL_BG, LV_PART_MAIN);
-        lv_obj_set_style_border_width(qr, 4, LV_PART_MAIN);
-        /* Top of the card, where the caption used to start — same 4px inset
-         * ota_text() gives a first block. */
-        lv_obj_align(qr, LV_ALIGN_TOP_MID, 0, 4);
-    }
-
-    /* The credentials in text too — a laptop has no camera to point, and a code
-     * that will not scan in a dim bar still leaves ten characters to type. */
-    char creds[80];
-    snprintf(creds, sizeof(creds), "SSID: %s\nPassword: %s",
-             prov_ap_ssid(), prov_ap_pass());
-    lv_obj_t *url = ota_text(card, qr, creds, COL_TEXT, &font_inter_14_medium);
-
-    /* Two short lines, broken by hand, because the card cannot grow: 304px is
-     * ota_fit_card's ceiling, and the 112px code, the credentials and the Done
-     * button leave about 45px of it — three lines at most. The paragraph
-     * that used to sit here ran to nine and simply stopped mid-sentence at the
-     * card's edge. Each line is kept under OTA_TEXT_W (200px, ~27 characters at
-     * font_inter_14) so neither wraps into a fourth. What was dropped is not lost:
-     * "the admin code is typed here, never there" is the first thing the browser
-     * page itself says, to the person who needs to read it. */
-    /* The address, and it earns its line: joining the AP makes the phone open the
-     * page by itself, in the Wi-Fi sign-in window — and that window cannot pick a
-     * file, so the firmware update is the one job on the page it will not do. This
-     * is what the operator opens in a real browser when that happens, and also the
-     * answer when the page does not pop up at all.
-     *
-     * Three lines is what the card has left under the code and the credentials
-     * (see ota_fit_card's ceiling); this is the third, so anything added here has
-     * to replace one. */
-    char note[96];
-    snprintf(note, sizeof(note),
-             "Or open 192.168.4.1\nVenue Wi-Fi off while open\nCloses in %u min",
-             prov_window_left_min());
-    lv_obj_t *n = ota_text(card, url, note, COL_DIM, &font_inter_14);
-    ota_fit_card(card, n, 42);
-
-    make_button(card, "Done", COL_ACTION, COL_BG, OTA_TEXT_W, 40,
-                LV_ALIGN_BOTTOM_MID, 0, -2, ACT_PORTAL_CLOSE,
-                &font_pjs_20_semibold);
-
-    s_portal_modal = true;   /* set last: open_modal() cleared it */
-}
-
-/**
- * Accept or refuse firmware that the update page has uploaded.
- *
- * The upload has already been verified — SHA-256, and the signature on a signed
- * build — so this is not asking whether the image is genuine. It is asking
- * whether the person holding the terminal wants this version on it, which is a
- * different question and the one a browser cannot answer. A version that goes
- * backwards is called out: the image is properly signed either way, and
- * returning a terminal to firmware with a known fault is a plausible thing for
- * somebody to be talked into.
- */
-/**
- * Install was tapped and there was nothing left to install.
- *
- * The one screen this flow was missing. Everything else about an update reports
- * itself — the upload has a percentage, the verification has a version, the
- * install has a reboot — but the gap between "accepted on the panel" and "nothing
- * happened" was silent, so a terminal that quietly stayed on the old firmware
- * looked exactly like one that had updated.
- */
-static void open_ota_gone(void) {
-    lv_obj_t *card = open_modal(OTA_CARD_W, 200);
-    lv_obj_t *m = ota_text(card, NULL,
-             "That firmware is no longer waiting to be installed.\n\n"
-             "Nothing changed - this terminal is still on the version it was. "
-             "Open Update again and send the file once more.",
-             COL_TEXT, &font_inter_14);
-    ota_fit_card(card, m, 42);
-    make_button(card, "Close", COL_ACTION, COL_BG, OTA_TEXT_W, 40,
-                LV_ALIGN_BOTTOM_MID, 0, -2, ACT_MODAL_CLOSE,
-                &font_pjs_20_semibold);
-}
-
-static void build_ota_confirm(void) {
-    char version[40] = "?";
-    bool older = false;
-    if (!ota_staged(version, sizeof(version), &older)) { return; }
-
-    lv_obj_t *card = open_modal(OTA_CARD_W, 252);
-
-    /* The downgrade warning is the caption, not an extra paragraph in the body:
-     * one red line above the version says it, and the body stays the same length
-     * either way — which is what keeps this card a fixed height. */
-    lv_obj_t *cap = ota_text(card, NULL,
-                             older ? "This is an OLDER version" : "New firmware",
-                             older ? COL_DANGER : COL_DIM,
-                             &font_inter_14);
-    /* 28 pt fits about twelve characters on one line. A version longer than that
-     * is a `git describe` string rather than a release tag, and wrapping it at
-     * this size costs two more lines than the card can spare — so step down.
-     * Measured on the shown form: the 'v' is one of the twelve. */
-    char staged_ver[OTA_VERSION_SHOWN_MAX];
-    (void)ota_version_display(version, staged_ver, sizeof(staged_ver));
-    lv_obj_t *ver = ota_text(card, cap, staged_ver, COL_TEXT,
-                             (strlen(staged_ver) > 12U) ? &font_pjs_20_medium
-                                                        : &font_pjs_28_semibold);
-
-    char running_ver[OTA_VERSION_SHOWN_MAX];
-    char body[128];
-    snprintf(body, sizeof(body),
-             "Running %s.\n\nThe terminal restarts now. Not during a payment.",
-             ota_version_display(ota_running_version(), running_ver,
-                                 sizeof(running_ver)));
-    lv_obj_t *m = ota_text(card, ver, body, COL_DIM, &font_inter_14);
-    ota_fit_card(card, m, 86);
-
-    make_button(card, "Install", COL_ACTION, COL_BG, OTA_TEXT_W, 40,
-                LV_ALIGN_BOTTOM_MID, 0, -46, ACT_OTA_OK, &font_pjs_20_semibold);
-    make_button(card, "Discard", COL_ACTION, COL_BG, OTA_TEXT_W, 40,
-                LV_ALIGN_BOTTOM_MID, 0, -2, ACT_OTA_NO, &font_pjs_20_semibold);
-
-    s_portal_modal = true;
-}
-
-/* Asset selection, in two steps: the network, then the coin on it. Two modals
- * rather than one flat list of chains — a chain is a (network, coin) pair, and
- * merging them made "USDT Tron Nile TRC-20" a single row the operator had to
- * parse. Each card is styled like the selector that opened it, so the choice
- * looks like the thing being chosen.
- *
- * The card is 228 wide (212 inside the 8px pad), so the pills run to 206. */
-#define PICK_W  206
-
-/**
- * Grey a row out and make it inert.
- *
- * For a network whose payout address nobody has set. Shown rather than hidden: a
- * network that silently vanishes reads as a firmware that lost a feature, where a
- * dimmed row saying why tells the operator what to go and do.
- */
-static void pill_disable(lv_obj_t *p) {
-    lv_obj_clear_flag(p, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_style_bg_opa(p, LV_OPA_50, LV_PART_MAIN);
-    for (uint32_t i = 0; i < lv_obj_get_child_cnt(p); i++) {
-        lv_obj_set_style_text_color(lv_obj_get_child(p, i), COL_DIM, LV_PART_MAIN);
-    }
-}
-
-/** Step 1 — the network. */
-/* Which action opens step 2 for a network, in pos_net_t order. The pickers are
- * driven by assets.h now; this is the one thing left that is per-network and
- * belongs to this file, because an action is a UI concept. */
-static const BtnAction NET_ACT[POS_NET__COUNT] = {
-    ACT_NET_ETH, ACT_NET_POLY, ACT_NET_TRON
-};
-
-static void open_network_picker(void) {
-    /* Same growth rule as step 2 — header + rows + the Cancel button — so a
-     * fourth network added to assets.h widens the card rather than clipping. */
-    lv_obj_t *card = open_modal(228,
-        static_cast<lv_coord_t>(86 + (POS_NET__COUNT * (PILL_H + 2))));
-
-    make_label(card, "Network", COL_DIM, &font_inter_14,
-               LV_ALIGN_TOP_MID, 0, 2);
-
-    for (int i = 0; i < (int)POS_NET__COUNT; i++) {
-        const pos_net_info_t *ni = pos_net_info(static_cast<pos_net_t>(i));
-        /* Read here, not cached in a table: the subtitle names the deployment,
-         * which is a setting. A function-local static would be initialised on the
-         * first pass and then keep saying "Sepolia testnet" on a switched unit. */
-        const char *sub = settings_net_str(ni->sub_test, ni->sub_main);
-        /* A network with no payout address of its own is not offered. Otherwise a
-         * terminal set up for Ethereum and interrupted before Tron would quietly
-         * take Tron payments to the compile-time recipient — somebody else's
-         * address — and look entirely normal doing it. */
-        /* Polygon spends the Ethereum payout address — same EVM account, so the
-         * one the operator stored works on both networks. */
-        const bool have = settings_has_payout(i == (int)POS_NET_TRON);
-        lv_coord_t y = static_cast<lv_coord_t>(22 + (i * (PILL_H + 2)));
-        /* "No payout address" measured 133px against this pill's
-         * PICK_W - PILL_TEXT_X - PILL_TEXT_PAD_R = 130px cap, so the one row
-         * that explains why a network is greyed out arrived elided. */
-        lv_obj_t  *p = make_pill(card, ni->name, have ? sub : "No payout set",
-                                 PICK_W, y, NET_ACT[i]);
-        lv_obj_align(make_net_badge(p, static_cast<pos_net_t>(i)),
-                     LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
-        if (!have) { pill_disable(p); }
-    }
-
-    make_button(card, "Cancel", COL_SURFACE, COL_TEXT, PICK_W, 40,
-                LV_ALIGN_BOTTOM_MID, 0, -2, ACT_MODAL_CLOSE,
-                &font_pjs_20_semibold);
-}
-
-/** Step 2 — the coin on the network chosen in step 1. */
-static void open_coin_picker(pos_net_t net) {
-    /* The rows are assets.h's, filtered on the network: three hand-kept tables
-     * used to say the same thing here, and a fourth network meant a fourth table
-     * plus another arm of the switch that chose between them. The table is ordered
-     * for this loop — grouped by network, native coin first — so the order on
-     * screen is the order there. No action column either: the chain IS the action
-     * (ACT_CHAIN_OF). */
-    size_t n = 0;
-    for (size_t i = 0U; i < POS_ASSET_COUNT; i++) {
-        if (POS_ASSETS[i].net == net) { n++; }
-    }
-
-    char title[24];
-    (void)snprintf(title, sizeof(title), "Coin on %s", pos_net_info(net)->name);
-
-    /* Card grows with the row count: header + rows + the Back button. */
-    lv_obj_t *card = open_modal(228,
-        static_cast<lv_coord_t>(86 + (n * (PILL_H + 2))));
-
-    make_label(card, title, COL_DIM,
-               &font_inter_14, LV_ALIGN_TOP_MID, 0, 2);
-
-    size_t row = 0;
-    for (size_t i = 0U; i < POS_ASSET_COUNT; i++) {
-        const pos_asset_t *a = &POS_ASSETS[i];
-        if (a->net != net) { continue; }
-        lv_coord_t y = static_cast<lv_coord_t>(22 + (row * (PILL_H + 2)));
-        lv_obj_t  *p = make_pill(card, a->ticker, a->standard, PICK_W, y,
-                                 ACT_CHAIN_OF(a->chain), true /* leaf */);
-        lv_obj_align(make_asset_badge(p, a->chain),
-                     LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
-        row++;
-    }
-
-    /* Back, not Cancel: step 2 of two, so the way out is step 1. */
-    make_button(card, "Back", COL_SURFACE, COL_TEXT, PICK_W, 40,
-                LV_ALIGN_BOTTOM_MID, 0, -2, ACT_NET_PICK,
-                &font_pjs_20_semibold);
-}
-
-/******************************************************************
- * 8. Screen builders
- ******************************************************************/
-/* Borderless icon button (top-left) — just the glyph, no box/shadow. */
-static lv_obj_t *make_icon_button(const char *sym, BtnAction act,
-                                  lv_obj_t *parent = NULL) {
-    lv_obj_t *btn = lv_btn_create((parent != NULL) ? parent : lv_scr_act());
-    lv_obj_set_size(btn, MENU_BTN_W, MENU_BTN_H);
-    lv_obj_align(btn, LV_ALIGN_TOP_LEFT, MENU_BTN_X, MENU_BTN_Y);
-    lv_obj_set_style_bg_opa(btn, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_style_border_width(btn, 0, LV_PART_MAIN);
-    lv_obj_set_style_shadow_width(btn, 0, LV_PART_MAIN);
-    lv_obj_add_event_cb(btn, btn_event_cb, LV_EVENT_CLICKED,
-                        reinterpret_cast<void *>(static_cast<intptr_t>(act)));
-    lv_obj_t *lbl = lv_label_create(btn);
-    lv_label_set_text(lbl, sym);
-    lv_obj_set_style_text_color(lbl, COL_TEXT, LV_PART_MAIN);
-    lv_obj_set_style_text_font(lbl, &font_pjs_20_medium, LV_PART_MAIN);
-    lv_obj_center(lbl);
-    return btn;
-}
-
-/* Which deployment, on the screen that takes the money. Nothing else in the
- * payment flow says test or production, and a firmware update with a new
- * BUILD_ID wipes NVS and brings the unit back on mainnet — so a terminal
- * somebody configured for testnet can start taking real payments with every
- * screen looking normal. Production stays silent, the same rule
- * settings_net_str follows: mainnet names carry no suffix, so the chip's
- * presence IS the warning.
- *
- * In the burger's band, opposite the burger, and NOT on the amount's row. It
- * was inside the asset pill first, which was wrong in a way worth recording:
- * amount_row_place() gives the figure whatever the pill leaves, so a chip in
- * the pill is width taken directly off the digits, and the amount walked off
- * the left edge of the screen at six of them. This band is empty from the
- * burger's right edge to x=240 and no layout reads it. */
-static void add_test_chip(void) {
-    if (settings_get_mainnet()) { return; }
-    lv_obj_t *chip = lv_label_create(lv_scr_act());
-    lv_label_set_text(chip, "TEST");
-    lv_obj_set_style_text_color(chip, COL_BG, LV_PART_MAIN);
-    lv_obj_set_style_text_font(chip, &font_inter_14_medium, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(chip, COL_DANGER, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(chip, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_pad_hor(chip, 7, LV_PART_MAIN);
-    lv_obj_set_style_pad_ver(chip, 1, LV_PART_MAIN);   /* 18px line: 20 tall */
-    lv_obj_set_style_radius(chip, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-    /* Straight after the clock. It was top-LEFT, which is the clock's corner
-     * now; it cannot go right, because that end is the Wi-Fi mark's and the mark
-     * is on the top layer, so a right-aligned chip is drawn underneath it. */
-    lv_obj_align(chip, LV_ALIGN_TOP_LEFT, CHIP_X, CHIP_Y);
-}
-
-/**
- * @brief Screen title, centred but never underneath the top-left icon button.
- *
- * A centred 20px title and a hard-left icon button are two independent claims on
- * the same row, and on a 240px screen the wide ones collide: "Authorize browser"
- * measures 187px, so centred it starts at x=26 and the back arrow — which ends at
- * x=46 — was drawn straight through its first two characters.
- *
- * So the title gets the gap between the two gutters and nothing more. If it does
- * not fit at 20px it drops to the 14px face, where "Authorize browser" is 131px
- * and fits with room to spare. Shrinking beats both alternatives: overlapping is
- * the bug being fixed, and dot-eliding a title on a screen whose entire job is to
- * say what it wants is worse than a smaller one. The width cap and LONG_DOT stay
- * on as the backstop for a title too long even at 14px.
- *
- * @param has_icon true when make_icon_button() has put a glyph in the top-left.
- */
-static lv_obj_t *make_title(const char *txt, bool has_icon,
-                            lv_obj_t *parent = NULL) {
-    /* Symmetric, so the title stays optically centred on the screen rather than
-     * centred in the leftover space beside the button. Width comes from the
-     * parent when there is one: on the sale flow this is drawn in the card, and
-     * a gutter measured off SCR_W would centre it against the wrong box. */
-    lv_obj_t *host = (parent != NULL) ? parent : lv_scr_act();
-    lv_obj_update_layout(host);
-    lv_coord_t hw = lv_obj_get_width(host);
-    if (hw <= 0) { hw = SCR_W; }   /* not laid out yet — assume full width */
-    /* Cleared from the glyph, not the button: the arrow is ~20px centred in a
-     * 42px hit box, and clearing the whole box left the 224px card 124px of
-     * title — too little for "Authorize browser" even at 14px, so it wrapped. */
-    const lv_coord_t gutter = has_icon ? (MENU_BTN_X + ((MENU_BTN_W + 20) / 2) + 4)
-                                       : 8;
-    const lv_coord_t avail  = hw - (2 * gutter);
-
-    const bool small = lv_txt_get_width(txt, strlen(txt), &font_pjs_20_medium,
-                                        0, LV_TEXT_FLAG_NONE) > avail;
-    /* +2 keeps the shorter 14px cap optically level with the 20px arrow glyph
-     * beside it (Inter's 18px line box already puts its cap 2 lower). */
-    lv_obj_t *l = make_label(host, txt, COL_TITLE,
-                             small ? &font_inter_14_medium
-                                   : &font_pjs_20_medium,
-                             LV_ALIGN_TOP_MID, 0,
-                             small ? (HDR_TITLE_Y + 2) : HDR_TITLE_Y);
-    lv_obj_set_width(l, avail);
-    lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
-    lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    return l;
-}
-
-/* Identical header on every screen: eyebrow title + rule + burger menu. */
-/* Title + divider only — the burger (settings) lives solely on the amount
- * screen so settings can't be opened mid-transaction. */
-static void build_header(const char *title) {
-    (void)make_title(title, false);
-    make_divider(lv_scr_act(), HDR_DIVIDER_Y);
-}
-
-/* First-run greeting, in the sale flow's card on the ramp so setup and selling
- * read as one product. It waits for a tap: it is the only moment the terminal
- * has the operator's attention before the setup steps start asking for things. */
-static void build_welcome(void) {
-    lv_obj_t *card = build_page(PAY_STEP_NONE, false);
-
-    /* The card's column is 262 tall and the Start button takes 208..252. The
-     * logo is its own 80px render, NOT the 120px one zoomed: that RGB565 image
-     * has no alpha, and scaled it drew a grey line down its right and bottom
-     * edges. 12..92, which leaves a three-line sub-line room above the button.
-     * The whole column is hand-balanced — moving one offset eats into a
-     * neighbour. */
-    lv_obj_t *logo = lv_img_create(card);
-    lv_img_set_src(logo, &logo_mid);
-    lv_obj_align(logo, LV_ALIGN_TOP_MID, 0, 12);
-    pop_in(logo);   /* settled screen, so the flourish is welcome here */
-
-    /* "Thank you for choosing Cryptnox POS." split over two lines: the product
-     * name stays black to carry the sentence, the lead-in is grey. */
-    make_label(card, "Thank you for choosing", COL_DIM,
-               &font_inter_14, LV_ALIGN_TOP_MID, 0, 104);
-    lv_obj_t *brand = make_label(card, "Cryptnox POS", COL_TEXT,
-                                 &font_pjs_20_medium, LV_ALIGN_TOP_MID, 0, 124);
-
-    /* Anchored under the brand rather than at a fixed y: this sentence sits near
-     * the wrap threshold, so an absolute offset would give a different gap
-     * depending on whether it takes one line or two. Width and long mode first,
-     * so the measurement sees them. */
-    lv_obj_t *sub = make_label(card, s_welcome_sub,
-                               COL_DIM, &font_inter_14,
-                               LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_width(sub, CARD_W - (2 * CARD_PAD));
-    lv_label_set_long_mode(sub, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_text_align(sub, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_update_layout(brand);
-    lv_obj_align_to(sub, brand, LV_ALIGN_OUT_BOTTOM_MID, 0, 6);
-
-    (void)make_button(card, "Start", COL_ACTION, COL_BG,
-                      CARD_BTN_W, CARD_BTN_H, LV_ALIGN_BOTTOM_MID, 0, CARD_BTN_Y,
-                      ACT_WELCOME_OK, &font_pjs_20_semibold);
-}
-
-/* Phone setup: the same screen at every step, captioned with the current one.
- *
- * One QR code, not two. It carries "WIFI:T:WPA;S:...;P:...;;", which both iOS
- * and Android cameras join a network from directly — and the captive portal then
- * opens the form by itself, so there is never a URL to scan or type. The SSID
- * and passphrase are printed underneath for the camera that will not play along.
- * All three are for joining, so all three go away once a browser has been let in:
- * a code still sitting there on the payout step reads as "scan this again".
- *
- * There is deliberately no "use this screen instead" button any more. Past the
- * admin code the wizard is a browser flow: typing a payout address or a venue
- * passphrase on a resistive 240x320 panel is the thing this module exists to
- * avoid, and keeping a second, worse path meant maintaining two of everything.
- * The one step that stays on the panel is the admin code, because that is the step
- * whose entire value is that it never crosses a network.
- *
- * The last step is not a form at all: it thanks the operator and offers Finish,
- * which is what applies the settings (see main). */
-static void build_prov(void) {
-    const prov_step_t step = static_cast<prov_step_t>(s_prov_step);
-
-    /* The end of the wizard gets the whole card: nothing left to scan, and the
-     * one thing to say is that it worked. */
-    if (step == PROV_STEP_DONE) {
-        lv_obj_t *card = build_page(PAY_STEP_NONE, false);   /* setup: no band */
-        lv_obj_t *chk = make_label(card, LV_SYMBOL_OK, COL_SUCCESS,
-                                   &font_icons_48, LV_ALIGN_TOP_MID, 0, 16);
-        pop_in(chk);
-        make_label(card, "All set", COL_TEXT, &font_pjs_20_medium,
-                   LV_ALIGN_TOP_MID, 0, 76);
-        lv_obj_t *b = make_label(card,
-                                 "Thank you - your terminal is configured.\n\n"
-                                 "It restarts once to apply everything.",
-                                 COL_DIM, &font_inter_14,
-                                 LV_ALIGN_TOP_MID, 0, 106);
-        lv_obj_set_width(b, CARD_W - (2 * CARD_PAD));
-        lv_label_set_long_mode(b, LV_LABEL_LONG_WRAP);
-        lv_obj_set_style_text_align(b, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        lv_obj_align(b, LV_ALIGN_TOP_MID, 0, 106);
-
-        (void)make_button(card, "Finish", COL_ACTION, COL_BG,
-                          CARD_BTN_W, CARD_BTN_H, LV_ALIGN_BOTTOM_MID, 0, CARD_BTN_Y,
-                          ACT_PROV_FINISH, &font_pjs_20_semibold);
-        return;
-    }
-
-    /* Once the browser is in, the screen is only a status line, so it sits in
-     * the sale card on the ramp like the other setup screens. The QR step keeps
-     * the whole white screen: code, credentials and spinner need every row. */
-    const bool authed = prov_authed();
-    lv_obj_t  *host   = lv_scr_act();
-    if (authed) {
-        host = build_page(PAY_STEP_NONE, false);   /* setup: no band */
-    } else {
-        clear_screen();
-        lv_obj_set_style_bg_color(lv_scr_act(), lv_color_white(), LV_PART_MAIN);
-    }
-    const lv_coord_t dy = authed ? 6 : 0;   /* the card's top padding */
-
-    /* The title names the step, and it is the biggest thing on the screen. An
-     * earlier cut put "Set up from your phone" here for every step and moved
-     * only a line of 14px grey caption between them — which made a step
-     * advancing indistinguishable from nothing happening, since the QR code and
-     * the credentials below are identical throughout.
-     *
-     * The step numbers count the whole flow, panel steps included: 1 is the admin
-     * code the operator has just created on this screen, so "Step 2" here lines up
-     * with what they have actually done rather than with this module's own idea of
-     * where the flow starts. */
-    /* The Wi-Fi-only re-join has no numbers to count — there was no code to create
-     * and no address to set — so it says what it is instead. */
-    const bool  numbered = !prov_wifi_only();
-    const char *eyebrow  = "Setup";
-    const char *title    = "Nothing to set";
-    /* Each hint describes THIS screen, not the one after it. */
-    const char *hint     = "";
-    switch (step) {
-        case PROV_STEP_AUTH:
-            eyebrow = "Step 2";
-            title   = "Connect your phone";
-            hint    = "Scan to join the terminal's Wi-Fi";
-            break;
-        case PROV_STEP_ADDR:
-            eyebrow = "Step 4";
-            title   = "Payout addresses";
-            hint    = "Continue on your phone";
-            break;
-        case PROV_STEP_WIFI:
-            eyebrow = numbered ? "Step 5" : "Wi-Fi";
-            title   = "Wi-Fi network";
-            hint    = numbered ? "Continue on your phone"
-                               : "Scan with your phone";
-            break;
-        default:
-            break;
-    }
-
-    make_label(host, eyebrow, COL_DIM, &font_inter_14,
-               LV_ALIGN_TOP_MID, 0, 6 + dy);
-    make_label(host, title, COL_TEXT, &font_pjs_20_medium,
-               LV_ALIGN_TOP_MID, 0, 22 + dy);
-    make_label(host, hint, COL_DIM,
-               &font_inter_14, LV_ALIGN_TOP_MID, 0, 48 + dy);
-
-    /* The QR code and the AP credentials are for joining, so they go away the
-     * moment the phone has joined and been let in. Left up on the later steps they
-     * read as "scan this again", which is the one thing that cannot help: the
-     * operator is looking for the payout form, not for a network. */
-    if (!authed) {
-        lv_obj_t *qr = lv_qrcode_create(lv_scr_act(), 112, COL_TEXT, COL_BG);
-        if (qr != NULL) {
-            const char *payload = prov_qr_payload();
-            (void)lv_qrcode_update(qr, payload, strlen(payload));
-            lv_obj_align(qr, LV_ALIGN_TOP_MID, 0, 70);
-            /* White quiet zone: a code drawn hard against a coloured edge is a code
-             * half the scanners in the world will not see. */
-            lv_obj_set_style_border_color(qr, COL_BG, LV_PART_MAIN);
-            lv_obj_set_style_border_width(qr, 4, LV_PART_MAIN);
-        }
-
-        /* Labelled, both of them: the bare SSID over a "Pass" line read as a title
-         * and a note, and somebody typing them into a phone's Wi-Fi sheet is
-         * filling in two named boxes. */
-        make_label(lv_scr_act(), "Or join manually:", COL_DIM,
-                   &font_inter_14, LV_ALIGN_TOP_MID, 0, 194);
-        make_label(lv_scr_act(), "Network", COL_DIM, &font_inter_14,
-                   LV_ALIGN_TOP_LEFT, 24, 214);
-        make_label(lv_scr_act(), prov_ap_ssid(), COL_TEXT,
-                   &font_inter_14_medium, LV_ALIGN_TOP_LEFT, 100, 214);
-        make_label(lv_scr_act(), "Password", COL_DIM, &font_inter_14,
-                   LV_ALIGN_TOP_LEFT, 24, 232);
-        make_label(lv_scr_act(), prov_ap_pass(), COL_TEXT,
-                   &font_inter_14_medium, LV_ALIGN_TOP_LEFT, 100, 232);
-    } else {
-        lv_obj_t *on = make_label(host,
-                                  "Connected - the setup page is open in the "
-                                  "browser.",
-                                  COL_DIM, &font_inter_14,
-                                  LV_ALIGN_TOP_MID, 0, 86);
-        lv_obj_set_width(on, CARD_W - (2 * CARD_PAD));
-        lv_label_set_long_mode(on, LV_LABEL_LONG_WRAP);
-        lv_obj_set_style_text_align(on, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        lv_obj_align(on, LV_ALIGN_TOP_MID, 0, 86);
-
-        /* Only in this branch: a card is read from the browser's setup page, so
-         * there is no route to a failed read that is not already past the QR
-         * code. */
-        if (s_prov_msg[0] != '\0') {
-            lv_obj_t *m = make_label(host, s_prov_msg, COL_DANGER,
-                                     &font_inter_14,
-                                     LV_ALIGN_TOP_MID, 0, 130);
-            lv_obj_set_width(m, CARD_W - (2 * CARD_PAD));
-            lv_label_set_long_mode(m, LV_LABEL_LONG_WRAP);
-            lv_obj_set_style_text_align(m, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-            /* Under the Connected line, however many lines it wrapped to. Both
-             * start high (86) and the spinner sits low so three lines of each
-             * still end above it — the join error is two lines at 204px. */
-            lv_obj_update_layout(on);
-            lv_obj_align_to(m, on, LV_ALIGN_OUT_BOTTOM_MID, 0, 12);
-        }
-    }
-
-    /* Where the bottom button used to be. A spinner instead: past the QR code the
-     * operator is meant to be looking at the browser they joined from, and this is
-     * the only thing on the panel that says the terminal is still with them.
-     *
-     * "a connection", not "your phone": the AP takes a laptop typing the SSID and
-     * passphrase just as happily as a camera that scanned them, and a panel naming
-     * the wrong device reads as "this will not work from here". */
-    lv_obj_t *sp = lv_spinner_create(host, 1000, 60);
-    lv_obj_set_size(sp, 24, 24);
-    lv_obj_align(sp, LV_ALIGN_BOTTOM_MID, 0, authed ? -12 : -34);
-    lv_obj_set_style_arc_width(sp, 3, LV_PART_MAIN);
-    lv_obj_set_style_arc_width(sp, 3, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_color(sp, COL_SURFACE, LV_PART_MAIN);
-    lv_obj_set_style_arc_color(sp, COL_ACCENT, LV_PART_INDICATOR);
-    /* Only before the join: after it the line above already says "Connected",
-     * and the spinner alone says the terminal is waiting on the browser. */
-    if (!authed) {
-        make_label(lv_scr_act(), "Waiting for a connection", COL_DIM,
-                   &font_inter_14, LV_ALIGN_BOTTOM_MID, 0, -10);
-    }
-}
-
-/* A payout address or a token contract proposed from a browser, shown for
- * acceptance here. The modal is the security boundary, not decoration: a browser
- * can propose a value, only the panel in the operator's hands can store one — and
- * that holds for the card-derived route too, which comes through the same
- * handshake rather than writing straight to NVS.
- *
- * The value is drawn wrapped at 14 px rather than elided — the operator is being
- * asked to compare it against their own records character by character, so every
- * character has to be on the screen. */
-static void build_prov_confirm(void) {
-    prov_ask_t kind = PROV_ASK_NONE;
-    char label[40] = "";
-    char addr[SETTINGS_PAYOUT_MAX] = "";
-    if (!prov_pending(&kind, label, sizeof(label), addr, sizeof(addr))) { return; }
-
-    const bool contract = (kind == PROV_ASK_CONTRACT_ETH) ||
-                          (kind == PROV_ASK_CONTRACT_TRON);
-
-    /* Stacked and measured, not placed at four hand-written offsets — the same
-     * ota_text/ota_fit_card pattern the update modals in this file already use, and
-     * for the reason written there: nothing on this card has a known height.
-     *
-     * Three of the four blocks vary. The address wraps to two lines or three
-     * depending on the network and the glyphs it happens to contain; the label runs
-     * from "ERC-20 token contract" to "Ethereum / Polygon payout address"; and the
-     * warning is a sentence. The old layout put the warning at a fixed y=118 and the
-     * buttons at a fixed offset off the bottom of a fixed 276px card, so a block
-     * that came out one line taller than the strings it was measured on ran under
-     * the Accept button — which is the one control on this screen that must be
-     * legible, on the one screen that decides where a merchant's takings go.
-     *
-     * The label wraps now instead of dot-eliding. It was elided to fit one line,
-     * and "Ethereum / Polygon payout add…" is a poor thing to read on the screen
-     * that asks you to check an address character by character. */
-    lv_obj_t *card = open_modal(OTA_CARD_W, 276);
-
-    lv_obj_t *t = ota_text(card, NULL,
-                           contract ? "Set token contract?"
-                                    : "Set payout address?",
-                           COL_TEXT, &font_pjs_20_medium);
-    lv_obj_t *l = ota_text(card, t, label, COL_DIM, &font_inter_14);
-    lv_obj_t *a = ota_text(card, l, addr, COL_TEXT, &font_inter_14_medium);
-    /* Both cut to the sentence that changes a decision. The card grows to whatever
-     * it is given, but only up to ota_fit_card's ceiling of one screen — past that
-     * the buttons come back up over the text, which is the failure this rewrite is
-     * fixing. A line that only restates the button under it ("...before
-     * accepting") is the first thing to spend. */
-    lv_obj_t *warn = ota_text(card, a,
-                              contract
-                              ? "A wrong contract charges a different asset."
-                              : "Takings will be sent here. Check it against "
-                                "your own records.",
-                              COL_DIM, &font_inter_14);
-    ota_fit_card(card, warn, 86);   /* two 40px buttons at -46 and -2 */
-
-    /* Reject is the wide, plainly-labelled one and Accept is the deliberate tap:
-     * the safe answer to "a stranger's address appeared on my terminal" is no. */
-    (void)make_button(card, "Accept", COL_ACCENT, COL_BG, OTA_TEXT_W, 40,
-                      LV_ALIGN_BOTTOM_MID, 0, -46, ACT_PROV_OK,
-                      &font_pjs_20_semibold);
-    (void)make_button(card, "Reject", COL_SURFACE, COL_TEXT, OTA_TEXT_W, 40,
-                      LV_ALIGN_BOTTOM_MID, 0, -2, ACT_PROV_NO,
-                      &font_pjs_20_semibold);
-}
-
-/* "Hold your card to the reader" while an address is derived from it. Its own
- * screen rather than the transaction one: nothing is being paid, and that screen's
- * wording and its Cancel semantics both belong to a sale. */
-static void build_card_wait(void) {
-    /* Same chrome as the sale, deliberately without a lit dash: reading an
-     * address off a card during setup is not a step of anybody's payment. */
-    lv_obj_t *card = build_page(PAY_STEP_NONE, false);   /* setup: no band */
-    const lv_coord_t VW = CARD_W - (2 * CARD_PAD);
-
-    make_label(card, "Cryptnox card", COL_DIM, &font_inter_14,
-               LV_ALIGN_TOP_MID, 0, 10);
-
-    /* Centred in the band between the caption above and the line below, rather
-     * than pinned at 40: the mark's height is the generator's to choose, so the
-     * gap it leaves is worked out here instead of being re-typed whenever the
-     * artwork is re-scaled. */
-    make_tap_mark(card, 32 + ((88 - TAP_MARK_H) / 2));
-
-    make_label(card, "Hold card to reader", COL_TEXT,
-               &font_pjs_20_medium, LV_ALIGN_TOP_MID, 0, 124);
-
-    /* 154, not 176: "Reading your payout addresses" wraps to two lines at
-     * 204px, and from 176 the second one sat on the Cancel button (208). */
-    lv_obj_t *info = make_label(card, s_card_note, COL_DIM,
-                                &font_inter_14, LV_ALIGN_TOP_MID, 0, 154);
-    lv_obj_set_width(info, VW);
-    lv_label_set_long_mode(info, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_text_align(info, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_align(info, LV_ALIGN_TOP_MID, 0, 154);
-
-    (void)make_ghost_button(card, "Cancel", CARD_BTN_W,
-                            LV_ALIGN_BOTTOM_MID, 0, CARD_BTN_Y, ACT_CANCEL);
-}
-
-static void build_splash(void) {
-    clear_screen();
-    /* The logo is black-on-white; put the whole splash on white so it blends. */
-    lv_obj_set_style_bg_color(lv_scr_act(), lv_color_white(), LV_PART_MAIN);
-
-    lv_obj_t *logo = lv_img_create(lv_scr_act());
-    lv_img_set_src(logo, &logo_img);
-    lv_obj_align(logo, LV_ALIGN_CENTER, LOGO_X_NUDGE, -36);
-    /* No pop_in() here: at power-on the backlight has only just come up, so a
-     * scale-in reads as the logo blinking. Kept for the tx check/cross. */
-
-    /* Tight under the logo (the image carries its own breathing margin). */
-    make_label(lv_scr_act(), "cryptnox-pos", lv_color_black(),
-               &font_pjs_20_medium, LV_ALIGN_CENTER, 0, 40);
-
-    /* Boot feedback — the splash stays up while Wi-Fi/SNTP/RPC come up, so
-     * show a discreet spinner instead of looking frozen. */
-    lv_obj_t *sp = lv_spinner_create(lv_scr_act(), 1000, 60);
-    lv_obj_set_size(sp, 28, 28);
-    lv_obj_align(sp, LV_ALIGN_BOTTOM_MID, 0, -48);
-    lv_obj_set_style_arc_width(sp, 3, LV_PART_MAIN);
-    lv_obj_set_style_arc_width(sp, 3, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_color(sp, COL_SURFACE, LV_PART_MAIN);
-    lv_obj_set_style_arc_color(sp, COL_ACCENT, LV_PART_INDICATOR);
-
-    /* Which boot step is running, so a slow start is legible rather than
-     * looking frozen. Discreet, and elided by width to never overflow. */
-    s_boot_step_lbl = make_label(lv_scr_act(), s_boot_step, COL_DIM,
-                                 &font_inter_14,
-                                 LV_ALIGN_BOTTOM_MID, 0, -20);
-    lv_obj_set_width(s_boot_step_lbl, SCR_W - 24);
-    lv_label_set_long_mode(s_boot_step_lbl, LV_LABEL_LONG_DOT);
-    lv_obj_set_style_text_align(s_boot_step_lbl, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_align(s_boot_step_lbl, LV_ALIGN_BOTTOM_MID, 0, -20);
-}
-
-static void build_amount(void) {
-    /* Step one of four. The burger that used to sit top-left is gone — the
-     * admin panel is behind the swipe up from the home indicator now, so the
-     * only chrome left on the teal is the step dashes and the test chip. */
-    lv_obj_t *card = build_page(PAY_STEP_AMOUNT);
-    add_test_chip();
-
-    /* One row at 47..89: the amount centred on the screen, the asset selector at
-     * its right-hand end. Taking money means reading a figure and a currency
-     * together, and a selector centred on its own line above the figure was a
-     * heading for it instead.
-     *
-     * The pill carries the ticker, so the figure is a bare number: the group is
-     * centred in the line minus the pill rather than on the screen, and both are
-     * re-measured whenever either changes — see amount_row_place().
-     *
-     * The card's 262px column is fully spoken for: the figure's row at 10..52,
-     * keypad 58..206 and the Charge button 210..254 below it. Keys come out 37
-     * tall rather than the 44 they had full-screen — the card's inset is paid
-     * for out of the keypad, which is the only thing here with slack. */
-    make_asset_button(card);
-
-    /* Figure and small cents in one content-sized flex row, so the group centres
-     * itself whatever the fonts measure — nothing here has to know how wide
-     * font_pjs_28_semibold draws a 5. Bottom-aligned across the row, which puts the small
-     * cents on the big font's baseline, near enough (its descender is a pixel or
-     * two, and a real baseline align is not on offer in LVGL 8). */
-    lv_obj_t *row = lv_obj_create(card);
-    lv_obj_remove_style_all(row);
-    lv_obj_set_size(row, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_END,
-                          LV_FLEX_ALIGN_CENTER);
-    s_amount_row = row;   /* placed by amount_update_display below */
-
-    s_amount_label = make_label(row, "0.00", COL_TEXT,
-                                &font_pjs_28_semibold, LV_ALIGN_DEFAULT, 0, 0);
-    s_amount_cents_label = make_label(row, "", COL_TEXT,
-                                      &font_pjs_20_semibold, LV_ALIGN_DEFAULT, 0, 0);
-
-    /* Numeric keypad: digits, double-zero, backspace (cents entry). */
-    static const char *amap[] = {
-        "1", "2", "3", "\n",
-        "4", "5", "6", "\n",
-        "7", "8", "9", "\n",
-        "00", "0", LV_SYMBOL_BACKSPACE, ""
-    };
-    lv_obj_t *kb = lv_btnmatrix_create(card);
-    lv_btnmatrix_set_map(kb, amap);
-    lv_obj_set_size(kb, CARD_W - (2 * CARD_PAD), 148);
-    lv_obj_align(kb, LV_ALIGN_TOP_MID, 0, 58);
-    lv_obj_set_style_bg_opa(kb, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_style_border_width(kb, 0, LV_PART_MAIN);
-    /* Same columns as the PIN and admin pads (see make_numeric_keypad), so the
-     * digits stand in one place on every keypad screen. */
-    lv_obj_set_style_pad_hor(kb, 0, LV_PART_MAIN);
-    kbd_fill_rows(kb);
-    /* Minimal keypad: no key boxes — black glyphs on white, grey flash on press. */
-    lv_obj_set_style_bg_opa(kb, LV_OPA_TRANSP, LV_PART_ITEMS);
-    lv_obj_set_style_bg_color(kb, COL_SURFACE, LV_PART_ITEMS | LV_STATE_PRESSED);
-    lv_obj_set_style_bg_opa(kb, LV_OPA_COVER, LV_PART_ITEMS | LV_STATE_PRESSED);
-    lv_obj_set_style_border_width(kb, 0, LV_PART_ITEMS);
-    lv_obj_set_style_shadow_width(kb, 0, LV_PART_ITEMS);
-    lv_obj_set_style_text_color(kb, COL_TEXT, LV_PART_ITEMS);
-    lv_obj_set_style_text_font(kb, &font_pjs_28_light, LV_PART_ITEMS);
-    lv_obj_set_style_radius(kb, 8, LV_PART_ITEMS);
-    lv_obj_add_event_cb(kb, amount_kbd_cb, LV_EVENT_VALUE_CHANGED, NULL);
-    /* Redraws the backspace as an outline — see kbd_backspace_draw_cb(). Both
-     * halves: BEGIN hides the solid glyph, END draws over the key. */
-    lv_obj_add_event_cb(kb, kbd_backspace_draw_cb, LV_EVENT_DRAW_PART_BEGIN, NULL);
-    lv_obj_add_event_cb(kb, kbd_backspace_draw_cb, LV_EVENT_DRAW_PART_END, NULL);
-
-    s_charge_btn = make_button(card, "Charge", COL_ACTION, COL_BG,
-                               CARD_BTN_W, CARD_BTN_H,
-                               LV_ALIGN_BOTTOM_MID, 0, CARD_BTN_Y, ACT_CONFIRM,
-                               &font_pjs_20_semibold);
-
-    /* Also settles the Charge button: the screen is rebuilt on an asset change
-     * with whatever was typed still standing, so it must not come back lit on an
-     * empty figure or dead on a full one. */
-    amount_update_display();   /* keep s_amount_units in sync with the string */
-}
-
-static void build_confirm(void) {
-    /* Step two of four. */
-    lv_obj_t *card = build_page(PAY_STEP_REVIEW);
-
-    /* Ledger-style transaction review: dim caption / value rows, everything
-     * the operator should verify — amount, beneficiary AND the USDC contract
-     * the terminal is about to call.
-     *
-     * All coordinates are the card's. The 216px value width the addresses used
-     * full-screen becomes the card's own usable width, or they would wrap
-     * against a box wider than the one they are drawn in. */
-    const lv_coord_t VW = CARD_W - (2 * CARD_PAD);
-    char buf[24];
-    amount_format(s_confirm_amount, buf, sizeof(buf));
-
-    /* The vertical budget, because it is fully spent and the rows below are not
-     * free to drift. 262px of card: the Total block to 58, the two address rows
-     * to 180 at their two-line worst case, the test warning to 203, and the
-     * buttons from 208. Both address rows DO hit two lines — a 42-character 0x
-     * address measures ~336px against a 204px column — so the worst case is the
-     * normal case and it has 5px of slack. Move anything down and the warning
-     * goes back under the buttons, which is the bug this spacing fixes. */
-    make_label(card, "Total", COL_DIM, &font_inter_14,
-               LV_ALIGN_TOP_LEFT, CARD_PAD, 8);
-
-    /* What is being charged, and — on a test build — where. Opposite "Total" on
-     * its own row, so it costs no height: the rows below have none to give.
-     *
-     * The amount screen says this in an icon and a TEST chip; this is the last
-     * screen before the card is tapped and it is the one that should spell out
-     * both. Mainnet names the coin and stops there, the same rule
-     * settings_net_str follows — a production terminal should not be shouting a
-     * network name nobody needs, which is what makes the testnet form stand out.
-     * Red on testnet for the same reason the chip is. */
-    /* The asset is named beside its own mark below now, the way the amount
-     * screen's selector does it — so this row carries only what that cannot
-     * say: which deployment. Mainnet stays silent, the rule settings_net_str
-     * follows throughout, which is what makes the testnet form stand out. */
-    const bool mainnet = settings_get_mainnet();
-    if (!mainnet) {
-        make_label(card, pos_net_info(asset()->net)->sub_test, COL_DANGER,
-                   &font_inter_14, LV_ALIGN_TOP_RIGHT, -CARD_PAD, 8);
-    }
-
-    lv_obj_t *amt = make_label(card, buf, COL_TEXT, &font_pjs_28_semibold,
-                               LV_ALIGN_TOP_LEFT, CARD_PAD, 24);
-    lv_obj_t *cusdc = make_asset_badge(card, settings_get_chain());
-    lv_obj_align_to(cusdc, amt, LV_ALIGN_OUT_RIGHT_MID, 6, 0);
-    /* Ticker beside the mark, as on the amount screen: the mark alone says
-     * which asset to somebody who already knows the logos, and this is the
-     * screen where that assumption is worth the least — it is the last one
-     * before the card is tapped.
-     *
-     * The gaps are 6 and 4 rather than 8 and 8 because this row has a ceiling:
-     * "9999.99" at font_pjs_28_semibold runs to about x=130, the 36px badge to 172,
-     * and a four-letter ticker to 212 against the card's 214. It fits, with the
-     * tighter gaps and not without them. */
-    lv_obj_t *tick = make_label(card, asset_name(), COL_TEXT,
-                                &font_inter_14_medium, LV_ALIGN_DEFAULT, 0, 0);
-    lv_obj_align_to(tick, cusdc, LV_ALIGN_OUT_RIGHT_MID, 4, 0);
-
-    make_label(card, "To", COL_DIM, &font_inter_14,
-               LV_ALIGN_TOP_LEFT, CARD_PAD, 64);
-    /* The most the card can be charged in network fees on top of the total —
-     * the customer is agreeing to that too. Opposite "To" on its caption row, the
-     * way the test-network name sits opposite "Total": the card has no height
-     * left to give it a row of its own. ~150px at its longest against 204. */
-    if (s_confirm_fee[0] != '\0') {
-        make_label(card, s_confirm_fee, COL_DIM, &font_inter_14,
-                   LV_ALIGN_TOP_RIGHT, -CARD_PAD, 64);
-    }
-    lv_obj_t *addr = make_label(card,
-                                s_confirm_addr[0] ? s_confirm_addr : "-",
-                                COL_TEXT, &font_inter_14_medium,
-                                LV_ALIGN_TOP_LEFT, CARD_PAD, 82);
-    lv_label_set_long_mode(addr, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(addr, VW);
-
-    make_label(card, asset_caption(),
-               COL_DIM, &font_inter_14, LV_ALIGN_TOP_LEFT, CARD_PAD, 126);
-    lv_obj_t *ctr = make_label(card,
-                               (s_addr_usdc != NULL) ? s_addr_usdc : "-",
-                               COL_TEXT, &font_inter_14_medium,
-                               LV_ALIGN_TOP_LEFT, CARD_PAD, 144);
-    lv_label_set_long_mode(ctr, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(ctr, VW);
-
-    /* The warning in words, under the contract rather than at a y of its own:
-     * that row wraps to one or two lines depending on the address family, so the
-     * line below it cannot be a constant. Deliberately NOT given a width — a
-     * wrapped second line here is exactly what used to run under the buttons,
-     * and the sentence measures ~190px against the card's 204. */
-    if (!mainnet) {
-        lv_obj_t *tn = make_label(card, "Test network - no real funds",
-                                  COL_DANGER, &font_inter_14,
-                                  LV_ALIGN_DEFAULT, 0, 0);
-        lv_obj_update_layout(ctr);
-        lv_obj_align_to(tn, ctr, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 6);
-    }
-
-    /* Cancel is the card-wait screen's ghost — white with a hairline, not a grey
-     * slab. Backing out of a sale costs nothing and should read as available
-     * without competing with the button that commits. */
-    const lv_coord_t half = (CARD_W - (2 * CARD_PAD) - 8) / 2;
-    make_ghost_button(card, "Cancel", half,
-                      LV_ALIGN_BOTTOM_LEFT, CARD_PAD, CARD_BTN_Y, ACT_CANCEL);
-    make_button(card, "Confirm", COL_ACTION, COL_BG, half, CARD_BTN_H,
-                LV_ALIGN_BOTTOM_RIGHT, -CARD_PAD, CARD_BTN_Y, ACT_SEND,
-                &font_pjs_20_semibold);
-}
-
-/* OK pressed on the keypad: stash the PIN for main and move to the tx screen. */
-static void pin_submit(void) {
-    if (s_pin_ta == NULL) { return; }
-    const char *p = lv_textarea_get_text(s_pin_ta);
-    size_t len = (p != NULL) ? strlen(p) : 0U;
-    if (len < 4U) { return; }   /* require at least 4 digits */
-
-    strncpy(s_pin, p, sizeof(s_pin) - 1);
-    s_pin[sizeof(s_pin) - 1] = '\0';
-    s_pin_len = static_cast<uint8_t>(strlen(s_pin));
-
-    /* Same keypad, two errands. A card read is not a payment: it gets the card
-     * screen and its own event, so main cannot mistake it for a sale and the tx
-     * screen's "Declined" wording never appears over a setup step. */
-    if (s_pin_for_card) {
-        s_pin_for_card = false;
-        strncpy(s_card_note, "Reading your payout addresses",
-                sizeof(s_card_note) - 1);
-        s_card_note[sizeof(s_card_note) - 1] = '\0';
-        request_screen(UI_SCREEN_CARD_WAIT);
-        if (s_cb != NULL) { s_cb(UI_EVENT_CARD_PIN, 0); }
-        return;
-    }
-
-    s_tx_state = UI_TX_STATE_PLACE_CARD;
-    strncpy(s_tx_info, "Preparing...", sizeof(s_tx_info) - 1);
-    s_tx_info[sizeof(s_tx_info) - 1] = '\0';
-    request_screen(UI_SCREEN_TX_STATUS);
-    if (s_cb != NULL) { s_cb(UI_EVENT_PIN_ENTERED, 0); }
-}
-
-static void pin_kbd_cb(lv_event_t *e) {
-    lv_obj_t *bm = lv_event_get_target(e);
-    uint32_t id = lv_btnmatrix_get_selected_btn(bm);
-    const char *txt = lv_btnmatrix_get_btn_text(bm, id);
-    if ((txt == NULL) || (s_pin_ta == NULL)) { return; }
-
-    if (strcmp(txt, LV_SYMBOL_OK) == 0) {
-        pin_submit();
-    } else if (strcmp(txt, LV_SYMBOL_BACKSPACE) == 0) {
-        lv_textarea_del_char(s_pin_ta);
-    } else if ((txt[0] >= '0') && (txt[0] <= '9') && (txt[1] == '\0')) {
-        lv_textarea_add_char(s_pin_ta, static_cast<uint32_t>(txt[0]));
-    }
-}
-
-/* Masked one-line code field, with no soft-keyboard popup — the on-screen keypad
- * is the only input. Shared by the card PIN and the admin code, and both pair it
- * with the reveal eye: a code typed blind on a resistive panel and refused tells
- * the operator nothing about which of the two got it wrong.
- *
- * The code screens place field and eye on the keypad's own columns — see
- * make_code_row(). The Wi-Fi passphrase has a full-width keyboard and no
- * columns to follow, so it sizes its pair with CODE_FIELD_W/CODE_FIELD_X. */
-#define CODE_EYE_GAP    6
-#define CODE_FIELD_W(kbd_w)  ((kbd_w) - MENU_BTN_W - CODE_EYE_GAP)
-#define CODE_FIELD_X    (-(MENU_BTN_W + CODE_EYE_GAP) / 2)
-/* Show the hint while the field is empty, hide it the moment anything is typed.
- * Driven by the textarea's own VALUE_CHANGED, which LVGL sends from all four
- * mutating calls (add_char, add_text, del_char, set_text) — so backspacing back to
- * empty brings it back, and the reset in build_pin/admin_submit does too, with no
- * caller having to remember. */
-static void code_hint_cb(lv_event_t *e) {
-    lv_obj_t *ta   = lv_event_get_target(e);
-    lv_obj_t *hint = static_cast<lv_obj_t *>(lv_event_get_user_data(e));
-    const char *txt = lv_textarea_get_text(ta);
-    if (hint == NULL) { return; }
-    if ((txt != NULL) && (txt[0] != '\0')) {
-        lv_obj_add_flag(hint, LV_OBJ_FLAG_HIDDEN);
-    } else {
-        lv_obj_clear_flag(hint, LV_OBJ_FLAG_HIDDEN);
-    }
-}
-
-static lv_obj_t *make_code_field(uint32_t max_len, lv_coord_t x1, lv_coord_t y,
-                                 const char *hint, lv_coord_t w,
-                                 lv_obj_t *parent = NULL) {
-    lv_obj_t *host = (parent != NULL) ? parent : lv_scr_act();
-    lv_obj_t *ta = lv_textarea_create(host);
-    lv_textarea_set_password_mode(ta, true);
-    /* Echo each digit briefly so the operator can confirm the keypress, then
-     * mask — a third of LVGL's 1500 ms default, which leaks the whole code. */
-    lv_textarea_set_password_show_time(ta, 500);
-    lv_textarea_set_one_line(ta, true);
-    lv_textarea_set_max_length(ta, max_len);
-    lv_textarea_set_text(ta, "");
-    lv_obj_clear_flag(ta, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_width(ta, w);
-    /* Trimmed off the default theme's field padding: the box holds one line of
-     * 14px digits, and at the theme's pad it stood as tall as two keypad rows.
-     * The fill, the radius and the text colour are s_st_field's — set here too,
-     * once, they were three chances for this box and the Wi-Fi one to drift. */
-    lv_obj_set_style_pad_ver(ta, FIELD_PAD_V, LV_PART_MAIN);
-    lv_obj_align(ta, LV_ALIGN_TOP_LEFT, x1, y);
-    lv_obj_set_style_text_align(ta, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-
-    /* What to type, in the box it is typed into. The panel's own screens are a
-     * title, an empty box and a keypad, and a title naming the OUTCOME —
-     * "Authorize browser" — left the operator with nothing on screen saying the
-     * thing wanted was their admin code.
-     *
-     * A label of our own, NOT lv_textarea's placeholder. The placeholder cannot be
-     * centred in a one-line textarea: draw_placeholder() sets LV_TEXT_FLAG_EXPAND
-     * for one_line fields, which tells the renderer to ignore the area's width, and
-     * a centre alignment inside an area of ignored width is a left alignment. So it
-     * drew hard against the left inset while the digits it labels are centred —
-     * which is what this reads as on the panel, a caption belonging to something
-     * else. Aligned to the field itself, so it follows a field the caller has
-     * shifted (the PIN screen moves its box left to make room for the eye). */
-    if (hint != NULL) {
-        lv_obj_t *l = make_label(host, hint, COL_DIM,
-                                 &font_inter_14, LV_ALIGN_DEFAULT, 0, 0);
-        lv_obj_update_layout(ta);
-        lv_obj_align_to(l, ta, LV_ALIGN_CENTER, 0, 0);
-        lv_obj_add_event_cb(ta, code_hint_cb, LV_EVENT_VALUE_CHANGED, l);
-    }
-    return ta;
-}
-
-/* Numeric keypad: no key boxes — black glyphs on white, grey flash on press.
- * The map is static because lv_btnmatrix keeps the pointer.
- *
- * ONE WIDTH for both screens that type a code. It was two — the card PIN's from
- * the sale card it is drawn in, the admin code's from the full panel it has to
- * itself — and each screen's field was then sized to its own keypad, which is
- * the right rule and gave the wrong result: two code screens that are the same
- * screen with a different title, one of them 28 px wider than the other. The
- * panel is the one with room to spare, so it gives the room up. */
-#define CODE_KBD_W   (CARD_W - (2 * CARD_PAD))
-static lv_obj_t *make_numeric_keypad(lv_event_cb_t cb, lv_obj_t *parent = NULL,
-                                     lv_coord_t w = CODE_KBD_W,
-                                     lv_coord_t h = 210) {
-    static const char *kbd_map[] = {
-        "1", "2", "3", "\n",
-        "4", "5", "6", "\n",
-        "7", "8", "9", "\n",
-        LV_SYMBOL_BACKSPACE, "0", LV_SYMBOL_OK, ""
-    };
-    lv_obj_t *kb = lv_btnmatrix_create((parent != NULL) ? parent : lv_scr_act());
-    lv_btnmatrix_set_map(kb, kbd_map);
-    lv_obj_set_size(kb, w, h);
-    lv_obj_align(kb, LV_ALIGN_BOTTOM_MID, 0, -6);
-    lv_obj_set_style_bg_opa(kb, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_style_border_width(kb, 0, LV_PART_MAIN);
-    /* No side inset: the outer keys' press slabs then run to the keypad's edges,
-     * which are the code field's left edge and the eye's right edge. With the
-     * theme's pad the field overhung the keys on both sides. */
-    lv_obj_set_style_pad_hor(kb, 0, LV_PART_MAIN);
-    kbd_fill_rows(kb);
-    lv_obj_set_style_bg_opa(kb, LV_OPA_TRANSP, LV_PART_ITEMS);
-    lv_obj_set_style_bg_color(kb, COL_SURFACE, LV_PART_ITEMS | LV_STATE_PRESSED);
-    lv_obj_set_style_bg_opa(kb, LV_OPA_COVER, LV_PART_ITEMS | LV_STATE_PRESSED);
-    lv_obj_set_style_border_width(kb, 0, LV_PART_ITEMS);
-    lv_obj_set_style_shadow_width(kb, 0, LV_PART_ITEMS);
-    lv_obj_set_style_text_color(kb, COL_TEXT, LV_PART_ITEMS);
-    lv_obj_set_style_text_font(kb, &font_pjs_28_light, LV_PART_ITEMS);
-    lv_obj_set_style_radius(kb, 8, LV_PART_ITEMS);
-    lv_obj_add_event_cb(kb, cb, LV_EVENT_VALUE_CHANGED, NULL);
-    /* The amount screen's outline backspace, on the PIN and admin pads too. */
-    lv_obj_add_event_cb(kb, kbd_backspace_draw_cb, LV_EVENT_DRAW_PART_BEGIN, NULL);
-    lv_obj_add_event_cb(kb, kbd_backspace_draw_cb, LV_EVENT_DRAW_PART_END, NULL);
-    return kb;
-}
-
-/* The field and its reveal eye, laid on the keypad's columns below them: the
- * field spans the 1 and 2 keys, the eye is the 3 key's column with its glyph
- * centred over the 3/6/9 glyphs. Read off the keypad's own button areas rather
- * than recomputed, so the row cannot drift from the keys whatever gap the theme
- * puts between them. Build the keypad first. */
-static lv_obj_t *make_code_row(lv_obj_t *host, lv_obj_t *kb, uint32_t max_len,
-                               const char *hint, BtnAction eye_act,
-                               lv_obj_t **eye_lbl) {
-    lv_obj_update_layout(kb);
-    const lv_area_t *k = reinterpret_cast<lv_btnmatrix_t *>(kb)->button_areas;
-    const lv_coord_t kx = lv_obj_get_x(kb);   /* k[] is relative to the keypad */
-    /* The left edge comes in from the 1 key's slab: the slab only shows on a
-     * press, and the eye reads the pad's edge off the digits inside it, so a box
-     * flush with the slab looked like it started left of the pad. The right edge
-     * runs @c grow past the 2 key's slab, into the empty side of the eye's wide
-     * button — the glyph is centred in it, well clear. Tune both by eye. */
-    const lv_coord_t inset = 8;
-    const lv_coord_t grow  = 12;
-    const lv_coord_t w = ((k[1].x2 - k[0].x1) + 1) - inset + grow;
-    /* No reveal (see build_pin()): nothing in the 3 key's column, so the field
-     * centres over the pad rather than leaving that column empty beside it. */
-    const lv_coord_t x1 = (eye_lbl == NULL)
-                            ? kx + ((lv_obj_get_width(kb) - w) / 2)
-                            : kx + k[0].x1 + inset;
-    lv_obj_t *ta = make_code_field(max_len, x1, 44, hint, w, host);
-    if (eye_lbl == NULL) { return ta; }
-    /* make_icon_button() places itself top-left for the burger; move it, and
-     * keep the label handle so the glyph can be swapped in place. */
-    lv_obj_t *eye = make_icon_button(LV_SYMBOL_EYE_OPEN, eye_act, host);
-    lv_obj_set_width(eye, (k[2].x2 - k[2].x1) + 1);
-    lv_obj_align_to(eye, ta, LV_ALIGN_OUT_RIGHT_MID,
-                    (k[2].x1 - k[1].x2) - 1 - grow, 0);   /* still on the 3 key */
-    *eye_lbl = lv_obj_get_child(eye, 0);
-    return ta;
-}
-
-static void build_pin(void) {
-    /* Step three of four — authorising the card. A card read during first-run
-     * setup borrows this screen too, and that is not a sale, so it gets the
-     * chrome without a lit dash. */
-    lv_obj_t *card = build_page(s_pin_for_card ? PAY_STEP_NONE : PAY_STEP_AUTH,
-                                !s_pin_for_card);   /* setup read: no band */
-    /* Wipe any stale PIN from a previous attempt. */
-    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_pin), sizeof(s_pin));
-    s_pin_len = 0;
-
-    (void)make_title(s_pin_for_card ? "Card PIN" : "Enter PIN", true, card);
-    /* Back (cancel) icon, top-left of the card. */
-    (void)make_icon_button(LV_SYMBOL_LEFT, ACT_PIN_CANCEL, card);
-
-    /* The eye is the same reveal the Wi-Fi passphrase has, and for the same
-     * reason: a PIN typed blind on a resistive panel and refused tells the
-     * operator nothing about which of the two got it wrong — except that here the
-     * card counts the attempt, and runs out of them. Only on the setup read,
-     * though: during a sale this screen faces the customer and the PIN is theirs,
-     * so there is no eye and no per-digit echo for a bystander to read. */
-    lv_obj_t *kb = make_numeric_keypad(pin_kbd_cb, card, CODE_KBD_W, 170);
-    s_pin_ta = make_code_row(card, kb, 9U, "Card PIN", ACT_PIN_REVEAL,
-                             s_pin_for_card ? &s_pin_eye_lbl : NULL);
-    if (!s_pin_for_card) { lv_textarea_set_password_show_time(s_pin_ta, 0); }
-}
-
-/**
- * @brief Wait imposed after repeated wrong admin codes.
- *
- * Free for the first three tries, then doubling — 1 s, 2 s, 4 s ... — and
- * still doubling past a minute, up to an hour per attempt from the fifteenth
- * wrong code on. The count is in NVS, so a power cycle restarts the current wait
- * rather than resetting it. Never a permanent lock: the code gates the factory
- * reset too, so locking for good would leave no way back in short of a USB
- * reflash.
- */
-#define ADMIN_PENALTY_MAX_S  3600U
-
-static uint32_t admin_penalty_ms(uint8_t fails) {
-    if (fails < 3U) { return 0U; }
-    uint32_t shift = static_cast<uint32_t>(fails) - 3U;
-    if (shift > 12U) { shift = 12U; }        /* 4096 s: past the cap, no overflow */
-    uint32_t secs = 1U << shift;
-    if (secs > ADMIN_PENALTY_MAX_S) { secs = ADMIN_PENALTY_MAX_S; }
-    return secs * 1000U;
-}
-
-/* "45s" or "12 min" — the penalty runs to an hour now, and "wait 3417s" is a
- * number nobody standing at a counter wants to divide by sixty. */
-static void wait_text(char *out, size_t n, uint32_t secs) {
-    if (secs < 120U) { (void)snprintf(out, n, "%us", static_cast<unsigned>(secs)); }
-    else { (void)snprintf(out, n, "%u min", static_cast<unsigned>((secs + 59U) / 60U)); }
-}
-
-/* Seconds left on the penalty, 0 once it has elapsed. */
-static uint32_t admin_lock_remaining_s(void) {
-    if (s_admin_lock_ms == 0U) { return 0U; }
-    const uint32_t elapsed = lv_tick_elaps(s_admin_lock_start);
-    if (elapsed >= s_admin_lock_ms) {
-        s_admin_lock_ms = 0U;
-        return 0U;
-    }
-    return ((s_admin_lock_ms - elapsed) + 999U) / 1000U;
-}
-
-static void admin_set_note(const char *msg) {
-    strncpy(s_admin_note, (msg != NULL) ? msg : "", sizeof(s_admin_note) - 1);
-    s_admin_note[sizeof(s_admin_note) - 1] = '\0';
-    if (s_admin_note_lbl != NULL) {
-        lv_label_set_text(s_admin_note_lbl, s_admin_note);
-    }
-}
-
-static void admin_submit(void) {
-    if (s_admin_ta == NULL) { return; }
-
-    char code[ADMIN_CODE_MAX + 1] = {0};
-    const char *txt = lv_textarea_get_text(s_admin_ta);
-    strncpy(code, (txt != NULL) ? txt : "", sizeof(code) - 1);
-    code[sizeof(code) - 1] = '\0';
-
-    if (s_req_screen == UI_SCREEN_ADMIN_SET) {
-        if (!s_admin_confirming) {
-            if (strlen(code) < ADMIN_CODE_MIN) {
-                char msg[sizeof(s_admin_note)];
-                (void)snprintf(msg, sizeof(msg), "At least %d digits",
-                               ADMIN_CODE_MIN);
-                admin_set_note(msg);   /* built, so it cannot drift from the limit */
-            } else {
-                strncpy(s_admin_first, code, sizeof(s_admin_first) - 1);
-                s_admin_first[sizeof(s_admin_first) - 1] = '\0';
-                s_admin_confirming = true;
-                admin_set_note("");
-                request_screen(UI_SCREEN_ADMIN_SET);   /* rebuild, confirm pass */
-            }
-        } else if (strcmp(code, s_admin_first) == 0) {
-            if (!settings_set_admin_code(code)) {
-                /* Stay put and say so. Reporting success here would send main on
-                 * to Wi-Fi setup and leave a terminal whose menu — factory reset
-                 * included — no code can ever open. */
-                admin_set_note("Storage error - try again");
-                lv_textarea_set_text(s_admin_ta, "");
-                CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(code),
-                                      sizeof(code));
-                return;
-            }
-            CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_admin_first),
-                                  sizeof(s_admin_first));
-            s_admin_confirming = false;
-            admin_set_note("");
-            /* Not the amount screen: this is the first-run path, so main answers by
-             * raising the setup access point, which takes a second or two — the
-             * payment keypad would flash up and be replaced by the setup screen.
-             * Say what is actually happening instead. */
-            set_wifi_progress("Starting setup", NULL);
-            request_screen(UI_SCREEN_WIFI_CONNECTING);
-            if (s_cb != NULL) { s_cb(UI_EVENT_ADMIN_SET, 0); }
-        } else {
-            CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_admin_first),
-                                  sizeof(s_admin_first));
-            s_admin_confirming = false;
-            admin_set_note("Codes did not match");
-            request_screen(UI_SCREEN_ADMIN_SET);
-        }
-    } else {
-        const uint32_t wait_s = admin_lock_remaining_s();
-        char msg[sizeof(s_admin_note)];
-        if (strlen(code) < ADMIN_CODE_MIN_STORED) {
-            /* Too short to be any stored code, so don't spend an attempt on it.
-             * Otherwise a few stray taps on OK push the counter into the penalty
-             * and the merchant waits a minute for a menu nobody attacked. */
-            admin_set_note("Enter your code");
-        } else if (wait_s > 0U) {
-            char w[16];
-            wait_text(w, sizeof(w), wait_s);
-            (void)snprintf(msg, sizeof(msg), "Too many tries - wait %s", w);
-            admin_set_note(msg);
-        } else if (settings_check_admin_code(code)) {
-            s_admin_lock_ms = 0U;
-            if (s_admin_for_portal) {
-                /* This is the whole authorisation mechanism: the code was typed
-                 * here, so the browser is let in without it ever having been on
-                 * the network.
-                 *
-                 * Where to go back to differs by mode, and the setup screen is
-                 * wrong for admin mode — it would draw a QR code beside an AP name
-                 * and passphrase that only exist during setup. The code was just
-                 * verified, so the settings page is a legitimate landing spot and
-                 * the one the operator came from. */
-                s_admin_for_portal = false;
-                s_view_chain       = settings_get_chain();
-                prov_auth_resolve(true);
-                request_screen((prov_mode() == PROV_MODE_WIZARD)
-                               ? UI_SCREEN_PROV : UI_SCREEN_SETTINGS);
-            } else {
-                request_screen(UI_SCREEN_SETTINGS);
-            }
-        } else {
-            const uint32_t penalty = admin_penalty_ms(settings_admin_fail_count());
-            if (penalty > 0U) {
-                s_admin_lock_start = lv_tick_get();
-                s_admin_lock_ms    = penalty;
-                char w[16];
-                wait_text(w, sizeof(w), penalty / 1000U);
-                (void)snprintf(msg, sizeof(msg), "Wrong code - wait %s", w);
-                admin_set_note(msg);
-            } else {
-                admin_set_note("Wrong code");
-            }
-            lv_textarea_set_text(s_admin_ta, "");
-        }
-    }
-    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(code), sizeof(code));
-}
-
-static void admin_kbd_cb(lv_event_t *e) {
-    lv_obj_t *bm = lv_event_get_target(e);
-    uint32_t id = lv_btnmatrix_get_selected_btn(bm);
-    const char *txt = lv_btnmatrix_get_btn_text(bm, id);
-    if ((txt == NULL) || (s_admin_ta == NULL)) { return; }
-
-    if (strcmp(txt, LV_SYMBOL_OK) == 0) {
-        admin_submit();
-    } else if (strcmp(txt, LV_SYMBOL_BACKSPACE) == 0) {
-        lv_textarea_del_char(s_admin_ta);
-    } else if ((txt[0] >= '0') && (txt[0] <= '9') && (txt[1] == '\0')) {
-        lv_textarea_add_char(s_admin_ta, static_cast<uint32_t>(txt[0]));
-    }
-}
-
-/* Shared body of both admin screens; only the title and the way out differ. */
-static void build_admin_screen(const char *title, bool allow_cancel,
-                               const char *hint) {
-    /* Into the rising sheet when there is one, and then WITHOUT clearing the
-     * screen: the sale screen underneath is what the sheet slides over. Every
-     * other entry to this screen is an ordinary full-screen rebuild. */
-    /* Every code screen takes the card PIN's look — the sale flow's card on the
-     * ramp, without the clock and home bar — so creating the code, authorizing
-     * the setup browser and opening the admin panel all read as one screen.
-     * The sheet gets the ramp painted on it rather than a rebuilt screen. */
-    lv_obj_t *host;
-    if (s_sheet != NULL) {
-        paint_page(s_sheet);
-        host = make_card(s_sheet);
-    } else {
-        host = build_page(PAY_STEP_NONE, false);
-    }
-
-    (void)make_title(title, allow_cancel, host);
-    if (allow_cancel) {
-        (void)make_icon_button(LV_SYMBOL_LEFT, ACT_ADMIN_CANCEL, host);
-    }
-
-    /* The card is 262 tall, not 320, so the note tucks under the field
-     * (44..76) and the keypad gives up height, as the PIN screen's does. */
-    lv_obj_t *kb = make_numeric_keypad(admin_kbd_cb, host, CODE_KBD_W,
-                                       160);
-
-    /* The card PIN's reveal, on this code too. It was left off on the argument
-     * that the admin code is typed by the person who set it — but it is typed
-     * blind on a resistive panel exactly like the PIN, and getting it wrong here
-     * costs a doubling lockout on the only door to the factory reset. */
-    s_admin_ta = make_code_row(host, kb, ADMIN_CODE_MAX, hint, ACT_ADMIN_REVEAL,
-                               &s_admin_eye_lbl);
-
-    /* Note band above the keypad: wrong code, mismatch, or the remaining wait. */
-    s_admin_note_lbl = make_label(host, s_admin_note, COL_DANGER,
-                                  &font_inter_14, LV_ALIGN_TOP_MID, 0,
-                                  78);
-}
-
-static void build_admin_set(void) {
-    /* No way out: first-run setup is mandatory, since the whole menu — including
-     * the factory reset — hides behind this code. */
-    build_admin_screen(s_admin_confirming ? "Confirm code" : "Set admin code",
-                       false,
-                       s_admin_confirming ? "Type it again" : "New admin code");
-}
-
-static void build_admin_unlock(void) {
-    /* Same screen either way — the escalating lockout, the note band and the
-     * keypad are what this is, and only the door it opens differs.
-     *
-     * The hint does not differ, and that is the point: the title says which door,
-     * the box says what the key is. "Authorize browser" over an empty field named
-     * the outcome and left the operator to guess that the terminal wanted the
-     * admin code — the one thing on that screen they had to know. */
-    /* For a browser, the title carries its pairing code — the page shows the
-     * same four digits, so the operator lets in the phone in their hand and not
-     * whichever one on the access point asked first. */
-    static char title[24];
-    char code[8];
-    if (s_admin_for_portal && prov_pair_code(code, sizeof(code))) {
-        (void)snprintf(title, sizeof(title), "Browser %s", code);
-    } else {
-        (void)snprintf(title, sizeof(title), "%s",
-                       s_admin_for_portal ? "Authorize browser" : "Control panel");
-    }
-    build_admin_screen(title, true, "Admin code");
-}
-
-/* Header with a back arrow (to amount entry) instead of the burger. */
-static void build_header_back(const char *title) {
-    (void)make_title(title, true);
-    make_divider(lv_scr_act(), HDR_DIVIDER_Y);
-    (void)make_icon_button(LV_SYMBOL_LEFT, ACT_WIFI_CANCEL);
-}
-
-static void wifi_item_cb(lv_event_t *e) {
-    intptr_t idx = reinterpret_cast<intptr_t>(lv_event_get_user_data(e));
-    if ((idx < 0) || (idx >= s_ap_count)) { return; }
-    strncpy(s_wifi_ssid, s_aps[idx].ssid, sizeof(s_wifi_ssid) - 1);
-    s_wifi_ssid[sizeof(s_wifi_ssid) - 1] = '\0';
-    request_screen(UI_SCREEN_WIFI_PASS);
-}
-
-static void build_wifi_list(void) {
-    clear_screen();
-    build_header_back("Wi-Fi");
-
-    /* Why the picker opened, otherwise the operator lands in Wi-Fi setup with no
-     * idea what failed. */
-    lv_coord_t list_y = 48;
-    if (s_wifi_note[0] != '\0') {
-        lv_obj_t *note = make_label(lv_scr_act(), s_wifi_note, COL_DANGER,
-                                    &font_inter_14,
-                                    LV_ALIGN_TOP_MID, 0, 50);
-        lv_label_set_long_mode(note, LV_LABEL_LONG_WRAP);
-        lv_obj_set_width(note, 216);
-        lv_obj_set_style_text_align(note, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        /* Measure rather than assume two lines: the list then clears the note at
-         * any wrap depth, so a longer message can never overprint it. */
-        lv_obj_update_layout(note);
-        list_y = 50 + lv_obj_get_height(note) + 6;
-    }
-
-    if (s_ap_count == 0U) {
-        make_label(lv_scr_act(), "No networks found", COL_DIM,
-                   &font_inter_14, LV_ALIGN_CENTER, 0, 0);
-        make_button(lv_scr_act(), "Rescan", COL_ACTION, COL_BG, 140, ACT_BTN_H,
-                    LV_ALIGN_BOTTOM_MID, 0, ACT_BTN_Y, ACT_WIFI,
-                    &font_pjs_20_semibold);
-        return;
-    }
-
-    lv_obj_t *list = lv_list_create(lv_scr_act());
-    lv_obj_set_size(list, SCR_W - 12, SCR_H - 4 - list_y);
-    lv_obj_align(list, LV_ALIGN_TOP_MID, 0, list_y);
-    lv_obj_set_style_bg_color(list, COL_BG, LV_PART_MAIN);
-    lv_obj_set_style_border_width(list, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_row(list, 4, LV_PART_MAIN);
-
-    for (uint16_t i = 0U; i < s_ap_count; i++) {
-        lv_obj_t *btn = lv_list_add_btn(list, LV_SYMBOL_WIFI, s_aps[i].ssid);
-        lv_obj_set_style_bg_color(btn, COL_SURFACE, LV_PART_MAIN);
-        lv_obj_set_style_text_color(btn, COL_TEXT, LV_PART_MAIN);
-        lv_obj_set_style_radius(btn, 8, LV_PART_MAIN);
-        lv_obj_add_event_cb(btn, wifi_item_cb, LV_EVENT_CLICKED,
-                            reinterpret_cast<void *>(static_cast<intptr_t>(i)));
-    }
-}
-
-static void wifi_pass_kb_cb(lv_event_t *e) {
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_READY) {            /* keyboard check-mark */
-        if (s_wifi_pass_ta != NULL) {
-            const char *p = lv_textarea_get_text(s_wifi_pass_ta);
-            strncpy(s_wifi_pass, (p != NULL) ? p : "", sizeof(s_wifi_pass) - 1);
-            s_wifi_pass[sizeof(s_wifi_pass) - 1] = '\0';
-        }
-        set_wifi_progress("Connecting to", s_wifi_ssid);
-        request_screen(UI_SCREEN_WIFI_CONNECTING);
-        if (s_cb != NULL) { s_cb(UI_EVENT_WIFI_TRY, 0); }
-    } else if (code == LV_EVENT_CANCEL) {     /* keyboard close */
-        request_screen(UI_SCREEN_WIFI_LIST);
-    }
-}
-
-static void build_wifi_pass(void) {
-    clear_screen();
-    make_label(lv_scr_act(), s_wifi_ssid, COL_TEXT, &font_inter_14_medium,
-               LV_ALIGN_TOP_MID, 0, 6);
-
-    s_wifi_pass_ta = lv_textarea_create(lv_scr_act());
-    lv_textarea_set_one_line(s_wifi_pass_ta, true);
-    lv_textarea_set_text(s_wifi_pass_ta, "");
-    lv_textarea_set_placeholder_text(s_wifi_pass_ta, "Password");
-    /* Masked by default: this screen faces the customer. The eye beside it
-     * reveals on demand, for checking a long passphrase. */
-    lv_textarea_set_password_mode(s_wifi_pass_ta, true);
-    /* Echo each character briefly, then mask — long enough to catch a typo,
-     * a third of LVGL's 1500 ms default on a customer-facing screen. The eye
-     * stays the way to re-read the whole passphrase, on the merchant's terms. */
-    lv_textarea_set_password_show_time(s_wifi_pass_ta, 500);
-    /* The same box as the card PIN's and the admin code's, by the same rule:
-     * the field and its eye are one group, sized to the thing typing into it —
-     * here the full-width keyboard, less a margin its own width either side —
-     * and centred as a pair so the group's middle is the keyboard's. Only the
-     * text alignment differs, because a passphrase is read left to right and a
-     * PIN is four digits in the middle of a box. */
-    lv_obj_set_width(s_wifi_pass_ta, CODE_FIELD_W(SCR_W - (2 * FIELD_PAD_V)));
-    lv_obj_align(s_wifi_pass_ta, LV_ALIGN_TOP_MID, CODE_FIELD_X, 28);
-    lv_obj_set_style_pad_ver(s_wifi_pass_ta, FIELD_PAD_V, LV_PART_MAIN);
-
-    /* make_icon_button() places itself top-left for the burger; move it beside
-     * the field. Keep the label handle so the glyph can be swapped in place. Same
-     * pair on the card-PIN screen — see build_pin(). */
-    lv_obj_t *eye = make_icon_button(LV_SYMBOL_EYE_OPEN, ACT_WIFI_PASS_REVEAL);
-    lv_obj_align_to(eye, s_wifi_pass_ta, LV_ALIGN_OUT_RIGHT_MID, CODE_EYE_GAP, 0);
-    s_wifi_eye_lbl = lv_obj_get_child(eye, 0);
-
-    lv_obj_t *kb = lv_keyboard_create(lv_scr_act());
-    lv_keyboard_set_textarea(kb, s_wifi_pass_ta);
-    lv_obj_add_event_cb(kb, wifi_pass_kb_cb, LV_EVENT_ALL, NULL);
-}
-
-static void build_wifi_connecting(void) {
-    clear_screen();
-    build_header("Wi-Fi");
-
-    if (s_wifi_name[0] == '\0') {
-        /* Nothing to name ("Scanning..."): the caption is the whole message. */
-        make_label(lv_scr_act(), s_wifi_caption, COL_TEXT,
-                   &font_pjs_20_medium, LV_ALIGN_CENTER, 0, 0);
-    } else {
-        make_label(lv_scr_act(), s_wifi_caption, COL_DIM,
-                   &font_inter_14, LV_ALIGN_CENTER, 0, -30);
-
-        /* LONG_DOT elides on real glyph metrics, so a 32-char SSID never
-         * overflows. Width must be set before the long mode. */
-        lv_obj_t *name = make_label(lv_scr_act(), s_wifi_name, COL_TEXT,
-                                    &font_pjs_20_medium, LV_ALIGN_CENTER, 0, 0);
-        lv_obj_set_width(name, SCR_W - 24);
-        lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);
-        lv_obj_set_style_text_align(name, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        lv_obj_align(name, LV_ALIGN_CENTER, 0, 0);   /* re-centre after the resize */
-    }
-}
-
-/* Animate an object's zoom (256 = 100%) — used for the success-check pop. */
-static void zoom_anim_cb(void *obj, int32_t v) {
-    lv_obj_set_style_transform_zoom(static_cast<lv_obj_t *>(obj), v, LV_PART_MAIN);
-}
-
-/* Pop-in: scale from small to full with a slight overshoot/bounce. */
-static void pop_in(lv_obj_t *obj) {
-    lv_obj_update_layout(obj);
-    lv_obj_set_style_transform_pivot_x(obj, lv_obj_get_width(obj) / 2, LV_PART_MAIN);
-    lv_obj_set_style_transform_pivot_y(obj, lv_obj_get_height(obj) / 2, LV_PART_MAIN);
-    /* Apply the start scale before the first render: lv_anim_start() only calls
-     * the exec cb on its first tick, so the object would flash at full size. */
-    zoom_anim_cb(obj, 10);
-    lv_anim_t a;
-    lv_anim_init(&a);
-    lv_anim_set_var(&a, obj);
-    lv_anim_set_exec_cb(&a, zoom_anim_cb);
-    lv_anim_set_values(&a, 10, 256);          /* ~4% -> 100% (pronounced pop) */
-    lv_anim_set_time(&a, 420);
-    lv_anim_set_path_cb(&a, lv_anim_path_overshoot);
-    lv_anim_start(&a);
-}
-
-/* "0x1234...abcd" — head and tail of a transaction hash. 66 characters do not
- * fit on a 240px panel at a readable size, and the ends are what somebody
- * matches against a block explorer. Tron hashes carry no 0x, which is why this
- * takes six characters from the front rather than skipping a prefix. */
-static void hash_short(const char *h, char *out, size_t n) {
-    size_t len = strlen(h);
-    if ((len <= 14U) || (n < 16U)) {
-        snprintf(out, n, "%s", h);
-        return;
-    }
-    snprintf(out, n, "%.6s...%s", h, h + len - 4U);
-}
-
-/* "<amount> [coin mark] <TICKER>" centred at offset y from the top.
- *
- * @p ticker names the asset beside its mark, the way the amount and confirm
- * screens do. It is on for the tap screen and the "Approved" receipt: the mark
- * alone only says which asset to somebody who already knows the logos.
- *
- * A content-sized flex row, like the amount screen's, so the group centres
- * itself: the figure, the badge and the ticker all change width from sale to
- * sale, and a fixed nudge was only right for one of them. @p y is where the
- * figure's line box starts; the badge is taller, so the row is lifted by half
- * the difference to keep the figure where it was. */
-static void tx_amount_row(lv_obj_t *parent, const char *amt,
-                          const lv_font_t *font, lv_coord_t y, bool ticker) {
-    lv_obj_t *row = lv_obj_create(parent);
-    lv_obj_remove_style_all(row);
-    lv_obj_set_size(row, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(row, 6, LV_PART_MAIN);
-
-    lv_obj_t *al = make_label(row, amt, COL_TEXT, font, LV_ALIGN_DEFAULT, 0, 0);
-    (void)make_asset_badge(row, settings_get_chain());
-    if (ticker) {
-        (void)make_label(row, asset_name(), COL_TEXT, &font_inter_14_medium,
-                         LV_ALIGN_DEFAULT, 0, 0);
-    }
-
-    lv_obj_update_layout(row);
-    lv_obj_align(row, LV_ALIGN_TOP_MID, 0,
-                 y - ((lv_obj_get_height(row) - lv_obj_get_height(al)) / 2));
-}
-
-static void build_tx_status(void) {
-    /* The last step of the sale — and the one the reference photo is of:
-     * "Total", the figure, the prompt, the contactless mark, one way out. */
-    lv_obj_t *card = build_page(PAY_STEP_TAP);
-    const lv_coord_t VW = CARD_W - (2 * CARD_PAD);
-
-    char amt[24];
-    amount_format(s_confirm_amount, amt, sizeof(amt));
-
-    if (s_tx_state == UI_TX_STATE_PLACE_CARD) {
-        /* Total at 8 and the figure at 38: the badge is taller than the 28px
-         * line it is centred on, so at 14/32 its top touched "Total". */
-        make_label(card, "Total", COL_DIM, &font_inter_14,
-                   LV_ALIGN_TOP_MID, 0, 8);
-        tx_amount_row(card, amt, &font_pjs_28_semibold, 38, true);
-
-        make_label(card, "Tap your card", COL_DIM, &font_pjs_20_medium,
-                   LV_ALIGN_TOP_MID, 0, 82);
-
-        /* Centred in the band between the prompt's 20px line (ends ~104) and
-         * the Cancel button (starts 208). */
-        make_tap_mark(card, 106 + ((102 - TAP_MARK_H) / 2));
-
-        (void)make_ghost_button(card, "Cancel", CARD_BTN_W,
-                                LV_ALIGN_BOTTOM_MID, 0, CARD_BTN_Y, ACT_CANCEL);
-        return;
-    }
-
-    if (s_tx_state == UI_TX_STATE_DONE) {
-        lv_obj_t *chk = make_label(card, LV_SYMBOL_OK, COL_SUCCESS,
-                                   &font_icons_48, LV_ALIGN_TOP_MID, 0, 30);
-        pop_in(chk);
-        make_label(card, "Approved", COL_TEXT, &font_pjs_20_medium,
-                   LV_ALIGN_TOP_MID, 0, 92);
-        tx_amount_row(card, amt, &font_pjs_28_semibold, 122, true);
-
-        /* The hash main hands this screen with the DONE state. It used to be
-         * dropped on the floor, which left the merchant a settled sale they
-         * could not look up — the one screen where the number is worth having
-         * was the only one not showing it. */
-        if (s_tx_info[0] != '\0') {
-            char shrt[24];
-            hash_short(s_tx_info, shrt, sizeof(shrt));
-            make_label(card, shrt, COL_DIM, &font_inter_14,
-                       LV_ALIGN_TOP_MID, 0, 168);
-        }
-
-        make_button(card, "New sale", COL_ACCENT, COL_BG, CARD_BTN_W, CARD_BTN_H,
-                    LV_ALIGN_BOTTOM_MID, 0, CARD_BTN_Y, ACT_NEW,
-                    &font_pjs_20_semibold);
-        return;
-    }
-
-    if (s_tx_state == UI_TX_STATE_UNCONFIRMED) {
-        /* The sale the terminal cannot call either way: signed and possibly on
-         * the chain, with no verdict in 120 s. Amber and a warning mark, not the
-         * red cross — "Declined" is what made a merchant take the money twice.
-         * Recheck polls the same hash; Clear is the operator saying they have
-         * looked, and is deliberately the quieter of the two. */
-        lv_obj_t *warn = make_label(card, LV_SYMBOL_WARNING, COL_WARN,
-                                    &font_icons_48, LV_ALIGN_TOP_MID, 0, 26);
-        pop_in(warn);
-        make_label(card, "Not confirmed yet", COL_TEXT,
-                   &font_pjs_20_medium, LV_ALIGN_TOP_MID, 0, 86);
-        char shrt[24];
-        hash_short(s_tx_info, shrt, sizeof(shrt));
-        make_label(card, shrt, COL_TEXT, &font_inter_14_medium,
-                   LV_ALIGN_TOP_MID, 0, 114);
-        lv_obj_t *note = make_label(card,
-                                    "It may still arrive. Check the explorer "
-                                    "before charging again.",
-                                    COL_DIM, &font_inter_14, LV_ALIGN_TOP_MID, 0, 138);
-        lv_label_set_long_mode(note, LV_LABEL_LONG_WRAP);
-        lv_obj_set_width(note, VW);
-        lv_obj_set_style_text_align(note, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        lv_obj_align(note, LV_ALIGN_TOP_MID, 0, 138);
-
-        const lv_coord_t half = (CARD_W - (2 * CARD_PAD) - 8) / 2;
-        make_ghost_button(card, "Clear", half,
-                          LV_ALIGN_BOTTOM_LEFT, CARD_PAD, CARD_BTN_Y, ACT_NEW);
-        make_button(card, "Recheck", COL_ACTION, COL_BG, half, CARD_BTN_H,
-                    LV_ALIGN_BOTTOM_RIGHT, -CARD_PAD, CARD_BTN_Y, ACT_TX_RECHECK,
-                    &font_pjs_20_semibold);
-        return;
-    }
-
-    if (s_tx_state == UI_TX_STATE_FAILED) {
-        lv_obj_t *cross = make_label(card, LV_SYMBOL_CLOSE, lv_color_hex(0xEC5B5B),
-                                     &font_icons_48, LV_ALIGN_TOP_MID, 0, 30);
-        pop_in(cross);
-        make_label(card, "Declined", COL_TEXT,
-                   &font_pjs_20_medium, LV_ALIGN_TOP_MID, 0, 92);
-        lv_obj_t *info = make_label(card, s_tx_info, COL_DIM,
-                                    &font_inter_14, LV_ALIGN_TOP_MID, 0, 124);
-        lv_label_set_long_mode(info, LV_LABEL_LONG_WRAP);
-        lv_obj_set_width(info, VW);
-        lv_obj_set_style_text_align(info, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        lv_obj_align(info, LV_ALIGN_TOP_MID, 0, 124);
-
-        make_button(card, "New sale", COL_ACCENT, COL_BG, CARD_BTN_W, CARD_BTN_H,
-                    LV_ALIGN_BOTTOM_MID, 0, CARD_BTN_Y, ACT_NEW,
-                    &font_pjs_20_semibold);
-        return;
-    }
-
-    /* PROCESSING / SIGNING / SENDING — animated spinner + status text. The
-     * spinner keeps turning because lv_timer_handler runs on the UI task while
-     * the main task is busy connecting/signing/broadcasting. */
-    const char *state_str =
-        (s_tx_state == UI_TX_STATE_PROCESSING) ? "Processing" :
-        (s_tx_state == UI_TX_STATE_SIGNING)    ? "Signing"    :
-        (s_tx_state == UI_TX_STATE_CONFIRMING) ? "Confirming" : "Authorizing";
-
-    lv_obj_t *sp = lv_spinner_create(card, 1000, 60);
-    lv_obj_set_size(sp, 60, 60);
-    lv_obj_align(sp, LV_ALIGN_TOP_MID, 0, 34);
-    lv_obj_set_style_arc_width(sp, 6, LV_PART_MAIN);
-    lv_obj_set_style_arc_width(sp, 6, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_color(sp, COL_SURFACE, LV_PART_MAIN);      /* track */
-    lv_obj_set_style_arc_color(sp, COL_ACCENT, LV_PART_INDICATOR);  /* moving arc */
-
-    make_label(card, state_str, COL_TEXT, &font_pjs_20_medium,
-               LV_ALIGN_TOP_MID, 0, 112);
-
-    /* Held: "Confirming" can stand for two minutes, and ui_set_tx_info() writes
-     * the countdown straight into this label — rebuilding the screen per tick
-     * would restart the spinner above it. */
-    s_tx_info_lbl = make_label(card, s_tx_info, COL_DIM,
-                               &font_inter_14, LV_ALIGN_TOP_MID, 0, 146);
-    lv_label_set_long_mode(s_tx_info_lbl, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(s_tx_info_lbl, VW);
-    lv_obj_set_style_text_align(s_tx_info_lbl, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_align(s_tx_info_lbl, LV_ALIGN_TOP_MID, 0, 146);
-}
-
-/* Startup fault. Not the transaction screen: its red cross and "Declined" made
- * a wiring problem read as a refused sale. No action button — nothing here is
- * recoverable from the touchscreen, and main restarts the terminal by itself
- * after BOOT_FAULT_RESTART_S (30 s), so the body text says that. */
-static void build_boot_error(void) {
-    clear_screen();
-    build_header("Startup");
-
-    lv_obj_t *warn = make_label(lv_scr_act(), LV_SYMBOL_WARNING, COL_DANGER,
-                                &font_icons_48, LV_ALIGN_TOP_MID, 0, 62);
-    pop_in(warn);
-
-    const char *title;
-    const char *body;
-    switch (s_boot_err) {
-        case UI_BOOT_ERR_WALLET:
-            title = "Wallet not ready";
-            body  = "The card reader answered but the Cryptnox wallet could not "
-                    "be initialised.\n\n"
-                    "The terminal restarts by itself in 30 s. If this keeps "
-                    "happening, the reader or its firmware is at fault.";
-            break;
-        case UI_BOOT_ERR_CONFIG:
-            title = "Invalid configuration";
-            body  = "An address built into this firmware (config.h) does not "
-                    "parse.\n\n"
-                    "The terminal restarts in 30 s. Install a build with a "
-                    "corrected config.h.";
-            break;
-        case UI_BOOT_ERR_NFC:
-        default:
-            title = "NFC reader not found";
-            body  = "The PN532 module did not answer on the I2C bus.\n\n"
-                    "Check the SDA/SCL wiring, the RST pin and the 3V3 supply. "
-                    "The terminal restarts by itself in 30 s.";
-            break;
-    }
-
-    make_label(lv_scr_act(), title, COL_TEXT, &font_pjs_20_medium,
-               LV_ALIGN_TOP_MID, 0, 124);
-
-    lv_obj_t *b = make_label(lv_scr_act(), body, COL_DIM,
-                             &font_inter_14, LV_ALIGN_TOP_MID, 0, 158);
-    lv_label_set_long_mode(b, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(b, 216);
-    lv_obj_set_style_text_align(b, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-
-    /* Technician detail, kept off the main message so the operator reads the
-     * instruction and not the error code. Sits at the foot of the screen, but
-     * never above the body: anchoring to the body instead of the screen edge
-     * means a long instruction or a long esp_err name clips at the bottom
-     * rather than overprinting the text the operator has to act on. */
-    if (s_boot_detail[0] != '\0') {
-        lv_obj_t *d = make_label(lv_scr_act(), s_boot_detail, COL_DIM,
-                                 &font_inter_14,
-                                 LV_ALIGN_BOTTOM_MID, 0, -8);
-        lv_label_set_long_mode(d, LV_LABEL_LONG_WRAP);
-        lv_obj_set_width(d, 216);
-        lv_obj_set_style_text_align(d, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-
-        lv_obj_update_layout(b);
-        lv_obj_update_layout(d);
-        const lv_coord_t body_end = lv_obj_get_y(b) + lv_obj_get_height(b) + 8;
-        if (lv_obj_get_y(d) < body_end) {
-            lv_obj_align(d, LV_ALIGN_TOP_MID, 0, body_end);
-        }
-    }
-}
-
-/******************************************************************
- * 8b. Wi-Fi signal — the wave, top right of every screen
- *
- * Three arcs over a dot, the shape every phone uses, rather than the four
- * ascending bars this started as: the fan is read at a glance from across a
- * counter, where four 3px bars were a smudge.
- *
- * The dot is 4px, not 3: LVGL clamps the circle radius to half the side, so at
- * 3px there is nothing left to round and it drew as a small black square.
- *
- * The sizes below are one system, not four numbers. The dot reaches out to
- * SIG_DOT/2 and each arc covers r ± SIG_AW/2, so nothing may start inside what
- * came before it or the icon closes up into a blob:
- *   dot to first ring:  SIG_R0 - (SIG_AW / 2) - (SIG_DOT / 2)
- *   ring to ring:       SIG_RSTEP - SIG_AW
- * Both are 2px, and they have to agree: the dot is the first thing in the stack,
- * so a tighter gap under the first ring than between the rings reads as the dot
- * stuck to it. That is what SIG_R0 is for — at 4 the dot's gap was 1 against the
- * rings' 2, and at 3 (what this was drawn with) the two met outright.
- *
- * Lives on the top layer rather than being built per screen: it outlives the
- * screen swaps, so no build_* function has to remember it. A modal is created
- * on the same layer later, so it covers the wave — which is what a modal is for.
- ******************************************************************/
-#define SIG_ARCS   3
-#define SIG_AW     2      /* arc thickness                                  */
-/* Shrunk from 5/4 — the whole mark is 22x13 now against the 28x16 it was. The
- * two gaps the block above insists must agree still do: dot to first ring is
- * SIG_R0 - (SIG_AW / 2) - (SIG_DOT / 2) = 1, and ring to ring is
- * SIG_RSTEP - SIG_AW = 1. They were 2 and 2 at the old sizes; what matters is
- * that they are equal, not what they are. At r=4 the inner ring's 140-degree
- * cut still bends 2.6px, so it reads as an arc rather than as a dash. */
-#define SIG_R0     4      /* innermost arc radius; each ring adds SIG_RSTEP */
-#define SIG_RSTEP  3
-/* Even, and it has to stay even: an arc object is 2r + SIG_AW wide, so the fan's
- * centre lands on a whole coordinate, and only an even dot has its own centre
- * there too. At 5 it sat half a pixel right of and below the arcs it is struck
- * from — small, but at this size half a pixel is the thing you notice. */
-#define SIG_DOT    4
-/* Per-ring sweep, innermost first, centred on 12 o'clock. Two jobs. The inner
- * rings get more of their circle because how curved an arc looks is its sagitta,
- * r·(1 - cos(sweep/2)), and a 90° cut at r=5 bends 1.5px — a dash; at 120° it
- * bends 3.3px and reads as an arc. Second, the whole set sets the icon's width —
- * a ring is 2r·sin(sweep/2) across — so widening it is done here rather than by
- * pushing the radii out, which would grow the height with it. 9.4 / 14.7 / 19.9
- * across at these angles, against 8.7 / 12.7 / 17 before.
- *
- * The inner ring is the ceiling: at r=5 no angle can span more than 10px, and
- * past about 140° it stops looking like a cut from a circle and starts looking
- * like most of one. Widening beyond this means a bigger SIG_R0. */
-static const uint16_t SIG_SWEEP[SIG_ARCS] = { 140, 110, 100 };
-
-/* The outermost ring's outer edge, which is the icon's half-width and, with the
- * dot's bottom half, its height. Everything below is derived from it. */
-#define SIG_REACH  (SIG_R0 + ((SIG_ARCS - 1) * SIG_RSTEP) + (SIG_AW / 2))
-#define SIG_W      (2 * SIG_REACH)
-#define SIG_H      (SIG_REACH + ((SIG_DOT + 1) / 2))
-/* Inset from the right edge. Nothing shares the band's right-hand zone with the
- * mark now that the progress rail is gone, so this is just where it sits. */
-#define SIG_INSET  14
-
-static lv_obj_t *s_sig_arc[SIG_ARCS];
-static lv_obj_t *s_sig_dot = NULL;
-static lv_obj_t *s_sig_box = NULL;
-
-static void signal_refresh(lv_timer_t *t) {
-    (void)t;
-    int8_t rssi = 0;
-    /* net_wifi_rssi() fails when the station is not associated — grey dot, no
-     * arc, which is the answer the operator needs before blaming the card.
-     * The cuts match the words on the settings page (Good / Fair / Weak), so
-     * the icon and the "Signal" field there cannot disagree. */
-    const bool up  = net_wifi_rssi(&rssi);
-    const int  lit = !up ? 0 : (rssi >= -60) ? 3 : (rssi >= -70) ? 2 : 1;
-    for (int i = 0; i < SIG_ARCS; i++) {
-        /* Unlit is COL_DIM, not COL_BORDER: the sale flow's page IS COL_BORDER,
-         * so a hairline-grey arc vanished into it and two arcs read as two arcs
-         * total. Same trap the step dashes fell into — see COL_PAGE. */
-        lv_obj_set_style_arc_color(s_sig_arc[i],
-                                   (i < lit) ? COL_TEXT : COL_DIM,
-                                   LV_PART_MAIN);
-    }
-    /* Amber while the terminal's own network is down and being re-joined in the
-     * background (net.cpp): "offline, working on it" is a different answer from
-     * "never configured", and it is the one that tells the operator to wait
-     * rather than to go and fix something. */
-    lv_obj_set_style_bg_color(s_sig_dot,
-                              up ? COL_TEXT
-                                 : net_wifi_reconnecting() ? COL_WARN : COL_DIM,
-                              LV_PART_MAIN);
-    /* Off the splash (nothing is connected yet), off the calibration screen
-     * where it would sit on the top-right corner target, and off the admin
-     * screens — the settings page's tab bar owns y=0..42 across the full width,
-     * so a mark on the top layer is drawn over the first tab. The signal is
-     * reported properly on that page anyway, as the Wi-Fi tab's own Signal row,
-     * in words rather than as three arcs on top of a button. */
-    const bool show = (s_req_screen != UI_SCREEN_SPLASH) &&
-                      (s_req_screen != UI_SCREEN_TOUCH_CAL) &&
-                      (s_req_screen != UI_SCREEN_SETTINGS) &&
-                      (s_req_screen != UI_SCREEN_ADMIN_UNLOCK) &&
-                      (s_req_screen != UI_SCREEN_ADMIN_SET) &&
-                      /* the first-run setup flow: nothing to report yet */
-                      (s_req_screen != UI_SCREEN_WELCOME) &&
-                      (s_req_screen != UI_SCREEN_PROV) &&
-                      (s_req_screen != UI_SCREEN_WIFI_CONNECTING) &&
-                      (s_req_screen != UI_SCREEN_WIFI_LIST) &&
-                      (s_req_screen != UI_SCREEN_WIFI_PASS) &&
-                      (s_req_screen != UI_SCREEN_CARD_WAIT) &&
-                      !((s_req_screen == UI_SCREEN_PIN) && s_pin_for_card);
-    if (show) { lv_obj_clear_flag(s_sig_box, LV_OBJ_FLAG_HIDDEN); }
-    else      { lv_obj_add_flag(s_sig_box, LV_OBJ_FLAG_HIDDEN); }
-
-    /* Same cadence, same reason — the band's two occupants refresh together. */
-    clock_refresh();
-}
-
-static void signal_init(void) {
-    s_sig_box = lv_obj_create(lv_layer_top());
-    lv_obj_remove_style_all(s_sig_box);
-    lv_obj_set_size(s_sig_box, SIG_W, SIG_H);
-    lv_obj_align(s_sig_box, LV_ALIGN_TOP_RIGHT, -SIG_INSET, 6);
-    lv_obj_clear_flag(s_sig_box, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_clear_flag(s_sig_box, LV_OBJ_FLAG_CLICKABLE);
-
-    /* Every ring is struck from the same point — the dot — so each arc object is
-     * sized to its own ring and then centred on that point, not on the box. */
-    const lv_coord_t cx = SIG_W / 2, cy = SIG_REACH;
-    for (int i = 0; i < SIG_ARCS; i++) {
-        const lv_coord_t d = (2 * (SIG_R0 + (i * SIG_RSTEP))) + SIG_AW;
-        lv_obj_t *a = lv_arc_create(s_sig_box);
-        lv_obj_remove_style_all(a);          /* also kills the knob and the
-                                              * value indicator: both draw at
-                                              * the default arc width of 0 */
-        lv_obj_set_size(a, d, d);
-        lv_obj_set_pos(a, cx - (d / 2), cy - (d / 2));
-        /* 0° is 3 o'clock and angles run clockwise, so 270 is 12 o'clock and each
-         * ring is cut symmetrically about it. */
-        lv_arc_set_bg_angles(a, 270 - (SIG_SWEEP[i] / 2), 270 + (SIG_SWEEP[i] / 2));
-        lv_obj_set_style_arc_width(a, SIG_AW, LV_PART_MAIN);
-        /* Square-cut, not rounded: a rounded cap on a 2px stroke is a 2px circle
-         * hung off the end, and the anti-aliasing landed it as a darker pixel
-         * past each tip rather than as a taper. */
-        lv_obj_set_style_arc_rounded(a, false, LV_PART_MAIN);
-        lv_obj_clear_flag(a, LV_OBJ_FLAG_CLICKABLE);
-        s_sig_arc[i] = a;
-    }
-
-    s_sig_dot = lv_obj_create(s_sig_box);
-    lv_obj_remove_style_all(s_sig_dot);
-    lv_obj_set_size(s_sig_dot, SIG_DOT, SIG_DOT);
-    lv_obj_set_pos(s_sig_dot, cx - (SIG_DOT / 2), cy - (SIG_DOT / 2));
-    lv_obj_set_style_bg_opa(s_sig_dot, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_radius(s_sig_dot, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-    lv_obj_clear_flag(s_sig_dot, LV_OBJ_FLAG_CLICKABLE);
-
-    /* ponytail: 3 s poll. An event-driven update would mean a Wi-Fi handler
-     * poking LVGL from the event task — add one only if the lag shows. */
-    (void)lv_timer_create(signal_refresh, 3000, NULL);
-    signal_refresh(NULL);
-}
-
-static void render_requested_screen(void) {
-    /* A modal lives on the top layer, so it would survive the screen swap and
-     * sit there swallowing every touch. Nothing wants that. */
-    close_modal();
-
-    /* The swipe's answer: build the admin code screen into a sheet parked below
-     * the fold and slide it up over the sale screen, rather than swapping the
-     * two instantly. Only for the gesture — every other route to this screen is
-     * an ordinary rebuild, and a sheet rising with nothing behind it would be a
-     * animation of nothing. */
-    lv_obj_t *sheet = NULL;
-    if (s_sheet_pending) {
-        s_sheet_pending = false;
-        if (s_req_screen == UI_SCREEN_ADMIN_UNLOCK) {
-            sheet   = sheet_open();
-            s_sheet = sheet;
-        }
-    }
-
-    switch (s_req_screen) {
-        case UI_SCREEN_SPLASH:    build_splash();    break;
-        case UI_SCREEN_AMOUNT:    build_amount();    break;
-        case UI_SCREEN_CONFIRM:   build_confirm();   break;
-        case UI_SCREEN_PIN:       build_pin();       break;
-        case UI_SCREEN_WIFI_LIST: build_wifi_list(); break;
-        case UI_SCREEN_WIFI_PASS: build_wifi_pass(); break;
-        case UI_SCREEN_WIFI_CONNECTING: build_wifi_connecting(); break;
-        case UI_SCREEN_SETTINGS:  build_settings();  break;
-        case UI_SCREEN_TX_STATUS: build_tx_status(); break;
-        case UI_SCREEN_BOOT_ERROR:   build_boot_error();   break;
-        case UI_SCREEN_ADMIN_SET:    build_admin_set();    break;
-        case UI_SCREEN_ADMIN_UNLOCK: build_admin_unlock(); break;
-        case UI_SCREEN_WELCOME:      build_welcome();      break;
-        case UI_SCREEN_PROV:         build_prov();         break;
-        case UI_SCREEN_CARD_WAIT:    build_card_wait();    break;
-        case UI_SCREEN_TOUCH_CAL:    build_touch_cal();    break;
-    }
-
-    /* The pointer's job ends with the dispatch — a later rebuild of the same
-     * screen (a wrong code, say) must go back through the ordinary clearing
-     * path rather than stacking a second set of widgets into this one. */
-    s_sheet = NULL;
-    if (sheet != NULL) { sheet_slide_in(sheet); }
-
-    /* Guard the freshly built screen against a tap carried over from the
-     * previous one (see indev_read). The "Tap card" screen gets a longer
-     * window because its Cancel button is destructive. */
-    uint32_t lockout = 450U;
-    if (s_req_screen == UI_SCREEN_TX_STATUS &&
-        s_tx_state == UI_TX_STATE_PLACE_CARD) {
-        lockout = 900U;
-    }
-    s_input_block_until = lv_tick_get() + lockout;
-    s_wait_release      = true;
-
-    /* Now, not on the next poll — the bars are hidden on two screens, and a
-     * three-second lag would leave them on the one they are hidden from. */
-    if (s_sig_box != NULL) { signal_refresh(NULL); }
-}
-
-/******************************************************************
  * 9. UI task — owns LVGL init and the handler loop
  ******************************************************************/
 static void ui_task(void *arg) {
@@ -4890,20 +527,17 @@ static void ui_task(void *arg) {
     tft.setRotation(0);          /* portrait, 240x320 */
     tft.invertDisplay(true);     /* CYD ILI9341 panel renders inverted otherwise */
 
-    /* CYD "milky gamma" fix: the 1-USB ILI9341_2 panels ship with a gamma
-     * curve that crushes smooth gradients into visible bands — solid colours
-     * and text look fine, but anti-aliased greys (e.g. the logo edges) come
-     * out blocky. Re-select a built-in gamma curve via GAMMASET (0x26) to get
-     * a clean ramp. See TFT_eSPI discussion #3018.
-     */
+    /* CYD "milky gamma" fix: the 1-USB ILI9341_2 panels' gamma curve bands
+     * anti-aliased greys. Re-select a built-in curve via GAMMASET (0x26) for
+     * a clean ramp. See TFT_eSPI discussion #3018. */
     tft.writecommand(0x26);      /* GAMMASET */
     tft.writedata(0x02);
     delay(120);
     tft.writecommand(0x26);
     tft.writedata(0x01);
 
-    /* White, not black: the backlight comes on below, before LVGL's first
-     * frame, and the theme is white — black made power-on flash. */
+    /* White, not black: the backlight comes on before LVGL's first frame and
+     * the theme is white, so black would flash at power-on. */
     tft.fillScreen(TFT_WHITE);
 
     touchSPI.begin(T_CLK, T_MISO, T_MOSI, T_CS);
@@ -4976,19 +610,16 @@ static void ui_task(void *arg) {
                 lv_label_set_text(s_boot_step_lbl, s_boot_step);
             }
         }
-        /* Swipe up from the bottom edge. Raised by indev_read, acted on here so
-         * the driver stays a driver — and gated to the amount screen, which is
-         * exactly where the burger used to be. Anywhere else the gesture is
-         * dropped: opening the admin code screen out from under a customer
-         * mid-sale, or on top of the panel it opens, is not a shortcut. */
+        /* Swipe up from the bottom edge, raised by indev_read. Gated to the
+         * amount screen: anywhere else (mid-sale, or over the admin panel
+         * itself) the gesture is dropped. */
         if (s_swipe_admin) {
             s_swipe_admin = false;
             if (s_req_screen == UI_SCREEN_AMOUNT) { open_admin_entry(); }
         }
-        /* Touch calibration: the corner taps are read raw, and the result is
-         * put back if nobody confirms it — an operator who cannot hit Keep is
-         * exactly the case the deadline is for, and it is also the one who
-         * cannot hit Discard. */
+        /* Touch calibration: corner taps are read raw, and the old values come
+         * back if nobody confirms in time — an operator who cannot hit Keep
+         * cannot hit Discard either. */
         if (s_req_screen == UI_SCREEN_TOUCH_CAL) {
             touch_cal_poll();
             if ((s_cal_step >= 2U) && (s_cal_countdown != NULL)) {
@@ -5005,20 +636,16 @@ static void ui_task(void *arg) {
                 }
             }
         }
-        /* Progress on the transaction screen, same targeted hand-off as the
-         * boot step and for the same reason: the confirmation wait is up to two
-         * minutes, and a rebuild per poll pass would restart its spinner. The
-         * label only exists on the spinner states, so a NULL is the ordinary
-         * case for every other screen. */
+        /* Progress on the transaction screen, targeted so the spinner does not
+         * restart each poll. The label only exists on the spinner states. */
         if (s_tx_info_dirty) {
             s_tx_info_dirty = false;
             if ((s_req_screen == UI_SCREEN_TX_STATUS) && (s_tx_info_lbl != NULL)) {
                 lv_label_set_text(s_tx_info_lbl, s_tx_info);
             }
         }
-        /* Gas caps stored from the config page. The two labels only exist while
-         * the Tx tab is built and not on Tron, so a NULL pair is the ordinary
-         * case — every other screen reads the caps when it is next built. */
+        /* Gas caps stored from the config page. The labels exist only on the
+         * Tx tab (not on Tron); other screens read the caps when built. */
         if (s_fees_dirty) {
             s_fees_dirty = false;
             if ((s_fee_max_lbl != NULL) && (s_fee_prio_lbl != NULL)) {
@@ -5038,33 +665,25 @@ static void ui_task(void *arg) {
             s_addr_modal_dirty = false;
             build_prov_confirm();
         }
-        /* Same handoff for firmware uploaded from the config page — it replaces
-         * the "browser at this address" card the operator is looking at. */
+        /* Same handoff for firmware uploaded from the config page. */
         if (s_ota_modal_dirty) {
             s_ota_modal_dirty = false;
             build_ota_confirm();
         }
-        /* The admin page closes on its own deadline, and the check has to run
-         * somewhere that may touch LVGL — so it runs here rather than in a timer
-         * task. Deliberately NOT gated on the card still being up: the operator may
-         * have left the modal (to enter the admin code, say), and a config server
-         * that outlives its window because nobody was looking at a card is the
-         * thing the window exists to prevent. Wizard mode has no deadline
+        /* The admin page closes on its own deadline, checked here because it
+         * may touch LVGL. Deliberately NOT gated on the card still being up: a
+         * config server outliving its window because nobody was looking at the
+         * card is what the window prevents. Wizard mode has no deadline
          * (prov_window_left_min() is 0 there), hence the mode test. */
-        /* ...and not while a firmware image is actually arriving. Stopping httpd
-         * mid-transfer drops the socket, ota_abort() throws away what was written,
-         * and the operator gets "the connection to the terminal dropped" after
-         * three minutes of progress bar. This cannot hold the page open for ever:
-         * ota_post() gives up on a socket that has gone quiet (UPLOAD_MAX_STALLS). */
+        /* ...and not while a firmware image is arriving: stopping httpd would
+         * drop the upload. This cannot hold the page open for ever: ota_post()
+         * gives up on a socket that has gone quiet (UPLOAD_MAX_STALLS). */
         if ((prov_mode() == PROV_MODE_ADMIN) && (prov_window_left_min() == 0U) &&
             !ota_receiving()) {
             request_prov_stop();
-            /* ...but NOT the firmware card. s_portal_modal is set by that card too
-             * (build_ota_confirm), so this used to close the Install/Discard
-             * decision the operator was in the middle of — on a deadline that had
-             * been ticking through a multi-minute upload. The window is about the
-             * config *page*, which is now down; an image already verified and
-             * waiting on this screen needs no page to install. */
+            /* ...but NOT the firmware card (build_ota_confirm also sets
+             * s_portal_modal). The window covers the config *page*; a verified
+             * image waiting on this screen needs no page to install. */
             if (s_portal_modal && !ota_staged(NULL, 0U, NULL)) { close_modal(); }
         }
         lv_timer_handler();
@@ -5085,6 +704,7 @@ extern "C" void ui_init(ui_event_cb_t cb) {
 }
 
 extern "C" void ui_show_splash(void) {
+    UiLock lk;   /* shared with the UI task - see s_ui_mx */
     request_screen(UI_SCREEN_SPLASH);
 }
 
@@ -5118,7 +738,7 @@ extern "C" size_t ui_take_pin(char *out, size_t n) {
     (void)CW_Utils::safe_memcpy(reinterpret_cast<uint8_t *>(out), n,
                                 reinterpret_cast<const uint8_t *>(s_pin), len);
     out[len] = '\0';
-    /* The UI no longer needs the PIN — wipe its copy. */
+    /* Handed off — wipe the UI's copy of the PIN. */
     CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_pin), sizeof(s_pin));
     s_pin_len = 0;
     return len;
@@ -5161,13 +781,14 @@ extern "C" void ui_set_boot_status(const char *step) {
 }
 
 extern "C" void ui_fees_changed(void) {
+    UiLock lk;   /* shared with the UI task - see s_ui_mx */
     s_fees_dirty = true;   /* applied by the UI task — LVGL is single-thread */
 }
 
 extern "C" void ui_clock_changed(void) {
-    /* Only the cache is invalidated here; the status timer picks it up within
-     * three seconds and retexts the label on the UI task, which is the only
-     * task allowed to touch it. */
+    UiLock lk;   /* shared with the UI task - see s_ui_mx */
+    /* Only the cache is invalidated; the status timer retexts the label on the
+     * UI task within three seconds. */
     s_tz_dirty = true;
 }
 
@@ -5233,6 +854,7 @@ extern "C" void ui_show_prov(int step) {
 }
 
 extern "C" void ui_show_prov_confirm(void) {
+    UiLock lk;   /* shared with the UI task - see s_ui_mx */
     s_addr_modal_dirty = true;
 }
 
@@ -5241,9 +863,8 @@ extern "C" void ui_show_prov_auth(void) {
     s_admin_for_portal = true;
     s_admin_confirming = false;
     s_admin_note[0]    = '\0';
-    /* Re-arm the wait from the persisted attempt count, exactly as the burger tap
-     * does: this is the same code and the same guessing budget, so it must not be
-     * a cheaper door than the menu. */
+    /* Re-arm the wait from the persisted attempt count, exactly as the swipe
+     * does: same code, same guessing budget, so not a cheaper door. */
     s_admin_lock_ms    = admin_penalty_ms(settings_admin_fail_count());
     s_admin_lock_start = lv_tick_get();
     request_screen(UI_SCREEN_ADMIN_UNLOCK);
@@ -5270,6 +891,7 @@ extern "C" void ui_show_card_wait(const char *note) {
 }
 
 extern "C" void ui_show_ota_confirm(void) {
+    UiLock lk;   /* shared with the UI task - see s_ui_mx */
     s_ota_modal_dirty = true;
 }
 

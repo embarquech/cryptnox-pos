@@ -440,7 +440,7 @@ does not. Do it on a bench unit, not a deployed one.
 Break a build on purpose — after bring-up, before the image is confirmed:
 
 ```c
-/* main.cpp, immediately before ota_mark_valid() — REVERT AFTER TESTING */
+/* boot.cpp, immediately before ota_mark_valid() — REVERT AFTER TESTING */
 abort();
 ```
 
@@ -448,7 +448,7 @@ abort();
 touch CMakeLists.txt
 POS_VERSION_TAG=v9.9.9 cmd //c "C:\Cryptnox\cryptnox-pos\scripts\idf-build.bat"   # unmistakable in the log
 cp build/cryptnox_pos.bin /tmp/broken.bin
-git checkout main/main.cpp && touch CMakeLists.txt
+git checkout main/boot.cpp && touch CMakeLists.txt
 ```
 
 Upload `/tmp/broken.bin`, accept it on the panel, and watch the serial log.

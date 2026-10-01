@@ -1,6 +1,9 @@
 idf_component_register(
-    SRCS "hardening.cpp" "main.cpp" "keccak256.cpp" "eth_addr.cpp" "eth_rlp.cpp"
+    SRCS "hardening.cpp" "main.cpp" "boot.cpp" "card_io.cpp" "pay.cpp" "pay_evm.cpp"
+         "pay_tron.cpp" "keccak256.cpp" "eth_addr.cpp" "eth_rlp.cpp"
          "eth_json.cpp" "eth_sig.cpp" "eth_rpc.cpp" "https_post.cpp" "net.cpp" "ui.cpp"
+         "ui_hal.cpp" "ui_theme.cpp" "ui_widgets.cpp" "ui_sale.cpp" "ui_admin.cpp"
+         "ui_setup.cpp"
          "civil_time.cpp" "tron_tx.cpp" "tron_rpc.cpp"
          "ota.cpp" "provision.cpp" "settings.cpp"
          "logo_img.c" "logo_small.c" "logo_mid.c" "chain_icons.c" "tap_icon.c"

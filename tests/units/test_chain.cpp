@@ -4,7 +4,7 @@
  */
 
 /*
- * test_chain.cpp — host unit test for the chain predicates in main/settings.h.
+ * test_chain.cpp — host unit test for the chain predicates in main/assets.h.
  *
  * Two things are worth a test here, and both cost money when they are wrong.
  *
@@ -30,13 +30,13 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "settings.h"
+#include "assets.h"
 
 int main(void)
 {
     /* The persisted numbers. New assets append; these never move. */
-    assert(POS_CHAIN_ETH_SEPOLIA == 0);
-    assert(POS_CHAIN_TRON_NILE   == 1);
+    assert(POS_CHAIN_ETH_USDC == 0);
+    assert(POS_CHAIN_TRON_TRX   == 1);
     assert(POS_CHAIN_TRON_USDT   == 2);
     assert(POS_CHAIN_ETH_USDT    == 3);
     assert(POS_CHAIN_POLY_USDC   == 4);
@@ -47,12 +47,12 @@ int main(void)
     assert(POS_CHAIN__COUNT      == 9);
 
     /* Tron: the native coin and both TRC-20s. */
-    assert(pos_chain_is_tron(POS_CHAIN_TRON_NILE));
+    assert(pos_chain_is_tron(POS_CHAIN_TRON_TRX));
     assert(pos_chain_is_tron(POS_CHAIN_TRON_USDT));
     assert(pos_chain_is_tron(POS_CHAIN_TRON_USDC));
     /* Nothing on an EVM network is. Polygon especially: it is not Sepolia, which
      * is exactly what the old one-liner tested. */
-    assert(!pos_chain_is_tron(POS_CHAIN_ETH_SEPOLIA));
+    assert(!pos_chain_is_tron(POS_CHAIN_ETH_USDC));
     assert(!pos_chain_is_tron(POS_CHAIN_ETH_USDT));
     assert(!pos_chain_is_tron(POS_CHAIN_POLY_USDC));
     assert(!pos_chain_is_tron(POS_CHAIN_POLY_USDT));
@@ -65,10 +65,10 @@ int main(void)
     assert(pos_chain_is_polygon(POS_CHAIN_POLY_USDC));
     assert(pos_chain_is_polygon(POS_CHAIN_POLY_USDT));
     assert(pos_chain_is_polygon(POS_CHAIN_POLY_NATIVE));
-    assert(!pos_chain_is_polygon(POS_CHAIN_ETH_SEPOLIA));
+    assert(!pos_chain_is_polygon(POS_CHAIN_ETH_USDC));
     assert(!pos_chain_is_polygon(POS_CHAIN_ETH_USDT));
     assert(!pos_chain_is_polygon(POS_CHAIN_ETH_NATIVE));
-    assert(!pos_chain_is_polygon(POS_CHAIN_TRON_NILE));
+    assert(!pos_chain_is_polygon(POS_CHAIN_TRON_TRX));
     assert(!pos_chain_is_polygon(POS_CHAIN_TRON_USDT));
     assert(!pos_chain_is_polygon(POS_CHAIN_TRON_USDC));
 
@@ -77,8 +77,8 @@ int main(void)
      * a TRX sale down the EIP-1559 path. */
     assert(pos_chain_is_native_evm(POS_CHAIN_ETH_NATIVE));
     assert(pos_chain_is_native_evm(POS_CHAIN_POLY_NATIVE));
-    assert(!pos_chain_is_native_evm(POS_CHAIN_TRON_NILE));
-    assert(!pos_chain_is_native_evm(POS_CHAIN_ETH_SEPOLIA));
+    assert(!pos_chain_is_native_evm(POS_CHAIN_TRON_TRX));
+    assert(!pos_chain_is_native_evm(POS_CHAIN_ETH_USDC));
     assert(!pos_chain_is_native_evm(POS_CHAIN_ETH_USDT));
     assert(!pos_chain_is_native_evm(POS_CHAIN_POLY_USDC));
     assert(!pos_chain_is_native_evm(POS_CHAIN_POLY_USDT));

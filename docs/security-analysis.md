@@ -16,7 +16,7 @@ chains or the RPC providers.
 |---|---|---|
 | **Payout addresses** | Change one and every future payment goes to the attacker. This is the whole game. | NVS, `settings.cpp` (`K_PAY_ETH`/`K_PAY_TRX`, written in duplicate) |
 | **Token contract addresses** | A wrong contract moves a different asset than the one on screen | NVS + `config.h` fallbacks |
-| **What the operator believes** | A terminal that displays PAID on a failed payment is a free-goods machine | `ui.cpp`, gated in `main.cpp` |
+| **What the operator believes** | A terminal that displays PAID on a failed payment is a free-goods machine | `ui_sale.cpp`, gated in `pay.cpp` (`settle_inflight`) |
 | **Firmware** | Replace it and everything above is moot | `ota_0`/`ota_1` |
 | **Card PIN** | Signing authority for the tap in progress | RAM only, wiped after use |
 | **Wi-Fi credentials** | Lateral movement into the venue network | NVS (encrypted) |
@@ -77,7 +77,7 @@ design choice and it is what makes the config page's weaker transport tolerable.
   is told why (`ota.cpp:183`).
 - **Downgrade is visible, not blocked.** `ota_version_cmp()`
   (`ota_version.h`) tells the operator "This is an OLDER version" in red
-  (`ui.cpp`), and they decide. Deliberate: blocking downgrades outright makes a
+  (`ui_admin.cpp`), and they decide. Deliberate: blocking downgrades outright makes a
   bricked fleet unrecoverable.
 - **Rollback verdict surfaced.** An update that installed, booted and was then
   reverted says so on the About tab rather than silently reading as the old
@@ -109,7 +109,7 @@ design choice and it is what makes the config page's weaker transport tolerable.
   clock is running, and seeds accordingly (`provision.cpp:175`, `1815`).
 - **Every value that matters is confirmed on the panel.** The browser can only
   *propose* a payout address or a contract; a human accepts it on the device's
-  own screen (`provision.cpp`, `ui.cpp` accept flow). This is what contains a
+  own screen (`provision.cpp`, `ui_setup.cpp` accept flow). This is what contains a
   compromised browser.
 - **Session expiry and clear refusals**: `503` once the window closes, `401`
   when unauthorised, both with plain-language messages.
@@ -123,7 +123,8 @@ design choice and it is what makes the config page's weaker transport tolerable.
   sentinels (`bool32`, `pos_verdict_t`) that a single flipped bit cannot forge,
   asserted at compile time (`hardening.h:50–55`), with `address_consistent()`
   re-checked before calldata, before signing and before display
-  (`main.cpp:713`, `845`, `972`, `1072`, `2167`, `2262`).
+  (`sign_and_broadcast` in `pay_evm.cpp`, `sign_and_broadcast_tron` in
+  `pay_tron.cpp`, the confirm step in `main.cpp`, `settle_inflight` in `pay.cpp`).
 - **Anomalies are counted in NVS**, not just logged, so a pattern survives a
   power cycle (`pos_handle_anomaly()`, `hardening.cpp`).
 - **Address validation** on every entry path: base58 + checksum
@@ -132,7 +133,7 @@ design choice and it is what makes the config page's weaker transport tolerable.
   the HTTPS response `Date` header is used to corroborate it and a skew beyond
   `CLOCK_SKEW_MAX_S` refuses the transaction (`https_post.cpp:111–131`). Without
   network time at all, the terminal declines rather than guessing
-  (`main.cpp:1203`).
+  (`UI_EVENT_AMOUNT_CONFIRMED` in `main.cpp`).
 - **The node is not trusted for what gets signed.** Tron: the node-built
   transaction is decoded field by field (`tron_tx.cpp`) — exactly one contract of
   the expected type, byte-exact parameters, no memo / extra fields, bounded
@@ -229,10 +230,10 @@ decision.
 
 ### F5 — Admin code strength is the merchant's choice
 **Severity: low, mitigated.**
-`ADMIN_CODE_MIN` is 4 digits (`ui.cpp:450`). Against that: attempts are counted
+`ADMIN_CODE_MIN` was 4 digits (`ui_internal.h`). Against that: attempts are counted
 **in NVS**, so the escalating lockout survives a power cycle and cannot be reset
-by pulling the plug (`ui.cpp:456–467`, `s_admin_lock_*`), and input is blocked
-for the penalty window (`ui.cpp:3253`). Shoulder-surfing at a counter remains
+by pulling the plug (`admin_penalty_ms`, `s_admin_lock_*`), and input is blocked
+for the penalty window (`admin_lock_remaining_s`, `ui_admin.cpp`). Shoulder-surfing at a counter remains
 the more realistic attack, and no PIN policy fixes that.
 
 **Fix (done):** new codes need 6 digits and the penalty keeps doubling up to an

@@ -8,8 +8,8 @@
  * @ingroup device
  * @brief Persistent device settings stored in NVS (backlight, Wi-Fi creds).
  *
- * All getters are safe to call before any value has ever been written — they
- * return sensible defaults. Requires nvs_flash_init() to have run first.
+ * All getters return sensible defaults when nothing has been written.
+ * Requires nvs_flash_init() to have run first.
  */
 
 #ifndef SETTINGS_H
@@ -26,74 +26,24 @@ extern "C" {
 /**
  * @brief Which chain (and therefore which asset) the terminal charges in.
  *
- * The numbers are persisted in NVS, so existing ones never move — a terminal
- * that stored 2 before this list grew must still come up charging in USDT on
- * Tron. New assets are appended, and settings.cpp rejects anything at or past
- * @ref POS_CHAIN__COUNT, so a downgrade falls back to the default rather than
- * charging in whatever an unknown number would have meant.
+ * The numbers are persisted in NVS, so existing ones never move; new assets are
+ * appended. settings.cpp rejects anything at or past @ref POS_CHAIN__COUNT, so a
+ * downgrade falls back to the default rather than guessing what a number meant.
  */
 typedef enum {
-    POS_CHAIN_ETH_SEPOLIA = 0,  /**< USDC on Ethereum Sepolia (the default). */
-    POS_CHAIN_TRON_NILE   = 1,  /**< Native TRX on the Tron Nile testnet.    */
-    POS_CHAIN_TRON_USDT   = 2,  /**< USDT (TRC-20) on Tron Nile.             */
-    POS_CHAIN_ETH_USDT    = 3,  /**< USDT (ERC-20) on Ethereum Sepolia.      */
-    POS_CHAIN_POLY_USDC   = 4,  /**< USDC (ERC-20) on Polygon Amoy.          */
-    POS_CHAIN_POLY_USDT   = 5,  /**< USDT (ERC-20) on Polygon Amoy.          */
-    POS_CHAIN_TRON_USDC   = 6,  /**< USDC (TRC-20) on Tron Nile.             */
-    /* USDC on Tron is a testnet-only selection: Circle stopped minting it on
-     * Tron in Feb 2024 and closed redemptions a year later, so there is no
-     * mainnet asset for it to graduate to. The TRC-20 path is generic, so it
-     * costs a contract in config.h and nothing else. */
-    POS_CHAIN_ETH_NATIVE  = 7,  /**< Native ETH on Ethereum Sepolia.         */
-    POS_CHAIN_POLY_NATIVE = 8,  /**< Native POL on Polygon Amoy.             */
+    POS_CHAIN_ETH_USDC    = 0,  /**< USDC (ERC-20) on Ethereum (the default). */
+    POS_CHAIN_TRON_TRX    = 1,  /**< Native TRX on Tron.                      */
+    POS_CHAIN_TRON_USDT   = 2,  /**< USDT (TRC-20) on Tron.                   */
+    POS_CHAIN_ETH_USDT    = 3,  /**< USDT (ERC-20) on Ethereum.               */
+    POS_CHAIN_POLY_USDC   = 4,  /**< USDC (ERC-20) on Polygon.                */
+    POS_CHAIN_POLY_USDT   = 5,  /**< USDT (ERC-20) on Polygon.                */
+    POS_CHAIN_TRON_USDC   = 6,  /**< USDC (TRC-20) on Tron — testnet only.    */
+    POS_CHAIN_ETH_NATIVE  = 7,  /**< Native ETH on Ethereum.                  */
+    POS_CHAIN_POLY_NATIVE = 8,  /**< Native POL on Polygon.                   */
     POS_CHAIN__COUNT            /**< Sentinel — keep last, not a selection.  */
 } pos_chain_t;
 
-/**
- * @brief true for the Tron chains; every other selection is on an EVM network.
- *
- * Here rather than once per file. While Sepolia was the only Ethereum chain,
- * "not Sepolia" meant Tron, and main.cpp and ui.cpp each said so in their own
- * one-liner. Polygon made that wrong in two places at once, which is exactly the
- * shape of bug that sends an Ethereum payment down the Tron path — so the
- * question is asked in one place and tested in tests/units/test_chain.cpp.
- */
-static inline bool pos_chain_is_tron(pos_chain_t c) {
-    return (c == POS_CHAIN_TRON_NILE) ||
-           (c == POS_CHAIN_TRON_USDT) ||
-           (c == POS_CHAIN_TRON_USDC);
-}
-
-/**
- * @brief true for the Polygon chains.
- *
- * Polygon is EVM, so it shares the whole Ethereum signing path — the RLP, the
- * derivation path, the payout address, the card. What differs is the endpoint,
- * the chain id in the signed transaction and the token contract, which is why
- * this is a question of its own rather than a second meaning for "not Tron".
- */
-static inline bool pos_chain_is_polygon(pos_chain_t c) {
-    return (c == POS_CHAIN_POLY_USDC) ||
-           (c == POS_CHAIN_POLY_USDT) ||
-           (c == POS_CHAIN_POLY_NATIVE);
-}
-
-/**
- * @brief true for the EVM networks' own coins — ETH and POL — not their tokens.
- *
- * A different transaction, not a different network: no contract is called, the
- * recipient goes in @c to instead of the token's address, the amount goes in
- * @c value instead of the calldata, and 21000 gas is enough. It is also the only
- * pair of selections carrying 18 decimals rather than 6, which is why
- * @ref POS_AMOUNT_UNITS_MAX_NATIVE exists.
- *
- * Native TRX is deliberately not in here: Tron is a wholly separate signing
- * path, and asking "is this a native coin" on the Ethereum side of the fork is
- * the only place the question means anything.
- */
-static inline bool pos_chain_is_native_evm(pos_chain_t c) {
-    return (c == POS_CHAIN_ETH_NATIVE) || (c == POS_CHAIN_POLY_NATIVE);
-}
+/* Family/network predicates for each selection live in assets.h. */
 
 /**
  * @brief Ceiling on a native-coin sale, in the keypad's 6-decimal base units.
@@ -109,7 +59,7 @@ static inline bool pos_chain_is_native_evm(pos_chain_t c) {
  */
 #define POS_AMOUNT_UNITS_MAX_NATIVE  18446744ULL
 
-/** @brief Selected chain, or @ref POS_CHAIN_ETH_SEPOLIA if never set. */
+/** @brief Selected chain, or @ref POS_CHAIN_ETH_USDC if never set. */
 pos_chain_t settings_get_chain(void);
 
 /** @brief Persist the selected chain. */
@@ -118,18 +68,11 @@ void settings_set_chain(pos_chain_t chain);
 /**
  * @brief true when the terminal is on the production networks.
  *
- * Which *deployment* of each network the selected chain means: Ethereum mainnet
- * or Sepolia, Polygon or Amoy, Tron mainnet or Nile. Orthogonal to
- * @ref pos_chain_t, which says which asset on which family — so switching this
- * does not change what the operator is charging in, only where it settles.
- *
- * Defaults to true. A terminal that has never been told otherwise is a terminal
- * somebody bought to take money with, and coming up on a testnet means every
- * sale reports success and settles nothing.
- *
- * The endpoints, chain ids and token contracts are read through this at boot and
- * baked into the dual stores, so @ref settings_set_mainnet only takes effect on a
- * restart — the caller does the restarting.
+ * Picks the deployment (Ethereum/Sepolia, Polygon/Amoy, Tron/Nile), not the
+ * asset. Defaults to true: a unit coming up on a testnet would report every sale
+ * as paid and settle nothing. Endpoints, chain ids and contracts are read once at
+ * boot into the dual stores, so @ref settings_set_mainnet takes effect only on a
+ * restart, which the caller performs.
  */
 bool settings_get_mainnet(void);
 
@@ -139,27 +82,20 @@ void settings_set_mainnet(bool mainnet);
 /**
  * @brief Pick the string belonging to the network the terminal is on.
  *
- * One question asked in one place, for the dozen config.h pairs — RPC URLs, token
- * contracts, the names the panel shows. Written out per site it is a dozen
- * chances to leave a mainnet sale pointed at a testnet contract.
+ * One place for every config.h testnet/mainnet pair (RPC URLs, contracts, names),
+ * so no call site can leave a mainnet sale pointed at a testnet contract.
  */
 const char *settings_net_str(const char *testnet, const char *mainnet);
 
-/** @brief Backlight level in percent, or 80 if never set. */
 /** @brief Widest real-world UTC offsets, in minutes: UTC-12:00 to UTC+14:00. */
 #define TZ_OFFSET_MIN  (-720)
 #define TZ_OFFSET_MAX  (840)
 
 /**
- * @brief The panel clock's offset from UTC, in minutes east.
+ * @brief The panel clock's standard (winter) offset from UTC, in minutes east.
  *
- * SNTP sets the system clock in UTC; this is what the status band adds to it.
- * Minutes rather than hours because half- and quarter-hour zones are real
- * (India +5:30, Nepal +5:45, Chatham +12:45).
- *
- * The STANDARD (winter) offset. Daylight saving is added on top from
- * settings_get_tz_dst(), by civil_time.cpp's rules rather than newlib's
- * tzset/localtime, which measured 64 KB of the app slot.
+ * Minutes because half- and quarter-hour zones exist. DST is added on top from
+ * settings_get_tz_dst() by civil_time.cpp (newlib's tzset costs 64 KB of flash).
  *
  * @return Offset in minutes, 0 (UTC) when unset or when NVS holds nonsense.
  */
@@ -180,6 +116,7 @@ uint8_t settings_get_tz_dst(void);
 /** @brief Store the DST rule. @return false (nothing written) if unknown. */
 bool settings_set_tz_dst(uint8_t rule);
 
+/** @brief Backlight level in percent, or 80 if never set. */
 uint8_t settings_get_brightness(void);
 
 /** @brief Persist the backlight level (0..100). */
@@ -188,11 +125,8 @@ void settings_set_brightness(uint8_t pct);
 /**
  * @brief Raw XPT2046 range that maps to the panel's four edges.
  *
- * Resistive overlays vary unit to unit — the same corner reads a few hundred
- * counts apart on two boards out of the same box — so this is the one constant
- * that has to be a stored knob rather than a number in the source. Defaults to
- * the 200..3800 the driver used to hardcode, which is right enough to reach the
- * calibration screen on a panel that has never been calibrated.
+ * Resistive overlays vary unit to unit, so this is stored per device. Defaults
+ * to 200..3800, close enough to reach the calibration screen uncalibrated.
  */
 void settings_get_touch_cal(uint16_t *x_min, uint16_t *x_max,
                             uint16_t *y_min, uint16_t *y_max);
@@ -224,20 +158,17 @@ void settings_set_wifi(const char *ssid, const char *pass);
 /**
  * @brief true once an admin code exists.
  *
- * NOT the same as "configured": a terminal whose setup was interrupted has a code
- * and no payout address, and that one is not a till (see the boot sequence in
- * main.cpp, which runs setup on either being missing). Use
- * @ref settings_has_payout for "can this unit take money".
- *
- * Cleared by @ref settings_factory_reset, so a reset device asks for a new code.
+ * Not "configured": an interrupted setup leaves a code and no payout address.
+ * Use @ref settings_has_payout for "can this unit take money". Cleared by
+ * @ref settings_factory_reset.
  */
 bool settings_has_admin_code(void);
 
 /**
  * @brief Store a new admin code, with a fresh random salt.
  *
- * The code is never persisted — only a salted keccak256 digest of it,
- * deliberately not stretched (see settings.cpp). Resets the failure counter.
+ * Only a salted keccak256 digest is persisted, deliberately not stretched (see
+ * settings.cpp). Resets the failure counter.
  *
  * @param[in] code NUL-terminated code; the caller wipes its own copy.
  * @return false if NVS refused the write — the caller must not treat setup as
@@ -263,8 +194,7 @@ uint8_t settings_admin_fail_count(void);
 
 /**
  * @brief EIP-1559 max fee per gas, in Gwei.
- * @return the stored override, or the config.h compile-time default (MAX_FEE)
- *         if the user has never changed it.
+ * @return the stored override, or the config.h default (MAX_FEE).
  */
 uint32_t settings_get_max_fee_gwei(void);
 
@@ -286,19 +216,14 @@ bool settings_set_fees_gwei(uint32_t max_gwei, uint32_t prio_gwei);
 /**
  * @brief Read the payout address for a network.
  *
- * Falls back to the config.h compile-time recipient when nothing is stored, so
- * every caller gets a parseable address and none of them has to carry a
- * not-configured branch. It is not a licence to spend to it: the payment path
- * checks @ref settings_has_payout first and refuses the sale (main.cpp,
- * UI_EVENT_AMOUNT_CONFIRMED), because an address nobody chose is somebody
- * else's. The fallback is what the Tx tab displays and what the boot-time chain
- * correction reasons about, not what a transaction pays.
+ * Falls back to the config.h recipient when nothing is stored, so callers always
+ * get a parseable address. That fallback is for display and boot-time reasoning
+ * only: the payment path checks @ref settings_has_payout first and refuses the
+ * sale, because an address nobody chose is somebody else's.
  *
- * Stored twice and compared here, which is the same dual-store rule main.cpp
- * applies when it parses the recipient (§7.1). A compile-time address lives in
- * the signed app image; an NVS one does not, so it carries its own echo copy and
- * a mismatch falls back to the config.h value rather than paying out to a
- * half-written string.
+ * Dual-stored: the NVS value carries an echo copy compared here (the config.h
+ * value lives in the signed image and needs none). A mismatch falls back to
+ * config.h rather than paying out to a half-written string.
  *
  * @param[in]  tron  true for the Tron payout address, false for Ethereum.
  * @param[out] out   Buffer, >= @ref SETTINGS_PAYOUT_MAX. Ethereum addresses are
@@ -312,11 +237,9 @@ bool settings_get_payout(bool tron, char *out, size_t n);
 /**
  * @brief Whether an operator has actually set the payout address for a network.
  *
- * The difference between this and @ref settings_get_payout's return value is only
- * that this one does not need a buffer. It exists because it decides whether an
- * asset is offered at all: a terminal that was set up for Ethereum and never got
- * as far as Tron must not quietly offer Tron payments to the compile-time
- * recipient, which is somebody else's address.
+ * Decides whether an asset is offered at all: a unit set up for Ethereum only
+ * must not offer Tron payments to the compile-time recipient, which is somebody
+ * else's address.
  */
 bool settings_has_payout(bool tron);
 
@@ -336,33 +259,23 @@ bool settings_set_payout(bool tron, const char *addr);
 /**
  * @brief Read the token-contract address for a network.
  *
- * Which token the terminal charges in, as opposed to who gets paid. Same
- * dual-store and same config.h fallback as @ref settings_get_payout, for the same
- * reason: the contract decides which asset moves, so a half-written string in NVS
- * must not be able to point the terminal at a different token.
+ * Same dual store and config.h fallback as @ref settings_get_payout: the contract
+ * decides which asset moves, so a half-written NVS string must not redirect it.
+ * Only USDC on Ethereum and USDT on Tron are settable; any other @p chain returns
+ * false with @p out empty.
  *
- * There is one settable contract per network — USDC on Ethereum, USDT on Tron.
- * Native TRX has none, and asking for one on a chain that has no token is the
- * caller's mistake; @p tron selects the network, not the chain.
+ * Stored separately per network (@ref settings_get_mainnet): the same token is a
+ * different deployment on each, and one slot would leave a mainnet terminal
+ * calling a testnet contract that holds nothing.
  *
- * Stored separately for the production and test networks (see
- * @ref settings_get_mainnet): the same token is a different deployment on each,
- * so one slot would leave a terminal switched to mainnet calling the Sepolia
- * contract an operator had set — an address that holds nothing, under a name that
- * says it holds money.
- *
- * The other assets (USDT on Ethereum, both on Polygon, USDC on Tron) are named
- * by config.h alone and have no NVS slot — see erc20_token_t in main.cpp for
- * why that is deliberate rather than an omission.
- *
- * @param[in]  tron true for the Tron TRC-20 contract, false for the ERC-20 one.
+ * @param[in]  chain The token's selection.
  * @param[out] out  Buffer, >= @ref SETTINGS_PAYOUT_MAX. Ethereum contracts are
  *                  returned "0x"-prefixed.
  * @param[in]  n    Capacity of @p out.
  * @return true if a stored (operator-set) contract was returned, false if the
- *         config.h default was used. Either way @p out is valid.
+ *         config.h default (or, for an unsettable @p chain, nothing) was.
  */
-bool settings_get_contract(bool tron, char *out, size_t n);
+bool settings_get_contract(pos_chain_t chain, char *out, size_t n);
 
 /**
  * @brief Persist a token-contract address, value and echo copy.
@@ -370,7 +283,7 @@ bool settings_get_contract(bool tron, char *out, size_t n);
  * Does not validate — same contract as @ref settings_set_payout: the caller
  * checks the address and has it accepted on the device screen first.
  */
-bool settings_set_contract(bool tron, const char *addr);
+bool settings_set_contract(pos_chain_t chain, const char *addr);
 
 /** @brief Erase all stored settings (brightness, auto, Wi-Fi creds, fees). */
 void settings_factory_reset(void);
@@ -378,11 +291,10 @@ void settings_factory_reset(void);
 /**
  * @brief Persist the sale between broadcast and verdict (opaque record).
  *
- * Written once per sale, just before the transaction leaves the terminal, and
- * cleared on the final verdict — so a brownout or a panic while the receipt is
- * being polled does not lose whether the customer paid: the next boot resumes
- * polling the same hash. The record's layout is main.cpp's; this module only
- * stores it. Survives a power cut, not a firmware update (see
+ * Written just before the transaction leaves the terminal and cleared on the
+ * final verdict, so a brownout or panic while polling does not lose whether the
+ * customer paid: the next boot resumes polling the same hash. Layout is
+ * main.cpp's. Survives a power cut, not a firmware update (see
  * @ref settings_wipe_if_new_build) or a factory reset.
  *
  * @return true once committed.
@@ -396,47 +308,31 @@ bool settings_inflight_load(void *rec, size_t n);
 void settings_inflight_clear(void);
 
 /*
- * BUILD_ID — release identity of this image — is not defined here. The build
- * sets it to `git rev-list --count --first-parent HEAD` (project CMakeLists.txt),
- * so every new commit gets a new one and nobody can edit it back. A plain counter
- * rather than a hash or a version string: it is the one thing that survives every
- * route firmware takes onto a unit — browser update, cable `idf.py flash`,
- * factory image. See @ref settings_wipe_if_new_build.
+ * BUILD_ID is set by the build to `git rev-list --count --first-parent HEAD`
+ * (project CMakeLists.txt), so every commit gets a new one. A plain counter
+ * survives every route onto a unit (browser update, `idf.py flash`, factory
+ * image). See @ref settings_wipe_if_new_build.
  */
 
 /**
  * @brief Erase NVS unless this exact build is the one that wrote it.
  *
- * Call once at the very top of @c app_main, immediately after @c
- * nvs_flash_init() and before anything else opens NVS — @c nvs_flash_erase()
- * cannot run with handles outstanding. Handles its own re-init and stamps @ref
- * BUILD_ID before returning.
+ * Call once at the top of @c app_main, right after @c nvs_flash_init() and
+ * before anything else opens NVS (@c nvs_flash_erase() cannot run with handles
+ * outstanding). Handles its own re-init and stamps @ref BUILD_ID.
  *
- * A security control, not housekeeping. The firmware is open source, so an image
- * that is not this one can be built by anyone and can write anything it likes
- * into NVS — a payout address of its own, above all — for whatever runs next to
- * inherit. So the test is equality: a stamp that is not BUILD_ID means the
- * stored settings were last written by a different image, and this one erases
- * them rather than acting on them. Newer, older and absent all fail it.
+ * A security control: the firmware is open source, so any other image could
+ * have written anything into NVS, a payout address above all. The test is
+ * equality — newer, older and absent stamps all erase. A rollback therefore
+ * erases again; settings are cheaper to re-enter than a payout address to lose.
  *
- * What it does NOT do, and cannot: a stamp in NVS does not authenticate itself.
- * An image that runs on the device can write BUILD_ID's own value and be
- * inherited from. What stops a foreign image from running at all is Secure Boot
- * (and Flash Encryption in RELEASE mode, so the key cannot be read out); this
- * check is the layer under them, for state left by an image that was never
- * hostile — an older release, an engineering build, a factory image.
+ * The stamp does not authenticate itself: a hostile image that runs can forge
+ * it. Secure Boot (and Flash Encryption in RELEASE) stops foreign images; this
+ * covers state left by non-hostile ones (old releases, engineering builds).
  *
- * Because the test is equality rather than ordering, a failed update that rolls
- * back erases a second time, on the way back down. That is the intended trade:
- * the rollback is a different image again, and settings are cheaper to re-enter
- * than a payout address is to lose.
- *
- * Erases the whole partition, not just this module's namespace: a new image is
- * meant to start on a unit with no history, so the Wi-Fi driver's namespace and
- * provision.cpp's go with it. The terminal therefore comes up in first-run setup
- * — an operator has to re-enter the venue network and re-accept the payout
- * address, and until they do, the unit is unowned in front of whoever is
- * standing at it.
+ * Erases the whole partition, Wi-Fi and provision.cpp namespaces included, so
+ * the unit comes up in first-run setup and stays unowned until an operator
+ * re-enters Wi-Fi and re-accepts the payout address.
  *
  * @return true if the settings were erased, so the caller can say so on the panel.
  */
