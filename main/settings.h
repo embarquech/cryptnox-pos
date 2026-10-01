@@ -268,17 +268,17 @@ uint8_t settings_admin_fail_count(void);
  */
 uint32_t settings_get_max_fee_gwei(void);
 
-/** @brief Persist the max fee per gas (Gwei). */
-void settings_set_max_fee_gwei(uint32_t gwei);
-
 /**
  * @brief EIP-1559 max priority fee (tip) per gas, in Gwei.
  * @return the stored override, or the config.h default (MAX_PRIORITY_FEE).
  */
 uint32_t settings_get_priority_fee_gwei(void);
 
-/** @brief Persist the max priority fee per gas (Gwei). */
-void settings_set_priority_fee_gwei(uint32_t gwei);
+/**
+ * @brief Persist the max fee and the tip per gas (Gwei), as a pair.
+ * @return false, storing nothing, if @c fee_pair_check (settings_rules.h) refuses it.
+ */
+bool settings_set_fees_gwei(uint32_t max_gwei, uint32_t prio_gwei);
 
 /** @brief Longest payout address plus NUL — "0x" + 40 hex, or 34 base58 Tron. */
 #define SETTINGS_PAYOUT_MAX  64U

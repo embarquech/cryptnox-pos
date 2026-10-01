@@ -479,11 +479,13 @@ static void indev_read(lv_indev_drv_t *drv, lv_indev_data_t *data) {
     bool pressed = touch_to_screen(&x, &y, &z);
 
     /* Two fingers read as one point between them — hold the first one's. Ahead
-     * of the swipe so an artifact cannot arm that either, and off once the swipe
-     * IS armed: that drag is the one place a sale screen moves a finger far in
-     * one read period, and a false swipe only opens a PIN-locked screen. */
+     * of the swipe so an artifact cannot arm that either. It stays on for an
+     * armed press too, so a thumb resting in the band and never swiping is still
+     * guarded; the swipe's travel is measured off the raw point instead, since
+     * that drag is the one place a sale screen moves a finger far in one read
+     * period, and a false swipe only opens a PIN-locked screen. */
     const int16_t raw_x = x, raw_y = y;
-    if (!pressed || ((s_page_card != NULL) && !s_swipe_armed)) {
+    if (!pressed || (s_page_card != NULL)) {
         touch_jump_filter(&s_jump, pressed, z, &x, &y);
     }
 
@@ -509,7 +511,7 @@ static void indev_read(lv_indev_drv_t *drv, lv_indev_data_t *data) {
         if (!s_swipe_armed && (y >= (SCR_H - SWIPE_BAND_H))) {
             s_swipe_armed = true;
             s_swipe_y0    = y;
-        } else if (s_swipe_armed && ((s_swipe_y0 - y) >= SWIPE_MIN_DY)) {
+        } else if (s_swipe_armed && ((s_swipe_y0 - raw_y) >= SWIPE_MIN_DY)) {
             s_swipe_armed  = false;
             s_swipe_admin  = true;
             s_wait_release = true;
@@ -2086,8 +2088,23 @@ static void sheet_slide_in(lv_obj_t *sh) {
     lv_anim_start(&a);
 }
 
+/* Scrub a secret field's heap strings before lv_obj_clean frees them unwiped:
+ * the real text (pwd_tmp while masked, the label while revealed) and the label,
+ * which holds the last digit in clear during its echo. Copies LVGL's per-digit
+ * reallocs left behind are out of reach. */
+static void code_field_wipe(lv_obj_t *ta) {
+    if (ta == NULL) { return; }
+    char *t = const_cast<char *>(lv_textarea_get_text(ta));
+    if (t != NULL) { CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(t), strlen(t)); }
+    char *l = lv_label_get_text(lv_textarea_get_label(ta));
+    if (l != NULL) { CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(l), strlen(l)); }
+}
+
 static void clear_screen(void) {
     lv_obj_t *scr = lv_scr_act();
+    code_field_wipe(s_pin_ta);
+    code_field_wipe(s_admin_ta);
+    code_field_wipe(s_wifi_pass_ta);
     lv_obj_clean(scr);
     lv_obj_set_style_bg_color(scr, COL_BG, LV_PART_MAIN);
     /* build_page() leaves a gradient on the screen, and the screen object
@@ -3949,9 +3966,14 @@ static lv_obj_t *make_code_row(lv_obj_t *host, lv_obj_t *kb, uint32_t max_len,
      * button — the glyph is centred in it, well clear. Tune both by eye. */
     const lv_coord_t inset = 8;
     const lv_coord_t grow  = 12;
-    lv_obj_t *ta = make_code_field(max_len, kx + k[0].x1 + inset, 44, hint,
-                                   ((k[1].x2 - k[0].x1) + 1) - inset + grow,
-                                   host);
+    const lv_coord_t w = ((k[1].x2 - k[0].x1) + 1) - inset + grow;
+    /* No reveal (see build_pin()): nothing in the 3 key's column, so the field
+     * centres over the pad rather than leaving that column empty beside it. */
+    const lv_coord_t x1 = (eye_lbl == NULL)
+                            ? kx + ((lv_obj_get_width(kb) - w) / 2)
+                            : kx + k[0].x1 + inset;
+    lv_obj_t *ta = make_code_field(max_len, x1, 44, hint, w, host);
+    if (eye_lbl == NULL) { return ta; }
     /* make_icon_button() places itself top-left for the burger; move it, and
      * keep the label handle so the glyph can be swapped in place. */
     lv_obj_t *eye = make_icon_button(LV_SYMBOL_EYE_OPEN, eye_act, host);
@@ -3979,11 +4001,13 @@ static void build_pin(void) {
     /* The eye is the same reveal the Wi-Fi passphrase has, and for the same
      * reason: a PIN typed blind on a resistive panel and refused tells the
      * operator nothing about which of the two got it wrong — except that here the
-     * card counts the attempt, and runs out of them. Masked by default, because
-     * this screen faces the customer. */
+     * card counts the attempt, and runs out of them. Only on the setup read,
+     * though: during a sale this screen faces the customer and the PIN is theirs,
+     * so there is no eye and no per-digit echo for a bystander to read. */
     lv_obj_t *kb = make_numeric_keypad(pin_kbd_cb, card, CODE_KBD_W, 170);
     s_pin_ta = make_code_row(card, kb, 9U, "Card PIN", ACT_PIN_REVEAL,
-                             &s_pin_eye_lbl);
+                             s_pin_for_card ? &s_pin_eye_lbl : NULL);
+    if (!s_pin_for_card) { lv_textarea_set_password_show_time(s_pin_ta, 0); }
 }
 
 /**

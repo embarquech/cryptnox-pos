@@ -2351,8 +2351,8 @@ extern "C" void app_main(void)
 
     /* Before the UI task, before the Wi-Fi driver, before the recipient is
      * resolved: erasing the partition needs every NVS handle shut, and this is
-     * the last moment that is true. Wipes only when this image's BUILD_ID is
-     * newer than the one that last ran here — see settings.h. */
+     * the last moment that is true. Wipes only when this image's BUILD_ID differs
+     * from the one that last ran here — see settings.h. */
     const bool wiped = settings_wipe_if_new_build();
 
     /* ── UI: splash visible while the rest boots ───────── */

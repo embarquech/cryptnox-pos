@@ -416,6 +416,14 @@ static esp_err_t ok(httpd_req_t *req, const char *msg)
     return reply(req, "200 OK", msg);
 }
 
+/** @brief Whether the request's path is @p path — req->uri carries any query
+ *         string, which routing ignores and this must too. */
+static bool uri_is(const httpd_req_t *req, const char *path)
+{
+    const size_t n = strcspn(req->uri, "?");
+    return (strlen(path) == n) && (strncmp(req->uri, path, n) == 0);
+}
+
 /**
  * @brief The gate every mutating endpoint runs first.
  *
@@ -434,9 +442,8 @@ static bool gate(httpd_req_t *req, esp_err_t *rc)
      * itself when the venue network drops — which anyone can cause — so it must
      * not also be a way to change fees, the network, the clock or the payout
      * without the code. Those stay behind the full admin session. */
-    if (s_wifi_only && (strcmp(req->uri, "/api/wifi") != 0) &&
-        (strcmp(req->uri, "/api/rescan") != 0) &&
-        (strcmp(req->uri, "/api/scan") != 0)) {
+    if (s_wifi_only && !uri_is(req, "/api/wifi") && !uri_is(req, "/api/rescan") &&
+        !uri_is(req, "/api/scan")) {
         *rc = reply(req, "403 Forbidden",
                     "Only the Wi-Fi network can be set from here while the "
                     "terminal is offline. Use Configure on the terminal for "
@@ -679,14 +686,13 @@ static esp_err_t auth_post(httpd_req_t *req)
     }
     s_token[TOKEN_HEX_LEN] = '\0';
 
-    if (s_wifi_only) {
+    if (s_wifi_only && !settings_has_admin_code()) {
         /* Nothing to authorise: the only reason this portal is up is that the
          * terminal has lost its network, and whoever is asking read this AP's
-         * per-device passphrase off the panel in front of them. Demanding the
-         * admin code as well would put three screens between an operator and a
-         * till that only needs a password. Everything else the page can reach is
-         * unchanged — a proposed address or a firmware image still has to be
-         * accepted on the panel. */
+         * per-device passphrase off the panel in front of them. Only while no
+         * admin code exists, though — once one does, it is the promise that
+         * Wi-Fi sits behind it, and the AP passphrase is readable by anyone at
+         * the panel, so the code is demanded as on the full wizard. */
         s_authed = true;
         ESP_LOGW(TAG, "browser let in without a code (Wi-Fi-only re-join)");
         if (s_cb != NULL) { s_cb(UI_EVENT_PROV_NEXT, 0); }
@@ -818,8 +824,8 @@ static esp_err_t fees_post(httpd_req_t *req)
                      "The tip cannot be higher than the max fee.");
     }
 
-    settings_set_max_fee_gwei(static_cast<uint32_t>(max_gwei));
-    settings_set_priority_fee_gwei(static_cast<uint32_t>(prio_gwei));
+    (void)settings_set_fees_gwei(static_cast<uint32_t>(max_gwei),
+                                 static_cast<uint32_t>(prio_gwei));   /* checked above */
     /* The panel is very likely showing the Tx tab's two gas rows right now, with
      * this page's card over them. Without this they stay on the old numbers until
      * the operator leaves the settings screen and comes back. */
@@ -1026,7 +1032,9 @@ static esp_err_t next_post(httpd_req_t *req)
  *
  * Straight to flash: the image is bigger than the heap, so there is no version of
  * this that buffers it first. What makes that safe is ota.h's contract — nothing
- * written here can run until the image's SHA-256 and signature have been verified
+ * written here can run until the image's SHA-256 has been verified — and its
+ * signature too, on a build with Secure Boot (sdkconfig.defaults.release /
+ * .flash_encryption); the plain defaults check structure and self-hash only —
  * AND somebody has accepted it on the panel.
  */
 static esp_err_t ota_post(httpd_req_t *req)

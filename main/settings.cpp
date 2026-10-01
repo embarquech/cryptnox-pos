@@ -225,7 +225,9 @@ bool settings_get_mainnet(void)
 void settings_set_mainnet(bool mainnet)
 {
     nvs_u8_set(K_MAINNET, mainnet ? 1U : 0U);
-    s_mainnet_cache.store(mainnet ? 1 : 0);
+    /* Flash only, not the cache: the cache stays the boot value until the
+     * restart, so a sale signed in the window before it still gets the chain id,
+     * endpoint and contract slot of the deployment it was built against. */
     ESP_LOGW(TAG, "network set to %s", mainnet ? "mainnet" : "testnet");
 }
 
@@ -358,24 +360,31 @@ void settings_set_wifi(const char *ssid, const char *pass)
     }
 }
 
-uint32_t settings_get_max_fee_gwei(void)
+/* The bounds are settings_rules.h's, enforced here rather than by the one caller:
+ * these feed tx.max_fee, the gas ceiling the customer's card pays. Out of range in
+ * flash is a corrupt cell, and reads as the default. */
+static uint32_t fee_get(const char *key, uint32_t dflt)
 {
-    return nvs_u32_get(K_MAX_FEE, DEFAULT_MAX_FEE_GWEI);
+    const uint32_t v = nvs_u32_get(key, dflt);
+    return ((v < FEE_GWEI_MIN) || (v > FEE_GWEI_MAX)) ? dflt : v;
 }
 
-void settings_set_max_fee_gwei(uint32_t gwei)
+uint32_t settings_get_max_fee_gwei(void)
 {
-    nvs_u32_set(K_MAX_FEE, gwei);
+    return fee_get(K_MAX_FEE, DEFAULT_MAX_FEE_GWEI);
 }
 
 uint32_t settings_get_priority_fee_gwei(void)
 {
-    return nvs_u32_get(K_PRIO_FEE, DEFAULT_PRIORITY_FEE_GWEI);
+    return fee_get(K_PRIO_FEE, DEFAULT_PRIORITY_FEE_GWEI);
 }
 
-void settings_set_priority_fee_gwei(uint32_t gwei)
+bool settings_set_fees_gwei(uint32_t max_gwei, uint32_t prio_gwei)
 {
-    nvs_u32_set(K_PRIO_FEE, gwei);
+    if (fee_pair_check(max_gwei, prio_gwei) != FEE_PAIR_OK) { return false; }
+    nvs_u32_set(K_MAX_FEE, max_gwei);
+    nvs_u32_set(K_PRIO_FEE, prio_gwei);
+    return true;
 }
 
 /* admin_derive() — keccak256(salt || code) — is in settings_rules.h. */

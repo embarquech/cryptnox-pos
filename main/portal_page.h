@@ -223,6 +223,10 @@ PORTAL_FONTS_CSS
  * sentence explaining it were laid out as two columns and squeezed against each
  * other on a phone — which is the width this particular note is always read at. */
 ".wait.prose{display:block}"
+/* The pairing line under "Waiting for the admin code", not squeezed beside it.
+ * The waiting line gets a zero basis so it stays beside the spinner: with
+ * wrapping on, a full-width line wraps under it instead of shrinking. */
+".wait{flex-wrap:wrap}#waiting b{flex:1 1 0}#pair{flex-basis:100%;margin:0}"
 ".spin{flex:0 0 18px;width:18px;height:18px;border:2px solid currentColor;"
 "border-top-color:transparent;border-radius:50%;animation:sp .8s linear infinite}"
 "@keyframes sp{to{transform:rotate(360deg)}}"
