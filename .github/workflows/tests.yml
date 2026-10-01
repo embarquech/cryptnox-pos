@@ -26,6 +26,10 @@ jobs:
       # config.h is gitignored; the template's placeholders are what
       # test_networks treats as "asset not configured".
       - run: cp config.template.h main/config.h
+      # The config page check runs its script through node; the IDF image has none.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
       - name: checks.sh
         shell: bash
         env:

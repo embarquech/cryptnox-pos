@@ -18,8 +18,6 @@ import re
 import sys
 from pathlib import Path
 
-import openpyxl
-
 ROOT = Path(__file__).resolve().parent.parent
 SRC = sorted(ROOT.glob("main/*.cpp")) + sorted(ROOT.glob("main/*.h"))
 
@@ -296,6 +294,9 @@ def main():
         return selftest()
     if '--audit' in sys.argv:
         return audit()
+    # Only the sheet needs it: --selftest and --audit run without openpyxl.
+    import openpyxl
+    import openpyxl.styles
 
     shown, hidden = [], []
     for path in SRC:
