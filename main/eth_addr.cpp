@@ -71,6 +71,15 @@ bool eth_addr_parse(const char *hex, uint8_t out[ETH_ADDR_LEN])
         }
     }
 
+    /* The zero address is nobody's: a transfer to it burns the funds, and an
+     * all-zero string is what a blank or wiped setting decodes to. It is never
+     * a payee or a contract this terminal should act on. */
+    uint8_t any = 0U;
+    for (i = 0U; i < ETH_ADDR_LEN; i++) { any |= out[i]; }
+    if (any == 0U) {
+        return false;
+    }
+
     /* EIP-55: a mixed-case address carries a checksum, so verify it; an
      * all-lower or all-upper address is treated as un-checksummed and accepted
      * (standard lenient behaviour). A checksummed ADDR_TO thus rejects any
@@ -94,5 +103,43 @@ bool eth_addr_parse(const char *hex, uint8_t out[ETH_ADDR_LEN])
             }
         }
     }
+    return true;
+}
+
+bool eth_addr_format(const uint8_t addr[ETH_ADDR_LEN], char *out, size_t n)
+{
+    /* "0x" + 40 hex + NUL */
+    if ((out == NULL) || (n < (ETH_ADDR_HEX_LEN + 3U))) {
+        if ((out != NULL) && (n > 0U)) { out[0] = '\0'; }
+        return false;
+    }
+
+    static const char LOWER[] = "0123456789abcdef";
+
+    /* Lower-case hex first: EIP-55 hashes exactly that string, so it has to
+     * exist before any character can be given its case. */
+    char lower[ETH_ADDR_HEX_LEN];
+    size_t i;
+    for (i = 0U; i < ETH_ADDR_LEN; i++) {
+        lower[i * 2U]      = LOWER[(addr[i] >> 4U) & 0x0FU];
+        lower[(i * 2U) + 1U] = LOWER[addr[i] & 0x0FU];
+    }
+
+    uint8_t h[32];
+    keccak256(reinterpret_cast<const uint8_t *>(lower), ETH_ADDR_HEX_LEN, h);
+
+    out[0] = '0';
+    out[1] = 'x';
+    for (i = 0U; i < ETH_ADDR_HEX_LEN; i++) {
+        char c = lower[i];
+        if ((c >= 'a') && (c <= 'f')) {
+            const uint8_t nib = ((i & 1U) == 0U)
+                              ? static_cast<uint8_t>(h[i / 2U] >> 4U)
+                              : static_cast<uint8_t>(h[i / 2U] & 0x0FU);
+            if (nib >= 8U) { c = static_cast<char>((c - 'a') + 'A'); }
+        }
+        out[i + 2U] = c;
+    }
+    out[ETH_ADDR_HEX_LEN + 2U] = '\0';
     return true;
 }

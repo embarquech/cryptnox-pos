@@ -169,3 +169,64 @@ bool civil_parse_http_date(const char *hdr, int64_t *out)
     *out = civil_to_epoch(year, mon, day, hour, min, sec);
     return true;
 }
+
+/** @brief Day of week of a day count from days_from_civil(), 0 = Sunday. */
+static int64_t weekday(int64_t days)
+{
+    const int64_t w = (days + 4) % 7;   /* 1970-01-01 was a Thursday */
+    return (w < 0) ? (w + 7) : w;
+}
+
+/** @brief Day count of the @p n th Sunday of a month (n >= 1). */
+static int64_t nth_sunday(int y, int m, int n)
+{
+    const int64_t d1 = days_from_civil(y, m, 1);
+    return d1 + ((7 - weekday(d1)) % 7) + (7 * (n - 1));
+}
+
+/** @brief Day count of the last Sunday of a month (m <= 11). */
+static int64_t last_sunday(int y, int m)
+{
+    const int64_t dl = days_from_civil(y, m + 1, 1) - 1;
+    return dl - weekday(dl);
+}
+
+int civil_local_offset_min(int64_t utc, int std_off_min, int rule)
+{
+    /* The year the local clock is in. Days from 1970 / 365.2425 can be a year
+     * out near New Year, so step it until Jan 1 of it brackets the day. */
+    const int64_t std_s = utc + (static_cast<int64_t>(std_off_min) * 60);
+    const int64_t day   = (std_s >= 0) ? (std_s / 86400) : (((std_s + 1) / 86400) - 1);
+    int y = 1970 + static_cast<int>((day * 400) / 146097);
+    while (days_from_civil(y, 1, 1) > day)      { y--; }
+    while (days_from_civil(y + 1, 1, 1) <= day) { y++; }
+
+    /* Transition instants in UTC seconds. The local ones are at 02:00 standard
+     * time, which is also 03:00 daylight time for the way back. */
+    const int64_t loc = (2 * 3600) - (static_cast<int64_t>(std_off_min) * 60);
+    int64_t on  = 0;
+    int64_t off = 0;
+    switch (rule) {
+        case CIVIL_DST_EU:
+            on  = (last_sunday(y, 3)  * 86400) + 3600;
+            off = (last_sunday(y, 10) * 86400) + 3600;
+            break;
+        case CIVIL_DST_US:
+            on  = (nth_sunday(y, 3, 2)  * 86400) + loc;
+            off = (nth_sunday(y, 11, 1) * 86400) + loc - 3600;
+            break;
+        case CIVIL_DST_AU:   /* southern: DST spans New Year, so on > off */
+            on  = (nth_sunday(y, 10, 1) * 86400) + loc;
+            off = (nth_sunday(y, 4, 1)  * 86400) + loc;
+            break;
+        case CIVIL_DST_NZ:
+            on  = (last_sunday(y, 9)   * 86400) + loc;
+            off = (nth_sunday(y, 4, 1) * 86400) + loc;
+            break;
+        default:
+            return std_off_min;
+    }
+    const bool dst = (on < off) ? ((utc >= on) && (utc < off))
+                                : ((utc >= on) || (utc < off));
+    return std_off_min + (dst ? 60 : 0);
+}

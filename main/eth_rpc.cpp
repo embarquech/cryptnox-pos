@@ -15,23 +15,20 @@
 
 #include "eth_rpc.h"
 #include "eth_json.h"
-#include "civil_time.h"
+#include "https_post.h"
 
 #include <string.h>
 #include <strings.h>    /* strncasecmp */
 #include <stdlib.h>     /* strtoull, malloc, free */
 #include <stdio.h>      /* snprintf */
-#include <time.h>       /* time */
-#include <inttypes.h>   /* PRIu64, PRId64 */
+#include <inttypes.h>   /* PRIu64 */
 
 /* CW_Utils.h pulls in Arduino.h (via platform_compat.h); it must come before
- * any lwip-including IDF header (esp_http_client.h, esp_netif.h, ...) so that
- * IPAddress.h declares INADDR_NONE before lwip defines it as a macro. */
+ * any lwip-including IDF header so that IPAddress.h declares INADDR_NONE
+ * before lwip defines it as a macro. */
 #include "CW_Utils.h"   /* hardened memory primitives (CODING_RULES §1.4) */
 
 #include "esp_log.h"
-#include "esp_http_client.h"
-#include "esp_crt_bundle.h"
 
 static const char *const TAG = "eth_rpc";
 
@@ -52,13 +49,6 @@ static const char *const TAG = "eth_rpc";
 /* Largest expected "result" string: 0x + 64 hex chars + NUL, rounded up. */
 #define RESULT_STR_MAX  80U
 
-/* Tolerated disagreement between our clock and the server's Date header.
- * The header has 1 s granularity and provider clocks are NTP-synced, so only
- * request latency sits in between — 5 min is enormously generous while still
- * catching the real attack (back-dating to revive an expired cert moves the
- * clock by weeks). Same convention as Kerberos. */
-#define CLOCK_SKEW_MAX_S  300
-
 /******************************************************************
  * 2. Constants and module state
  ******************************************************************/
@@ -73,193 +63,21 @@ static const char *s_ca_cert     = NULL;   /* pinned cert; NULL = CA bundle */
  * 4. HTTP helper
  ******************************************************************/
 
-/** @brief Response headers captured during fetch (see @ref http_event_cb). */
-typedef struct {
-    char date[40];   /**< Date header value, "" if the server sent none.
-                          IMF-fixdate is 29 chars; 40 leaves slack.        */
-} rpc_resp_hdrs_t;
-
-/**
- * @brief HTTP event hook that captures the response Date header.
- *
- * Response headers are ONLY reachable this way. esp_http_client_get_header()
- * looks up client->request->headers — the headers we send — so it can never
- * return the server's Date, however plausible the name looks.
- *
- * @param[in] evt Event; user_data points at the caller's rpc_resp_hdrs_t.
- * @return ESP_OK always (never fail a transfer over a header we merely want).
- */
-static esp_err_t http_event_cb(esp_http_client_event_t *evt)
-{
-    if ((evt == NULL) || (evt->event_id != HTTP_EVENT_ON_HEADER) ||
-        (evt->user_data == NULL) || (evt->header_key == NULL)) {
-        return ESP_OK;
-    }
-
-    /* Field names are case-insensitive (RFC 9110 §5.1). */
-    if (strcasecmp(evt->header_key, "Date") == 0) {
-        rpc_resp_hdrs_t *hdrs = static_cast<rpc_resp_hdrs_t *>(evt->user_data);
-        const char      *val  = (evt->header_value != NULL) ? evt->header_value
-                                                            : "";
-        (void)strncpy(hdrs->date, val, sizeof(hdrs->date) - 1U);
-        hdrs->date[sizeof(hdrs->date) - 1U] = '\0';
-    }
-    return ESP_OK;
-}
-
-/**
- * @brief Cross-check the system clock against the server's HTTP Date header.
- *
- * SNTP gave us the clock over plain unauthenticated UDP, so a network
- * attacker can dictate it. This header arrives inside the encrypted,
- * authenticated TLS channel — without the pinned CA's private key it can be
- * neither forged nor altered, which makes it a strictly better time source
- * than the handshake (ServerHello.random's gmt_unix_time is pure random in
- * TLS 1.3 and esp_http_client does not expose it anyway).
- *
- * Must be called after esp_http_client_fetch_headers().
- *
- * A missing or non-conforming header yields "not corroborated", not
- * "disagrees": the response already passed pinned-CA TLS, so an absent
- * header means the provider genuinely omitted it, and failing the payment
- * over that would be a self-inflicted outage. An attacker cannot induce
- * this case without breaking TLS.
- *
- * @param[in] date_hdr Captured Date value; "" when the server sent none.
- * @return false only when a parseable Date disagrees with the local clock by
- *         more than @ref CLOCK_SKEW_MAX_S; true otherwise.
- */
-static bool clock_corroborated(const char *date_hdr)
-{
-    int64_t  server_epoch = 0;
-    int64_t  local_epoch;
-    int64_t  skew;
-
-    if (date_hdr[0] == '\0') {
-        ESP_LOGW(TAG, "no Date header - clock not corroborated");
-        return true;
-    }
-
-    if (!civil_parse_http_date(date_hdr, &server_epoch)) {
-        ESP_LOGW(TAG, "unparseable Date header - clock not corroborated");
-        return true;
-    }
-
-    local_epoch = static_cast<int64_t>(time(NULL));
-    skew = local_epoch - server_epoch;
-    if (skew < 0) { skew = -skew; }
-
-    if (skew > CLOCK_SKEW_MAX_S) {
-        ESP_LOGE(TAG, "clock off by %" PRId64 " s vs server (local %" PRId64
-                      ", server %" PRId64 ") - refusing (spoofed NTP?)",
-                 skew, local_epoch, server_epoch);
-        return false;
-    }
-
-    ESP_LOGD(TAG, "clock corroborated (skew %" PRId64 " s)", skew);
-    return true;
-}
-
 /**
  * @brief POST a JSON-RPC body to the configured endpoint over HTTPS.
  *
- * Applies HTTP Basic Auth when credentials were set via
- * @ref eth_rpc_set_auth.  The response is read until EOF or buffer-full
- * and is always NUL-terminated.
+ * Thin wrapper over @ref https_post_json that supplies this module's endpoint,
+ * optional Infura credentials and optional pinned certificate.
  *
  * @param[in]  body          JSON request body (NUL-terminated).
  * @param[out] resp_buf      Response buffer, NUL-terminated on return.
  * @param[in]  resp_buf_size Capacity of @p resp_buf.
- * @return true only if at least one byte was read AND the server answered
- *         HTTP 200; false on transport error or non-200 status.
+ * @return true on an HTTP 200 with a non-empty body, false otherwise.
  */
 static bool do_post(const char *body, char *resp_buf, size_t resp_buf_size)
 {
-    bool success = false;
-
-    bool use_auth = ((s_project_id != NULL) && (s_project_id[0] != '\0') &&
-                     (s_api_secret != NULL) && (s_api_secret[0] != '\0'));
-
-    rpc_resp_hdrs_t hdrs;
-    (void)memset(&hdrs, 0, sizeof(hdrs));
-
-    esp_http_client_config_t cfg;
-    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(&cfg), sizeof(cfg));
-    cfg.url               = s_rpc_url;
-    cfg.method            = HTTP_METHOD_POST;
-    cfg.timeout_ms        = 15000;
-    cfg.event_handler     = http_event_cb;   /* captures the Date header */
-    cfg.user_data         = &hdrs;
-    /* if a cert was pinned via eth_rpc_set_ca_cert(), trust ONLY it —
-     * otherwise any of the ~150 CAs in the Mozilla bundle could MITM the RPC. */
-    if (s_ca_cert != NULL) {
-        cfg.cert_pem = s_ca_cert;
-    } else {
-        cfg.crt_bundle_attach = esp_crt_bundle_attach;
-    }
-    if (use_auth) {
-        cfg.username  = s_project_id;
-        cfg.password  = s_api_secret;
-        cfg.auth_type = HTTP_AUTH_TYPE_BASIC;
-    }
-
-    esp_http_client_handle_t client = esp_http_client_init(&cfg);
-    if (client == NULL) {
-        ESP_LOGE(TAG, "HTTP client init failed");
-        return false;
-    }
-
-    (void)esp_http_client_set_header(client, "Content-Type", "application/json");
-
-    int body_len = static_cast<int>(strlen(body));
-    esp_err_t err = esp_http_client_open(client, body_len);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "HTTP open: %s", esp_err_to_name(err));
-        goto cleanup;
-    }
-
-    if (esp_http_client_write(client, body, body_len) != body_len) {
-        ESP_LOGE(TAG, "HTTP write incomplete");
-        goto cleanup;
-    }
-
-    {
-        int64_t content_length = esp_http_client_fetch_headers(client);
-        (void)content_length;  /* may be -1 for chunked; we read until EOF */
-
-        /* Reject the response before reading the body if the authenticated
-         * Date proves our SNTP-supplied clock was spoofed. Consistent with
-         * the existing no-network-time path: refuse rather than adopt the
-         * header's time, so one wrong provider clock can never silently
-         * redefine what this terminal treats as "now". */
-        if (!clock_corroborated(hdrs.date)) {
-            goto cleanup;   /* success stays false */
-        }
-
-        int total = 0;
-        int read;
-        do {
-            int space = static_cast<int>(resp_buf_size - 1U) - total;
-            if (space <= 0) { break; }
-            read = esp_http_client_read(client, resp_buf + total, space);
-            if (read > 0) { total += read; }
-        } while (read > 0);
-
-        resp_buf[total] = '\0';
-
-        /* a 4xx/5xx body that happens to contain "result" must not
-         * be mistaken for a successful JSON-RPC response. */
-        int status = esp_http_client_get_status_code(client);
-        if (status != 200) {
-            ESP_LOGE(TAG, "HTTP status %d: %.*s", status, RESP_LOG_MAX, resp_buf);
-        }
-        success = ((total > 0) && (status == 200));
-    }
-
-cleanup:
-    esp_http_client_close(client);
-    esp_http_client_cleanup(client);
-    return success;
+    return https_post_json(s_rpc_url, body, resp_buf, resp_buf_size,
+                           s_project_id, s_api_secret, s_ca_cert);
 }
 
 /******************************************************************
@@ -307,6 +125,24 @@ void eth_rpc_init(const char *rpc_url, const char *from_addr)
     s_from_addr = from_addr;
 }
 
+/* The payer, copied. eth_rpc_init keeps a pointer to its caller's storage,
+ * which suits a config.h literal and not an address derived into a stack buffer
+ * during one sale — so the per-tap override owns its bytes. */
+static char s_from_buf[43];   /* "0x" + 40 hex + NUL */
+
+bool eth_rpc_set_from(const char *addr)
+{
+    if (addr == NULL) { return false; }
+    if ((addr[0] != '0') || ((addr[1] != 'x') && (addr[1] != 'X'))) {
+        return false;
+    }
+    if (strlen(addr) != 42U) { return false; }
+
+    (void)snprintf(s_from_buf, sizeof(s_from_buf), "%s", addr);
+    s_from_addr = s_from_buf;
+    return true;
+}
+
 void eth_rpc_set_auth(const char *project_id, const char *api_secret)
 {
     s_project_id = project_id;
@@ -323,7 +159,7 @@ bool eth_rpc_get_nonce(uint64_t *nonce_out)
     char body[256];
     (void)snprintf(body, sizeof(body),
                    "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\","
-                   "\"params\":[\"%s\",\"pending\"],\"id\":1}",
+                   "\"params\":[\"%s\",\"latest\"],\"id\":1}",
                    s_from_addr);
 
     char resp[RESP_BUF_SIZE];
@@ -358,92 +194,105 @@ bool eth_rpc_get_nonce(uint64_t *nonce_out)
     return true;
 }
 
-eth_rpc_parity_result_t eth_rpc_ecrecover_parity(const uint8_t hash[32],
-                                                 const uint8_t r[32],
-                                                 const uint8_t s[32],
-                                                 uint8_t *v_out)
+/**
+ * @brief The configured from-address with any "0x" prefix removed.
+ *
+ * Both callers below want the bare 40 characters — one to compare against what
+ * ecrecover returned, the other to pad into an ABI argument.
+ */
+static const char *from_no_prefix(void)
 {
-    /* Track whether at least one eth_call produced a usable recovered
-     * address, so the caller can distinguish "RPC down" from "address
-     * mismatch". */
-    bool got_recovered = false;
+    const char *p = s_from_addr;
+    if ((p != NULL) && (p[0] == '0') && ((p[1] == 'x') || (p[1] == 'X'))) {
+        p += 2;
+    }
+    return p;
+}
 
-    /* ecrecover precompile input: hash(32) || v_uint256(32) || r(32) || s(32) */
-    uint8_t input[128];
-    CW_Utils::secure_wipe(input, sizeof(input));
-    (void)CW_Utils::safe_memcpy(input, sizeof(input), hash, 32U);
-    /* v occupies the last byte of the second 32-byte slot (index 63) */
-    (void)CW_Utils::safe_memcpy(input + 64U, sizeof(input) - 64U, r, 32U);
-    (void)CW_Utils::safe_memcpy(input + 96U, sizeof(input) - 96U, s, 32U);
+bool eth_rpc_get_balance(uint64_t *wei_out)
+{
+    if ((wei_out == NULL) || (s_from_addr == NULL)) { return false; }
 
-    /* Hex-encode the 128-byte input */
-    char input_hex[257];
-    bytes_to_hex(input, sizeof(input), input_hex);
-    input_hex[256] = '\0';
+    char body[256];
+    (void)snprintf(body, sizeof(body),
+                   "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\","
+                   "\"params\":[\"%s\",\"latest\"],\"id\":4}",
+                   s_from_addr);
 
-    /* from_addr without "0x" prefix for comparison */
-    const char *from_hex = s_from_addr;
-    if ((from_hex[0] == '0') && ((from_hex[1] == 'x') || (from_hex[1] == 'X'))) {
-        from_hex += 2;
+    char resp[RESP_BUF_SIZE];
+    if (!do_post(body, resp, sizeof(resp))) {
+        return false;
     }
 
-    uint8_t v_raw;
-    for (v_raw = 0U; v_raw < 2U; v_raw++) {
-        /* Set v byte (27 or 28) in slot [32..63] last byte */
-        input_hex[63U * HEX_PER_BYTE]      = hex_nibble(((27U + v_raw) >> 4U) & 0x0FU);
-        input_hex[63U * HEX_PER_BYTE + 1U] = hex_nibble((27U + v_raw) & 0x0FU);
+    char result[RESULT_STR_MAX];
+    if (!eth_json_result_string(resp, result, sizeof(result))) {
+        ESP_LOGE(TAG, "balance: no result in: %.*s", RESP_LOG_MAX, resp);
+        return false;
+    }
+    if (!eth_json_hex_quantity(result, wei_out)) {
+        ESP_LOGE(TAG, "balance: malformed quantity: %.*s", RESP_LOG_MAX, result);
+        return false;
+    }
+    return true;
+}
 
-        char body[600];
-        (void)snprintf(body, sizeof(body),
-                       "{\"jsonrpc\":\"2.0\",\"method\":\"eth_call\","
-                       "\"params\":[{\"to\":"
-                       "\"0x0000000000000000000000000000000000000001\","
-                       "\"data\":\"0x%s\"},\"latest\"],\"id\":3}",
-                       input_hex);
-
-        char resp[RESP_BUF_SIZE];
-        if (!do_post(body, resp, sizeof(resp))) {
-            continue;
-        }
-
-        /* Expected result: "0x" + 64 hex chars (32-byte ABI-encoded address).
-         * The address occupies the last 40 hex chars (bytes 12-31). */
-        char result[RESULT_STR_MAX];
-        if (!eth_json_result_string(resp, result, sizeof(result))) {
-            ESP_LOGW(TAG, "ecrecover v=%u: no result in: %.*s",
-                     v_raw, RESP_LOG_MAX, resp);
-            continue;
-        }
-        if ((strncmp(result, "0x", 2U) != 0) || (strlen(result) != 66U)) {
-            /* Empty/short result — address not recovered (try other v) */
-            continue;
-        }
-        got_recovered = true;
-
-        /* ABI address: 24 hex chars of zeros + 40 hex chars of address */
-        const char *recovered_hex = result + 2U + 24U;
-
-        if (strncasecmp(recovered_hex, from_hex, 40U) == 0) {
-            ESP_LOGI(TAG, "v=%u matched ecrecover", v_raw);
-            *v_out = v_raw;
-            return ETH_RPC_PARITY_OK;
-        }
+bool eth_rpc_get_token_balance(const char *token_addr, uint64_t *units_out)
+{
+    if ((token_addr == NULL) || (units_out == NULL) || (s_from_addr == NULL)) {
+        return false;
     }
 
-    /* no silent v=0 fallback — broadcasting with a wrong parity just
-     * produces an invalid signature and an opaque failure downstream. */
-    if (got_recovered) {
-        ESP_LOGE(TAG, "ecrecover: neither parity matches from_addr "
-                      "(ADDR_FROM / card mismatch?)");
-        return ETH_RPC_PARITY_MISMATCH;
+    /* The ABI argument is the address left-padded to 32 bytes, so the bare 40
+     * characters have to be exactly that. A short one would shift the padding
+     * and ask the contract about a different account — which would answer, and
+     * the answer would be about somebody else. */
+    const char *from_hex = from_no_prefix();
+    if (strlen(from_hex) != 40U) {
+        ESP_LOGE(TAG, "token balance: from_addr is not 20 bytes");
+        return false;
     }
-    ESP_LOGE(TAG, "ecrecover: no usable RPC response for either parity");
-    return ETH_RPC_PARITY_RPC_ERROR;
+
+    /* balanceOf(address): selector 70a08231, then 12 zero bytes + the address. */
+    char body[320];
+    (void)snprintf(body, sizeof(body),
+                   "{\"jsonrpc\":\"2.0\",\"method\":\"eth_call\","
+                   "\"params\":[{\"to\":\"%s\",\"data\":\"0x70a08231"
+                   "000000000000000000000000%s\"},\"latest\"],\"id\":5}",
+                   token_addr, from_hex);
+
+    char resp[RESP_BUF_SIZE];
+    if (!do_post(body, resp, sizeof(resp))) {
+        return false;
+    }
+
+    char result[RESULT_STR_MAX];
+    if (!eth_json_result_string(resp, result, sizeof(result))) {
+        ESP_LOGE(TAG, "token balance: no result in: %.*s", RESP_LOG_MAX, resp);
+        return false;
+    }
+    /* A call to an address with no code returns "0x" — an answer this must not
+     * read as a zero balance, or a mistyped contract would look like an empty
+     * account instead of like a misconfiguration. eth_json_hex_quantity rejects
+     * it, and the caller treats a failed read as "cannot tell" rather than as
+     * grounds to refuse. */
+    if (!eth_json_hex_quantity(result, units_out)) {
+        ESP_LOGE(TAG, "token balance: malformed quantity: %.*s",
+                 RESP_LOG_MAX, result);
+        return false;
+    }
+    return true;
 }
 
 bool eth_rpc_send_raw_tx(const uint8_t *tx, size_t tx_len,
-                          char *tx_hash_out, size_t tx_hash_max)
+                          char *tx_hash_out, size_t tx_hash_max,
+                          char *err_out, size_t err_max)
 {
+    /* Cleared up front so every failure path below leaves a defined value: the
+     * caller distinguishes "the node said why" from "we never got that far" by
+     * whether this is empty, and a stale message from a previous sale would be
+     * worse than none at all. */
+    if ((err_out != NULL) && (err_max > 0U)) { err_out[0] = '\0'; }
+
     /* "0x" + 2 hex chars per byte + NUL */
     size_t hex_str_size = 2U + tx_len * HEX_PER_BYTE + 1U;
     char *tx_hex = static_cast<char *>(malloc(hex_str_size));
@@ -476,6 +325,12 @@ bool eth_rpc_send_raw_tx(const uint8_t *tx, size_t tx_len,
     char result[RESULT_STR_MAX];
     if (!eth_json_result_string(resp, result, sizeof(result))) {
         ESP_LOGE(TAG, "send_raw_tx: no result in: %.*s", RESP_LOG_MAX, resp);
+        /* A refusal, as opposed to a malformed body, carries the node's reason —
+         * the one thing that tells an operator whether to top up gas, lower the
+         * amount or just try again. Hand it back rather than log it and forget. */
+        if ((err_out != NULL) && (err_max > 0U)) {
+            (void)eth_json_error_message(resp, err_out, err_max);
+        }
         return false;
     }
     if (strncmp(result, "0x", 2U) != 0) {
@@ -496,13 +351,45 @@ bool eth_rpc_send_raw_tx(const uint8_t *tx, size_t tx_len,
     return true;
 }
 
-eth_rpc_receipt_result_t eth_rpc_get_tx_receipt(const char *tx_hash)
+bool eth_rpc_get_token_decimals(const char *token_addr, uint64_t *dec_out)
 {
+    if ((token_addr == NULL) || (dec_out == NULL)) { return false; }
+    char body[224];
+    int k = snprintf(body, sizeof(body),
+                     "{\"jsonrpc\":\"2.0\",\"method\":\"eth_call\","
+                     "\"params\":[{\"to\":\"%s\",\"data\":\"0x313ce567\"},"
+                     "\"latest\"],\"id\":6}",
+                     token_addr);
+    if ((k <= 0) || (static_cast<size_t>(k) >= sizeof(body))) { return false; }
+
+    char resp[RESP_BUF_SIZE];
+    if (!do_post(body, resp, sizeof(resp))) { return false; }
+    char result[RESULT_STR_MAX];
+    /* "0x" from an address with no code is refused by eth_json_hex_quantity. */
+    if (!eth_json_result_string(resp, result, sizeof(result)) ||
+        !eth_json_hex_quantity(result, dec_out)) {
+        ESP_LOGE(TAG, "decimals: no usable answer: %.*s", RESP_LOG_MAX, resp);
+        return false;
+    }
+    return true;
+}
+
+bool eth_rpc_err_already_known(const char *node_err)
+{
+    return (node_err != NULL) &&
+           ((strstr(node_err, "already known") != NULL) ||
+            (strstr(node_err, "known transaction") != NULL) ||
+            (strstr(node_err, "ALREADY_EXISTS") != NULL));
+}
+
+eth_rpc_receipt_result_t eth_rpc_get_tx_receipt(const eth_receipt_expect_t *want)
+{
+    if ((want == NULL) || (want->tx_hash == NULL)) { return ETH_RPC_RECEIPT_RPC_ERROR; }
     char body[160];
     (void)snprintf(body, sizeof(body),
                    "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionReceipt\","
                    "\"params\":[\"%s\"],\"id\":3}",
-                   tx_hash);
+                   want->tx_hash);
 
     /* Receipts are large (the logsBloom field alone is 512 hex chars, plus
      * the ERC-20 Transfer log) — use a dedicated heap buffer, a truncated
@@ -513,10 +400,14 @@ eth_rpc_receipt_result_t eth_rpc_get_tx_receipt(const char *tx_hash)
 
     eth_rpc_receipt_result_t verdict = ETH_RPC_RECEIPT_RPC_ERROR;
     if (do_post(body, resp, resp_size)) {
-        switch (eth_json_receipt_status(resp)) {
+        switch (eth_json_receipt_check(resp, want)) {
             case ETH_JSON_RECEIPT_PENDING:  verdict = ETH_RPC_RECEIPT_PENDING;  break;
             case ETH_JSON_RECEIPT_SUCCESS:  verdict = ETH_RPC_RECEIPT_SUCCESS;  break;
             case ETH_JSON_RECEIPT_REVERTED: verdict = ETH_RPC_RECEIPT_REVERTED; break;
+            case ETH_JSON_RECEIPT_MISMATCH:
+                ESP_LOGE(TAG, "receipt is not our payment: %.*s", RESP_LOG_MAX, resp);
+                verdict = ETH_RPC_RECEIPT_MISMATCH;
+                break;
             case ETH_JSON_RECEIPT_ERROR:    /* fall through */
             default:                        verdict = ETH_RPC_RECEIPT_RPC_ERROR; break;
         }

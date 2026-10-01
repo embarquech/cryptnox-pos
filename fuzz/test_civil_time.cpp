@@ -161,6 +161,35 @@ static void test_attack_window(void)
     assert((build - spoof)  > 300);
 }
 
+/** @brief DST switches at the published 2026 instants, a second each side. */
+static void check_switch(int off, int rule, int64_t at, int before, int after)
+{
+    assert(civil_local_offset_min(at - 1, off, rule) == before);
+    assert(civil_local_offset_min(at,     off, rule) == after);
+}
+
+static void test_dst(void)
+{
+    /* Zurich: Mar 29 and Oct 25, 01:00 UTC. */
+    check_switch(60, CIVIL_DST_EU, civil_to_epoch(2026, 3, 29, 1, 0, 0), 60, 120);
+    check_switch(60, CIVIL_DST_EU, civil_to_epoch(2026, 10, 25, 1, 0, 0), 120, 60);
+    /* New York: Mar 8 02:00 EST, Nov 1 02:00 EDT. */
+    check_switch(-300, CIVIL_DST_US, civil_to_epoch(2026, 3, 8, 7, 0, 0), -300, -240);
+    check_switch(-300, CIVIL_DST_US, civil_to_epoch(2026, 11, 1, 6, 0, 0), -240, -300);
+    /* Sydney: Apr 5 03:00 AEDT, Oct 4 02:00 AEST. */
+    check_switch(600, CIVIL_DST_AU, civil_to_epoch(2026, 4, 4, 16, 0, 0), 660, 600);
+    check_switch(600, CIVIL_DST_AU, civil_to_epoch(2026, 10, 3, 16, 0, 0), 600, 660);
+    /* Auckland: Apr 5 03:00 NZDT, Sep 27 02:00 NZST. */
+    check_switch(720, CIVIL_DST_NZ, civil_to_epoch(2026, 4, 4, 14, 0, 0), 780, 720);
+    check_switch(720, CIVIL_DST_NZ, civil_to_epoch(2026, 9, 26, 14, 0, 0), 720, 780);
+    /* Southern summer across New Year, and no rule means no change. */
+    assert(civil_local_offset_min(civil_to_epoch(2026, 12, 31, 23, 0, 0), 600,
+                                  CIVIL_DST_AU) == 660);
+    assert(civil_local_offset_min(civil_to_epoch(2026, 7, 1, 0, 0, 0), 330,
+                                  CIVIL_DST_NONE) == 330);
+    assert(civil_local_offset_min(civil_to_epoch(2026, 7, 1, 0, 0, 0), 60, 99) == 60);
+}
+
 int main(void)
 {
     test_epoch_reference_points();
@@ -170,6 +199,7 @@ int main(void)
     test_build_stamp();
     test_http_date();
     test_attack_window();
+    test_dst();
 
     printf("civil_time: all checks passed\n");
     return 0;

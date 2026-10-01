@@ -4,9 +4,10 @@
 #   idf.py -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.flash_encryption" \
 #          build flash monitor
 #
-# Scope: Flash Encryption + encrypted NVS. Encrypts secrets at rest — a flash
-# dump no longer yields the Wi-Fi password or any NVS secret. Secure Boot v2 is
-# intentionally NOT enabled here — that is a separate, later step.
+# Scope: Flash Encryption + encrypted NVS + Secure Boot v2. Encrypts secrets at
+# rest — a flash dump no longer yields the Wi-Fi password or any NVS secret —
+# and only images signed with secure_keys/secure_boot_signing_key.pem boot, or
+# install over the air. Secure Boot's first boot burns eFuses: ONE-WAY.
 # ============================================================================
 
 # --- Flash Encryption -------------------------------------------------------

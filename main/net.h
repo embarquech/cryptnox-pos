@@ -68,6 +68,73 @@ uint16_t net_wifi_scan(net_wifi_ap_t *out, uint16_t max);
 bool net_wifi_connect(const char *ssid, const char *password);
 
 /**
+ * @brief Drop the station association, without the retry loop pulling it back.
+ *
+ * For a join that worked but is not being kept: the setup portal's HTTP server
+ * binds every interface, so an associated station puts the setup forms on the
+ * venue LAN as well as on the SoftAP. Leaving a test association up while that
+ * portal is still running hands the forms to everyone holding the venue PSK.
+ * With a SoftAP up this also returns the radio to AP-only, so the station
+ * interface goes down with the association rather than lingering idle.
+ * Idempotent, and safe before any connect.
+ */
+void net_wifi_disconnect(void);
+
+/**
+ * @brief Raise a WPA2 SoftAP as the radio's *only* interface, for phone-based
+ *        configuration.
+ *
+ * AP-only, not APSTA, and the station association is dropped on the way in. The
+ * config portal's HTTP server binds every interface (esp_http_server offers no
+ * bind address), so an APSTA terminal answers the payout forms on the venue LAN
+ * as well as on the AP — which is exactly where the AP passphrase guards
+ * nothing. Taking the station down makes the AP the only door there is.
+ *
+ * The station is borrowed back where it is genuinely needed and only for as long
+ * as that takes: @ref net_wifi_scan flips to APSTA for the scan itself, and
+ * @ref net_wifi_connect for the join the operator asked for. @ref net_ap_stop
+ * re-associates afterwards.
+ *
+ * One radio, one channel: when the station associates, the SoftAP is dragged
+ * onto the station's channel and any joined phone is dropped. That is expected —
+ * the setup page warns before it submits Wi-Fi credentials, and the device
+ * screen, not the phone, reports the outcome.
+ *
+ * @param[in] ssid AP SSID.
+ * @param[in] pass WPA2 passphrase; must be at least 8 characters.
+ * @return true once the AP interface is configured and up.
+ */
+bool net_ap_start(const char *ssid, const char *pass);
+
+/**
+ * @brief Drop the SoftAP, return the radio to station-only, and re-join.
+ *
+ * The association @ref net_ap_start displaced is put back if it is not already
+ * up: the driver still holds the credentials, so only the association went away.
+ * Without it, closing the config page would leave a working terminal offline
+ * until somebody rebooted it.
+ */
+void net_ap_stop(void);
+
+/**
+ * @brief Hold on to the network last configured, even though it is down now.
+ *
+ * A join that succeeds already does this: from then on a drop past the immediate
+ * retries hands over to a background re-join (2 s doubling to every 30 s, for as
+ * long as it takes). This is for the unit that boots while its router is still
+ * coming up — the saved network was tried and failed, and should be tried again
+ * in the background rather than never. No-op while the SoftAP is up, and undone
+ * by @ref net_wifi_disconnect and @ref net_wifi_connect.
+ */
+void net_wifi_keep_trying(void);
+
+/** @brief true while the station holds an IP address. */
+bool net_wifi_online(void);
+
+/** @brief true while a kept network is down and the re-join is running. */
+bool net_wifi_reconnecting(void);
+
+/**
  * @brief Read the RSSI of the currently associated access point.
  *
  * @param[out] rssi_out Signal strength in dBm (closer to 0 = stronger);
@@ -99,6 +166,16 @@ bool net_wifi_rssi(int8_t *rssi_out);
  *         init error, timeout, or a back-dated clock.
  */
 bool net_time_sync(uint32_t timeout_ms);
+
+/**
+ * @brief Subscribe SNTP without waiting, so the clock is set whenever the
+ *        network comes back.
+ *
+ * For a boot that could not sync in the foreground. lwIP retries on its own;
+ * the build-time floor @ref net_time_sync enforces is applied to every update,
+ * so a back-dated packet clears the clock rather than setting it. Idempotent.
+ */
+void net_time_background(void);
 
 #ifdef __cplusplus
 }

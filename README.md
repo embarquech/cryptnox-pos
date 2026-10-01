@@ -21,10 +21,22 @@ ESP32-2432S028 "Cheap Yellow Display" (CYD). It also serves as a reference
 **dev kit** showing how to integrate the [`cryptnox-sdk-esp32`](https://github.com/embarquech/cryptnox-sdk-esp32)
 into a real-world end-user product.
 
-The user selects a USDC amount on the touchscreen, taps a **Cryptnox smart
-card** on the attached PN532 reader, and the terminal signs and broadcasts an
-EIP-1559 transfer on Ethereum Sepolia via a JSON-RPC endpoint (PublicNode by
-default), then waits for the on-chain receipt before showing **Approved**.
+The user selects an amount on the touchscreen, taps a **Cryptnox smart card** on
+the attached PN532 reader, and the terminal signs and broadcasts an EIP-1559
+transfer via a JSON-RPC endpoint (PublicNode by default), then waits for the
+on-chain receipt before showing **Approved**. The asset is picked on the device —
+ETH, USDC or USDT on Ethereum, POL, USDC or USDT on Polygon, and TRX or USDT on
+Tron. Whether those are the production networks or their test deployments
+(Sepolia, Amoy, Nile) is a runtime setting on the config page; it defaults to
+**production**, and the terminal restarts to apply a change. USDC on Tron is a
+testnet-only selection — Circle wound it down in 2024&ndash;25.
+
+> [!NOTE]
+> The keypad enters two decimal places of whatever asset is selected, and a
+> native-coin amount is signed as a `uint64` of wei — so **ETH and POL sales are
+> capped at 18.44**. The keypad stops there rather than letting an operator key a
+> figure the transaction cannot carry. The stablecoins are 6-decimal and keep the
+> full 99999.99 range.
 
 > [!WARNING]
 > **Reference / educational dev kit — not a tamper-resistant terminal.**
@@ -117,10 +129,12 @@ the **I²C** interface to the PN532.
 | SCL       | GPIO 22 (CN1 SCL)| Blue       |
 
 > [!IMPORTANT]
-> Make sure the switches on the PN532 module are configured for **I²C** mode:
+> Set the PN532 module's mode switches to **I²C = `1 0`**, as printed on the
+> board: the switch marked **1** ON (HIGH), the switch marked **2** OFF (LOW).
+> `0 1` is SPI.
 >
-> - **Switch 0** → HIGH
-> - **Switch 1** → LOW
+> The PN532 reads the switches only at its own power-up, and its reset pin is not
+> wired, so an ESP32 reset does not apply a change — unplug and replug the USB.
 
 <img width="800" alt="cyd_pn532_i2c" src="hardware/schematics/cyd_esp32_pn532_i2c_bb.png" />
 
@@ -141,15 +155,35 @@ and fill in:
 | `RPC_URL` | Ethereum JSON-RPC endpoint (PublicNode Sepolia by default; an Infura variant is provided commented-out) |
 | `RPC_PROJECT_ID` / `RPC_API_SECRET` | Optional — only when using Infura (HTTP Basic Auth); leave undefined for PublicNode |
 | `RPC_CA_CERT_PEM` | Optional — pin the RPC endpoint's TLS certificate; trusts only that cert instead of the full CA bundle. Undefined = Mozilla bundle |
-| `ADDR_FROM` | Ethereum address of the **card** (`m/44'/60'/0'/0/0`) — used to fetch the nonce and validate the ecrecover parity |
-| `ADDR_TO` | Destination address for every transfer. **Use the EIP-55 mixed-case checksum form** — the firmware verifies the checksum at boot and refuses to start on a mismatch. All-lowercase is accepted but bypasses that typo protection (and warns at boot) |
-| `ADDR_USDC` | USDC ERC-20 contract address on the target chain (Sepolia testnet by default). Same EIP-55 rule as `ADDR_TO` |
+| `ADDR_FROM` | Any valid Ethereum address, used only as the boot-time RPC reachability probe. The paying account is derived from whichever card is tapped (`m/44'/60'/0'/0/0`), not read from here |
+| `ADDR_TO` | **Fallback** destination address, used until an operator sets one on the device. **Use the EIP-55 mixed-case checksum form** — the firmware verifies the checksum at boot and refuses to start on a mismatch. All-lowercase is accepted but bypasses that typo protection (and warns at boot) |
+| `ADDR_USDC` | **Fallback** USDC ERC-20 contract address on the target chain (Sepolia testnet by default). Same EIP-55 rule as `ADDR_TO` |
+| `ADDR_USDT` | USDT ERC-20 contract on Sepolia. Not settable on the device — the one NVS contract slot is USDC's — and not fatal if unset: USDT on Ethereum is then refused at the confirm step. Its `decimals()` **must be 6**. Same EIP-55 rule as `ADDR_TO` |
+| `POLY_RPC_URL`, `CHAIN_ID_AMOY`, `POLY_ADDR_USDC`, `POLY_ADDR_USDT` | Polygon Amoy endpoint, chain id and the two token contracts on that network. Polygon reuses the whole Ethereum path — same card key, same payout address — so only these differ. `POLY_CA_CERT_PEM` pins its certificate; `POLY_MIN_PRIORITY_FEE_GWEI` (default 30) is the tip floor, since Amoy drops anything under ~25 Gwei and the fee steppers are shared with Ethereum |
+| `TRON_ADDR_USDC` | USDC TRC-20 contract on Nile. Config-only and non-fatal, like `ADDR_USDT`. Testnet only: Circle wound USDC on Tron down in 2024–25, so there is no mainnet asset to graduate to |
+| `RPC_URL_MAIN`, `POLY_RPC_URL_MAIN`, `TRON_URL_MAIN`, `CHAIN_ID_MAINNET`, `CHAIN_ID_POLYGON`, `ADDR_USDC_MAIN`, `ADDR_USDT_MAIN`, `POLY_ADDR_USDC_MAIN`, `POLY_ADDR_USDT_MAIN`, `TRON_ADDR_USDT_MAIN`, `TRON_ADDR_USDC_MAIN` | The production half of every pair above, selected at run time from the config page's Network section (default: production). Same rules throughout — EIP-55 form, `decimals()` **must be 6**, unset means that asset is refused rather than the terminal failing to boot. `tests/units/test_networks.cpp` checks each one parses; **verify against a block explorer** that it is the right contract before taking real money. A TLS pin applies to the production endpoint too, so it has to cover whichever network the terminal is switched to |
 | `CHAIN_ID_SEPOLIA`, `MAX_PRIORITY_FEE`, `MAX_FEE`, `GAS_LIMIT_ERC20` | Chain ID and EIP-1559 gas parameters (the fees are first-boot defaults, editable at run time in the settings) |
+| `GAS_LIMIT_NATIVE` | Gas for a plain ETH/POL transfer — exactly 21000, since no contract runs. Optional; defaults to 21000 |
 
 **Not in `config.h`** — set on the device, never baked into the firmware:
-- **Wi-Fi** — provisioned at first boot via the touchscreen network picker (stored in NVS).
+- **Wi-Fi** — chosen during setup from a list the terminal scans, in a browser (stored in NVS).
+- **Payout addresses and token contracts** — set during setup, either typed in a
+  browser or read off the operator's own Cryptnox card, and accepted on the panel.
+  The `config.h` values above are only the fallback; an asset with no address of its
+  own is **not offered** on the amount screen.
 - **Card PIN** — entered on the touchscreen keypad at sign time, scrubbed from RAM right after.
 - **Transfer amount** — chosen on the keypad per transaction.
+
+Setup itself is a browser flow — see [docs/config-portal.md](docs/config-portal.md):
+
+```
+ admin code    panel     the one secret that never touches a network
+ QR code       panel     camera joins the terminal's AP; the page opens itself
+ authorise     both      the browser asks, the panel takes the code
+ addresses     browser   typed, or read off a Cryptnox card
+ Wi-Fi         browser   picked from the terminal's own scan
+ Finish        panel     restarts, which applies everything
+```
 
 ---
 
@@ -248,8 +282,8 @@ python tools/secure_flash.py --package    # -> dist/cryptnox_pos-encrypted-full.
    from RAM after signing — never stored).
 5. **Transaction** — tap the Cryptnox card on the PN532:
    **Processing** (opening the secure channel) → **Signing** (the card signs
-   `keccak256(unsigned_tx)`) → **Authorizing** (recover the `v` parity via the
-   `ecrecover` precompile, RLP-encode the EIP-1559 tx, broadcast via
+   `keccak256(unsigned_tx)`) → **Authorizing** (work out the `v` parity locally
+   against the card's own public key, RLP-encode the EIP-1559 tx, broadcast via
    `eth_sendRawTransaction`) → **Confirming** (poll `eth_getTransactionReceipt`
    until the tx is mined).
 6. **Approved / Declined** — Approved **only** on a mined receipt with
@@ -269,17 +303,21 @@ python tools/secure_flash.py --package    # -> dist/cryptnox_pos-encrypted-full.
 ## Troubleshooting
 
 - **Inverted colours / banding on gradients** → the CYD panel needs `invertDisplay(true)` (inverted colours) and a GAMMASET tweak (banding/"milky gamma"); both are already applied in `ui_task`. If the screen is blank/scrambled your board may use the other ILI9341 variant — set `CONFIG_TFT_ILI9341_DRIVER=y` (instead of `_2`) in `sdkconfig.defaults` and rebuild.
-- **Touch hitboxes are offset** → the raw range used by the XPT2046 driver is calibrated for the panel shipped with the 2432S028. If yours differs, adjust the `map(p.x, 200, 3800, …)` ranges in `main/ui.cpp` (function `touch_to_screen`).
-- **`Card not found`** → confirm the PN532 switches are set for I²C, the SDA/SCL wires match GPIO 27/22, and the card is well centred on the antenna.
-- **`ecrecover did not match either parity`** → `ADDR_FROM` in `config.h` does not correspond to the card's `m/44'/60'/0'/0/0` derived key. Verify the seed and the path.
+- **Touch hitboxes are offset** → calibrate the panel: burger menu → admin code → **Screen** → **Touch**. Two crosses to tap, then Keep or Discard the result, and an un-confirmed calibration puts the old one back after 20 s — so a bad one cannot lock you out of the screen that fixes it. The defaults (raw 200..3800) match the panel shipped with the 2432S028. The stored range lives in NVS, so it goes the way every other setting does: a factory reset or a firmware update with a new `BUILD_ID` clears it and the panel is back on the defaults.
+- **`Card not found`** → confirm the PN532 switches are set for I²C (`1 0`, then power-cycle), the SDA/SCL wires match GPIO 27/22, and the card is well centred on the antenna. `pn532: No ACK from PN532` at boot means the reader is not answering at all — almost always the switches. A reader that stops answering later is re-initialised by the driver on its own (`re-initialising the reader` in the log).
+- **`Signature check failed`** → the card's signature did not verify under the public key it exported for the same path. That is an internal inconsistency (card or derivation), not a setup error — retry with the card held still; if it repeats, the card needs looking at.
 - **WiFi connect fails** → only WPA2 is supported; check SSID/password.
-- **App partition full** → the project uses a custom 3 MB app partition (`partitions.csv`) on a 4 MB flash. Drop unused LVGL fonts (`CONFIG_LV_FONT_MONTSERRAT_*`) in `sdkconfig.defaults` if you need more headroom.
+- **App partition full** → the project uses two 1.94 MB OTA app slots (`partitions.csv`) on a 4 MB flash, so the budget is half what a single-slot table would give — a "% free" that halved between two builds is almost always that table, not growth. Where the space actually goes, biggest first: the image assets in `.rodata` (`chain_icons.c`, `logo_img.c` — ~40 KB between them), then LVGL and the fonts it pulls in. Regenerate an asset smaller (`tools/gen_*.py`), or trim the panel fonts: they are generated by `tools/gen_fonts.py` into `main/fonts/*.c` (Plus Jakarta Sans + Inter, 4 bpp — the LVGL built-in Montserrat fonts are already off), so fewer sizes or a narrower glyph range there is where font space comes back; check with `idf.py size-components` before assuming a subsystem is to blame.
+- **`Update` says the terminal has no second firmware slot** → that unit was flashed with the old single-app partition table. The table itself is never rewritten by an update, so it needs one reflash over USB first. See [docs/ota.md](docs/ota.md).
 
 ---
 
 ## Documentation
 
 The generated documentation for this project is available [here](https://embarquech.github.io/cryptnox-pos/).
+
+- [The config portal](docs/config-portal.md) — setup and administration on the terminal's own SoftAP: why that AP is the radio's only interface while the page is up, why the admin code is only ever typed on the panel, and the endpoint list. Test plan: [docs/testing-provisioning.md](docs/testing-provisioning.md).
+- [Firmware updates over Wi-Fi](docs/ota.md) — the browser-mediated OTA path, publishing a release, and the signing key you must not ship without. Test plan: [docs/ota-testing.md](docs/ota-testing.md).
 
 ---
 
