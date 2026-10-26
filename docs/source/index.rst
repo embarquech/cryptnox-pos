@@ -20,12 +20,6 @@ with the UI, the chain code and the operator setup around it.
 * **API reference (Doxygen):** `api/ <api/>`__
 * **Licence:** LGPL-3.0, or a commercial licence for proprietary use
 
-.. figure:: _static/img/approved.png
-   :alt: Terminal screen showing Approved, 1.00 USDC, a shortened transaction hash and a New sale button
-   :width: 240px
-
-   The end of a sale: *Approved* appears only once the transaction is mined.
-
 Start here
 ==========
 
