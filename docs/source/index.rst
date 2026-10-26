@@ -12,14 +12,6 @@ payment terminal. The customer taps a **Cryptnox Hardware Wallet** card, the car
 transfer inside its secure element, the terminal broadcasts it to the chain and shows
 **Approved** only once the transaction is mined.
 
-It is also the reference project for the `Cryptnox SDK for ESP32
-<https://docs.cryptnox.com/cryptnox-sdk-esp32/>`__: a complete end-user product built on the SDK,
-with the UI, the chain code and the operator setup around it.
-
-* **Source code and releases:** https://github.com/cryptnox/cryptnox-pos
-* **API reference (Doxygen):** `api/ <api/>`__
-* **Licence:** LGPL-3.0, or a commercial licence for proprietary use
-
 Start here
 ==========
 
@@ -90,3 +82,5 @@ Related
   signature commands used by the terminal.
 * `Cryptnox Hardware Wallet Dual Card Set
   <https://shop.cryptnox.com/product/hardware-wallet-smartcard-dual/>`__: the card that pays.
+* **Licence:** LGPL-3.0, or a commercial licence for proprietary use without LGPL
+  obligations. Ask through the `contact form <https://cryptnox.com/contact/>`__.
