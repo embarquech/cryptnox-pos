@@ -151,11 +151,19 @@ About — Version, update and reset
    * - Update
      - Opens the phone setup page to install new firmware.
    * - Reset
-     - Erases all settings (Wi‑Fi, brightness, fees) and restarts. The terminal asks you to confirm first.
+     - Erases everything the terminal has stored and restarts into first-time
+       setup. The terminal asks you to confirm first.
 
 .. figure:: _static/guides/settings/08.png
    :alt: About tab showing the cryptnox-pos version, an Update, From a browser button, and Reset and Close buttons
    :width: 300px
+
+.. warning::
+
+   **Reset leaves nothing behind.** It is not limited to Wi-Fi, brightness and
+   gas fees: the admin code, the payout addresses, the token contracts and the
+   production-or-test choice go with them. The terminal comes back up as it
+   left the factory and has to be set up from scratch, card included.
 
 .. important::
 
