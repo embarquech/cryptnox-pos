@@ -350,7 +350,8 @@ admin code to hand.</p>
 <td><p>Opens the phone setup page to install new firmware.</p></td>
 </tr>
 <tr class="row-even"><td><p>Reset</p></td>
-<td><p>Erases all settings (Wi‑Fi, brightness, fees) and restarts. The terminal asks you to confirm first.</p></td>
+<td><p>Erases everything the terminal has stored and restarts into first-time
+setup. The terminal asks you to confirm first.</p></td>
 </tr>
 </tbody>
 </table>
@@ -358,6 +359,13 @@ admin code to hand.</p>
 <a class="reference internal image-reference" href="_images/082.png"><img alt="About tab showing the cryptnox-pos version, an Update, From a browser button, and Reset and Close buttons" src="_images/082.png" style="width: 300px;" />
 </a>
 </figure>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p><strong>Reset leaves nothing behind.</strong> It is not limited to Wi-Fi, brightness and
+gas fees: the admin code, the payout addresses, the token contracts and the
+production-or-test choice go with them. The terminal comes back up as it
+left the factory and has to be set up from scratch, card included.</p>
+</div>
 <div class="admonition important">
 <p class="admonition-title">Important</p>
 <p><strong>Three buttons, one destination</strong> The buttons in <strong>Wi‑Fi</strong>, <strong>Tx</strong> and <strong>About</strong> have different labels but do exactly the same thing: they start the terminal’s own Wi‑Fi so you can finish the job on your phone. Whichever one you tap, you land on the same page, with every setting on it.</p>
@@ -464,7 +472,9 @@ admin code to hand.</p>
 <h3>Payout addresses<a class="headerlink" href="#payout-addresses" title="Link to this heading"></a></h3>
 <p>Where takings are sent. There are two ways to set them:</p>
 <ul class="simple">
-<li><p><strong>Read from a Cryptnox card.</strong> Tap the button, then hold the <em>merchant’s</em> card on the terminal and enter its PIN there. The card’s own addresses become the payout addresses.</p></li>
+<li><p><strong>Read from a Cryptnox card.</strong> Tap the button. The terminal asks for the card’s
+PIN first, on its own keypad; only then do you hold the <em>merchant’s</em> card
+against the reader. The card’s own addresses become the payout addresses.</p></li>
 <li><p><strong>Type an address.</strong> One Ethereum address (also used for Polygon) and one Tron address, each with its own <strong>Propose</strong> button.</p></li>
 </ul>
 <div class="admonition warning">
@@ -538,7 +548,7 @@ admin code to hand.</p>
            </div>
           </div>
           <hr/>
-<p style="margin-bottom: 0.25rem;">Last updated on 2026-10-26.</p>
+<p style="margin-bottom: 0.25rem;">Last updated on 2026-10-27.</p>
 <p style="margin-bottom: 0.75rem;">&#169; Copyright 2026, Cryptnox SA.</p>
         </div>
       </div>
