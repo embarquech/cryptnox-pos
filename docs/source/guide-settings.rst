@@ -153,11 +153,19 @@ About — Version, update and reset
    * - Update
      - Opens the phone setup page to install new firmware.
    * - Reset
-     - Erases **every** setting, not only the Wi‑Fi, brightness and fees its confirmation names: also the admin code, the payout addresses, the token contracts and the network choice. The terminal restarts into first‑time setup (:doc:`guide-setup`). It asks you to confirm first.
+     - Erases everything the terminal has stored and restarts into first-time
+       setup. The terminal asks you to confirm first.
 
 .. figure:: _static/guides/settings/08.png
    :alt: About tab showing the cryptnox-pos version, an Update, From a browser button, and Reset and Close buttons
    :width: 300px
+
+.. warning::
+
+   **Reset leaves nothing behind.** It is not limited to Wi-Fi, brightness and
+   gas fees: the admin code, the payout addresses, the token contracts and the
+   production-or-test choice go with them. The terminal comes back up as it
+   left the factory and has to be set up from scratch, card included.
 
 .. important::
 
@@ -269,7 +277,9 @@ Payout addresses
 
 Where takings are sent. There are two ways to set them:
 
-* **Read from a Cryptnox card.** Tap the button, enter the *merchant's* card PIN on the terminal, then hold that card on it. The card's own addresses become the payout addresses.
+* **Read from a Cryptnox card.** Tap the button. The terminal asks for the card's
+  PIN first, on its own keypad; only then do you hold the *merchant's* card
+  against the reader. The card's own addresses become the payout addresses.
 * **Type an address.** One Ethereum address (also used for Polygon) and one Tron address, each with its own **Propose** button.
 
 .. warning::

@@ -76,7 +76,8 @@ The display, touch panel and backlight are wired internally on the CYD and need 
 Enclosure
 =========
 
-The enclosure is a two-part printed shell, published under ``hardware/case/``:
+The enclosure is a two-part printed shell, published under
+`hardware/case/ <https://github.com/cryptnox/cryptnox-pos/tree/main/hardware/case>`__:
 
 .. list-table::
    :header-rows: 1
@@ -89,7 +90,8 @@ The enclosure is a two-part printed shell, published under ``hardware/case/``:
    * - ``case_back.stl``
      - Back shell: the pocket for the NFC module and the contactless symbol on the lid.
    * - ``case_plate.3mf``
-     - Both parts on one plate for Bambu Studio — print this.
+     - Both parts on one plate for Bambu Studio — `print this
+       <https://github.com/cryptnox/cryptnox-pos/blob/main/hardware/case/case_plate.3mf>`__.
 
 It is a **snap-fit** shell: no screws and no inserts. About an hour and a half of printing in
 PLA or PETG, dimensionally accurate — an over-extruded lip will not clip.

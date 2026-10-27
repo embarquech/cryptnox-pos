@@ -13,8 +13,8 @@ on:
       - main
   workflow_dispatch:
 
-# contents: write laisse l'etape de publication pousser sur gh-pages ;
-# pages: write laisse la derniere etape y pointer GitHub Pages.
+# contents: write lets the publish step push to the gh-pages branch;
+# pages: write lets the last step point GitHub Pages at that branch.
 permissions:
   contents: write
   pages: write
@@ -87,10 +87,10 @@ jobs:
           force_orphan: false
           enable_jekyll: false
 
-      # GitHub Pages doit servir la branche gh-pages, pas la branche source.
-      # On le regle ici pour que le site ne depende pas d'un reglage manuel ;
-      # si le jeton du workflow n'en a pas le droit, on echoue en disant quoi
-      # faire plutot que de publier dans le vide.
+      # GitHub Pages must serve the gh-pages branch, not the source branch.
+      # Set it here so the site does not depend on a manual setting; if the
+      # workflow token is not allowed to, fail with the instruction instead
+      # of publishing into the void.
       - name: Point GitHub Pages at the gh-pages branch
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
