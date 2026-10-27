@@ -45,7 +45,7 @@ The admin code protects every change to the terminal. It is only ever typed on t
 
 .. note::
 
-   Write the admin code down and keep it safe: you will need it to authorize any phone that configures the terminal.
+   The code is 6 to 9 digits. Write it down and keep it safe: you will need it to authorize any phone that configures the terminal, and every wrong attempt doubles the wait before the next one, even across a restart.
 
 
 Connect your phone
@@ -117,11 +117,31 @@ Payout addresses are where takings are sent: the merchant’s own addresses. The
 
    Hold the merchant’s Cryptnox Hardware Wallet against the reader until the addresses are read.
 
+Whichever way you chose, the terminal then shows each address on its own screen under **Set payout address?** Check it against your own records and tap **Accept**, or **Reject** to discard it. A card's Ethereum address comes first, then its Tron address.
+
+When the addresses you want are accepted, tap **Continue** on the phone. The page refuses to continue until at least one payout address is set.
+
+
+Connect to the shop's Wi-Fi
+---------------------------
+
+The terminal shows *Step 5 · Wi-Fi network*; carry on on the phone. A terminal that already has a saved network skips this step.
+
+* Open the **SSID** list and pick the network. The number in brackets is signal strength: closer to zero is stronger. Tap **Scan again** if it is missing.
+* Type the network password. Only WPA2 networks are supported.
+* Tap **Join this network**.
+
 .. figure:: _static/guides/setup/13.png
    :alt: The page shows Configuration complete. You can close it. If the terminal can’t join your network, it reopens the setup network and this page comes back by itself.
    :width: 260px
 
    The page shows Configuration complete. You can close it. If the terminal can’t join your network, it reopens the setup network and this page comes back by itself.
+
+
+Finish on the terminal
+----------------------
+
+The terminal shows **All set**. Tap **Finish**: it restarts once to apply everything and opens on the sale screen.
 
 .. note::
 

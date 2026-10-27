@@ -22,7 +22,7 @@ accepted anywhere except on the panel.
    * - 1
      - Admin code
      - panel
-     - A six-digit code, typed on the terminal. It never crosses a network. Wrong attempts
+     - A code of 6 to 9 digits, typed on the terminal. It never crosses a network. Wrong attempts
        earn an escalating lockout that survives a power cycle.
    * - 2
      - QR code
@@ -80,12 +80,18 @@ Taking a payment
 3. **PIN.** The cardholder enters the card PIN on the on-screen keypad. It is verified before
    signing and wiped from RAM afterwards.
 4. **Tap.** The cardholder holds the card on the PN532. The terminal opens the secure channel
-   (*Processing*), the card signs the transaction hash (*Signing*), the terminal works out the
-   signature's recovery bit against the card's own public key, RLP-encodes the EIP-1559
-   transaction and broadcasts it (*Authorizing*), then polls for the receipt (*Confirming*).
-5. **Approved or Declined.** *Approved* appears only on a mined receipt with status ``0x1``,
-   for that transaction hash, to the expected contract, with a transfer to the payee for
-   exactly that amount; the screen shows the amount, the coin and a shortened transaction hash.
+   (*Processing*), the card signs the transaction hash (*Signing*), the terminal broadcasts
+   the signed transaction (*Authorizing*), then polls for the receipt (*Confirming*). On
+   Ethereum and Polygon the terminal builds the EIP-1559 transaction itself, RLP-encodes it
+   and works out the signature's recovery bit against the card's own public key. On Tron the
+   node builds the transaction and the terminal checks its sender, recipient, amount and
+   token against the sale before the card sees the hash.
+5. **Approved, Declined or Not confirmed yet.** On Ethereum and Polygon, *Approved* appears
+   only on a mined receipt with status ``0x1``, for that transaction hash, to the expected
+   contract, with a transfer to the payee for exactly that amount; on Tron, only once that
+   transaction ID is in a block and executed. The screen shows the amount, the coin and a
+   shortened transaction hash. *Not confirmed yet* means the payment was sent but no verdict
+   came in time: it may still arrive, so check a block explorer before charging again.
    **New sale** starts the next one. Screens: :doc:`guide-payment`.
 
 How long step 4 takes is the chain's block time plus the RPC provider's latency, not the

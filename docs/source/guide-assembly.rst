@@ -77,11 +77,11 @@ Lay out the shells
 ~~~~~~~~~~~~~~~~~~
 
 .. figure:: _static/guides/assembly/03.png
-   :alt: The two printed shells seen from the inside
+   :alt: Inside of the front shell: the screen window, four posts and the reset button tab on the left side
    :width: 480px
 
 .. figure:: _static/guides/assembly/04.png
-   :alt: The two printed shells seen from the inside
+   :alt: Inside of the back shell: the raised square pocket for the NFC module, marked PN532
    :width: 480px
 
 * Front shell, top: the screen window and the four posts the board sits on. The small round tab on the left side is the reset button.
@@ -148,7 +148,7 @@ Lower the board into the front shell
 * Screen down, USB-C lined up with the cutout in the side wall, cable already attached.
 * The four PCB holes should sit over the posts without forcing. If one fights you, check the print for stringing on that post.
 * Lay the slack along the inside wall, clear of the posts, so nothing is pinched when the shells meet.
-* Power it up before closing. The splash should reach *Starting NFC reader*.
+* Power it up before closing. It should get past the splash to the welcome screen (or the sale screen on a terminal already set up). **NFC reader not found** means the PN532 is not answering: check the four wires and the mode switches, then unplug and replug USB.
 
 *This is the last point where a wiring mistake costs seconds rather than a full disassembly.*
 

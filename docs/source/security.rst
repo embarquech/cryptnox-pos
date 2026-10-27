@@ -53,8 +53,10 @@ What the design defends, in the repository's own words (``docs/security-analysis
   of the terminal, never in the browser alone.
 * **Payout addresses are stored in duplicate** and cross-checked, so one corrupted settings
   entry cannot silently redirect funds.
-* **The node is not trusted for what gets signed.** The transaction is built and hashed on
-  the device; a receipt counts only when it matches that hash, contract, payee and amount.
+* **The node is not trusted for what gets signed.** On Ethereum and Polygon the transaction
+  is built and hashed on the device, and a receipt counts only when it matches that hash,
+  contract, payee and amount. On Tron the node builds the transaction, and the device checks
+  it against the sale before the card signs its ID.
 * **Firmware updates are signed** and verified against a key compiled into the running
   firmware.
 

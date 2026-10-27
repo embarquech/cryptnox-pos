@@ -41,7 +41,7 @@ The **‹** arrow next to *Control panel* takes you back to the sale screen with
 
 .. note::
 
-   The admin code is the one created when the terminal was first set up. It is only ever typed on the terminal itself, never on a phone or computer.
+   The admin code is the one created when the terminal was first set up. It is only ever typed on the terminal itself, never on a phone or computer. Every wrong attempt doubles the wait before the next one, even across a restart.
 
 .. figure:: _static/guides/settings/02.png
    :alt: Control panel screen with an empty Admin code field and a keypad
@@ -94,8 +94,10 @@ Wi‑Fi — Network connection
      - What it does
    * - Network
      - The Wi‑Fi network the terminal is connected to now.
+   * - Signal
+     - How strong that network is, from *Weak* to *Excellent*, with the reading in dBm.
    * - Configure
-     - Opens the phone setup page, where you pick another network and type its password. See step 4.
+     - Opens the phone setup page, where you pick another network and type its password. See *Wi‑Fi* under *Configure in the browser*.
 
 .. figure:: _static/guides/settings/05.png
    :alt: Wi-Fi tab showing network ShopNet and a Configure, Open in a browser button
@@ -120,7 +122,7 @@ What the terminal charges in and where the money goes. This tab is read‑only a
    * - Send to
      - Your payout address. Every sale is paid here.
    * - Max fee / Priority fee
-     - The gas limits for Ethereum and Polygon, in Gwei.
+     - The most the terminal pays per unit of gas on Ethereum and Polygon, in Gwei. Not shown for a Tron asset, which has no such setting.
    * - Configure
      - At the bottom of the list. Opens the phone setup page to change any of the above.
 
@@ -151,7 +153,7 @@ About — Version, update and reset
    * - Update
      - Opens the phone setup page to install new firmware.
    * - Reset
-     - Erases all settings (Wi‑Fi, brightness, fees) and restarts. The terminal asks you to confirm first.
+     - Erases **every** setting, not only the Wi‑Fi, brightness and fees its confirmation names: also the admin code, the payout addresses, the token contracts and the network choice. The terminal restarts into first‑time setup (:doc:`guide-setup`). It asks you to confirm first.
 
 .. figure:: _static/guides/settings/08.png
    :alt: About tab showing the cryptnox-pos version, an Update, From a browser button, and Reset and Close buttons
@@ -210,7 +212,7 @@ Choose between **Production** (Ethereum, Polygon, Tron, real money) and **Test**
 Token contracts
 ~~~~~~~~~~~~~~~
 
-The contracts the terminal calls for USDC and USDT, one for ERC‑20 (Ethereum) and one for TRC‑20 (Tron). The firmware already has the right ones built in.
+Two fields: **ERC‑20** replaces the USDC contract on Ethereum, **TRC‑20** replaces the USDT contract on Tron. Every other token keeps the contract built into the firmware, which already has the right ones.
 
 .. warning::
 
@@ -251,7 +253,7 @@ Sets the time zone for the clock in the corner of the terminal's screen. Pick yo
 
 .. note::
 
-   Entries marked *EU DST* follow daylight‑saving changes automatically. A fixed offset never changes, so you would have to come back twice a year.
+   Entries marked *EU DST*, *US DST*, *AU DST* or *NZ DST* follow that region's daylight‑saving changes automatically. A fixed offset never changes, so you would have to come back twice a year.
 
 .. figure:: _static/guides/settings/13.png
    :alt: Clock section with a Time zone drop-down and a Save clock button
@@ -267,7 +269,7 @@ Payout addresses
 
 Where takings are sent. There are two ways to set them:
 
-* **Read from a Cryptnox card.** Tap the button, then hold the *merchant's* card on the terminal and enter its PIN there. The card's own addresses become the payout addresses.
+* **Read from a Cryptnox card.** Tap the button, enter the *merchant's* card PIN on the terminal, then hold that card on it. The card's own addresses become the payout addresses.
 * **Type an address.** One Ethereum address (also used for Polygon) and one Tron address, each with its own **Propose** button.
 
 .. warning::
@@ -326,9 +328,14 @@ Installs a firmware update. The terminal never downloads it itself.
 Close the session
 -----------------
 
-When you're finished, tap **Done** on the terminal. Its own Wi‑Fi switches off, it reconnects to the shop's network, and the page on your phone stops working.
+Some changes end the session by themselves:
 
-Tap **Close** to leave the control panel and return to the sale screen. Before taking real payments, open the **Tx** tab once more and check the payout address.
+* Accepting an address or contract on the terminal, or switching the network, restarts it to apply the change (*Applying settings*).
+* Joining a new Wi‑Fi network closes the page and returns the terminal to the sale screen.
+
+Otherwise, when you're finished, tap **Done** on the terminal. Its own Wi‑Fi switches off, it reconnects to the shop's network, and the page on your phone stops working. Tap **Close** to leave the control panel and return to the sale screen.
+
+Before taking real payments, open the **Tx** tab once more and check the payout address.
 
 .. note::
 

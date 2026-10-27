@@ -103,6 +103,15 @@ Payment approved
 
    The terminal shows **Approved** with the amount, coin and a shortened transaction hash. Tap **New sale** to take the next payment.
 
+
+Declined or not confirmed yet
+-----------------------------
+
+Not every sale ends on *Approved*:
+
+* **Declined** (red cross): the payment did not go through and no money moved. The reason is shown under it. Tap **New sale** and try again.
+* **Not confirmed yet** (amber warning): the card signed and the payment was sent, but the network gave no answer in time. **It may still arrive.** Tap **Recheck** to ask again. Before charging the customer a second time, look the shortened hash up on a block explorer; **Clear** only closes the screen, it does not cancel anything.
+
 .. note::
 
    Addresses, fees and amounts shown will differ on your terminal.
