@@ -275,7 +275,9 @@ Payout addresses
 
 Where takings are sent. There are two ways to set them:
 
-* **Read from a Cryptnox card.** Tap the button, then hold the *merchant's* card on the terminal and enter its PIN there. The card's own addresses become the payout addresses.
+* **Read from a Cryptnox card.** Tap the button. The terminal asks for the card's
+  PIN first, on its own keypad; only then do you hold the *merchant's* card
+  against the reader. The card's own addresses become the payout addresses.
 * **Type an address.** One Ethereum address (also used for Polygon) and one Tron address, each with its own **Propose** button.
 
 .. warning::
