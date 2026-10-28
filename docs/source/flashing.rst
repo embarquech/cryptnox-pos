@@ -78,7 +78,9 @@ What goes in ``config.h`` and what does not
 by default), chain IDs, the token contract addresses for the production and test deployments,
 EIP-1559 gas defaults, optional TLS certificate pins, and **fallback** payout addresses. Every
 address must be in EIP-55 mixed-case form; the firmware checks the checksum at boot and refuses
-to start on a mismatch. ``tests/units/test_networks.cpp`` checks that each configured address
+to start when a ``config.h`` address fails it. A payout address set on the device that fails it
+does not stop the boot, but that payout then refuses every sale. An all-lowercase address
+carries no checksum at all and only earns a warning in the log. ``tests/units/test_networks.cpp`` checks that each configured address
 parses, but only a block explorer can confirm that a contract is the right one before the
 terminal takes real money.
 
