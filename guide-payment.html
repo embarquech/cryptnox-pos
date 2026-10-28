@@ -143,6 +143,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <li class="toctree-l2"><a class="reference internal" href="#enter-the-card-pin">Enter the card PIN</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#tap-the-card">Tap the card</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#payment-approved">Payment approved</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#declined-or-not-confirmed-yet">Declined or not confirmed yet</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="guide-settings.html">Configuring the terminal</a></li>
@@ -279,6 +280,14 @@ sets up the charge, the customer approves it and pays with the card.</p>
 <p><span class="caption-text">The terminal shows <strong>Approved</strong> with the amount, coin and a shortened transaction hash. Tap <strong>New sale</strong> to take the next payment.</span><a class="headerlink" href="#id10" title="Link to this image"></a></p>
 </figcaption>
 </figure>
+</section>
+<section id="declined-or-not-confirmed-yet">
+<h2>Declined or not confirmed yet<a class="headerlink" href="#declined-or-not-confirmed-yet" title="Link to this heading"></a></h2>
+<p>Not every sale ends on <em>Approved</em>:</p>
+<ul class="simple">
+<li><p><strong>Declined</strong> (red cross): the payment did not go through and no money moved. The reason is shown under it. Tap <strong>New sale</strong> and try again.</p></li>
+<li><p><strong>Not confirmed yet</strong> (amber warning): the card signed and the payment was sent, but the network gave no answer in time. <strong>It may still arrive.</strong> Tap <strong>Recheck</strong> to ask again. Before charging the customer a second time, look the shortened hash up on a block explorer; <strong>Clear</strong> only closes the screen, it does not cancel anything.</p></li>
+</ul>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <p>Addresses, fees and amounts shown will differ on your terminal.</p>
@@ -290,7 +299,7 @@ sets up the charge, the customer approves it and pays with the card.</p>
            </div>
           </div>
           <hr/>
-<p style="margin-bottom: 0.25rem;">Last updated on 2026-10-27.</p>
+<p style="margin-bottom: 0.25rem;">Last updated on 2026-10-28.</p>
 <p style="margin-bottom: 0.75rem;">&#169; Copyright 2026, Cryptnox SA.</p>
         </div>
       </div>

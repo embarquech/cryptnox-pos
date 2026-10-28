@@ -201,7 +201,7 @@ accepted anywhere except on the panel.</p>
 <tr class="row-even"><td><p>1</p></td>
 <td><p>Admin code</p></td>
 <td><p>panel</p></td>
-<td><p>A six-digit code, typed on the terminal. It never crosses a network. Wrong attempts
+<td><p>A code of 6 to 9 digits, typed on the terminal. It never crosses a network. Wrong attempts
 earn an escalating lockout that survives a power cycle.</p></td>
 </tr>
 <tr class="row-odd"><td><p>2</p></td>
@@ -266,12 +266,18 @@ the token contract in full; <strong>Confirm</strong> or <strong>Cancel</strong>.
 <li><p><strong>PIN.</strong> The cardholder enters the card PIN on the on-screen keypad. It is verified before
 signing and wiped from RAM afterwards.</p></li>
 <li><p><strong>Tap.</strong> The cardholder holds the card on the PN532. The terminal opens the secure channel
-(<em>Processing</em>), the card signs the transaction hash (<em>Signing</em>), the terminal works out the
-signature’s recovery bit against the card’s own public key, RLP-encodes the EIP-1559
-transaction and broadcasts it (<em>Authorizing</em>), then polls for the receipt (<em>Confirming</em>).</p></li>
-<li><p><strong>Approved or Declined.</strong> <em>Approved</em> appears only on a mined receipt with status <code class="docutils literal notranslate"><span class="pre">0x1</span></code>,
-for that transaction hash, to the expected contract, with a transfer to the payee for
-exactly that amount; the screen shows the amount, the coin and a shortened transaction hash.
+(<em>Processing</em>), the card signs the transaction hash (<em>Signing</em>), the terminal broadcasts
+the signed transaction (<em>Authorizing</em>), then polls for the receipt (<em>Confirming</em>). On
+Ethereum and Polygon the terminal builds the EIP-1559 transaction itself, RLP-encodes it
+and works out the signature’s recovery bit against the card’s own public key. On Tron the
+node builds the transaction and the terminal checks its sender, recipient, amount and
+token against the sale before the card sees the hash.</p></li>
+<li><p><strong>Approved, Declined or Not confirmed yet.</strong> On Ethereum and Polygon, <em>Approved</em> appears
+only on a mined receipt with status <code class="docutils literal notranslate"><span class="pre">0x1</span></code>, for that transaction hash, to the expected
+contract, with a transfer to the payee for exactly that amount; on Tron, only once that
+transaction ID is in a block and executed. The screen shows the amount, the coin and a
+shortened transaction hash. <em>Not confirmed yet</em> means the payment was sent but no verdict
+came in time: it may still arrive, so check a block explorer before charging again.
 <strong>New sale</strong> starts the next one. Screens: <a class="reference internal" href="guide-payment.html"><span class="doc">Taking a USDC payment</span></a>.</p></li>
 </ol>
 <p>How long step 4 takes is the chain’s block time plus the RPC provider’s latency, not the
@@ -344,7 +350,7 @@ project’s key is refused before it can ever become bootable.</p>
            </div>
           </div>
           <hr/>
-<p style="margin-bottom: 0.25rem;">Last updated on 2026-10-27.</p>
+<p style="margin-bottom: 0.25rem;">Last updated on 2026-10-28.</p>
 <p style="margin-bottom: 0.75rem;">&#169; Copyright 2026, Cryptnox SA.</p>
         </div>
       </div>

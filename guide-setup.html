@@ -140,6 +140,8 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <li class="toctree-l2"><a class="reference internal" href="#connect-your-phone">Connect your phone</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#authorize-this-browser">Authorize this browser</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#set-the-payout-addresses">Set the payout addresses</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#connect-to-the-shop-s-wi-fi">Connect to the shop’s Wi-Fi</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#finish-on-the-terminal">Finish on the terminal</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="guide-payment.html">Taking a USDC payment</a></li>
@@ -218,7 +220,7 @@ says which of the two you are on.</p>
 </figure>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p>Write the admin code down and keep it safe: you will need it to authorize any phone that configures the terminal.</p>
+<p>The code is 6 to 9 digits. Write it down and keep it safe: you will need it to authorize any phone that configures the terminal, and after three wrong attempts each one doubles the wait before the next, even across a restart, up to an hour.</p>
 </div>
 </section>
 <section id="connect-your-phone">
@@ -292,6 +294,17 @@ says which of the two you are on.</p>
 <p><span class="caption-text">Hold the merchant’s Cryptnox Hardware Wallet against the reader until the addresses are read.</span><a class="headerlink" href="#id12" title="Link to this image"></a></p>
 </figcaption>
 </figure>
+<p>Whichever way you chose, the terminal then shows each address on its own screen under <strong>Set payout address?</strong> Check it against your own records and tap <strong>Accept</strong>, or <strong>Reject</strong> to discard it. A card’s Ethereum address comes first, then its Tron address.</p>
+<p>When the addresses you want are accepted, tap <strong>Continue</strong> on the phone. The page refuses to continue until at least one payout address is set.</p>
+</section>
+<section id="connect-to-the-shop-s-wi-fi">
+<h2>Connect to the shop’s Wi-Fi<a class="headerlink" href="#connect-to-the-shop-s-wi-fi" title="Link to this heading"></a></h2>
+<p>The terminal shows <em>Step 5 · Wi-Fi network</em>; carry on on the phone. A terminal that already has a saved network skips this step.</p>
+<ul class="simple">
+<li><p>Open the <strong>SSID</strong> list and pick the network. The number in brackets is signal strength: closer to zero is stronger. Tap <strong>Scan again</strong> if it is missing.</p></li>
+<li><p>Type the network password. Only WPA2 networks are supported.</p></li>
+<li><p>Tap <strong>Join this network</strong>.</p></li>
+</ul>
 <figure class="align-default" id="id13">
 <a class="reference internal image-reference" href="_images/131.png"><img alt="The page shows Configuration complete. You can close it. If the terminal can’t join your network, it reopens the setup network and this page comes back by itself." src="_images/131.png" style="width: 260px;" />
 </a>
@@ -299,6 +312,10 @@ says which of the two you are on.</p>
 <p><span class="caption-text">The page shows Configuration complete. You can close it. If the terminal can’t join your network, it reopens the setup network and this page comes back by itself.</span><a class="headerlink" href="#id13" title="Link to this image"></a></p>
 </figcaption>
 </figure>
+</section>
+<section id="finish-on-the-terminal">
+<h2>Finish on the terminal<a class="headerlink" href="#finish-on-the-terminal" title="Link to this heading"></a></h2>
+<p>The terminal shows <strong>All set</strong>. Tap <strong>Finish</strong>: it restarts once to apply everything and opens on the sale screen.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <p>Screens shown from firmware v1.0.0. Network names, browser numbers and addresses differ on every terminal.</p>
@@ -310,7 +327,7 @@ says which of the two you are on.</p>
            </div>
           </div>
           <hr/>
-<p style="margin-bottom: 0.25rem;">Last updated on 2026-10-27.</p>
+<p style="margin-bottom: 0.25rem;">Last updated on 2026-10-28.</p>
 <p style="margin-bottom: 0.75rem;">&#169; Copyright 2026, Cryptnox SA.</p>
         </div>
       </div>

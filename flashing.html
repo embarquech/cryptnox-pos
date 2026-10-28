@@ -251,7 +251,9 @@ mis-decrypts. Use the repository’s <code class="docutils literal notranslate">
 by default), chain IDs, the token contract addresses for the production and test deployments,
 EIP-1559 gas defaults, optional TLS certificate pins, and <strong>fallback</strong> payout addresses. Every
 address must be in EIP-55 mixed-case form; the firmware checks the checksum at boot and refuses
-to start on a mismatch. <code class="docutils literal notranslate"><span class="pre">tests/units/test_networks.cpp</span></code> checks that each configured address
+to start when a <code class="docutils literal notranslate"><span class="pre">config.h</span></code> address fails it. A payout address set on the device that fails it
+does not stop the boot, but that payout then refuses every sale. An all-lowercase address
+carries no checksum at all and only earns a warning in the log. <code class="docutils literal notranslate"><span class="pre">tests/units/test_networks.cpp</span></code> checks that each configured address
 parses, but only a block explorer can confirm that a contract is the right one before the
 terminal takes real money.</p>
 <p>Four things are deliberately <strong>not</strong> in the firmware and are set on the device instead:</p>
@@ -282,7 +284,7 @@ set up is reported as such by the terminal, rather than as a wrong PIN.</p>
            </div>
           </div>
           <hr/>
-<p style="margin-bottom: 0.25rem;">Last updated on 2026-10-27.</p>
+<p style="margin-bottom: 0.25rem;">Last updated on 2026-10-28.</p>
 <p style="margin-bottom: 0.75rem;">&#169; Copyright 2026, Cryptnox SA.</p>
         </div>
       </div>
