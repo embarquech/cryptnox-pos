@@ -41,7 +41,7 @@ The **‹** arrow next to *Control panel* takes you back to the sale screen with
 
 .. note::
 
-   The admin code is the one created when the terminal was first set up. It is only ever typed on the terminal itself, never on a phone or computer. Every wrong attempt doubles the wait before the next one, even across a restart.
+   The admin code is the one created when the terminal was first set up. It is only ever typed on the terminal itself, never on a phone or computer. Every wrong attempt doubles the wait before the next one, even across a restart, up to an hour.
 
 .. figure:: _static/guides/settings/02.png
    :alt: Control panel screen with an empty Admin code field and a keypad

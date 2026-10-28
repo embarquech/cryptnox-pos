@@ -77,14 +77,15 @@ Lay out the shells
 ~~~~~~~~~~~~~~~~~~
 
 .. figure:: _static/guides/assembly/03.png
-   :alt: Inside of the front shell: the screen window, four posts and the reset button tab on the left side
+   :alt: Inside of the front shell: the screen window, the four posts the board sits on, and a printing support on the left edge
    :width: 480px
 
 .. figure:: _static/guides/assembly/04.png
    :alt: Inside of the back shell: the raised square pocket for the NFC module, marked PN532
    :width: 480px
 
-* Front shell, top: the screen window and the four posts the board sits on. The small round tab on the left side is the reset button.
+* Front shell, top: the screen window and the four posts the board sits on. The small
+  round nub on the left edge is a leftover printing support, not a button — break it off.
 * Back shell, bottom: the raised square pocket, marked PN532.
 
 *Supports are not needed on either part if they print window-down and pocket-up.*
