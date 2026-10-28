@@ -45,7 +45,7 @@ The admin code protects every change to the terminal. It is only ever typed on t
 
 .. note::
 
-   The code is 6 to 9 digits. Write it down and keep it safe: you will need it to authorize any phone that configures the terminal, and every wrong attempt doubles the wait before the next one, even across a restart, up to an hour.
+   The code is 6 to 9 digits. Write it down and keep it safe: you will need it to authorize any phone that configures the terminal, and after three wrong attempts each one doubles the wait before the next, even across a restart, up to an hour.
 
 
 Connect your phone

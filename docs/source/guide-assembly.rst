@@ -85,7 +85,7 @@ Lay out the shells
    :width: 480px
 
 * Front shell, top: the screen window and the four posts the board sits on. The small
-  round nub on the left edge is a leftover printing support, not a button — break it off.
+  round nub on the left edge is a tab built into the model to help it print, not a button — break it off.
 * Back shell, bottom: the raised square pocket, marked PN532.
 
 *Supports are not needed on either part if they print window-down and pocket-up.*
