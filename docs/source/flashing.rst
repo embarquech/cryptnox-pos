@@ -7,6 +7,29 @@ Firmware and the card
 Flashing the firmware
 =====================
 
+From the browser (one click)
+----------------------------
+
+Plug the board in over USB, open this page in Chrome or Edge on a computer, and press the button.
+Pick the board's serial port; the board is erased, the latest release is written, and the board
+restarts into first-time setup.
+
+.. raw:: html
+
+   <script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"></script>
+   <p><esp-web-install-button manifest="flash/manifest.json">
+     <span slot="unsupported">This browser cannot reach a serial port: use Chrome or Edge on a computer.</span>
+     <span slot="not-allowed">The installer needs the page to be served over HTTPS.</span>
+   </esp-web-install-button></p>
+
+No port listed? The board's USB-serial chip (CH340 on most Cheap Yellow Displays) may need its
+driver installed first.
+
+.. warning::
+
+   Do not use the browser installer on a terminal provisioned with the
+   :ref:`secure build <secure-build>`: it writes a plaintext image.
+
 Prebuilt image (no toolchain)
 -----------------------------
 
