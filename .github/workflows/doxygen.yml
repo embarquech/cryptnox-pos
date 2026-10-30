@@ -11,6 +11,9 @@ on:
     branches:
       - master
       - main
+  # A new release changes the image the web installer serves.
+  release:
+    types: [published]
   workflow_dispatch:
 
 # contents: write laisse l'etape de publication pousser sur gh-pages ;
@@ -67,6 +70,32 @@ jobs:
       #    shipping.
       - name: Build Sphinx
         run: sphinx-build -W -b html docs/source site
+
+      # 3b. The browser installer on flashing.html (ESP Web Tools) fetches the
+      #     image itself, and GitHub release assets carry no CORS headers, so
+      #     the latest release's -full.bin is copied into the site next to a
+      #     manifest. No release yet (a fork) leaves the button without one.
+      - name: Add the latest release image for the web installer
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p site/flash
+          # The tag in the file name makes each release a new URL, so a browser
+          # never flashes an image it cached from the previous one.
+          if tag=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName) &&
+             gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern '*-full.bin' --output "site/flash/cryptnox-pos-${tag}-full.bin"; then
+            cat > site/flash/manifest.json <<EOF
+          {
+            "name": "Cryptnox POS",
+            "version": "${tag}",
+            "builds": [
+              { "chipFamily": "ESP32", "parts": [ { "path": "cryptnox-pos-${tag}-full.bin", "offset": 0 } ] }
+            ]
+          }
+          EOF
+          else
+            echo "::warning::No release with a -full.bin; the web installer has nothing to flash."
+          fi
 
       # 4. Build the API reference into site/api/
       - name: Generate Doxygen docs
