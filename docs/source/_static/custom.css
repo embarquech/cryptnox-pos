@@ -355,3 +355,49 @@ a.headerlink { display: none; }
     margin-top: 0.75rem;
     color: #5b6576;
 }
+
+/* ── Browser installer (flashing.rst) ─────────────────────────────────── */
+/* Clear log copies the look of the ESP Web Tools install button beside it. */
+.flash-btn {
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 10px 24px;
+    margin-left: 0.5rem;
+    color: #fff;
+    background-color: #03a9f4;
+    border: none;
+    border-radius: 9999px;
+}
+
+.flash-btn:hover {
+    background-color: #35baf6;
+}
+
+.flash-btn:active {
+    background-color: #0288d1;
+}
+
+/* The log reads like the site's code blocks. */
+.flash-log {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 1rem 0;
+    padding: 1rem;
+    font-family: 'JetBrains Mono', Consolas, 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre;
+    color: #2c3e50;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-left: 4px solid #007bff;
+    border-radius: 0;
+    resize: vertical;
+}
+
+.flash-log:focus {
+    outline: none;
+    border-color: #007bff;
+}
