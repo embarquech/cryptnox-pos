@@ -1,7 +1,9 @@
 name: Build and deploy documentation
 
-# One job publishes the whole site, because two workflows pushing to gh-pages
-# with keep_files: false would each wipe the other's output.
+# One job publishes the whole site as a Pages artifact (no gh-pages branch),
+# because each deploy replaces the site and two workflows would wipe each
+# other's output. The release image the web installer flashes is served from
+# that artifact, so it never lands in any git history.
 #
 #   docs.cryptnox.com/cryptnox-pos/       Sphinx guide (docs/source)
 #   docs.cryptnox.com/cryptnox-pos/api/   Doxygen API reference (docs/Doxyfile)
@@ -11,17 +13,29 @@ on:
     branches:
       - master
       - main
+  # A new release changes the image the web installer serves.
+  release:
+    types: [published]
   workflow_dispatch:
 
-# contents: write lets the publish step push to the gh-pages branch;
-# pages: write lets the last step point GitHub Pages at that branch.
+# pages: write lets the job set the Pages source and deploy; id-token: write
+# lets deploy-pages prove the artifact comes from this workflow.
 permissions:
-  contents: write
+  contents: read
   pages: write
+  id-token: write
+
+# A newer deploy waits for the running one instead of racing it.
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
 jobs:
   build-docs:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
 
     steps:
       # 1. Checkout repository. The cryptnox-sdk-esp32 submodule is excluded
@@ -68,6 +82,32 @@ jobs:
       - name: Build Sphinx
         run: sphinx-build -W -b html docs/source site
 
+      # 3b. The browser installer on flashing.html (ESP Web Tools) fetches the
+      #     image itself, and GitHub release assets carry no CORS headers, so
+      #     the latest release's -full.bin is copied into the site next to a
+      #     manifest. No release yet (a fork) leaves the button without one.
+      - name: Add the latest release image for the web installer
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p site/flash
+          # The tag in the file name makes each release a new URL, so a browser
+          # never flashes an image it cached from the previous one.
+          if tag=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName) &&
+             gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern '*-full.bin' --output "site/flash/cryptnox-pos-${tag}-full.bin"; then
+            cat > site/flash/manifest.json <<EOF
+          {
+            "name": "Cryptnox POS",
+            "version": "${tag}",
+            "builds": [
+              { "chipFamily": "ESP32", "parts": [ { "path": "cryptnox-pos-${tag}-full.bin", "offset": 0 } ] }
+            ]
+          }
+          EOF
+          else
+            echo "::warning::No release with a -full.bin; the web installer has nothing to flash."
+          fi
+
       # 4. Build the API reference into site/api/
       - name: Generate Doxygen docs
         run: |
@@ -75,37 +115,32 @@ jobs:
           mkdir -p site/api
           cp -r docs/html/. site/api/
 
-      # 5. Deploy the combined tree to GitHub Pages
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: site
-          publish_branch: gh-pages
-          allow_empty_commit: false
-          keep_files: false
-          force_orphan: false
-          enable_jekyll: false
-
-      # GitHub Pages must serve the gh-pages branch, not the source branch.
-      # Set it here so the site does not depend on a manual setting; if the
-      # workflow token is not allowed to, fail with the instruction instead
-      # of publishing into the void.
-      - name: Point GitHub Pages at the gh-pages branch
+      # 5. Pages must take its site from this workflow, not from a branch.
+      #    Set here so the site does not hang on a manual setting; if the
+      #    token may not change it, fail saying what to do rather than
+      #    deploying into the void.
+      - name: Point GitHub Pages at this workflow
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          current=$(gh api "repos/${GITHUB_REPOSITORY}/pages" \
-                      --jq '"\(.build_type):\(.source.branch // "")"' 2>/dev/null || echo unknown)
+          current=$(gh api "repos/${GITHUB_REPOSITORY}/pages" --jq .build_type 2>/dev/null || echo unknown)
           echo "Pages source is currently: ${current}"
-          if [ "${current}" = "legacy:gh-pages" ]; then
-            echo "Already serving from the gh-pages branch."
+          if [ "${current}" = "workflow" ]; then
             exit 0
           fi
-          if gh api -X PUT "repos/${GITHUB_REPOSITORY}/pages" \
-               -f build_type=legacy -f 'source[branch]=gh-pages' -f 'source[path]=/'; then
-            echo "Pages source set to the gh-pages branch."
+          if gh api -X PUT "repos/${GITHUB_REPOSITORY}/pages" -f build_type=workflow; then
+            echo "Pages source set to GitHub Actions."
           else
-            echo "::error::The workflow token may not change the Pages source. A repository admin must set Settings > Pages > Source to 'Deploy from a branch', branch 'gh-pages', folder '/ (root)'."
+            echo "::error::The workflow token may not change the Pages source. A repository admin must set Settings > Pages > Source to 'GitHub Actions'."
             exit 1
           fi
+
+      # 6. Deploy the combined tree to GitHub Pages
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4

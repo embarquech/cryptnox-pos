@@ -15,22 +15,24 @@ transfer inside its secure element, the terminal broadcasts it to the chain and 
 Start here
 ==========
 
-Four illustrated walkthroughs, one per thing you will actually do:
+Five walkthroughs, in the order you will need them:
 
 * :doc:`guide-assembly` — the board, the NFC module and the printed snap-fit shell, in
   seven steps.
+* :doc:`flashing` — flashing the firmware and preparing the card that pays.
 * :doc:`guide-setup` — first run, from the admin code to the venue Wi-Fi.
 * :doc:`guide-payment` — a sale from the amount to *Approved*.
 * :doc:`guide-settings` — the control panel and the browser settings page.
 
-The pages below are the reference: what the parts are, how they are wired, how the firmware
-is built and flashed, and what the design does and does not defend.
+The pages below are the reference: what the parts are, how they are wired, how the terminal
+runs day to day, and what the design does and does not defend.
 
 .. toctree::
    :maxdepth: 1
-   :caption: Illustrated guides
+   :caption: Guides
 
    guide-assembly
+   flashing
    guide-setup
    guide-payment
    guide-settings
@@ -40,7 +42,6 @@ is built and flashed, and what the design does and does not defend.
    :caption: Reference
 
    hardware
-   flashing
    operating
    security
    troubleshooting
