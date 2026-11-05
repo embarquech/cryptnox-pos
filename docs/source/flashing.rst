@@ -31,11 +31,13 @@ a bug report if something goes wrong. For the board's own output afterwards, pic
        const write = (s) => { log.value += s + "\n"; log.scrollTop = log.scrollHeight; };
        document.getElementById("flash-clear").onclick = () => { log.value = ""; };
        // ponytail: ESP Web Tools gives its esptool-js no terminal, so every step lands in
-       // console.log; copying the console is the only hook it offers.
+       // console.log; copying the console is the only hook it offers. Only calls made from
+       // its own bundle are kept, so extensions logging into the page (MetaMask, ...) stay out.
        for (const level of ["log", "info", "warn", "error"]) {
          const orig = console[level].bind(console);
          console[level] = (...args) => {
            orig(...args);
+           if (!/esp-web-tools@/.test(new Error().stack)) return;
            write(args.map((a) => (a instanceof Error ? a.message : typeof a === "object" ? JSON.stringify(a) : String(a))).join(" "));
          };
        }
