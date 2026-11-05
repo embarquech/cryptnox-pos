@@ -3,7 +3,7 @@
 # This sub-site is published at docs.cryptnox.com/cryptnox-pos/. The generated
 # Doxygen API reference sits under /api/ of the same tree; both are built and
 # published by .github/workflows/doxygen.yml in one pass, because two workflows
-# writing the same gh-pages branch would clobber each other.
+# deploying the same Pages site would clobber each other.
 
 import io
 import os
