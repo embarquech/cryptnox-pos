@@ -15,19 +15,17 @@ transfer inside its secure element, the terminal broadcasts it to the chain and 
 Start here
 ==========
 
-Five guides, in the order you will need them. Follow them top to bottom and you have a
-working terminal taking payments.
+Five walkthroughs, in the order you will need them:
 
 * :doc:`guide-assembly` — the board, the NFC module and the printed snap-fit shell, in
   seven steps.
-* :doc:`flashing` — put the firmware on the board, and prepare the card that pays.
+* :doc:`flashing` — flashing the firmware and preparing the card that pays.
 * :doc:`guide-setup` — first run, from the admin code to the venue Wi-Fi.
 * :doc:`guide-payment` — a sale from the amount to *Approved*.
 * :doc:`guide-settings` — the control panel and the browser settings page.
 
-The reference pages below are for when something needs explaining rather than doing: what
-the parts are, how they are wired, what happens during a sale, and what the design does
-and does not defend.
+The pages below are the reference: what the parts are, how they are wired, how the terminal
+runs day to day, and what the design does and does not defend.
 
 .. toctree::
    :maxdepth: 1
