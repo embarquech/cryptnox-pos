@@ -113,7 +113,11 @@ jobs:
           publish_branch: gh-pages
           allow_empty_commit: false
           keep_files: false
-          force_orphan: false
+          # Each deploy replaces gh-pages with a single fresh commit. The site is
+          # regenerated from source every time, so its history is worth nothing,
+          # and keeping it would add the release image -- 4 MB -- to the clone
+          # of this repository once per release, for good.
+          force_orphan: true
           enable_jekyll: false
 
       # GitHub Pages doit servir la branche gh-pages, pas la branche source.
