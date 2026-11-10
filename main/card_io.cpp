@@ -158,13 +158,16 @@ bool card_connect(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
  * @return true when @p rs_out holds a signature.
  */
 bool card_sign(CryptnoxWallet &wallet, CW_SecureSession &session,
-                      const uint8_t *hash, uint8_t hash_len,
+                      uint8_t key_type, const uint8_t *hash, uint8_t hash_len,
                       const uint8_t *path, uint8_t path_len,
                       const char *pin, size_t pin_chars,
                       uint8_t rs_out[64], char *err_out, size_t err_max)
 {
+    /* key_type: CW_SIGN_DERIVE_K1 (EVM, Tron) or CW_SIGN_DERIVE_ED25519
+     * (Solana — the SDK then forces EdDSA and @p hash is the raw message). Both
+     * come back as 64 raw bytes, r||s or R||S. */
     CW_SignRequest req(session,
-                       CW_SIGN_DERIVE_K1,
+                       key_type,
                        CW_SIGN_SIG_ECDSA_LOW_S,
                        CW_SIGN_WITH_PIN);
     req.hash             = hash;
@@ -213,8 +216,8 @@ bool card_sign(CryptnoxWallet &wallet, CW_SecureSession &session,
  * The card will not export a public key without a verified PIN, so this needs the
  * card PIN exactly as signing does — the caller collects it on the keypad first.
  *
- * One tap yields both addresses (Ethereum m/44'/60'/0'/0/0, Tron
- * m/44'/195'/0'/0/0), so a terminal is not left half configured, offering one
+ * One tap yields all three addresses (Ethereum m/44'/60'/0'/0/0, Tron
+ * m/44'/195'/0'/0/0, Solana m/44'/501'/0'/0'), so a terminal is not left half configured, offering one
  * network's payments to the compiled-in address.
  *
  * Neither address is stored here. Both are *proposed*, through the same
@@ -236,10 +239,12 @@ bool card_read_payouts(CryptnoxWallet &wallet,
                               const char *pin, size_t pin_chars,
                               char *eth_out, size_t eth_n,
                               char *tron_out, size_t tron_n,
+                              char *sol_out, size_t sol_n,
                               char *err, size_t err_n)
 {
     eth_out[0]  = '\0';
     tron_out[0] = '\0';
+    sol_out[0]  = '\0';
 
     CW_SecureSession session;
     /* setup = true: same 60-second cancellable poll, but the card-wait screen
@@ -284,12 +289,25 @@ bool card_read_payouts(CryptnoxWallet &wallet,
         ESP_LOGW(TAG, "card would not export its Tron key");
     }
 
+    /* Solana: the address is the Ed25519 public key itself, base58. */
+    uint8_t  sol_key[SOL_KEY_LEN];
+    uint16_t sol_len = 0U;
+    if (!wallet.getPublicKey(session, CW_SIGN_DERIVE_ED25519, SOL_DERIVE_PATH,
+                             static_cast<uint8_t>(sizeof(SOL_DERIVE_PATH)),
+                             sol_key, static_cast<uint16_t>(sizeof(sol_key)),
+                             sol_len) ||
+        (sol_len != SOL_KEY_LEN) ||
+        !sol_b58_encode(sol_key, sizeof(sol_key), sol_out, sol_n)) {
+        sol_out[0] = '\0';
+        ESP_LOGW(TAG, "card would not export its Solana key");
+    }
+
     wallet.disconnect(session);
 
-    if ((eth_out[0] == '\0') && (tron_out[0] == '\0')) {
+    if ((eth_out[0] == '\0') && (tron_out[0] == '\0') && (sol_out[0] == '\0')) {
         (void)snprintf(err, err_n, "Card gave no usable address");
         return false;
     }
-    ESP_LOGI(TAG, "card addresses: eth=%s tron=%s", eth_out, tron_out);
+    ESP_LOGI(TAG, "card addresses: eth=%s tron=%s sol=%s", eth_out, tron_out, sol_out);
     return true;
 }

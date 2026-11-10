@@ -52,6 +52,7 @@ typedef enum {
     POS_NET_ETH = 0,
     POS_NET_POLY,
     POS_NET_TRON,
+    POS_NET_SOL,
     POS_NET__COUNT
 } pos_net_t;
 
@@ -77,7 +78,7 @@ typedef struct {
     const char *caption;
     pos_net_t   net;
     bool        native;    /**< the network's own coin, not a token */
-    unsigned    decimals;  /**< on-chain: 18 for ETH/POL, 6 for TRX and tokens */
+    unsigned    decimals;  /**< on-chain: 18 ETH/POL, 9 SOL, 6 TRX and tokens */
     pos_coin_t  coin;
 } pos_asset_t;
 
@@ -122,6 +123,11 @@ static const pos_asset_t POS_ASSETS[] = {
      * leaves its contract unset and the asset is refused. */
     { POS_CHAIN_TRON_USDC,   "USDC", "TRC-20",      "Token contract",
       POS_NET_TRON, false, 6U,  POS_COIN_USDC },
+
+    /* Native SOL only: an SPL transfer overflows the card's one-page Ed25519
+     * message (CW_MAX_ED25519_MESSAGE_LENGTH). */
+    { POS_CHAIN_SOL_NATIVE,  "SOL",  "Native coin", "Asset",
+      POS_NET_SOL,  true,  9U,  POS_COIN_NET  },
 };
 
 #define POS_ASSET_COUNT  (sizeof(POS_ASSETS) / sizeof(POS_ASSETS[0]))
@@ -130,6 +136,7 @@ static const pos_net_info_t POS_NETS[POS_NET__COUNT] = {
     { "Ethereum", "Ethereum Sepolia", "Ethereum", "Sepolia testnet", "Mainnet" },
     { "Polygon",  "Polygon Amoy",     "Polygon",  "Amoy testnet",    "Mainnet" },
     { "Tron",     "Tron Nile",        "Tron",     "Nile testnet",    "Mainnet" },
+    { "Solana",   "Solana Testnet",   "Solana",   "Testnet",         "Mainnet" },
 };
 
 /**
@@ -176,14 +183,47 @@ static inline bool pos_chain_is_polygon(pos_chain_t c)
     return pos_net_of(c) == POS_NET_POLY;
 }
 
+/** @brief true for the Solana selection. */
+static inline bool pos_chain_is_sol(pos_chain_t c)
+{
+    return pos_net_of(c) == POS_NET_SOL;
+}
+
+/** @brief true for Ethereum and Polygon, the selections signed as EVM. */
+static inline bool pos_chain_is_evm(pos_chain_t c)
+{
+    return !pos_chain_is_tron(c) && !pos_chain_is_sol(c);
+}
+
 /**
  * @brief true for ETH and POL: no contract, the amount goes in @c value, 21000
- *        gas, 18 decimals. Native TRX is not one — Tron signs on its own path.
+ *        gas, 18 decimals. Native TRX and SOL are not — they sign on their own
+ *        paths.
  */
 static inline bool pos_chain_is_native_evm(pos_chain_t c)
 {
-    const pos_asset_t *a = pos_asset_of(c);
-    return a->native && (a->net != POS_NET_TRON);
+    return pos_asset_of(c)->native && pos_chain_is_evm(c);
+}
+
+/**
+ * @brief Whether an operator set the payout address @p net pays to. Polygon
+ *        shares Ethereum's (same EVM account).
+ */
+static inline bool pos_net_has_payout(pos_net_t net)
+{
+    return (net == POS_NET_SOL) ? settings_has_payout_sol()
+                                : settings_has_payout(net == POS_NET_TRON);
+}
+
+static inline bool pos_chain_has_payout(pos_chain_t c)
+{
+    return pos_net_has_payout(pos_net_of(c));
+}
+
+/** @brief Which payout a chain spends: 0 EVM, 1 Tron, 2 Solana (s_payout_bad). */
+static inline unsigned pos_payout_idx(pos_chain_t c)
+{
+    return pos_chain_is_sol(c) ? 2U : (pos_chain_is_tron(c) ? 1U : 0U);
 }
 
 /** @brief Names for @p net, or Ethereum's for a value out of range. */

@@ -413,7 +413,8 @@ PORTAL_FONTS_CSS
  * concluding the terminal cannot take Polygon payments. */
 "<p>Ethereum &mdash; also used for Polygon &mdash; currently "
 "<code id=cur_eth>&hellip;</code><br>"
-"Tron &mdash; currently <code id=cur_trx>&hellip;</code></p>"
+"Tron &mdash; currently <code id=cur_trx>&hellip;</code><br>"
+"Solana &mdash; currently <code id=cur_sol>&hellip;</code></p>"
 /* Which card, and what to do with it. The instruction below says "tap a Cryptnox
  * card" to somebody who may never have seen one, so show them the actual card
  * front (assets/cryptnox_card.png, inlined by tools/gen_card_front.py) rather than a
@@ -430,7 +431,10 @@ PORTAL_FONTS_CSS
 "<button id=go_eth>Propose Ethereum address</button>"
 "<p>Tron</p>"
 "<input id=in_trx placeholder='T...' autocapitalize=off autocomplete=off>"
-"<button id=go_trx>Propose Tron address</button></section>"
+"<button id=go_trx>Propose Tron address</button>"
+"<p>Solana</p>"
+"<input id=in_sol placeholder='Base58...' autocapitalize=off autocomplete=off>"
+"<button id=go_sol>Propose Solana address</button></section>"
 
 "<section id=s_wifi hidden><h2>Wi-Fi</h2>"
 "<p id=wifi_note></p>"
@@ -599,6 +603,7 @@ static const char *const PAGE_JS =
 "back. Changing network drops it for good, on the old address.';"
 "if(a){$('cur_eth').textContent=S.pay_eth||'not set';"
 "$('cur_trx').textContent=S.pay_trx||'not set';"
+"$('cur_sol').textContent=S.pay_sol||'not set';"
 /* The contract in use, and where it came from on the line under it. Two elements
  * rather than one string, so "built into this firmware" is small grey prose and
  * the address stays the monospace thing you compare against the panel. */
@@ -690,6 +695,7 @@ static const char *const PAGE_JS =
 "post(u,enc({net:net,addr:v})).then(function(m){$(el).value='';good(m)},say)}"
 "$('go_eth').onclick=function(){propose('/api/payout','eth','in_eth')};"
 "$('go_trx').onclick=function(){propose('/api/payout','tron','in_trx')};"
+"$('go_sol').onclick=function(){propose('/api/payout','sol','in_sol')};"
 "$('go_cte').onclick=function(){propose('/api/contract','eth','in_cte')};"
 "$('go_ctt').onclick=function(){propose('/api/contract','tron','in_ctt')};"
 

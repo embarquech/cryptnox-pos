@@ -40,6 +40,7 @@ typedef enum {
     POS_CHAIN_TRON_USDC   = 6,  /**< USDC (TRC-20) on Tron — testnet only.    */
     POS_CHAIN_ETH_NATIVE  = 7,  /**< Native ETH on Ethereum.                  */
     POS_CHAIN_POLY_NATIVE = 8,  /**< Native POL on Polygon.                   */
+    POS_CHAIN_SOL_NATIVE  = 9,  /**< Native SOL on Solana.                    */
     POS_CHAIN__COUNT            /**< Sentinel — keep last, not a selection.  */
 } pos_chain_t;
 
@@ -255,6 +256,19 @@ bool settings_has_payout(bool tron);
  *         that a later read would trust — the echo comparison catches it).
  */
 bool settings_set_payout(bool tron, const char *addr);
+
+/**
+ * @brief The Solana payout address: same dual store and rules as
+ *        @ref settings_get_payout / @ref settings_has_payout /
+ *        @ref settings_set_payout, base58 as given.
+ *
+ * ponytail: its own trio rather than widening the bool above to an enum, so
+ * the Ethereum/Tron call sites stay untouched. Fold them together if a fourth
+ * network arrives.
+ */
+bool settings_get_payout_sol(char *out, size_t n);
+bool settings_has_payout_sol(void);
+bool settings_set_payout_sol(const char *addr);
 
 /**
  * @brief Read the token-contract address for a network.

@@ -76,6 +76,7 @@ extern "C" void app_main(void)
      * one proposal at a time: the Tron one waits here until the Ethereum one is
      * resolved, and the restart that applies a stored address waits for both. */
     char card_tron[SETTINGS_PAYOUT_MAX] = "";
+    char card_sol[SETTINGS_PAYOUT_MAX]  = "";
     bool restart_due = false;
 
     /* On the task watchdog from here on: a loop that stops coming back to its
@@ -120,7 +121,7 @@ extern "C" void app_main(void)
                  * customer's money to an address the operator never chose while
                  * looking entirely normal. A till never told where the money goes
                  * declines the sale, as it does for an unset token contract. */
-                if (!settings_has_payout(chain_is_tron())) {
+                if (!pos_chain_has_payout(settings_get_chain())) {
                     ui_show_tx_status(UI_TX_STATE_FAILED,
                                       "Payout address not configured");
                     pos_amount_set(&pending_amount, 0U);
@@ -128,7 +129,7 @@ extern "C" void app_main(void)
                 }
                 /* Set, but it failed the checksum at boot: the dual store holds
                  * the config.h fallback, which nobody chose for this till. */
-                if (s_payout_bad[chain_is_tron() ? 1 : 0]) {
+                if (s_payout_bad[pos_payout_idx(settings_get_chain())]) {
                     ui_show_tx_status(UI_TX_STATE_FAILED,
                                       "Payout address invalid - set it again");
                     pos_amount_set(&pending_amount, 0U);
@@ -176,7 +177,8 @@ extern "C" void app_main(void)
                 char fee_txt[40];
                 sale_fee_text(fee_txt, sizeof(fee_txt));
                 ui_show_confirm(pending_amount.amount_minor,
-                                chain_is_tron() ? s_payout_tron : s_payout_eth,
+                                chain_is_sol()  ? s_payout_sol
+                                : chain_is_tron() ? s_payout_tron : s_payout_eth,
                                 fee_txt);
                 break;
             }
@@ -286,6 +288,11 @@ extern "C" void app_main(void)
                     card_tron[0] = '\0';
                     break;
                 }
+                if (card_sol[0] != '\0') {
+                    (void)prov_propose(PROV_ASK_PAYOUT_SOL, card_sol);
+                    card_sol[0] = '\0';
+                    break;
+                }
                 if (!restart_due) { break; }
                 /* Stored. The recipient and contract dual stores are built at boot
                  * from validated strings, so the change applies through a restart
@@ -311,12 +318,14 @@ extern "C" void app_main(void)
                 size_t pin_chars = ui_take_pin(pin, sizeof(pin));
                 char   c_eth[SETTINGS_PAYOUT_MAX]  = "";
                 char   c_tron[SETTINGS_PAYOUT_MAX] = "";
+                char   c_sol[SETTINGS_PAYOUT_MAX]  = "";
                 char   err[48] = { 0 };
                 const bool got = card_read_payouts(wallet, nfcTransport,
                                                    cryptoProvider,
                                                    pin, pin_chars,
                                                    c_eth, sizeof(c_eth),
                                                    c_tron, sizeof(c_tron),
+                                                   c_sol, sizeof(c_sol),
                                                    err, sizeof(err));
                 CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(pin), sizeof(pin));
                 if (!got) {
@@ -328,14 +337,19 @@ extern "C" void app_main(void)
                 }
                 ui_show_amount_entry();
                 prov_set_note("Accept each address on the terminal screen.");
-                /* Ethereum first if there is one; Tron waits in card_tron and is
-                 * offered when that proposal is resolved (see PROV_VALUE_SET). */
+                /* First available of ETH, Tron, SOL goes up now; the rest park in
+                 * card_tron / card_sol and follow as each resolves (PROV_VALUE_SET). */
                 card_tron[0] = '\0';
+                card_sol[0]  = '\0';
                 if (c_eth[0] != '\0') {
                     (void)prov_propose(PROV_ASK_PAYOUT_ETH, c_eth);
                     (void)snprintf(card_tron, sizeof(card_tron), "%s", c_tron);
+                    (void)snprintf(card_sol, sizeof(card_sol), "%s", c_sol);
                 } else if (c_tron[0] != '\0') {
                     (void)prov_propose(PROV_ASK_PAYOUT_TRON, c_tron);
+                    (void)snprintf(card_sol, sizeof(card_sol), "%s", c_sol);
+                } else if (c_sol[0] != '\0') {
+                    (void)prov_propose(PROV_ASK_PAYOUT_SOL, c_sol);
                 }
                 break;
             }

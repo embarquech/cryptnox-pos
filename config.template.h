@@ -190,6 +190,22 @@
  * into an address by CW_Tron, so swapping cards needs no rebuild. */
 #define TRON_ADDR_TO      "THQGuFzL87ZqhxkgqYEryRAd7gqFqL5rdc"
 
+/* =========================
+ * Solana (Testnet)
+ * ========================= */
+/* Native SOL only. The sender is the card's m/44'/501'/0'/0' Ed25519 key, which
+ * needs applet 2.0. Optional: left out, config_defaults.h supplies the public
+ * Testnet / mainnet-beta endpoints and no fallback recipient, so Solana is offered
+ * only once a payout address is set from the config page.
+ *
+ * #define SOL_URL           "https://api.testnet.solana.com"
+ * #define SOL_URL_MAIN      "https://api.mainnet-beta.solana.com"
+ * #define SOL_ADDR_TO       ""          // base58 fallback recipient
+ * #define SOL_CA_CERT_PEM   "-----BEGIN CERTIFICATE-----
+...
+"
+ */
+
 /* --- TRC-20 token contract (Nile testnet) ---------------------------
  * FALLBACK again — settable from the config page. Base58 "T..." form. Confirm the
  * current Nile deployment on
