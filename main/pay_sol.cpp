@@ -93,8 +93,10 @@ bcast_t sign_and_broadcast_sol(CryptnoxWallet &wallet, Pn532NfcTransport &transp
                              from, static_cast<uint16_t>(sizeof(from)), from_len) ||
         (from_len != SOL_KEY_LEN) ||
         !sol_b58_encode(from, sizeof(from), from_b58, sizeof(from_b58))) {
+        /* A radio drop fails like a refusal; ask the card before closing. */
+        (void)snprintf(err_out, err_max, "%s",
+                       pin_fail_text(transport, "Card cannot sign Solana"));
         wallet.disconnect(session);
-        (void)snprintf(err_out, err_max, "Card cannot sign Solana");
         return BCAST_FAILED;
     }
     ESP_LOGI(TAG, "Solana sender (this card): %s", from_b58);
