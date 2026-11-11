@@ -136,7 +136,7 @@ static const pos_net_info_t POS_NETS[POS_NET__COUNT] = {
     { "Ethereum", "Ethereum Sepolia", "Ethereum", "Sepolia testnet", "Mainnet" },
     { "Polygon",  "Polygon Amoy",     "Polygon",  "Amoy testnet",    "Mainnet" },
     { "Tron",     "Tron Nile",        "Tron",     "Nile testnet",    "Mainnet" },
-    { "Solana",   "Solana Testnet",   "Solana",   "Testnet",         "Mainnet" },
+    { "Solana",   "Solana Devnet",    "Solana",   "Devnet",          "Mainnet" },
 };
 
 /**

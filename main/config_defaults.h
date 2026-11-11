@@ -99,7 +99,7 @@
  * public endpoints and no fallback recipient: Solana shows "No payout set" until
  * an address is proposed from the config page and accepted on the panel. */
 #ifndef SOL_URL
-#define SOL_URL  "https://api.testnet.solana.com"
+#define SOL_URL  "https://api.devnet.solana.com"
 #endif
 #ifndef SOL_URL_MAIN
 #define SOL_URL_MAIN  "https://api.mainnet-beta.solana.com"

@@ -195,10 +195,10 @@
  * ========================= */
 /* Native SOL only. The sender is the card's m/44'/501'/0'/0' Ed25519 key, which
  * needs applet 2.0. Optional: left out, config_defaults.h supplies the public
- * Testnet / mainnet-beta endpoints and no fallback recipient, so Solana is offered
+ * Devnet / mainnet-beta endpoints and no fallback recipient, so Solana is offered
  * only once a payout address is set from the config page.
  *
- * #define SOL_URL           "https://api.testnet.solana.com"
+ * #define SOL_URL           "https://api.devnet.solana.com"
  * #define SOL_URL_MAIN      "https://api.mainnet-beta.solana.com"
  * #define SOL_ADDR_TO       ""          // base58 fallback recipient
  * #define SOL_CA_CERT_PEM   "-----BEGIN CERTIFICATE-----

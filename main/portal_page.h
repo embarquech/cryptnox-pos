@@ -317,7 +317,7 @@ PORTAL_FONTS_CSS
 "<p><span id=pend></span> is on the terminal screen now. Compare it there, "
 "character by character, and accept it on the terminal.</p></section>"
 
-/* Production or test, for all three networks at once. Not per-network: "Ethereum
+/* Production or test, for all four networks at once. Not per-network: "Ethereum
  * mainnet with Tron on Nile" is not a configuration anybody wants, it is a
  * terminal half of whose sales settle in nothing.
  *
@@ -334,9 +334,9 @@ PORTAL_FONTS_CSS
 "<p>Currently <code id=cur_net>&hellip;</code>. Test networks move worthless "
 "tokens and are for trying the terminal out; production settles real money.</p>"
 "<label class=opt><input type=radio name=net value=main id=net_main> "
-"<span>Production <small>Ethereum, Polygon, Tron</small></span></label>"
+"<span>Production <small>Ethereum, Polygon, Tron, Solana</small></span></label>"
 "<label class=opt><input type=radio name=net value=test id=net_test> "
-"<span>Test <small>Sepolia, Amoy, Nile</small></span></label>"
+"<span>Test <small>Sepolia, Amoy, Nile, Solana Devnet</small></span></label>"
 "<p><b>The terminal restarts when this changes.</b> Check the asset on its Tx "
 "tab afterwards &mdash; a token you set by hand is stored per network, so the "
 "other one falls back to the firmware's own contract.</p>"
