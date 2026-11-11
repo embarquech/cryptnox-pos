@@ -151,10 +151,10 @@ static lv_obj_t *make_icon_box(lv_obj_t *parent, const lv_img_dsc_t *coin_src,
  * out of the asset table because they are LVGL types and that table is
  * host-testable. */
 static const lv_img_dsc_t *const NET_ICON[POS_NET__COUNT] = {
-    &icon_eth, &icon_poly, &icon_tron
+    &icon_eth, &icon_poly, &icon_tron, &icon_sol
 };
 static const lv_img_dsc_t *const NET_CHIP[POS_NET__COUNT] = {
-    &chip_eth, &chip_poly, &chip_tron
+    &chip_eth, &chip_poly, &chip_tron, &chip_sol
 };
 
 /* A token's own mark, by the row's pos_coin_t. */

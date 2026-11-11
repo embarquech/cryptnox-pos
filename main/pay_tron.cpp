@@ -242,7 +242,7 @@ bcast_t sign_and_broadcast_tron(CryptnoxWallet &wallet,
 
     uint8_t rs[64];
     WipeGuard g_rs(rs, sizeof(rs));
-    if (!card_sign(wallet, session, tx.txid,
+    if (!card_sign(wallet, session, CW_SIGN_DERIVE_K1, tx.txid,
                    static_cast<uint8_t>(sizeof(tx.txid)),
                    CW_TRON_DERIVE_PATH, CW_TRON_PATH_LENGTH,
                    pin, pin_chars, rs, err_out, err_max)) {

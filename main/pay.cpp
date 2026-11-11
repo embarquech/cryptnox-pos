@@ -26,6 +26,7 @@ const uint8_t ETH_DERIVE_PATH[20] = {
  * there is one validated path. Ethereum is "0x"-prefixed for eth_addr_parse. */
 char s_payout_eth[SETTINGS_PAYOUT_MAX]   = "";
 char s_payout_tron[SETTINGS_PAYOUT_MAX]  = "";
+char s_payout_sol[SETTINGS_PAYOUT_MAX]   = "";
 
 token_t s_token[POS_CHAIN__COUNT];
 
@@ -155,9 +156,12 @@ bool token_decimals_ok(pos_chain_t chain, char *err, size_t err_max)
 extern "C" void ui_refresh_addresses_for(uint8_t c) {
     const pos_chain_t chain = static_cast<pos_chain_t>(c);
     const token_t    *token = active_token(chain);
-    const char       *payee = pos_chain_is_tron(chain) ? s_payout_tron : s_payout_eth;
+    const char       *payee = pos_chain_is_sol(chain)  ? s_payout_sol
+                            : pos_chain_is_tron(chain) ? s_payout_tron : s_payout_eth;
     if (token != NULL) {
         ui_set_addresses(token->str, payee);
+    } else if (pos_chain_is_sol(chain)) {
+        ui_set_addresses("Native SOL (no contract)", payee);
     } else if (pos_chain_is_tron(chain)) {
         ui_set_addresses("Native TRX (no contract)", payee);
     } else {
@@ -176,17 +180,19 @@ extern "C" void ui_refresh_addresses(void) {
  * a transient flip on the working copy can't redirect funds. */
 pos_addr_t s_dest;
 
-/* A stored payout address that failed its checksum at boot, [0] EVM, [1] Tron.
+/* A stored payout address that failed its checksum at boot, [0] EVM, [1] Tron,
+ * [2] Solana (pos_payout_idx).
  * The dual store then holds the config.h fallback so the boot can continue,
  * and every sale on that family is refused — see resolve_evm_payout. */
-bool s_payout_bad[2] = { false, false };
+bool s_payout_bad[3] = { false, false, false };
 
-/* The Tron recipient's own dual store. */
+/* The Tron and Solana recipients' own dual stores. */
 pos_addr_t s_tron_dest;
+pos_addr_t s_sol_dest;
 
 /** @brief The reconciled recipient for the chain currently selected. */
 const pos_addr_t *active_dest(void) {
-    return chain_is_tron() ? &s_tron_dest : &s_dest;
+    return chain_is_sol() ? &s_sol_dest : (chain_is_tron() ? &s_tron_dest : &s_dest);
 }
 
 sale_fee_t s_sale_fee;
@@ -202,7 +208,10 @@ void sale_fee_text(char *out, size_t n)
 {
     out[0] = '\0';
     char amt[32];
-    if (chain_is_tron()) {
+    if (chain_is_sol()) {
+        /* One signature at the base fee; no priority fee is offered. */
+        fmt_coin(amt, sizeof(amt), SOL_BASE_FEE_LAMPORTS, 9U, "SOL");
+    } else if (chain_is_tron()) {
         if (active_token() == NULL) { return; }
         fmt_coin(amt, sizeof(amt), TRON_TRC20_FEE_LIMIT_SUN, 6U, "TRX");
     } else {
@@ -257,7 +266,7 @@ void settle_inflight(void)
     inflight_t *fl = &s_inflight;
     /* The sale's own endpoint. A no-op straight after a sale; after a reset it
      * is what points a resumed EVM poll at the network the hash is on. */
-    if (!fl->tron) { eth_rpc_select_for(fl->polygon); }
+    if (!fl->tron && !fl->sol) { eth_rpc_select_for(fl->polygon); }
     ui_show_tx_status(UI_TX_STATE_CONFIRMING,
                       fl->broadcast_known ? "Waiting for the block"
                                           : "Checking it was sent");
@@ -276,7 +285,8 @@ void settle_inflight(void)
                  static_cast<int>((deadline - esp_timer_get_time() + 999999LL)
                                   / 1000000LL));
         ui_set_tx_info(left);
-        rc = fl->tron ? tron_receipt_as_eth(tron_rpc_get_receipt(fl->hash))
+        rc = fl->sol  ? sol_status_as_eth(sol_rpc_get_status(fl->hash))
+           : fl->tron ? tron_receipt_as_eth(tron_rpc_get_receipt(fl->hash))
                       : eth_rpc_get_tx_receipt(&want);
         if ((rc == ETH_RPC_RECEIPT_SUCCESS) || (rc == ETH_RPC_RECEIPT_REVERTED) ||
             (rc == ETH_RPC_RECEIPT_MISMATCH)) {
@@ -289,6 +299,14 @@ void settle_inflight(void)
         const uint64_t now = wall_ms();
         if (fl->tron && (rc == ETH_RPC_RECEIPT_PENDING) && (now != 0U) &&
             (now > (fl->expiration_ms + 10000U))) {
+            expired = true;
+            break;
+        }
+        /* Solana: same rule by block height — past lastValidBlockHeight the
+         * blockhash it carries is refused, so unseen by then is never. */
+        uint64_t height = 0U;
+        if (fl->sol && (rc == ETH_RPC_RECEIPT_PENDING) &&
+            sol_rpc_block_height(&height) && (height > fl->sol_valid_height)) {
             expired = true;
             break;
         }
@@ -329,7 +347,7 @@ void settle_inflight(void)
     } else if (expired) {
         fl->active = false;
         settings_inflight_clear();
-        ESP_LOGW(TAG, "Tron tx %s expired unseen - not sent", fl->hash);
+        ESP_LOGW(TAG, "tx %s expired unseen - not sent", fl->hash);
         ui_show_tx_status(UI_TX_STATE_FAILED, "Not sent - nothing was charged");
     } else {
         if (rc == ETH_RPC_RECEIPT_MISMATCH) {
@@ -353,6 +371,10 @@ bcast_t pay_sign_and_broadcast(CryptnoxWallet &wallet, Pn532NfcTransport &transp
      * to the card skips it. */
     if (!token_decimals_ok(settings_get_chain(), err_out, err_max)) {
         return BCAST_FAILED;
+    }
+    if (chain_is_sol()) {
+        return sign_and_broadcast_sol(wallet, transport, amount, pin, pin_chars,
+                                      fl, err_out, err_max);
     }
     return chain_is_tron()
         ? sign_and_broadcast_tron(wallet, transport, crypto, amount, &s_tron_dest,

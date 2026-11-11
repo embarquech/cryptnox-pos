@@ -59,6 +59,8 @@ extern "C" {
 #include "rpc_error.h"
 #include "tron_rpc.h"
 #include "tron_tx.h"
+#include "sol_rpc.h"
+#include "sol_tx.h"
 #include "net.h"
 #include "ui.h"
 }
@@ -73,6 +75,11 @@ static const char *const TAG = "cryptnox_pos";
 /** @brief true when the operator has switched the terminal to Tron. */
 static inline bool chain_is_tron(void) {
     return pos_chain_is_tron(settings_get_chain());
+}
+
+/** @brief true when the operator has switched the terminal to Solana. */
+static inline bool chain_is_sol(void) {
+    return pos_chain_is_sol(settings_get_chain());
 }
 
 /** @brief true when the terminal is charging on Polygon rather than Ethereum. */
@@ -115,12 +122,14 @@ typedef struct {
 extern const uint8_t     ETH_DERIVE_PATH[20];
 extern char              s_payout_eth[SETTINGS_PAYOUT_MAX];
 extern char              s_payout_tron[SETTINGS_PAYOUT_MAX];
+extern char              s_payout_sol[SETTINGS_PAYOUT_MAX];
 extern token_t           s_token[POS_CHAIN__COUNT];
 extern const token_cfg_t TOKEN_CFG[];
 extern const size_t      TOKEN_CFG_COUNT;
 extern pos_addr_t        s_dest;
 extern pos_addr_t        s_tron_dest;
-extern bool              s_payout_bad[2];
+extern pos_addr_t        s_sol_dest;
+extern bool              s_payout_bad[3];
 
 token_t          *active_token(pos_chain_t chain = settings_get_chain());
 void              token_load(const token_cfg_t *cfg, CW_CryptoProvider &crypto);
@@ -157,8 +166,9 @@ typedef enum {
 typedef struct {
     bool     active;
     bool     tron;
-    char     hash[72];        /* EVM: "0x"+64, hashed HERE from the signed
-                                 bytes; Tron: the txID of verified raw_data   */
+    char     hash[SOL_SIG_STR_MAX]; /* EVM: "0x"+64, hashed HERE from the signed
+                                 bytes; Tron: the txID of verified raw_data;
+                                 Solana: base58 signature, up to 88 chars    */
     uint8_t  to[ETH_ADDR_LEN];     /* EVM: the tx's `to` (contract or payee)  */
     uint8_t  payee[ETH_ADDR_LEN];  /* EVM token: the Transfer recipient       */
     bool     token;                /* EVM: an ERC-20 call, not a native send  */
@@ -167,6 +177,8 @@ typedef struct {
     bool     broadcast_known;      /* false: the broadcast answer was lost    */
     bool     polygon;              /* EVM: which endpoint the receipt is on   */
     pos_amount_t decided;          /* for the final decision gate             */
+    bool     sol;                  /* Solana: hash is the base58 signature    */
+    uint64_t sol_valid_height;     /* Solana: past this block it never lands  */
 } inflight_t;
 
 extern inflight_t s_inflight;
@@ -204,6 +216,14 @@ bcast_t sign_and_broadcast_tron(CryptnoxWallet &wallet, Pn532NfcTransport &trans
                                 char *err_out, size_t err_max);
 eth_rpc_receipt_result_t tron_receipt_as_eth(tron_receipt_t r);
 
+/* ── Solana (pay_sol.cpp) ────────────────────────────────────── */
+
+bcast_t sign_and_broadcast_sol(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
+                               const pos_amount_t *amount, const char *pin,
+                               size_t pin_chars, inflight_t *fl,
+                               char *err_out, size_t err_max);
+eth_rpc_receipt_result_t sol_status_as_eth(sol_status_t s);
+
 /* ── The card (card_io.cpp) ──────────────────────────────────── */
 
 /**
@@ -226,13 +246,15 @@ const char *pin_fail_text(Pn532NfcTransport &transport, const char *wrong);
 bool card_connect(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
                   CW_SecureSession &session, bool setup = false);
 bool card_sign(CryptnoxWallet &wallet, CW_SecureSession &session,
-               const uint8_t *hash, uint8_t hash_len,
+               uint8_t key_type, const uint8_t *hash, uint8_t hash_len,
                const uint8_t *path, uint8_t path_len,
                const char *pin, size_t pin_chars,
                uint8_t rs_out[64], char *err_out, size_t err_max);
+extern const uint8_t SOL_DERIVE_PATH[16];   /* pay_sol.cpp: m/44'/501'/0'/0' */
 bool card_read_payouts(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
                        CW_CryptoProvider &crypto, const char *pin, size_t pin_chars,
                        char *eth_out, size_t eth_n, char *tron_out, size_t tron_n,
+                       char *sol_out, size_t sol_n,
                        char *err, size_t err_n);
 
 /* ── UI ↔ main task (main.cpp) ───────────────────────────────── */

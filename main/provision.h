@@ -131,6 +131,7 @@ typedef enum {
     PROV_ASK_PAYOUT_TRON,    /**< Tron payout address.       */
     PROV_ASK_CONTRACT_ETH,   /**< ERC-20 token contract.     */
     PROV_ASK_CONTRACT_TRON,  /**< TRC-20 token contract.     */
+    PROV_ASK_PAYOUT_SOL,     /**< Solana payout address.     */
 } prov_ask_t;
 
 /**

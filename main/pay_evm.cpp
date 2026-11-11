@@ -338,7 +338,7 @@ bcast_t sign_and_broadcast(CryptnoxWallet &wallet,
 
     uint8_t rs[64];
     WipeGuard g_rs(rs, sizeof(rs));
-    if (!card_sign(wallet, session, hash, static_cast<uint8_t>(CW_HASH_SIZE),
+    if (!card_sign(wallet, session, CW_SIGN_DERIVE_K1, hash, static_cast<uint8_t>(CW_HASH_SIZE),
                    ETH_DERIVE_PATH,
                    static_cast<uint8_t>(sizeof(ETH_DERIVE_PATH)),
                    pin, pin_chars, rs, err_out, err_max)) {

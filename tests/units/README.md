@@ -9,6 +9,7 @@ can never drift from the firmware and no build system is required.
 | `test_eth_addr`    | `main/eth_addr.cpp` — hex parsing + EIP-55, both ways |
 | `test_hardening`   | `main/hardening.h` — decision-integrity gate   |
 | `test_tron_tx`     | `main/tron_tx.cpp` — Tron varints, TransferContract + TRC-20 checks, envelope |
+| `test_sol_tx`      | `main/sol_tx.cpp` — base58 both ways, the native SOL transfer message, against solders |
 | `test_prov_form`   | `main/form_parse.h` — config-portal urlencoded field extraction |
 | `test_addr_check`  | `main/addr_check.h` — structural Tron address check |
 | `test_json_out`    | `main/json_out.h` — escaping an SSID into a JSON response |
@@ -40,7 +41,7 @@ bash scripts/checks.sh            # add --build for the firmware build too
 Or one at a time, from the repo root (any C++14 compiler):
 
 ```sh
-for t in test_eth_addr test_hardening test_tron_tx test_prov_form test_addr_check \
+for t in test_eth_addr test_hardening test_tron_tx test_sol_tx test_prov_form test_addr_check \
          test_json_out test_ota_version test_card_status test_chain \
          test_rpc_error test_networks test_assets test_touch_cal test_eth_hex \
          test_eth_rlp test_money test_settings_rules; do
