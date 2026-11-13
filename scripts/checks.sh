@@ -77,6 +77,15 @@ else
   printf '  skip  test_eth_sig (no mbedTLS: set IDF_PATH)\n'
 fi
 
+step "CA bundle"
+# The firmware trusts every .pem in certificates/ (CONFIG_..._BUNDLE_PATH="certificates").
+( cd certificates && sha256sum -c --status cacert-2026-10-20.pem.sha256 ) &&
+  [ "$(ls certificates/*.pem | wc -l)" = 2 ] &&
+  [ "$(cat certificates/*.pem | grep -c 'BEGIN CERTIFICATE')" = 119 ] &&
+  ! grep -qE '^(emSign ECC Root CA - G3|AAA Certificate Services)$' certificates/*.pem &&
+  grep -qx 'CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_NONE=y' sdkconfig.defaults
+[ $? = 0 ] && ok "pinned roots, no eMudhra roots" || bad "certificates/ or sdkconfig.defaults changed"
+
 step "fuzz corpus replay"
 # Each harness once over its seeds, through replay_main.cpp instead of libFuzzer,
 # so the corpora are a regression test without clang. CI also fuzzes them.
