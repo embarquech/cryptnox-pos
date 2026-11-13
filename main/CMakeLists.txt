@@ -5,6 +5,7 @@ idf_component_register(
          "ui_hal.cpp" "ui_theme.cpp" "ui_widgets.cpp" "ui_sale.cpp" "ui_admin.cpp"
          "ui_setup.cpp"
          "civil_time.cpp" "tron_tx.cpp" "tron_rpc.cpp"
+         "sol_tx.cpp" "sol_rpc.cpp" "pay_sol.cpp"
          "ota.cpp" "provision.cpp" "settings.cpp"
          "logo_img.c" "logo_small.c" "logo_mid.c" "chain_icons.c" "tap_icon.c"
          "fonts/font_inter_14.c" "fonts/font_inter_14_medium.c"

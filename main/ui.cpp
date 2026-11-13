@@ -44,7 +44,7 @@ char     s_confirm_fee[40]  = "";   /* "Fee up to 0.0013 ETH", or "" */
 /* Tx-status payload. The info line is retexted in place via s_tx_info_dirty
  * (the confirmation countdown): a rebuild per tick would restart the spinner. */
 ui_tx_state_t s_tx_state    = UI_TX_STATE_PLACE_CARD;
-char          s_tx_info[72] = "";   /* holds a 66-char EVM hash */
+char          s_tx_info[96] = "";   /* holds an 88-char Solana signature */
 lv_obj_t     *s_tx_info_lbl = NULL;
 static volatile bool s_tx_info_dirty = false;
 uint8_t  s_cal_step = 0U;
@@ -504,8 +504,10 @@ void btn_event_cb(lv_event_t *e) {
         case ACT_NET_ETH:
         case ACT_NET_POLY:
         case ACT_NET_TRON:
+        case ACT_NET_SOL:
             /* Step 2: which coin on the network just picked. */
-            open_coin_picker((act == ACT_NET_TRON) ? POS_NET_TRON :
+            open_coin_picker((act == ACT_NET_SOL)  ? POS_NET_SOL  :
+                             (act == ACT_NET_TRON) ? POS_NET_TRON :
                              (act == ACT_NET_POLY) ? POS_NET_POLY : POS_NET_ETH);
             break;
         case ACT_CHAIN_BASE:

@@ -44,7 +44,23 @@ int main(void)
     assert(POS_CHAIN_TRON_USDC   == 6);
     assert(POS_CHAIN_ETH_NATIVE  == 7);
     assert(POS_CHAIN_POLY_NATIVE == 8);
-    assert(POS_CHAIN__COUNT      == 9);
+    assert(POS_CHAIN_SOL_NATIVE  == 9);
+    assert(POS_CHAIN__COUNT      == 10);
+
+    /* Solana is its own family: not Tron, not Polygon, not EVM — so no EVM fork
+     * (chain id, nonce, gas) can ever be taken for a SOL sale. */
+    for (int c = 0; c < (int)POS_CHAIN__COUNT; c++) {
+        const pos_chain_t ch = (pos_chain_t)c;
+        const bool sol = (ch == POS_CHAIN_SOL_NATIVE);
+        assert(pos_chain_is_sol(ch) == sol);
+        assert(pos_chain_is_evm(ch) ==
+               (!sol && !pos_chain_is_tron(ch)));
+        assert(pos_payout_idx(ch) ==
+               (sol ? 2U : (pos_chain_is_tron(ch) ? 1U : 0U)));
+    }
+    assert(!pos_chain_is_tron(POS_CHAIN_SOL_NATIVE));
+    assert(!pos_chain_is_polygon(POS_CHAIN_SOL_NATIVE));
+    assert(!pos_chain_is_native_evm(POS_CHAIN_SOL_NATIVE));
 
     /* Tron: the native coin and both TRC-20s. */
     assert(pos_chain_is_tron(POS_CHAIN_TRON_TRX));
@@ -95,21 +111,24 @@ int main(void)
      * loop is over the whole enum, so an asset added without touching either
      * predicate still has to come out as a plain Ethereum chain deliberately
      * rather than by having been forgotten. */
-    int tron = 0, poly = 0, eth = 0, nat = 0;
+    int tron = 0, poly = 0, eth = 0, sol = 0, nat = 0;
     for (int c = 0; c < (int)POS_CHAIN__COUNT; c++) {
         const pos_chain_t chain = (pos_chain_t)c;
         const bool t = pos_chain_is_tron(chain);
         const bool p = pos_chain_is_polygon(chain);
-        assert(!(t && p));
+        const bool s = pos_chain_is_sol(chain);
+        assert((int)t + (int)p + (int)s <= 1);
         /* A native EVM coin is on exactly one EVM network, never on Tron. */
         if (pos_chain_is_native_evm(chain)) { nat++; assert(!t); }
         if (t)      { tron++; }
         else if (p) { poly++; }
+        else if (s) { sol++;  }
         else        { eth++;  }
     }
     assert(tron == 3);   /* TRX, USDT, USDC   */
     assert(poly == 3);   /* POL, USDC, USDT   */
     assert(eth  == 3);   /* ETH, USDC, USDT   */
+    assert(sol  == 1);   /* SOL               */
     assert(nat  == 2);   /* ETH, POL          */
 
     printf("test_chain OK\n");

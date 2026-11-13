@@ -14,8 +14,10 @@ extern const lv_img_dsc_t icon_tron;
 extern const lv_img_dsc_t icon_usdt;
 extern const lv_img_dsc_t icon_eth;
 extern const lv_img_dsc_t icon_poly;
+extern const lv_img_dsc_t icon_sol;
 extern const lv_img_dsc_t chip_tron;
 extern const lv_img_dsc_t chip_eth;
 extern const lv_img_dsc_t chip_poly;
+extern const lv_img_dsc_t chip_sol;
 
 #endif /* CHAIN_ICONS_H */

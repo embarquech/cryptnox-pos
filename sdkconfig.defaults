@@ -3,9 +3,16 @@ CONFIG_IDF_TARGET="esp32"
 # Enough stack for TLS + JSON + crypto operations in app_main
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
 
-# mbedTLS certificate bundle for HTTPS RPC endpoints
+# mbedTLS certificate bundle for HTTPS RPC endpoints: ONLY the pinned roots in
+# certificates/ (curl Oct 2026 snapshot + GlobalSign Root CA). IDF's own lists still
+# carry the eMudhra-compromised roots. CMakeLists.txt refuses any other setting.
+# See certificates/README.md.
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
-CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_NONE=y
+# CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL is not set
+# CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN is not set
+CONFIG_MBEDTLS_CUSTOM_CERTIFICATE_BUNDLE=y
+CONFIG_MBEDTLS_CUSTOM_CERTIFICATE_BUNDLE_PATH="certificates"
 
 # Actually enforce certificate notBefore/notAfter. HAVE_TIME alone only buys
 # relative timekeeping (session-ticket expiry) — without HAVE_TIME_DATE
@@ -18,8 +25,8 @@ CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
 #
 # Pinning is per deployment and OFF by default: RPC_CA_CERT_PEM,
 # POLY_CA_CERT_PEM and TRON_CA_CERT_PEM are optional config.h macros (see
-# config.template.h), and with none defined every endpoint trusts the full
-# ~150-CA bundle above. The boot log says which endpoints are unpinned. Pin an
+# config.template.h), and with none defined every endpoint trusts the 119-root
+# bundle above. The boot log says which endpoints are unpinned. Pin an
 # intermediate rather than a leaf so the provider's leaf renewals keep working,
 # and note its notAfter — a pinned intermediate that expires stops every sale.
 CONFIG_MBEDTLS_HAVE_TIME_DATE=y
