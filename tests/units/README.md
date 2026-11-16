@@ -27,6 +27,7 @@ can never drift from the firmware and no build system is required.
 | `test_eth_rlp`     | `main/eth_rlp.cpp` — EIP-1559 bytes, unsigned and signed, against eth-account |
 | `test_money`       | `main/money.h` — keypad cents, units to wei, fees, funds check, USDC calldata |
 | `test_settings_rules` | `main/settings_rules.h` — time zone, fee bounds, admin digest, address form |
+| `test_keypad_shuffle` | `main/keypad_shuffle.h` — PIN pad digits stay a full permutation, other keys fixed |
 
 `test_eth_receipt` and `test_eth_sig` link against ESP-IDF's own cJSON and
 mbedTLS sources; `checks.sh` finds them through `IDF_PATH` and skips the two
@@ -44,7 +45,7 @@ Or one at a time, from the repo root (any C++14 compiler):
 for t in test_eth_addr test_hardening test_tron_tx test_sol_tx test_prov_form test_addr_check \
          test_json_out test_ota_version test_card_status test_chain \
          test_rpc_error test_networks test_assets test_touch_cal test_eth_hex \
-         test_eth_rlp test_money test_settings_rules; do
+         test_eth_rlp test_money test_settings_rules test_keypad_shuffle; do
   g++ -std=c++14 -Wall -Imain -Icryptnox-sdk-esp32/cryptnox-sdk-cpp \
       tests/units/$t.cpp -o $t && ./$t || exit 1
 done

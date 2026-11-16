@@ -10,6 +10,8 @@
  */
 
 #include "ui_internal.h"
+#include "keypad_shuffle.h"
+#include "esp_random.h"
 
 #define CHIP_W      56
 
@@ -370,7 +372,7 @@ void build_amount(void) {
     lv_obj_set_style_bg_opa(kb, LV_OPA_TRANSP, LV_PART_MAIN);
     lv_obj_set_style_border_width(kb, 0, LV_PART_MAIN);
     /* Same columns as the PIN and admin pads (see make_numeric_keypad), so the
-     * digits stand in one place on every keypad screen. */
+     * keys line up on every keypad screen; only the PIN pads shuffle digits. */
     lv_obj_set_style_pad_hor(kb, 0, LV_PART_MAIN);
     kbd_fill_rows(kb);
     /* Minimal keypad: no key boxes — black glyphs on white, grey flash on press. */
@@ -577,12 +579,19 @@ static lv_obj_t *make_code_field(uint32_t max_len, lv_coord_t x1, lv_coord_t y,
 lv_obj_t *make_numeric_keypad(lv_event_cb_t cb, lv_obj_t *parent,
                                      lv_coord_t w,
                                      lv_coord_t h) {
+    /* Static: lv_btnmatrix keeps the pointer, not a copy. Only one of the PIN and
+     * admin pads is ever on screen, so they can share it. */
     static const char *kbd_map[] = {
         "1", "2", "3", "\n",
         "4", "5", "6", "\n",
         "7", "8", "9", "\n",
         LV_SYMBOL_BACKSPACE, "0", LV_SYMBOL_OK, ""
     };
+    /* The digits move every time the pad is built, so a PIN cannot be read off
+     * where the finger lands or the smudges it leaves. Backspace and OK stay in
+     * the bottom corners. The callbacks match on key text, so they don't care. */
+    static const uint8_t digit_slots[] = { 0, 1, 2, 4, 5, 6, 8, 9, 10, 13 };
+    keypad_shuffle(kbd_map, digit_slots, sizeof(digit_slots), esp_random);
     lv_obj_t *kb = lv_btnmatrix_create((parent != NULL) ? parent : lv_scr_act());
     lv_btnmatrix_set_map(kb, kbd_map);
     lv_obj_set_size(kb, w, h);
