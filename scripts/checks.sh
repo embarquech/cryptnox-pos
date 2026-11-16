@@ -79,12 +79,25 @@ fi
 
 step "CA bundle"
 # The firmware trusts every .pem in certificates/ (CONFIG_..._BUNDLE_PATH="certificates").
+# IDF also compiles in any .der here, so pin the whole directory, not just *.pem.
+[ "$(ls -A certificates | LC_ALL=C sort | tr '\n' ' ')" = \
+  ".gitattributes README.md cacert-2026-10-20.pem cacert-2026-10-20.pem.sha256 globalsign-root-ca.pem " ] &&
+  ok "certificates/ holds only the pinned files" || bad "certificates/ gained or lost a file"
 ( cd certificates && sha256sum -c --status cacert-2026-10-20.pem.sha256 ) &&
-  [ "$(ls certificates/*.pem | wc -l)" = 2 ] &&
-  [ "$(cat certificates/*.pem | grep -c 'BEGIN CERTIFICATE')" = 119 ] &&
-  ! grep -qE '^(emSign ECC Root CA - G3|AAA Certificate Services)$' certificates/*.pem &&
-  grep -qx 'CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_NONE=y' sdkconfig.defaults
-[ $? = 0 ] && ok "pinned roots, no eMudhra roots" || bad "certificates/ or sdkconfig.defaults changed"
+  ok "curl snapshot matches its published hash" || bad "cacert-2026-10-20.pem does not match its .sha256"
+[ "$(cat certificates/*.pem | grep -c 'BEGIN CERTIFICATE')" = 119 ] &&
+  ok "119 roots" || bad "root count is not 119"
+! grep -qE '^(emSign ECC Root CA - G3|AAA Certificate Services)$' certificates/*.pem &&
+  ok "compromised eMudhra roots absent" || bad "a compromised eMudhra root is back"
+# emSign Root CA - G1 is kept on purpose (certificates/README.md); fail if another appears.
+[ "$(cat certificates/*.pem | grep -ciE 'emsign|emudhra')" = 1 ] &&
+  ok "emSign Root CA - G1 is the only eMudhra root" || bad "eMudhra root count changed"
+# Expiry is enforced on-device, so warn half a year early, not on the day.
+expiring=$(cat certificates/*.pem | awk 'BEGIN { cmd = "openssl x509 -noout -subject -checkend 15552000 | paste -sd \" \"" }
+  /BEGIN CERT/ { b = "" } { b = b $0 "\n" } /END CERT/ { printf "%s", b | cmd; close(cmd) }' | grep 'will expire$')
+[ -z "$expiring" ] && ok "no root expires within 180 days" || bad "roots expiring within 180 days: $expiring"
+grep -qx 'CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_NONE=y' sdkconfig.defaults &&
+  ok "IDF's default bundle is off" || bad "sdkconfig.defaults no longer selects DEFAULT_NONE"
 
 step "fuzz corpus replay"
 # Each harness once over its seeds, through replay_main.cpp instead of libFuzzer,

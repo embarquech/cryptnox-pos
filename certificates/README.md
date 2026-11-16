@@ -16,6 +16,15 @@ eMudhra incident (https://emudhra.we-have-a-problem.com/). With those roots a
 man-in-the-middle could answer the terminal's balance and receipt queries and
 make it accept a payment that never happened. This snapshot drops both.
 
+It keeps one eMudhra root, on purpose: **emSign Root CA - G1** (RSA 2048, SHA-256
+`40F6AF0346A99AA1CD1D555A4E9CCE62C7F9634603EE406615833DC8C8D00367`, expires
+2043-02-18). The compromised intermediates were P-384 keys under the ECC G3 root,
+and Mozilla kept G1 (bug 2083449). None of our RPC providers chains to it, so it
+buys nothing, but removing it means editing curl's file and losing the check
+against curl's published hash. `scripts/checks.sh` fails if any other eMudhra root
+appears. If eMudhra trust is ever pulled further, drop the snapshot for one that
+excludes G1 rather than editing this one.
+
 - `globalsign-root-ca.pem`: **GlobalSign Root CA** (R1, SHA-256
   `EBD41040E4BB3EC742C9E381D31EF2A41A48B6685C96E7CEF3C1DF6CD4331C99`, expires
   2028-01-28), copied from IDF's `cacrt_all.pem`. Mozilla retired it, but
@@ -23,7 +32,10 @@ make it accept a payment that never happened. This snapshot drops both.
   check only looks up the issuer of the topmost certificate the server sends; it
   does not path-build to the GTS Root R4 already in curl's file. Without it every
   EVM call fails "No matching trusted root certificate found". Drop it once
-  publicnode stops sending that cross-sign (or 2028, whichever comes first).
+  publicnode stops sending that cross-sign. Dropping it does not fix the 2028
+  expiry: if publicnode still sends the cross-sign then, EVM breaks either way, so
+  pin publicnode's chain or change provider before that date. `scripts/checks.sh`
+  fails 180 days before any root here expires.
 
 `sdkconfig.defaults` selects `DEFAULT_NONE` plus this directory as the custom bundle
 (every `.pem` here is trusted, so add nothing else); a custom
