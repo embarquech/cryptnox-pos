@@ -51,3 +51,14 @@ endif()
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 idf_build_set_property(POS_BUILD_ID ${POS_BUILD_ID})   # read by main/CMakeLists.txt
 project(cryptnox_pos)
+
+# sdkconfig is gitignored and an existing one beats sdkconfig.defaults, so an old
+# checkout would silently keep IDF's lists and their eMudhra-compromised roots.
+if(NOT CONFIG_MBEDTLS_CERTIFICATE_BUNDLE
+   OR NOT CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_NONE
+   OR NOT CONFIG_MBEDTLS_CUSTOM_CERTIFICATE_BUNDLE
+   OR CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEPRECATED_LIST
+   OR NOT CONFIG_MBEDTLS_CUSTOM_CERTIFICATE_BUNDLE_PATH STREQUAL "certificates")
+    message(FATAL_ERROR "sdkconfig must use only the pinned CA bundle: copy the "
+                        "certificate-bundle lines from sdkconfig.defaults. See certificates/README.md.")
+endif()
