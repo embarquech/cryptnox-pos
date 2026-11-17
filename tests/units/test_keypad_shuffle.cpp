@@ -25,7 +25,9 @@ int main(void) {
     unsigned seen[10][10] = {};   /* [slot][digit] */
 
     for (int run = 0; run < 20000; run++) {
-        keypad_shuffle(map, slots, sizeof(slots), lcg);
+        uint32_t rnd[9];
+        for (int k = 0; k < 9; k++) { rnd[k] = lcg(); }
+        keypad_shuffle(map, slots, sizeof(slots) / sizeof(slots[0]), rnd);
         assert(strcmp(map[3], "\n") == 0 && strcmp(map[7], "\n") == 0);
         assert(strcmp(map[11], "\n") == 0 && strcmp(map[12], "BSP") == 0);
         assert(strcmp(map[14], "OK") == 0 && strcmp(map[15], "") == 0);

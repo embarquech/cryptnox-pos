@@ -238,7 +238,12 @@ the more realistic attack, and no PIN policy fixes that.
 
 **Fix (done):** new codes need 6 digits and the penalty keeps doubling up to an
 hour per attempt; a code stored under the old 4-digit minimum still unlocks, so
-existing units are not forced mid-life.
+existing units are not forced mid-life. The digit keys of the admin-code and
+card-PIN pads are shuffled each time a pad is built (`keypad_shuffle.h`, drawn
+through `CW_Utils::fill_secure_random()`), so finger positions and smudges no
+longer give the code away. That covers an observer who sees the hand, not the
+panel: the admin screen's reveal eye still prints the code in clear, and the
+layout moving on every retry raises the mistype rate on the resistive panel.
 
 ---
 

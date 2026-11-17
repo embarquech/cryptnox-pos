@@ -11,7 +11,7 @@
 
 #include "ui_internal.h"
 #include "keypad_shuffle.h"
-#include "esp_random.h"
+#include "CW_Utils.h"
 
 #define CHIP_W      56
 
@@ -591,7 +591,16 @@ lv_obj_t *make_numeric_keypad(lv_event_cb_t cb, lv_obj_t *parent,
      * where the finger lands or the smudges it leaves. Backspace and OK stay in
      * the bottom corners. The callbacks match on key text, so they don't care. */
     static const uint8_t digit_slots[] = { 0, 1, 2, 4, 5, 6, 8, 9, 10, 13 };
-    keypad_shuffle(kbd_map, digit_slots, sizeof(digit_slots), esp_random);
+    const size_t n_digits = sizeof(digit_slots) / sizeof(digit_slots[0]);
+    uint32_t rnd[n_digits - 1U];
+    /* Through the SEC-001 door, not esp_random(): it says when the bytes are not
+     * true random (radio off). A pad must still appear then, so shuffle with the
+     * bytes it filled anyway; boot starts Wi-Fi before the first pad, so this
+     * should never fire. */
+    if (!CW_Utils::fill_secure_random(reinterpret_cast<uint8_t *>(rnd), sizeof(rnd))) {
+        ESP_LOGW(TAG, "keypad: shuffled without a radio, layout not true random");
+    }
+    keypad_shuffle(kbd_map, digit_slots, n_digits, rnd);
     lv_obj_t *kb = lv_btnmatrix_create((parent != NULL) ? parent : lv_scr_act());
     lv_btnmatrix_set_map(kb, kbd_map);
     lv_obj_set_size(kb, w, h);
