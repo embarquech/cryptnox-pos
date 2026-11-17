@@ -22,7 +22,7 @@ step "host unit tests"
 TESTS="test_eth_addr test_hardening test_tron_tx test_sol_tx test_prov_form test_addr_check
        test_json_out test_ota_version test_card_status test_chain
        test_rpc_error test_networks test_assets test_touch_cal test_eth_hex
-       test_eth_rlp test_money test_settings_rules"
+       test_eth_rlp test_money test_settings_rules test_keypad_shuffle"
 out=$(mktemp -d)
 for t in $TESTS; do
   if g++ -std=c++14 -Wall $SAN -Imain -Icryptnox-sdk-esp32/cryptnox-sdk-cpp \

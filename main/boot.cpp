@@ -776,7 +776,11 @@ pos_hw_t pos_boot(void)
      * menu would open the settings freely. The creation screen has no way out.
      *
      * run_wizard() ends in a restart, which applies the addresses. It only returns
-     * if the portal could not be raised; the panel picker below is the fallback. */
+     * if the portal could not be raised; the panel picker below is the fallback.
+     *
+     * Wi-Fi starts first: the admin pad's digit shuffle draws from the hardware
+     * RNG, which is only true random while the RF subsystem runs (SEC-001). */
+    net_wifi_init();
     const bool no_code   = !settings_has_admin_code();
     const bool no_payout = !settings_has_payout(false) && !settings_has_payout(true);
     const bool setup_run = no_code || no_payout;
@@ -799,7 +803,6 @@ pos_hw_t pos_boot(void)
     }
 
     ui_set_boot_status("Starting network");
-    net_wifi_init();
 
     /* Wi-Fi and a valid clock are one bring-up step, since TLS needs both: a
      * failed sync sends the operator back to setup with the reason.
