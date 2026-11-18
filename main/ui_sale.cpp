@@ -484,16 +484,38 @@ void build_confirm(void) {
                 &font_pjs_20_semibold);
 }
 
+/* The card PIN lives in s_pin only; the field is a display. LVGL reallocs a
+ * textarea's text on every keypress and never scrubs the old block, so a field
+ * holding the real PIN leaves its prefixes all over LVGL's heap. While masked
+ * the field gets filler of the same length ('0's, drawn as bullets) — at most
+ * the one digit being echoed is real. Revealed (setup read only, the operator's
+ * own card) it gets the digits, which are on screen anyway. */
+#define PIN_MAX_DIGITS 9U
+static_assert(PIN_MAX_DIGITS < sizeof(s_pin), "s_pin holds the PIN and its NUL");
+
+void pin_field_sync(bool echo_last) {
+    if (s_pin_ta == NULL) { return; }
+    const bool masked = lv_textarea_get_password_mode(s_pin_ta);
+    char shown[sizeof(s_pin)];
+    size_t n = s_pin_len;
+    for (size_t i = 0U; i < n; i++) { shown[i] = masked ? '0' : s_pin[i]; }
+    /* Masked with an echo: the last digit goes in through add_char, which is
+     * what makes LVGL show it for the field's show-time before the bullet.
+     * Setup read only — the sale pad has no echo (build_pin), so no real digit
+     * needs to reach LVGL at all. */
+    const bool echo = masked && echo_last && s_pin_for_card && (n > 0U);
+    if (echo) { n--; }
+    shown[n] = '\0';
+    lv_textarea_set_text(s_pin_ta, shown);
+    if (echo) {
+        lv_textarea_add_char(s_pin_ta, static_cast<uint32_t>(s_pin[s_pin_len - 1U]));
+    }
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(shown), sizeof(shown));
+}
+
 /* OK pressed on the keypad: stash the PIN for main and move to the tx screen. */
 static void pin_submit(void) {
-    if (s_pin_ta == NULL) { return; }
-    const char *p = lv_textarea_get_text(s_pin_ta);
-    size_t len = (p != NULL) ? strlen(p) : 0U;
-    if (len < 4U) { return; }   /* require at least 4 digits */
-
-    strncpy(s_pin, p, sizeof(s_pin) - 1);
-    s_pin[sizeof(s_pin) - 1] = '\0';
-    s_pin_len = static_cast<uint8_t>(strlen(s_pin));
+    if ((s_pin_ta == NULL) || (s_pin_len < 4U)) { return; }   /* at least 4 digits */
 
     /* Same keypad, two errands. A card read is not a payment: it gets the card
      * screen and its own event, so main cannot mistake it for a sale and the tx
@@ -524,9 +546,16 @@ static void pin_kbd_cb(lv_event_t *e) {
     if (strcmp(txt, LV_SYMBOL_OK) == 0) {
         pin_submit();
     } else if (strcmp(txt, LV_SYMBOL_BACKSPACE) == 0) {
-        lv_textarea_del_char(s_pin_ta);
+        if (s_pin_len > 0U) {
+            s_pin[--s_pin_len] = '\0';
+            pin_field_sync(false);
+        }
     } else if ((txt[0] >= '0') && (txt[0] <= '9') && (txt[1] == '\0')) {
-        lv_textarea_add_char(s_pin_ta, static_cast<uint32_t>(txt[0]));
+        if (s_pin_len < PIN_MAX_DIGITS) {
+            s_pin[s_pin_len++] = txt[0];
+            s_pin[s_pin_len]   = '\0';
+            pin_field_sync(true);
+        }
     }
 }
 /* Show the hint while the field is empty, hide it once anything is typed.
@@ -678,7 +707,7 @@ void build_pin(void) {
      * this screen faces the customer and the PIN is theirs, so there is no eye
      * and no per-digit echo for a bystander to read. */
     lv_obj_t *kb = make_numeric_keypad(pin_kbd_cb, card, CODE_KBD_W, 170);
-    s_pin_ta = make_code_row(card, kb, 9U, "Card PIN", ACT_PIN_REVEAL,
+    s_pin_ta = make_code_row(card, kb, PIN_MAX_DIGITS, "Card PIN", ACT_PIN_REVEAL,
                              s_pin_for_card ? &s_pin_eye_lbl : NULL);
     if (!s_pin_for_card) { lv_textarea_set_password_show_time(s_pin_ta, 0); }
 }
@@ -834,11 +863,17 @@ void build_tx_status(void) {
         return;
     }
 
-    if (s_tx_state == UI_TX_STATE_FAILED) {
-        lv_obj_t *cross = make_label(card, LV_SYMBOL_CLOSE, lv_color_hex(0xEC5B5B),
-                                     &font_icons_48, LV_ALIGN_TOP_MID, 0, 30);
-        pop_in(cross);
-        make_label(card, "Declined", COL_TEXT,
+    if ((s_tx_state == UI_TX_STATE_FAILED) || (s_tx_state == UI_TX_STATE_REFUSED)) {
+        /* REFUSED: the terminal stopped itself (not ready, or a setup card
+         * read) — amber and "Nothing charged", not a red "Declined" the merchant
+         * would read as the customer's card being refused. */
+        const bool refused = (s_tx_state == UI_TX_STATE_REFUSED);
+        lv_obj_t *mark = make_label(card,
+                                    refused ? LV_SYMBOL_WARNING : LV_SYMBOL_CLOSE,
+                                    refused ? COL_WARN : lv_color_hex(0xEC5B5B),
+                                    &font_icons_48, LV_ALIGN_TOP_MID, 0, 30);
+        pop_in(mark);
+        make_label(card, refused ? "Nothing charged" : "Declined", COL_TEXT,
                    &font_pjs_20_medium, LV_ALIGN_TOP_MID, 0, 92);
         lv_obj_t *info = make_label(card, s_tx_info, COL_DIM,
                                     &font_inter_14, LV_ALIGN_TOP_MID, 0, 124);
@@ -847,7 +882,7 @@ void build_tx_status(void) {
         lv_obj_set_style_text_align(info, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
         lv_obj_align(info, LV_ALIGN_TOP_MID, 0, 124);
 
-        make_button(card, "New sale", COL_ACCENT, COL_BG, CARD_BTN_W, CARD_BTN_H,
+        make_button(card, refused ? "Back" : "New sale", COL_ACCENT, COL_BG, CARD_BTN_W, CARD_BTN_H,
                     LV_ALIGN_BOTTOM_MID, 0, CARD_BTN_Y, ACT_NEW,
                     &font_pjs_20_semibold);
         return;

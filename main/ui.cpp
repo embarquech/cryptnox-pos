@@ -93,8 +93,9 @@ lv_obj_t *s_clock_lbl   = NULL;
  * re-enable it on the next digit — see charge_set_busy(). */
 bool      s_charge_busy = false;
 
-/* PIN entry — the textarea (password mode) is the live input; s_pin is the
- * handoff buffer read by main via ui_take_pin() and wiped on read. */
+/* PIN entry — s_pin is the live input and the handoff buffer read by main via
+ * ui_take_pin() and wiped on read; the textarea only displays it (see
+ * pin_field_sync). */
 lv_obj_t *s_pin_ta      = NULL;
 char      s_pin[16]     = {0};
 uint8_t   s_pin_len     = 0;
@@ -442,6 +443,7 @@ void btn_event_cb(lv_event_t *e) {
             break;
         case ACT_PIN_REVEAL:
             code_field_reveal(s_pin_ta, s_pin_eye_lbl);
+            pin_field_sync(false);   /* the field holds filler while masked */
             break;
         case ACT_ADMIN_REVEAL:
             code_field_reveal(s_admin_ta, s_admin_eye_lbl);
@@ -463,9 +465,14 @@ void btn_event_cb(lv_event_t *e) {
             /* The panel is the only place a payout address or token contract
              * proposed by the browser can be accepted. Commit (or drop) before
              * closing, so it cannot outlive the card. */
-            (void)prov_pending_commit(act == ACT_PROV_OK);
+        {
+            const bool stored = prov_pending_commit(act == ACT_PROV_OK);
             close_modal();
+            /* Accept that stored nothing — the page closed underneath the card,
+             * or the value was refused — must not look like a save. */
+            if ((act == ACT_PROV_OK) && !stored) { open_prov_not_saved(); }
             break;
+        }
         case ACT_PROV_FINISH:
             if (s_cb != NULL) { s_cb(UI_EVENT_PROV_FINISH, 0); }
             break;
@@ -499,7 +506,9 @@ void btn_event_cb(lv_event_t *e) {
             }
             break;
         case ACT_NET_PICK:
-            open_network_picker();
+            /* Not while Charge waits on main: the pick rebuilds the screen,
+             * which re-arms Charge and swaps the asset under the confirm. */
+            if (!s_charge_busy) { open_network_picker(); }
             break;
         case ACT_NET_ETH:
         case ACT_NET_POLY:
@@ -602,6 +611,10 @@ static void ui_task(void *arg) {
         UiLock lk;
         if (s_screen_dirty) {
             s_screen_dirty = false;
+            /* The render closes every modal. A payout/contract proposal still
+             * waiting on the panel comes back over the new screen (below), or it
+             * would sit pending with nobody able to answer it. */
+            if (s_prov_modal) { s_addr_modal_dirty = true; }
             render_requested_screen();
         }
         /* Boot-status update from the main task; targeted rather than a splash
@@ -617,7 +630,11 @@ static void ui_task(void *arg) {
          * itself) the gesture is dropped. */
         if (s_swipe_admin) {
             s_swipe_admin = false;
-            if (s_req_screen == UI_SCREEN_AMOUNT) { open_admin_entry(); }
+            /* ...and not while Charge waits on main, whose confirm would land
+             * on top of the admin sheet. */
+            if ((s_req_screen == UI_SCREEN_AMOUNT) && !s_charge_busy) {
+                open_admin_entry();
+            }
         }
         /* Touch calibration: corner taps are read raw, and the old values come
          * back if nobody confirms in time — an operator who cannot hit Keep
