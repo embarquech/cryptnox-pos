@@ -102,6 +102,10 @@ typedef enum {
     UI_TX_STATE_UNCONFIRMED, /**< Sent, or maybe sent, and no verdict yet —
                                   info is the tx hash. Never "Declined": the
                                   payment may still land.               */
+    UI_TX_STATE_REFUSED,     /**< Stopped before any card was asked to pay
+                                  (terminal not ready, setup card read failed);
+                                  info says why. Not "Declined": no customer
+                                  was refused.                          */
 } ui_tx_state_t;
 
 /**
