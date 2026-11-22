@@ -44,7 +44,10 @@ private:
     size_t m_len       = 0U;
 
     void num(uint32_t v, int base) {
-        add((base == 16) ? "%" PRIX32 : "%" PRIu32, v);
+        /* Not a ternary: cppcheck cannot expand PRIX32/PRIu32 and reads the
+         * two branches as the same "%" (duplicateExpressionTernary). */
+        if (base == 16) { add("%" PRIX32, v); }
+        else            { add("%" PRIu32, v); }
     }
     void add(const char *fmt, ...) __attribute__((format(printf, 2, 3))) {
         if (m_len >= sizeof(m_line) - 1U) { return; }   /* overlong: truncated */
