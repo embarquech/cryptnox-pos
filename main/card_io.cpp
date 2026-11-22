@@ -73,7 +73,7 @@ const char *pin_fail_text(Pn532NfcTransport &transport, const char *wrong)
  * @param[in]  setup     true when reading payout addresses rather than paying;
  *                       shows the card-wait screen instead of the transaction one.
  * @return true with @p session open; false on user cancel, after 60 s, or on a
- *         card that is not set up — the three are told apart by
+ *         card that is not set up or not genuine — told apart by
  *         @ref s_user_cancelled and @ref s_card_fault.
  */
 bool card_connect(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
@@ -120,6 +120,15 @@ bool card_connect(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
             /* Card pulled away or channel failed: release the dead target, or
              * every following InListPassiveTarget times out. */
             transport.resetReader();
+            if (wallet.lastCertResult() != CW_CERT_OK) {
+                /* The chain did not verify: not a card pulled away but one that
+                 * is not what it claims. Said, and not retried — tapping it
+                 * again cannot change the answer. */
+                ESP_LOGE(TAG, "card failed its authenticity check (code 0x%02X)",
+                         static_cast<unsigned>(wallet.lastCertResult()));
+                s_card_fault = "Not a genuine Cryptnox card";
+                return false;
+            }
             if (!s_user_cancelled) {
                 if (setup) { ui_show_card_wait("Hold it still"); }
                 else { ui_show_tx_status(UI_TX_STATE_PLACE_CARD, "Hold card to reader"); }
