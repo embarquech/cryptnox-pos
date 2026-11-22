@@ -117,6 +117,12 @@ static void refusal_text(const char *msg, char *err, size_t err_n)
 {
     if (rpc_err_contains(msg, "no record of a prior credit")) {
         (void)snprintf(err, err_n, "No SOL on this card");
+    } else if (rpc_err_contains(msg, "insufficient funds for rent") ||
+               rpc_err_contains(msg, "lower balance than rent-exempt minimum")) {
+        /* Before "insufficient": rent is not a balance the operator can fix
+         * by topping up the card (the second wording is InvalidRentPayingAccount,
+         * still sent by some nodes). */
+        (void)snprintf(err, err_n, "Amount too small for this address");
     } else if (rpc_err_contains(msg, "insufficient")) {
         (void)snprintf(err, err_n, "Not enough SOL for amount + fee");
     } else if (rpc_err_contains(msg, "blockhash not found")) {
@@ -154,14 +160,24 @@ sol_send_t sol_rpc_send(const uint8_t *tx, size_t tx_len, const char *sig_b58,
             ESP_LOGE(TAG, "send: node answered %s for %s", res->valuestring, sig_b58);
         }
     } else if (cJSON_IsObject(e)) {
-        /* Preflight is on, so an error is a simulation the node refused to
-         * forward: nothing went out. */
+        /* Only -32002 is a failed preflight — a simulation the node refused to
+         * forward, so nothing went out. Anything else (-32005 node behind,
+         * -32603 internal, a provider's rate limit) proves nothing: the signed
+         * transaction may still land, so poll until its blockhash expires. */
         const cJSON *m = cJSON_GetObjectItemCaseSensitive(e, "message");
+        const cJSON *c = cJSON_GetObjectItemCaseSensitive(e, "code");
         const char  *msg = (cJSON_IsString(m) && (m->valuestring != NULL))
                                ? m->valuestring : "";
-        ESP_LOGW(TAG, "send refused: %s", msg);
-        refusal_text(msg, err, err_n);
-        rc = SOL_SEND_REFUSED;
+        const bool preflight = cJSON_IsNumber(c) &&
+                               (static_cast<int>(c->valuedouble) == -32002);
+        if (preflight) {
+            ESP_LOGW(TAG, "send refused: %s", msg);
+            refusal_text(msg, err, err_n);
+            rc = SOL_SEND_REFUSED;
+        } else {
+            ESP_LOGW(TAG, "send error %d (%s) - not a refusal, polling",
+                     cJSON_IsNumber(c) ? static_cast<int>(c->valuedouble) : 0, msg);
+        }
     } else {
         /* neither: treated as no answer */
     }

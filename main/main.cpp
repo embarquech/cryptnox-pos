@@ -319,7 +319,7 @@ extern "C" void app_main(void)
                 char   c_eth[SETTINGS_PAYOUT_MAX]  = "";
                 char   c_tron[SETTINGS_PAYOUT_MAX] = "";
                 char   c_sol[SETTINGS_PAYOUT_MAX]  = "";
-                char   err[48] = { 0 };
+                char   err[128] = { 0 };
                 const bool got = card_read_payouts(wallet, nfcTransport,
                                                    cryptoProvider,
                                                    pin, pin_chars,
@@ -336,7 +336,9 @@ extern "C" void app_main(void)
                     break;
                 }
                 ui_show_amount_entry();
-                prov_set_note("Accept each address on the terminal screen.");
+                /* err on success: an address the card could not give, said. */
+                prov_set_note((err[0] != '\0') ? err
+                                               : "Accept each address on the terminal screen.");
                 /* First available of ETH, Tron, SOL goes up now; the rest park in
                  * card_tron / card_sol and follow as each resolves (PROV_VALUE_SET). */
                 card_tron[0] = '\0';

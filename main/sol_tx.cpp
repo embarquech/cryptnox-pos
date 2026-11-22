@@ -85,8 +85,13 @@ size_t sol_transfer_message(const uint8_t from[SOL_KEY_LEN],
                             const uint8_t blockhash[SOL_KEY_LEN],
                             uint64_t lamports, uint8_t *out, size_t out_n)
 {
+    /* All zeros is the System Program, never a payee — and it is what a payout
+     * store wiped after a failed decode holds in both copies, which every
+     * consistency check downstream would read as a well-formed recipient. */
+    static const uint8_t SYSTEM_PROGRAM[SOL_KEY_LEN] = { 0 };
     if ((out == NULL) || (out_n < SOL_TRANSFER_MSG_LEN) || (lamports == 0U) ||
-        (memcmp(from, to, SOL_KEY_LEN) == 0)) {
+        (memcmp(from, to, SOL_KEY_LEN) == 0) ||
+        (memcmp(to, SYSTEM_PROGRAM, SOL_KEY_LEN) == 0)) {
         return 0U;
     }
     size_t k = 0U;
