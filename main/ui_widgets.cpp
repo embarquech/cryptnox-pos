@@ -379,7 +379,6 @@ void clear_screen(void) {
     lv_obj_t *scr = lv_scr_act();
     code_field_wipe(s_pin_ta);
     code_field_wipe(s_admin_ta);
-    code_field_wipe(s_wifi_pass_ta);
     lv_obj_clean(scr);
     lv_obj_set_style_bg_color(scr, COL_BG, LV_PART_MAIN);
     /* build_page() leaves a gradient on the screen, and the screen object
@@ -397,8 +396,6 @@ void clear_screen(void) {
     s_clock_lbl    = NULL;
     s_pin_ta       = NULL;   /* deleted by lv_obj_clean — drop the dangling ref */
     s_pin_eye_lbl  = NULL;
-    s_wifi_pass_ta = NULL;
-    s_wifi_eye_lbl   = NULL;
     s_boot_step_lbl  = NULL;
     s_tx_info_lbl    = NULL;
     s_cal_countdown  = NULL;
@@ -698,7 +695,6 @@ static void signal_refresh(lv_timer_t *t) {
                       (s_req_screen != UI_SCREEN_PROV) &&
                       (s_req_screen != UI_SCREEN_WIFI_CONNECTING) &&
                       (s_req_screen != UI_SCREEN_WIFI_LIST) &&
-                      (s_req_screen != UI_SCREEN_WIFI_PASS) &&
                       (s_req_screen != UI_SCREEN_CARD_WAIT) &&
                       !((s_req_screen == UI_SCREEN_PIN) && s_pin_for_card);
     if (show) { lv_obj_clear_flag(s_sig_box, LV_OBJ_FLAG_HIDDEN); }
@@ -773,7 +769,6 @@ void render_requested_screen(void) {
         case UI_SCREEN_CONFIRM:   build_confirm();   break;
         case UI_SCREEN_PIN:       build_pin();       break;
         case UI_SCREEN_WIFI_LIST: build_wifi_list(); break;
-        case UI_SCREEN_WIFI_PASS: build_wifi_pass(); break;
         case UI_SCREEN_WIFI_CONNECTING: build_wifi_connecting(); break;
         case UI_SCREEN_SETTINGS:  build_settings();  break;
         case UI_SCREEN_TX_STATUS: build_tx_status(); break;

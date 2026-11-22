@@ -1008,6 +1008,15 @@ static esp_err_t wifi_post(httpd_req_t *req)
         CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(pass), sizeof(pass));
         return reply(req, "400 Bad Request", "A network name is required.");
     }
+    /* Said here, where the phone can show it; net_wifi_connect() refuses the
+     * same lengths (and checks the 64-character form is hex). */
+    const size_t plen = strlen(pass);
+    if ((plen != 0U) && ((plen < 8U) || (plen > 64U))) {
+        CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(pass), sizeof(pass));
+        return reply(req, "400 Bad Request",
+                     "A Wi-Fi password is 8 to 63 characters (or none for an "
+                     "open network).");
+    }
 
     /* Staged into the UI's own handoff buffers and reported as the ordinary
      * "credentials entered" event, so main's existing connect-and-verify loop —

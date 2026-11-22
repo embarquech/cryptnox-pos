@@ -81,7 +81,7 @@ extern "C" void app_main(void)
 
     /* On the task watchdog from here on: a loop that stops coming back to its
      * queue is a hung terminal, and resetting it beats a frozen panel. Boot above
-     * is not subscribed — the wizard and the picker wait on people. */
+     * is not subscribed — the wizard waits on people. */
     if (esp_task_wdt_add(NULL) != ESP_OK) {
         ESP_LOGE(TAG, "main loop not on the task watchdog");
     }
@@ -366,15 +366,6 @@ extern "C" void app_main(void)
                 break;
             }
 
-            case UI_EVENT_WIFI_SCAN: {
-                /* Scan runs in this task so the UI stays responsive. */
-                net_wifi_ap_t aps[16];
-                uint16_t n = net_wifi_scan(aps, 16);
-                /* Opened from settings, not after a failure — no note. */
-                ui_show_wifi_list(aps, n, NULL);
-                break;
-            }
-
             case UI_EVENT_WIFI_TRY: {
                 char w_ssid[33] = { 0 };
                 char w_pass[65] = { 0 };
@@ -429,11 +420,11 @@ extern "C" void app_main(void)
                          * served: drop it, back to AP-only. */
                         if (prov_mode() != PROV_MODE_OFF) { net_wifi_disconnect(); }
 
-                        /* Back to the picker with the reason, so another network
-                         * can be chosen instead of a dead end. */
-                        net_wifi_ap_t aps[16];
-                        uint16_t n = net_wifi_scan(aps, 16);
-                        ui_show_wifi_list(aps, n, why);
+                        /* The reason, on the phone and the panel. The config
+                         * page is still up, so another network is chosen there
+                         * (no passphrase is typed on the panel). */
+                        prov_set_note(why);
+                        ui_show_wifi_failed(why);
                     }
                 }
                 CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(w_pass), sizeof(w_pass));

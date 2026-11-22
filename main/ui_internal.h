@@ -225,9 +225,6 @@ extern const lv_font_t font_icons_48;         /* LV_SYMBOL_OK/CLOSE/WARNING   */
 
 #define CAL_VERIFY_MS   20000U  /* un-confirmed calibration reverts after this */
 
-/* Wi-Fi picker */
-#define WIFI_MAX_APS 16
-
 /* Admin code (admin panel lock; it opens the payout addresses). Six digits for
  * a new code: under the escalating penalty (capped at an hour) that is a few
  * dozen guesses a night against 10^6. The merchant may choose up to
@@ -248,7 +245,7 @@ extern const lv_font_t font_icons_48;         /* LV_SYMBOL_OK/CLOSE/WARNING   */
 enum BtnAction {
     ACT_CONFIRM, ACT_CANCEL, ACT_SEND, ACT_NEW, ACT_TX_RECHECK,
     ACT_CLOSE, ACT_PIN_CANCEL, ACT_PIN_REVEAL,
-    ACT_WIFI, ACT_WIFI_CANCEL, ACT_WIFI_PASS_REVEAL,
+    ACT_WIFI_CANCEL,
     ACT_ADMIN_CANCEL, ACT_ADMIN_REVEAL, ACT_WELCOME_OK,
     /* Config portal: accept/reject a proposed value, finish the wizard. */
     ACT_PROV_OK, ACT_PROV_NO, ACT_PROV_FINISH,
@@ -442,13 +439,9 @@ extern bool      s_charge_busy;
 extern lv_obj_t *s_pin_ta;
 extern char      s_pin[16];
 extern uint8_t   s_pin_len;
-extern net_wifi_ap_t s_aps[WIFI_MAX_APS];
-extern uint16_t      s_ap_count;
 extern char          s_wifi_ssid[33];
 extern char          s_wifi_pass[65];
 extern char          s_wifi_note[64];
-extern lv_obj_t     *s_wifi_pass_ta;
-extern lv_obj_t     *s_wifi_eye_lbl;
 extern lv_obj_t     *s_pin_eye_lbl;
 extern lv_obj_t     *s_admin_eye_lbl;
 extern char          s_wifi_caption[24];
@@ -558,7 +551,6 @@ uint32_t admin_penalty_ms(uint8_t fails);
 void build_admin_set(void);
 void build_admin_unlock(void);
 void build_wifi_list(void);
-void build_wifi_pass(void);
 void build_wifi_connecting(void);
 void pop_in(lv_obj_t *obj);
 void build_tx_status(void);

@@ -134,3 +134,5 @@ CONFIG_LV_FONT_DEFAULT_UNSCII_8=y
 
 # QR code on the phone-setup screen (provision.cpp).
 CONFIG_LV_USE_QRCODE=y
+# No on-panel keyboard: every passphrase is typed on the phone (setup portal).
+CONFIG_LV_USE_KEYBOARD=n
