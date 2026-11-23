@@ -106,7 +106,9 @@ bcast_t sign_and_broadcast_sol(CryptnoxWallet &wallet, Pn532NfcTransport &transp
     uint64_t have = 0U;
     if (!sol_rpc_get_balance(from_b58, &have)) {
         ESP_LOGW(TAG, "pre-flight: SOL balance read failed - letting it run");
-    } else if (have < (lamports + SOL_BASE_FEE_LAMPORTS)) {
+    } else if (have < (lamports + SOL_BASE_FEE_LAMPORTS + SOL_RENT_EXEMPT_LAMPORTS)) {
+        /* The card must keep its rent-exempt floor after paying, or the node
+         * refuses with a rent error the operator cannot act on. */
         wallet.disconnect(session);
         (void)snprintf(err_out, err_max, "Not enough SOL for amount + fee");
         return BCAST_FAILED;
@@ -126,7 +128,10 @@ bcast_t sign_and_broadcast_sol(CryptnoxWallet &wallet, Pn532NfcTransport &transp
     if (sol_transfer_message(from, s_sol_dest.addr, blockhash, lamports,
                              msg, sizeof(msg)) != SOL_TRANSFER_MSG_LEN) {
         wallet.disconnect(session);
-        (void)snprintf(err_out, err_max, "Card pays itself - use another card");
+        (void)snprintf(err_out, err_max, "%s",
+                       (memcmp(from, s_sol_dest.addr, SOL_KEY_LEN) == 0)
+                           ? "Card pays itself - use another card"
+                           : "No usable Solana payout address");
         return BCAST_FAILED;
     }
 
