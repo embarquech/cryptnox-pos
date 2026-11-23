@@ -229,7 +229,7 @@ extern "C" void app_main(void)
                     settle_inflight();
                 } else if (!s_user_cancelled) {
                     settings_inflight_clear();   /* refused: nothing went out */
-                    ui_show_tx_status(UI_TX_STATE_FAILED, err_msg);
+                    ui_show_tx_status(UI_TX_STATE_REFUSED, err_msg);
                 } else {
                     /* Cancelled — before the broadcast, so nothing went out
                      * either; drop any record so a reboot does not resume it. */
