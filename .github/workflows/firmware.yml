@@ -1,0 +1,73 @@
+name: Firmware build
+
+# Builds the firmware in every configuration that ships: plain, the secure
+# (flash encryption + Secure Boot) overlay, and the release overlay on top.
+# Each from a fresh sdkconfig in its own folder — idf.py reads
+# SDKCONFIG_DEFAULTS only when no sdkconfig exists, so an overlay that does not
+# apply would otherwise go unnoticed. The release job then proves its settings
+# landed, as scripts/idf-release.bat does locally.
+#
+# The Secure Boot signing key is generated per run and thrown away: this checks
+# that the image builds and signs, not that it is signed with the product key.
+
+permissions:
+  contents: read
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    container: espressif/idf:v5.5.4
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: plain
+            defaults: sdkconfig.defaults
+          - name: secure (development)
+            defaults: sdkconfig.defaults;sdkconfig.defaults.flash_encryption
+          - name: release
+            defaults: sdkconfig.defaults;sdkconfig.defaults.flash_encryption;sdkconfig.defaults.release
+    steps:
+      - name: Checkout repository (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # Same reason as the other workflows: config.h is per deployment and
+      # gitignored; the template builds.
+      - name: Provide a config.h
+        run: cp config.template.h main/config.h
+
+      - name: Throwaway Secure Boot signing key
+        if: contains(matrix.defaults, 'flash_encryption')
+        shell: bash
+        run: |
+          . "$IDF_PATH/export.sh"
+          mkdir -p secure_keys
+          espsecure.py generate_signing_key --version 2 secure_keys/secure_boot_signing_key.pem
+
+      - name: Build
+        shell: bash
+        run: |
+          git config --global --add safe.directory '*'
+          . "$IDF_PATH/export.sh"
+          idf.py -B build-ci -D SDKCONFIG=build-ci/sdkconfig \
+                 -D "SDKCONFIG_DEFAULTS=${{ matrix.defaults }}" build
+
+      - name: Check the release settings landed
+        if: matrix.name == 'release'
+        shell: bash
+        run: |
+          for k in CONFIG_SECURE_FLASH_ENC_ENABLED=y \
+                   CONFIG_SECURE_FLASH_ENCRYPTION_MODE_RELEASE=y \
+                   CONFIG_SECURE_BOOT_V2_ENABLED=y \
+                   CONFIG_NVS_ENCRYPTION=y \
+                   CONFIG_LOG_DEFAULT_LEVEL_NONE=y; do
+            grep -qx "$k" build-ci/sdkconfig || { echo "release setting missing: $k"; exit 1; }
+          done
+          echo "all release settings present"

@@ -296,7 +296,7 @@
  * USDC on Tron in February 2024 and closed redemptions a year later. Unset means
  * that one selection is refused on mainnet, exactly as an unconfigured asset is
  * anywhere else; USDC on Nile still works. */
-#define TRON_ADDR_USDC_MAIN  "<USDC_TRC20_CONTRACT_BASE58>"
+#define TRON_ADDR_USDC_MAIN  ""   /* deliberately unset - see above */
 
 /* =========================
  * Transaction Parameters

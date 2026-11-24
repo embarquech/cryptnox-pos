@@ -3,6 +3,7 @@ main/config.h
 
 # IDF build artifacts
 build/
+build-release/
 dist/
 sdkconfig
 sdkconfig.old

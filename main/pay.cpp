@@ -11,6 +11,7 @@
  */
 
 #include "pos_app.h"
+#include "settle_rules.h"
 
 /* BIP32 Ethereum derivation path: m/44'/60'/0'/0/0 */
 const uint8_t ETH_DERIVE_PATH[20] = {
@@ -307,18 +308,9 @@ void settle_inflight(void)
             rc = fl->tron ? tron_receipt_as_eth(tron_rpc_get_receipt(fl->hash))
                           : eth_rpc_get_tx_receipt(&want);
         }
-        if ((rc == ETH_RPC_RECEIPT_SUCCESS) || (rc == ETH_RPC_RECEIPT_REVERTED) ||
-            (rc == ETH_RPC_RECEIPT_MISMATCH)) {
-            break;
-        }
-        /* Only "never seen" can expire. An RPC error says nothing; a Solana
-         * transaction seen at "processed" may still confirm. */
-        const bool unseen = fl->sol ? (ss == SOL_STATUS_UNSEEN)
-                                    : (rc == ETH_RPC_RECEIPT_PENDING);
-        if (past && unseen) {
-            expired = true;
-            break;
-        }
+        const settle_step_t step = settle_step(rc, fl->sol, ss, past);
+        if (step == SETTLE_EXPIRED) { expired = true; }
+        if (step != SETTLE_POLL) { break; }
         if (esp_timer_get_time() >= deadline) { break; }
         vTaskDelay(pdMS_TO_TICKS(4000));
     }

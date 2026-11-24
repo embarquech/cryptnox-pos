@@ -141,20 +141,43 @@ design choice and it is what makes the config page's weaker transport tolerable.
   transaction is built and hashed on the device, the recovery bit is computed
   locally (`eth_sig.cpp`), and a receipt only counts when it is for that hash, to
   the expected contract, with a `Transfer` log to the payee for exactly the
-  amount (`eth_json_receipt_check`).
+  amount (`eth_json_receipt_check`). Solana: the transfer message is built on
+  the device (`sol_tx.cpp`) — the node supplies only the recent blockhash, and a
+  wrong one only makes the transaction fail; the all-zero recipient is refused;
+  the card's Ed25519 signature is verified under its own key before broadcast
+  (`pay_sol.cpp`, libsodium); status is asked by signature, which only our
+  transaction carries.
+- **A sale ends "Nothing charged" only when the chain proves it.** The node's
+  deadline (Solana block height, Tron head block time) is read before the status,
+  and only a transaction never seen past that deadline expires; an RPC error, a
+  Solana status from a node behind the height's slot, or a transaction seen at
+  "processed" keeps polling and at worst ends Unconfirmed with the hash
+  (`settle_rules.h`, host-tested in `test_settle_rules.cpp`). Solana status
+  searches full history, so a late Check again or a resumed sale still finds a
+  payment that landed. A sale is not broadcast unless its in-flight record was
+  saved first, so a reset during the poll cannot lose it.
 - **TLS with the ESP-IDF certificate bundle** for all RPC traffic
   (`https_post.cpp`). This is **not pinning**: any CA in the ~150-entry bundle is
   accepted. A deployment can pin an endpoint by defining `RPC_CA_CERT_PEM`,
-  `POLY_CA_CERT_PEM` or `TRON_CA_CERT_PEM` in `config.h`; none are defined by
-  default, and boot logs every endpoint that is left unpinned.
+  `POLY_CA_CERT_PEM`, `TRON_CA_CERT_PEM` or `SOL_CA_CERT_PEM` in `config.h`;
+  none are defined by default, and boot logs every endpoint that is left
+  unpinned. Every production endpoint must be named in `config.h` — the build
+  stops otherwise — so a unit cannot ship pointing its Production switch at a
+  testnet or at the public Solana pool by omission.
 
 ### Build and process
 
 - **CodeQL** (`.github/workflows/codeql.yml`) and **cppcheck + clang-tidy**
-  (`misra_check.yml`) are configured to run on every push — but both jobs are
-  currently failing and have been for at least a month, so neither is actually
-  protecting anything. See **F6**, which is why this bullet cannot be counted as
-  a mitigation today.
+  (`misra_check.yml`) run on every push and pass (checked November 2026; F6
+  records the month they did not). clang-tidy gates on three parsers; the Tron
+  and Solana builders, keccak and the clock maths run as an advisory step until
+  clean.
+- **Every shipping configuration is built in CI** (`firmware.yml`): plain,
+  secure (development) and release, each from a fresh `sdkconfig`, and the
+  release job fails unless its settings landed. Locally, `scripts/idf-release.bat`
+  does the same — the answer to **F1**'s "make it impossible by accident".
+- **Lock-down is read back, not assumed**: `tools/secure_provision.py --verify
+  [--release]` checks the eFuses after the first boot.
 - **Host tests** for the security-relevant pure logic — address checks,
   hardening sentinels, Tron transaction decoding, receipt checks, version
   comparison, RPC error mapping — runnable without hardware
@@ -188,6 +211,10 @@ release build script that always passes the three overlays in order, and a
 runtime refusal (or at minimum a permanent on-screen banner) when a build
 reports `DEVELOPMENT` mode. A terminal should be able to tell the operator it is
 not a secure unit.
+
+**Status:** the build half is done — `scripts/idf-release.bat`, the release job
+in `firmware.yml`, and `secure_provision.py --verify --release` for the board
+itself. The on-screen banner for a DEVELOPMENT-mode unit is still open.
 
 ### F2 — ROM UART download mode is left enabled
 **Severity: medium, and deliberate.**
