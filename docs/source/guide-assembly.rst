@@ -11,20 +11,56 @@ snap-fit shell. Seven steps, one soldering job, no fasteners.
 What you need
 -------------
 
+The middle column is what to type into AliExpress, Amazon or your usual distributor;
+the right column is what to check in the listing before you pay.
+
 .. list-table::
    :header-rows: 1
-   :widths: 28 72
+   :widths: 22 34 44
 
    * - Part
-     - Notes
-   * - ESP32-2432S028
-     - The 2.8-inch “CYD” board. The marking is printed on the back, next to the ESP32 module.
-   * - PN532 NFC Module V3
-     - The square red board. Any V3 clone works; it must have the mode DIP switches.
+     - Search for
+     - Check before buying
+   * - ESP32 display board
+     - ``ESP32-2432S028``
+     - The 2.8-inch “CYD”. The marking is printed on the back, next to the ESP32
+       module. Two things must match: **USB-C**, not micro-USB — the shell is cut for
+       USB-C and a micro-USB board will not fit — and **resistive touch**
+       (the listing says XPT2046; capacitive variants exist and the firmware does not
+       drive them).
    * - 4-wire harness
-     - 1.25 mm JST plug at one end, bare wires at the other. Black, red, yellow and blue, to match the table below.
+     - *comes with the CYD*
+     - **Normally in the CYD box**, so you rarely have to buy one. It is a 1.25 mm JST
+       plug at one end and bare wires at the other, about 10–20 cm, in black, red,
+       yellow and blue — the colours in the table below. Only if yours arrives
+       without it: search ``JST 1.25mm 4 pin single end cable``.
+   * - USB-C cable
+     - *comes with the CYD*
+     - **In the box as well.** If you use one of your own instead, make sure it is a
+       **data** cable and not charge-only: the same cable powers the terminal and
+       flashes it.
+   * - PN532 NFC module
+     - ``PN532 NFC module V3``
+     - The square red board. Any V3 clone works, but it **must have the two mode DIP
+       switches** — the versions without them are fixed to SPI and cannot do I²C.
    * - Printed shells
-     - case_front.stl and case_back.stl, or case_plate.3mf to print both at once. PLA or PETG. They snap together, so print them dimensionally accurate — an over-extruded lip will not clip.
+     - *nothing to buy — print them*
+     - **The two halves are ready-to-print files in this project's repository**:
+       `hardware/case/
+       <https://github.com/cryptnox/cryptnox-pos/tree/main/hardware/case>`__ —
+       ``case_front.stl`` and ``case_back.stl``, or
+       ``case_plate.3mf`` for both on one plate. Print in PLA or PETG. They snap
+       together, so they have to come out dimensionally accurate — an over-extruded
+       lip will not clip. **No 3D printer?** The files go to an online printing
+       service or a local maker space as they are. See :doc:`hardware` for what each
+       file contains.
+
+You also need a **Cryptnox Hardware Wallet card** to pay with, running applet v1.6.0
+or later. Buy it directly from the
+`Cryptnox store <https://shop.cryptnox.com/>`__.
+
+Tools: a soldering iron and solder for the four wires, and a thin blade if you ever
+want to open the shell again.
 
 
 Assembly
@@ -164,6 +200,10 @@ Snap it shut
 * Line the halves up square, then press around the perimeter until the clips engage all the way round. You should hear them go.
 * To open it again, start at the seam on one of the long sides and work a thin blade round — never lever from a corner.
 * The contactless symbol on the lid marks where a card is read.
+* The back label — model, input rating and a QR code to the site — is in the repository
+  beside the shells: `label_POS-D_dymo11355.pdf
+  <https://github.com/cryptnox/cryptnox-pos/blob/main/hardware/case/label_POS-D_dymo11355.pdf>`__.
+  It is sized for Dymo 11355 stock (19 × 51 mm); print it at 100%.
 
 
 Done

@@ -62,7 +62,7 @@ testnet-only selection — Circle wound it down in 2024&ndash;25.
 
 ### Cryptnox Hardware Wallet smart cards
 
-Works with Cryptnox Hardware Wallet smart cards running firmware v1.6.0 or later.
+Works with Cryptnox Hardware Wallet smart cards running applet v1.6.0 or later.
 
 | Smart card | Wallet version |
 |------|---------------|

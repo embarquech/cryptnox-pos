@@ -4,8 +4,6 @@
 Cryptnox POS: Open-Source Crypto Payment Terminal (ESP32 Dev Kit)
 =================================================================
 
-*Covers* ``cryptnox-pos`` *v1.0.0.*
-
 ``cryptnox-pos`` is open-source firmware that turns a low-cost ESP32 touchscreen board, the
 ESP32-2432S028 "Cheap Yellow Display" (CYD), plus a PN532 NFC module into a tap-to-pay crypto
 payment terminal. The customer taps a **Cryptnox Hardware Wallet** card, the card signs the

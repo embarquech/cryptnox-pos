@@ -21,7 +21,7 @@ What you need
      - The common red breakout board, used over **I²C**. Its two mode switches must be set to
        I²C.
    * - Cryptnox Hardware Wallet card
-     - Firmware **v1.6.0 or later** (the `Dual Card Set
+     - Applet **v1.6.0 or later** (the `Dual Card Set
        <https://shop.cryptnox.com/product/hardware-wallet-smartcard-dual/>`__ ships v1.6.1).
        The card must be initialised with a seed; see :ref:`preparing-the-card`.
    * - Four jumper wires and a USB cable
@@ -92,6 +92,9 @@ The enclosure is a two-part printed shell, published under
    * - ``case_plate.3mf``
      - Both parts on one plate for Bambu Studio — `print this
        <https://github.com/cryptnox/cryptnox-pos/blob/main/hardware/case/case_plate.3mf>`__.
+   * - ``label_POS-D_dymo11355.pdf``
+     - The back label: model, input rating, a QR code to the site. Sized for a Dymo 11355
+       (19 × 51 mm), so print it at 100% — any scaling and it no longer fits the stock.
 
 It is a **snap-fit** shell: no screws and no inserts. About an hour and a half of printing in
 PLA or PETG, dimensionally accurate — an over-extruded lip will not clip.

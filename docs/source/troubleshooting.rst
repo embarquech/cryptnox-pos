@@ -45,7 +45,7 @@ Frequently asked questions
    <https://cryptnox.com/card-wallet-as-a-service-cwaas/>`__.
 
 **Which card pays?**
-   Any Cryptnox Hardware Wallet card with firmware v1.6.0 or later that holds a seed. The
+   Any Cryptnox Hardware Wallet card with applet v1.6.0 or later that holds a seed. The
    cardholder's own self-custody card, not a card issued by the merchant.
 
 **Does the terminal hold any keys?**
