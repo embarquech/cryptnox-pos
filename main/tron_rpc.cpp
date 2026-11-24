@@ -554,3 +554,21 @@ tron_receipt_t tron_rpc_get_receipt(const char *txid_hex)
     cJSON_Delete(root);
     return verdict;
 }
+
+bool tron_rpc_head_time_ms(uint64_t *ms)
+{
+    if (ms == NULL) { return false; }
+    /* getblock without detail: the header only. getnowblock carries the whole
+     * block's transactions and would not fit the buffer. A node too old for
+     * getblock answers with an error, and the caller then never expires. */
+    char resp[RESP_BUF_SIZE];
+    if (!tron_post("/wallet/getblock", "{\"detail\":false}", resp, sizeof(resp))) {
+        return false;
+    }
+    cJSON *root = cJSON_Parse(resp);
+    const cJSON *raw = cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetObjectItemCaseSensitive(root, "block_header"), "raw_data");
+    *ms = json_u64(cJSON_GetObjectItemCaseSensitive(raw, "timestamp"));
+    cJSON_Delete(root);
+    return *ms != 0U;
+}

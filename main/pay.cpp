@@ -56,6 +56,7 @@ token_t *active_token(pos_chain_t chain) {
  * charged against the wrong asset.
  */
 static bool token_parse(token_t *t, bool tron, CW_CryptoProvider &crypto) {
+    pos_addr_clear(&t->addr);
     if (!tron) {
         t->ok = eth_addr_parse(t->str, t->addr.addr) &&
                 eth_addr_parse(t->str, t->addr.addr_echo);
@@ -233,13 +234,15 @@ inflight_t s_inflight;
  * So a brownout or panic during the receipt poll does not lose whether the
  * customer paid. Written as "broadcast not known": a record that survives a
  * reset is by definition one whose answer nobody saw. One write per sale.
+ * false: not written — the caller must not broadcast, or a reset during the
+ * poll loses a sale that may have moved money.
  */
-void inflight_persist(const inflight_t *fl)
+bool inflight_persist(const inflight_t *fl)
 {
     inflight_t rec = *fl;
     rec.active          = true;
     rec.broadcast_known = false;
-    (void)settings_inflight_save(&rec, sizeof(rec));
+    return settings_inflight_save(&rec, sizeof(rec));
 }
 
 /** @brief Unix time in ms, 0 while the clock is unset. */
@@ -285,28 +288,34 @@ void settle_inflight(void)
                  static_cast<int>((deadline - esp_timer_get_time() + 999999LL)
                                   / 1000000LL));
         ui_set_tx_info(left);
-        rc = fl->sol  ? sol_status_as_eth(sol_rpc_get_status(fl->hash))
-           : fl->tron ? tron_receipt_as_eth(tron_rpc_get_receipt(fl->hash))
-                      : eth_rpc_get_tx_receipt(&want);
+        /* Expiry is read BEFORE the status: "past the deadline" then "still not
+         * found" proves it never landed; the other order lets it land in between
+         * and be called expired. Read from the node, not the terminal's clock. */
+        uint64_t height = 0U, slot = 0U, head_ms = 0U;
+        const bool past =
+            fl->sol  ? (sol_rpc_block_height(&height, &slot) &&
+                        (height > fl->sol_valid_height))
+          : fl->tron ? (tron_rpc_head_time_ms(&head_ms) &&
+                        (head_ms > (fl->expiration_ms + 3000U)))   /* + one block */
+                     : false;   /* EVM has no expiry: it ends Unconfirmed */
+        sol_status_t ss = SOL_STATUS_RPC_ERROR;
+        if (fl->sol) {
+            /* Held to the slot the height came from (0 if that read failed). */
+            ss = sol_rpc_get_status(fl->hash, slot);
+            rc = sol_status_as_eth(ss);
+        } else {
+            rc = fl->tron ? tron_receipt_as_eth(tron_rpc_get_receipt(fl->hash))
+                          : eth_rpc_get_tx_receipt(&want);
+        }
         if ((rc == ETH_RPC_RECEIPT_SUCCESS) || (rc == ETH_RPC_RECEIPT_REVERTED) ||
             (rc == ETH_RPC_RECEIPT_MISMATCH)) {
             break;
         }
-        /* Tron: the chain refuses a transaction past raw_data.expiration, so a
-         * node that still has never heard of it 10 s after that (one more
-         * block) means it will never land. Only on "not found" — an RPC error
-         * says nothing either way. */
-        const uint64_t now = wall_ms();
-        if (fl->tron && (rc == ETH_RPC_RECEIPT_PENDING) && (now != 0U) &&
-            (now > (fl->expiration_ms + 10000U))) {
-            expired = true;
-            break;
-        }
-        /* Solana: same rule by block height — past lastValidBlockHeight the
-         * blockhash it carries is refused, so unseen by then is never. */
-        uint64_t height = 0U;
-        if (fl->sol && (rc == ETH_RPC_RECEIPT_PENDING) &&
-            sol_rpc_block_height(&height) && (height > fl->sol_valid_height)) {
+        /* Only "never seen" can expire. An RPC error says nothing; a Solana
+         * transaction seen at "processed" may still confirm. */
+        const bool unseen = fl->sol ? (ss == SOL_STATUS_UNSEEN)
+                                    : (rc == ETH_RPC_RECEIPT_PENDING);
+        if (past && unseen) {
             expired = true;
             break;
         }
@@ -327,10 +336,12 @@ void settle_inflight(void)
             ui_show_tx_status(UI_TX_STATE_DONE, fl->hash);
         } else {
             /* Mined OK but the integrity gate failed — never show PAID on a
-             * corrupted decision. */
+             * corrupted decision, and never "Declined" either: the money did
+             * move, and a declined sale is one the merchant charges again.
+             * Unconfirmed, with the hash to check it by. */
             pos_handle_anomaly("final decision gate");
             ESP_LOGE(TAG, "Integrity gate failed post-receipt: %s", fl->hash);
-            ui_show_tx_status(UI_TX_STATE_FAILED, "Integrity check failed");
+            ui_show_tx_status(UI_TX_STATE_UNCONFIRMED, fl->hash);
         }
     } else if (rc == ETH_RPC_RECEIPT_REVERTED) {
         /* A transfer the node accepted and the chain then rejected is, for a

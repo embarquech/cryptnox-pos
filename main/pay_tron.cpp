@@ -276,7 +276,10 @@ bcast_t sign_and_broadcast_tron(CryptnoxWallet &wallet,
     (void)snprintf(fl->hash, sizeof(fl->hash), "%s", tx.txid_hex);
     fl->tron          = true;
     fl->expiration_ms = tx.expiration_ms;
-    inflight_persist(fl);
+    if (!inflight_persist(fl)) {
+        (void)snprintf(err_out, err_max, "Storage error - not sent");
+        return BCAST_FAILED;
+    }
 
     bool sent = false;
     for (uint8_t v = 0U; (v < 2U) && !sent; v++) {

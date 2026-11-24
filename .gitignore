@@ -47,3 +47,6 @@ secure_keys/
 docs/html/
 docs/_build/
 docs/source/_static/cryptnox-logo-dark.png
+
+# Review write-ups live beside the code, never in it
+review-*.md

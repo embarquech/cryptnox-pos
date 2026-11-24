@@ -358,8 +358,11 @@ static bool read_body(httpd_req_t *req, char *out, size_t n)
     if (req->content_len >= n) { return false; }
     size_t got = 0U;
     while (got < req->content_len) {
+        /* A timeout ends it: these bodies are under a kilobyte, so a recv
+         * timeout of silence mid-body is a dead client, and retrying it for
+         * ever held this handler — and httpd_stop behind it — past the
+         * watchdog. ota_post, whose bodies are megabytes, allows stalls. */
         const int r = httpd_req_recv(req, out + got, req->content_len - got);
-        if (r == HTTPD_SOCK_ERR_TIMEOUT) { continue; }
         if (r <= 0) { return false; }
         got += static_cast<size_t>(r);
     }
@@ -1381,8 +1384,10 @@ bool prov_start(prov_mode_t mode, ui_event_cb_t cb)
         s_dns_run  = false;
         s_dns_task = NULL;
     }
-    ESP_LOGW(TAG, "%s portal up: SSID '%s', pass '%s', %s",
-             wizard ? "setup" : "admin", s_ssid, s_pass, PORTAL_URL);
+    /* No password: it is on the panel for whoever holds the terminal, and a
+     * serial log is read by whoever holds the cable. */
+    ESP_LOGW(TAG, "%s portal up: SSID '%s', %s",
+             wizard ? "setup" : "admin", s_ssid, PORTAL_URL);
     /* The tight moment for heap on this board: httpd, its sockets and the DNS task
      * are now up alongside LVGL and the Wi-Fi driver, and a firmware upload is
      * about to ask for buffers on top. The largest free block, not just the total —

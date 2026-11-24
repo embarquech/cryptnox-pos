@@ -70,6 +70,19 @@ typedef struct {
     uint8_t addr_echo[POS_ADDR_LEN];  /**< parsed independently, compared */
 } pos_addr_t;
 
+/**
+ * @brief Zero both copies before a 20-byte (EVM/Tron) fill.
+ *
+ * address_consistent compares all 32 bytes. Today every pos_addr_t is a BSS
+ * global, so bytes 20-31 start zero — but a local, or a store re-parsed after
+ * holding a Solana key, would carry garbage there and fail a sale on an
+ * address that is fine. Every 20-byte writer calls this first.
+ */
+static inline void pos_addr_clear(pos_addr_t *a)
+{
+    memset(a, 0, sizeof(*a));
+}
+
 /** @brief Write both amount stores from one value (two independent writes). */
 static inline void pos_amount_set(pos_amount_t *a, uint64_t v)
 {

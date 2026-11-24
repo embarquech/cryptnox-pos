@@ -264,6 +264,7 @@ void boot_fault(ui_boot_err_t kind, const char *detail)
 
 static bool resolve_evm_payout(bool *rejected)
 {
+    pos_addr_clear(&s_dest);
     if (settings_get_payout(false, s_payout_eth, sizeof(s_payout_eth)) &&
         !eth_addr_parse(s_payout_eth, s_dest.addr)) {
         ESP_LOGE(TAG, "stored Ethereum payout address rejected");
@@ -671,6 +672,7 @@ pos_hw_t pos_boot(void)
         ESP_LOGE(TAG, "Bad TRON_ADDR_TO in config");
         boot_fault(UI_BOOT_ERR_CONFIG, "Bad TRON_ADDR_TO in config");
     }
+    pos_addr_clear(&s_tron_dest);
     (void)CW_Utils::safe_memcpy(s_tron_dest.addr, sizeof(s_tron_dest.addr),
                                 &tron_to21[1], ETH_ADDR_LEN);
     (void)CW_Utils::safe_memcpy(s_tron_dest.addr_echo,

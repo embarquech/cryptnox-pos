@@ -56,25 +56,23 @@
 #ifndef TRON_TRC20_FEE_LIMIT_SUN
 #define TRON_TRC20_FEE_LIMIT_SUN  100000000ULL
 #endif
-/* The production networks. A config.h written before they were selectable falls
- * back to its testnet values everywhere, so such a build keeps working exactly as
- * it did — the switch on the config page then moves nothing, which is the right
- * answer for a file that names no mainnet to move to. The empty contracts are the
- * usual "this asset was never set up": refused, with the rest still working. */
-#ifndef RPC_URL_MAIN
-#define RPC_URL_MAIN  RPC_URL
+/* The production networks. No fallback: the terminal boots into mainnet by
+ * default (and after every update), so a config.h that names no mainnet endpoint
+ * used to ship one silently — testnet URLs on the "Production" switch, or the
+ * public Solana pool. The build stops instead; copy the keys from
+ * config.template.h. The empty contracts below are the usual "this asset was
+ * never set up": refused at boot, with the rest still working. */
+#if !defined(RPC_URL_MAIN) || !defined(CHAIN_ID_MAINNET)
+#error "config.h: define RPC_URL_MAIN and CHAIN_ID_MAINNET (see config.template.h)"
 #endif
-#ifndef POLY_RPC_URL_MAIN
-#define POLY_RPC_URL_MAIN  POLY_RPC_URL
+#if !defined(POLY_RPC_URL_MAIN) || !defined(CHAIN_ID_POLYGON)
+#error "config.h: define POLY_RPC_URL_MAIN and CHAIN_ID_POLYGON (see config.template.h)"
 #endif
 #ifndef TRON_URL_MAIN
-#define TRON_URL_MAIN  TRON_URL
+#error "config.h: define TRON_URL_MAIN (see config.template.h)"
 #endif
-#ifndef CHAIN_ID_MAINNET
-#define CHAIN_ID_MAINNET  CHAIN_ID_SEPOLIA
-#endif
-#ifndef CHAIN_ID_POLYGON
-#define CHAIN_ID_POLYGON  CHAIN_ID_AMOY
+#ifndef SOL_URL_MAIN
+#error "config.h: define SOL_URL_MAIN - your own provider, not the public pool (see config.template.h)"
 #endif
 #ifndef ADDR_USDC_MAIN
 #define ADDR_USDC_MAIN  ""
@@ -95,14 +93,12 @@
 #define TRON_ADDR_USDC_MAIN  ""
 #endif
 
-/* Solana post-dates every config.h in the field, so a file without it gets the
- * public endpoints and no fallback recipient: Solana shows "No payout set" until
- * an address is proposed from the config page and accepted on the panel. */
+/* Solana post-dates every config.h in the field: the test network defaults to
+ * the public Devnet (SOL_URL_MAIN is required, above), and no fallback recipient,
+ * so Solana shows "No payout set" until an address is proposed from the config
+ * page and accepted on the panel. */
 #ifndef SOL_URL
 #define SOL_URL  "https://api.devnet.solana.com"
-#endif
-#ifndef SOL_URL_MAIN
-#define SOL_URL_MAIN  "https://api.mainnet-beta.solana.com"
 #endif
 #ifndef SOL_ADDR_TO
 #define SOL_ADDR_TO  ""

@@ -397,7 +397,10 @@ bcast_t sign_and_broadcast(CryptnoxWallet &wallet,
                                 ETH_ADDR_LEN);
     fl->amount  = amount_units;
     fl->polygon = polygon;
-    inflight_persist(fl);
+    if (!inflight_persist(fl)) {
+        (void)snprintf(err_out, err_max, "Storage error - not sent");
+        return BCAST_FAILED;
+    }
 
     /* Roomier than err_out so the node's sentence arrives whole and is clipped
      * once, at the point that knows the panel's width. */

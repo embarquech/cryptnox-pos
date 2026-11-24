@@ -195,6 +195,15 @@ bool tron_rpc_broadcast(const tron_tx_ctx_t *tx, const uint8_t sig[65]);
  */
 tron_receipt_t tron_rpc_get_receipt(const char *txid_hex);
 
+/**
+ * @brief The node's head block time, in Unix ms.
+ *
+ * What expiry is judged by: the terminal's clock says nothing about whether
+ * the node answering "not found" has seen the blocks up to the expiration.
+ * @return false on any failure, including a node without /wallet/getblock.
+ */
+bool tron_rpc_head_time_ms(uint64_t *ms);
+
 #ifdef __cplusplus
 }
 #endif

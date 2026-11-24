@@ -103,11 +103,15 @@ bool sol_rpc_latest_blockhash(uint8_t blockhash[32], uint64_t *last_valid_height
     return ok;
 }
 
-bool sol_rpc_block_height(uint64_t *height)
+bool sol_rpc_block_height(uint64_t *height, uint64_t *slot)
 {
-    cJSON *root = sol_call("getBlockHeight", "[{\"commitment\":\"confirmed\"}]");
+    /* getEpochInfo, not getBlockHeight: one answer carries both, so the slot is
+     * the one the height was read at — what sol_rpc_get_status holds its node to. */
+    cJSON *root = sol_call("getEpochInfo", "[{\"commitment\":\"confirmed\"}]");
     if (root == NULL) { return false; }
-    const bool ok = json_u64(cJSON_GetObjectItemCaseSensitive(root, "result"), height);
+    const cJSON *res = cJSON_GetObjectItemCaseSensitive(root, "result");
+    const bool ok = json_u64(cJSON_GetObjectItemCaseSensitive(res, "blockHeight"), height) &&
+                    json_u64(cJSON_GetObjectItemCaseSensitive(res, "absoluteSlot"), slot);
     cJSON_Delete(root);
     return ok;
 }
@@ -170,7 +174,12 @@ sol_send_t sol_rpc_send(const uint8_t *tx, size_t tx_len, const char *sig_b58,
                                ? m->valuestring : "";
         const bool preflight = cJSON_IsNumber(c) &&
                                (static_cast<int>(c->valuedouble) == -32002);
-        if (preflight) {
+        if (preflight && rpc_err_contains(msg, "already been processed")) {
+            /* Our own signature, already on chain — a resend after a lost
+             * answer. Sent, not refused: clearing the sale here loses it. */
+            ESP_LOGW(TAG, "send: already processed - treating as sent");
+            rc = SOL_SEND_OK;
+        } else if (preflight) {
             ESP_LOGW(TAG, "send refused: %s", msg);
             refusal_text(msg, err, err_n);
             rc = SOL_SEND_REFUSED;
@@ -185,19 +194,33 @@ sol_send_t sol_rpc_send(const uint8_t *tx, size_t tx_len, const char *sig_b58,
     return rc;
 }
 
-sol_status_t sol_rpc_get_status(const char *sig_b58)
+sol_status_t sol_rpc_get_status(const char *sig_b58, uint64_t min_slot)
 {
-    char params[160];
-    (void)snprintf(params, sizeof(params), "[[\"%s\"]]", sig_b58);
+    /* searchTransactionHistory: without it the node only looks in its recent
+     * status cache, and a confirmed payment reads as "not seen" a couple of
+     * minutes later — on Check again, or after a reboot. */
+    char params[200];
+    (void)snprintf(params, sizeof(params),
+                   "[[\"%s\"],{\"searchTransactionHistory\":true}]", sig_b58);
     cJSON *root = sol_call("getSignatureStatuses", params);
     if (root == NULL) { return SOL_STATUS_RPC_ERROR; }
 
     sol_status_t rc  = SOL_STATUS_RPC_ERROR;
-    const cJSON *val = cJSON_GetObjectItemCaseSensitive(
-        cJSON_GetObjectItemCaseSensitive(root, "result"), "value");
+    const cJSON *result = cJSON_GetObjectItemCaseSensitive(root, "result");
+    const cJSON *val = cJSON_GetObjectItemCaseSensitive(result, "value");
     const cJSON *st  = cJSON_IsArray(val) ? cJSON_GetArrayItem(val, 0) : NULL;
-    if (cJSON_IsNull(st)) {
-        rc = SOL_STATUS_PENDING;   /* not seen (yet) */
+    /* The endpoint is a pool: a node behind the one that read the height can
+     * answer "not seen" for a payment that landed in between. Its answer is
+     * then no answer. */
+    uint64_t at = 0U;
+    const bool fresh = json_u64(cJSON_GetObjectItemCaseSensitive(
+                           cJSON_GetObjectItemCaseSensitive(result, "context"), "slot"),
+                       &at) && (at >= min_slot);
+    if (!fresh) {
+        ESP_LOGW(TAG, "status from a node behind slot %llu - ignored",
+                 static_cast<unsigned long long>(min_slot));
+    } else if (cJSON_IsNull(st)) {
+        rc = SOL_STATUS_UNSEEN;
     } else if (cJSON_IsObject(st)) {
         const cJSON *cs = cJSON_GetObjectItemCaseSensitive(st, "confirmationStatus");
         const cJSON *er = cJSON_GetObjectItemCaseSensitive(st, "err");
