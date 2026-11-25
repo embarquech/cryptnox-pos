@@ -97,7 +97,8 @@ step "CA bundle"
 expiring=$(cat certificates/*.pem | awk 'BEGIN { cmd = "openssl x509 -noout -subject -checkend 15552000 | paste -sd \" \"" }
   /BEGIN CERT/ { b = "" } { b = b $0 "\n" } /END CERT/ { printf "%s", b | cmd; close(cmd) }' | grep 'will expire$')
 [ -z "$expiring" ] && ok "no root expires within 180 days" || bad "roots expiring within 180 days: $expiring"
-grep -qx 'CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_NONE=y' sdkconfig.defaults &&
+# tr: an autocrlf checkout ends every line in \r, which -x would never match.
+tr -d '\r' < sdkconfig.defaults | grep -qx 'CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_NONE=y' &&
   ok "IDF's default bundle is off" || bad "sdkconfig.defaults no longer selects DEFAULT_NONE"
 
 step "fuzz corpus replay"

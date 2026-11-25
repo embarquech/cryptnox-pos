@@ -297,7 +297,12 @@ void settle_inflight(void)
             fl->sol  ? (sol_rpc_block_height(&height, &slot) &&
                         (height > fl->sol_valid_height))
           : fl->tron ? (tron_rpc_head_time_ms(&head_ms) &&
-                        (head_ms > (fl->expiration_ms + 3000U)))   /* + one block */
+                        /* + ten blocks: the head time and the receipt can come
+                         * from different nodes behind the pool, and a lagging
+                         * receipt node must not turn a paid sale into "not
+                         * sent". Past the margin the 120 s deadline still
+                         * ends it Unconfirmed, never wrongly expired. */
+                        (head_ms > (fl->expiration_ms + 30000U)))
                      : false;   /* EVM has no expiry: it ends Unconfirmed */
         sol_status_t ss = SOL_STATUS_RPC_ERROR;
         if (fl->sol) {
@@ -319,18 +324,19 @@ void settle_inflight(void)
         /* §4: render PAID only if the monotonic gate holds — the on-chain
          * APPROVED verdict AND amount/recipient still self-consistent through
          * the decide→render window. */
-        fl->active = false;
-        settings_inflight_clear();
         bool32 decision = run_payment_decision(&fl->decided, active_dest(),
                                                POS_VERDICT_APPROVED);
         if (IS_TRUE32(decision)) {
+            fl->active = false;
+            settings_inflight_clear();
             ESP_LOGI(TAG, "Tx confirmed on-chain");
             ui_show_tx_status(UI_TX_STATE_DONE, fl->hash);
         } else {
             /* Mined OK but the integrity gate failed — never show PAID on a
              * corrupted decision, and never "Declined" either: the money did
              * move, and a declined sale is one the merchant charges again.
-             * Unconfirmed, with the hash to check it by. */
+             * Unconfirmed, with the hash to check it by — and the record kept,
+             * so Check again (or a reboot) re-polls instead of finding nothing. */
             pos_handle_anomaly("final decision gate");
             ESP_LOGE(TAG, "Integrity gate failed post-receipt: %s", fl->hash);
             ui_show_tx_status(UI_TX_STATE_UNCONFIRMED, fl->hash);

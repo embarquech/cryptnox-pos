@@ -1597,7 +1597,10 @@ bool prov_pending(prov_ask_t *kind, char *label, size_t label_n,
 bool prov_pending_commit(bool accept)
 {
     if (s_ask_lock == NULL) { return false; }
-    if (xSemaphoreTake(s_ask_lock, pdMS_TO_TICKS(100)) != pdTRUE) { return false; }
+    /* Wait it out: every other holder only copies a few bytes. Giving up would
+     * close the card and say "Not saved" while the value stays pending, with
+     * nothing left on screen to answer it. */
+    (void)xSemaphoreTake(s_ask_lock, portMAX_DELAY);
 
     bool stored = false;
     if ((s_ask != PROV_ASK_NONE) && accept) {

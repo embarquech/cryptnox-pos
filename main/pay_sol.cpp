@@ -108,11 +108,13 @@ bcast_t sign_and_broadcast_sol(CryptnoxWallet &wallet, Pn532NfcTransport &transp
     uint64_t have = 0U;
     if (!sol_rpc_get_balance(from_b58, &have)) {
         ESP_LOGW(TAG, "pre-flight: SOL balance read failed - letting it run");
-    } else if (have < (lamports + SOL_BASE_FEE_LAMPORTS + SOL_RENT_EXEMPT_LAMPORTS)) {
+    } else if ((have != (lamports + SOL_BASE_FEE_LAMPORTS)) &&
+               (have < (lamports + SOL_BASE_FEE_LAMPORTS + SOL_RENT_EXEMPT_LAMPORTS))) {
         /* The card must keep its rent-exempt floor after paying, or the node
-         * refuses with a rent error the operator cannot act on. */
+         * refuses with a rent error the operator cannot act on. Draining it to
+         * exactly 0 is allowed: an emptied account owes no rent. */
         wallet.disconnect(session);
-        (void)snprintf(err_out, err_max, "Not enough SOL for amount + fee");
+        (void)snprintf(err_out, err_max, "Not enough SOL (amount + fee + reserve)");
         return BCAST_FAILED;
     } else {
         /* funded */

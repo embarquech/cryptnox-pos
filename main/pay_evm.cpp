@@ -413,6 +413,13 @@ bcast_t sign_and_broadcast(CryptnoxWallet &wallet,
             ESP_LOGW(TAG, "node already has %s", fl->hash);
             return BCAST_SENT;
         }
+        if (strstr(node_err, "nonce too low") != NULL) {
+            /* The nonce is taken: possibly by these bytes through another node
+             * or an earlier try. Money may have moved, so the receipt decides,
+             * never a "Nothing charged" refusal. */
+            ESP_LOGW(TAG, "nonce too low - polling %s", fl->hash);
+            return BCAST_UNKNOWN;
+        }
         if (node_err[0] == '\0') {
             /* No refusal, just no answer: a timeout, a dropped TLS session, a
              * body that was not JSON. The node may well have taken it. */
