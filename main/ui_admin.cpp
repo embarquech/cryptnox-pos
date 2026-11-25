@@ -424,13 +424,18 @@ static lv_obj_t *s_modal = NULL;
 bool s_portal_modal = false;
 /* Whether that modal is the payout/contract proposal (build_prov_confirm). */
 bool s_prov_modal = false;
+/* Whether that modal is the "Not saved" card. A refused Accept also releases
+ * main's next parked address; held until this card is dismissed, or it would
+ * replace the card before it was read and look like the next step of a save. */
+bool s_not_saved_modal = false;
 void close_modal(void) {
     if (s_modal != NULL) {
         lv_obj_del(s_modal);
         s_modal = NULL;
     }
-    s_portal_modal = false;
-    s_prov_modal   = false;
+    s_portal_modal    = false;
+    s_prov_modal      = false;
+    s_not_saved_modal = false;
 }
 
 /* Accept tapped, nothing stored. Said, because a card that just closes reads as
@@ -446,6 +451,7 @@ void open_prov_not_saved(void) {
     make_button(card, "Close", COL_ACTION, COL_BG, OTA_TEXT_W, 40,
                 LV_ALIGN_BOTTOM_MID, 0, -2, ACT_MODAL_CLOSE,
                 &font_pjs_20_semibold);
+    s_not_saved_modal = true;   /* set last: open_modal() cleared it */
 }
 
 /* Dimmed overlay + centred card on the top layer, so it floats above the

@@ -348,7 +348,7 @@ void settle_inflight(void)
         fl->active = false;
         settings_inflight_clear();
         ESP_LOGW(TAG, "tx %s expired unseen - not sent", fl->hash);
-        ui_show_tx_status(UI_TX_STATE_FAILED, "Not sent - nothing was charged");
+        ui_show_tx_status(UI_TX_STATE_REFUSED, "Not sent - nothing was charged");
     } else {
         if (rc == ETH_RPC_RECEIPT_MISMATCH) {
             /* The node's receipt is not our transfer. Whether ours landed is
