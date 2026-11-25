@@ -102,9 +102,14 @@ PORTAL_FONTS_CSS
 "height:.95em;border-radius:2px;background:var(--acc)}"
 /* A second heading inside one card ("Or type them") is a divider, not a new card. */
 "section h2~h2{margin-top:1.6rem;padding-top:1.2rem;border-top:1px solid var(--line)}"
+/* Its padding pushes the text down, not the tick, which sat on the rule above. */
+"section h2~h2::before{top:calc(1.2rem + .28em)}"
 "p,label{display:block;color:var(--dim);font-size:.92rem;margin:.3rem 0 .9rem}"
 /* A label belongs to the field under it, so it keeps only the field's own 6px. */
 "label{margin-bottom:0;font-weight:500}"
+/* A field's label after the previous field's button opens a new group: space
+ * above it, none below, so the name reads with its own input and not the button. */
+"button+label{margin-top:1.2rem}"
 
 "input,select,button{font:inherit;width:100%;padding:12px 14px;margin:6px 0 0;"
 "border:1px solid var(--line);border-radius:11px;background:var(--soft);"
@@ -426,13 +431,13 @@ PORTAL_FONTS_CSS
 "asks for that card's PIN, then shows each address for acceptance.</p></div>"
 "<button class=alt id=go_card>Read from a Cryptnox card</button>"
 "<h2>Or type an address</h2>"
-"<p>Ethereum <i>(and Polygon &mdash; one address serves both)</i></p>"
+"<label for=in_eth>Ethereum <i>(and Polygon &mdash; one address serves both)</i></label>"
 "<input id=in_eth placeholder='0x...' autocapitalize=off autocomplete=off>"
 "<button id=go_eth>Propose Ethereum address</button>"
-"<p>Tron</p>"
+"<label for=in_trx>Tron</label>"
 "<input id=in_trx placeholder='T...' autocapitalize=off autocomplete=off>"
 "<button id=go_trx>Propose Tron address</button>"
-"<p>Solana</p>"
+"<label for=in_sol>Solana</label>"
 "<input id=in_sol placeholder='Base58...' autocapitalize=off autocomplete=off>"
 "<button id=go_sol>Propose Solana address</button></section>"
 
