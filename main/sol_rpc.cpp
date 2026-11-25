@@ -103,11 +103,15 @@ bool sol_rpc_latest_blockhash(uint8_t blockhash[32], uint64_t *last_valid_height
     return ok;
 }
 
-bool sol_rpc_block_height(uint64_t *height)
+bool sol_rpc_block_height(uint64_t *height, uint64_t *slot)
 {
-    cJSON *root = sol_call("getBlockHeight", "[{\"commitment\":\"confirmed\"}]");
+    /* getEpochInfo, not getBlockHeight: one answer carries both, so the slot is
+     * the one the height was read at — what sol_rpc_get_status holds its node to. */
+    cJSON *root = sol_call("getEpochInfo", "[{\"commitment\":\"confirmed\"}]");
     if (root == NULL) { return false; }
-    const bool ok = json_u64(cJSON_GetObjectItemCaseSensitive(root, "result"), height);
+    const cJSON *res = cJSON_GetObjectItemCaseSensitive(root, "result");
+    const bool ok = json_u64(cJSON_GetObjectItemCaseSensitive(res, "blockHeight"), height) &&
+                    json_u64(cJSON_GetObjectItemCaseSensitive(res, "absoluteSlot"), slot);
     cJSON_Delete(root);
     return ok;
 }
@@ -117,6 +121,12 @@ static void refusal_text(const char *msg, char *err, size_t err_n)
 {
     if (rpc_err_contains(msg, "no record of a prior credit")) {
         (void)snprintf(err, err_n, "No SOL on this card");
+    } else if (rpc_err_contains(msg, "insufficient funds for rent") ||
+               rpc_err_contains(msg, "lower balance than rent-exempt minimum")) {
+        /* Before "insufficient": rent is not a balance the operator can fix
+         * by topping up the card (the second wording is InvalidRentPayingAccount,
+         * still sent by some nodes). */
+        (void)snprintf(err, err_n, "Amount too small for this address");
     } else if (rpc_err_contains(msg, "insufficient")) {
         (void)snprintf(err, err_n, "Not enough SOL for amount + fee");
     } else if (rpc_err_contains(msg, "blockhash not found")) {
@@ -154,14 +164,29 @@ sol_send_t sol_rpc_send(const uint8_t *tx, size_t tx_len, const char *sig_b58,
             ESP_LOGE(TAG, "send: node answered %s for %s", res->valuestring, sig_b58);
         }
     } else if (cJSON_IsObject(e)) {
-        /* Preflight is on, so an error is a simulation the node refused to
-         * forward: nothing went out. */
+        /* Only -32002 is a failed preflight — a simulation the node refused to
+         * forward, so nothing went out. Anything else (-32005 node behind,
+         * -32603 internal, a provider's rate limit) proves nothing: the signed
+         * transaction may still land, so poll until its blockhash expires. */
         const cJSON *m = cJSON_GetObjectItemCaseSensitive(e, "message");
+        const cJSON *c = cJSON_GetObjectItemCaseSensitive(e, "code");
         const char  *msg = (cJSON_IsString(m) && (m->valuestring != NULL))
                                ? m->valuestring : "";
-        ESP_LOGW(TAG, "send refused: %s", msg);
-        refusal_text(msg, err, err_n);
-        rc = SOL_SEND_REFUSED;
+        const bool preflight = cJSON_IsNumber(c) &&
+                               (static_cast<int>(c->valuedouble) == -32002);
+        if (preflight && rpc_err_contains(msg, "already been processed")) {
+            /* Our own signature, already on chain — a resend after a lost
+             * answer. Sent, not refused: clearing the sale here loses it. */
+            ESP_LOGW(TAG, "send: already processed - treating as sent");
+            rc = SOL_SEND_OK;
+        } else if (preflight) {
+            ESP_LOGW(TAG, "send refused: %s", msg);
+            refusal_text(msg, err, err_n);
+            rc = SOL_SEND_REFUSED;
+        } else {
+            ESP_LOGW(TAG, "send error %d (%s) - not a refusal, polling",
+                     cJSON_IsNumber(c) ? static_cast<int>(c->valuedouble) : 0, msg);
+        }
     } else {
         /* neither: treated as no answer */
     }
@@ -169,19 +194,33 @@ sol_send_t sol_rpc_send(const uint8_t *tx, size_t tx_len, const char *sig_b58,
     return rc;
 }
 
-sol_status_t sol_rpc_get_status(const char *sig_b58)
+sol_status_t sol_rpc_get_status(const char *sig_b58, uint64_t min_slot)
 {
-    char params[160];
-    (void)snprintf(params, sizeof(params), "[[\"%s\"]]", sig_b58);
+    /* searchTransactionHistory: without it the node only looks in its recent
+     * status cache, and a confirmed payment reads as "not seen" a couple of
+     * minutes later — on Check again, or after a reboot. */
+    char params[200];
+    (void)snprintf(params, sizeof(params),
+                   "[[\"%s\"],{\"searchTransactionHistory\":true}]", sig_b58);
     cJSON *root = sol_call("getSignatureStatuses", params);
     if (root == NULL) { return SOL_STATUS_RPC_ERROR; }
 
     sol_status_t rc  = SOL_STATUS_RPC_ERROR;
-    const cJSON *val = cJSON_GetObjectItemCaseSensitive(
-        cJSON_GetObjectItemCaseSensitive(root, "result"), "value");
+    const cJSON *result = cJSON_GetObjectItemCaseSensitive(root, "result");
+    const cJSON *val = cJSON_GetObjectItemCaseSensitive(result, "value");
     const cJSON *st  = cJSON_IsArray(val) ? cJSON_GetArrayItem(val, 0) : NULL;
-    if (cJSON_IsNull(st)) {
-        rc = SOL_STATUS_PENDING;   /* not seen (yet) */
+    /* The endpoint is a pool: a node behind the one that read the height can
+     * answer "not seen" for a payment that landed in between. Its answer is
+     * then no answer. */
+    uint64_t at = 0U;
+    const bool fresh = json_u64(cJSON_GetObjectItemCaseSensitive(
+                           cJSON_GetObjectItemCaseSensitive(result, "context"), "slot"),
+                       &at) && (at >= min_slot);
+    if (!fresh) {
+        ESP_LOGW(TAG, "status from a node behind slot %llu - ignored",
+                 static_cast<unsigned long long>(min_slot));
+    } else if (cJSON_IsNull(st)) {
+        rc = SOL_STATUS_UNSEEN;
     } else if (cJSON_IsObject(st)) {
         const cJSON *cs = cJSON_GetObjectItemCaseSensitive(st, "confirmationStatus");
         const cJSON *er = cJSON_GetObjectItemCaseSensitive(st, "err");

@@ -22,7 +22,8 @@ step "host unit tests"
 TESTS="test_eth_addr test_hardening test_tron_tx test_sol_tx test_prov_form test_addr_check
        test_json_out test_ota_version test_card_status test_chain
        test_rpc_error test_networks test_assets test_touch_cal test_eth_hex
-       test_eth_rlp test_money test_settings_rules test_keypad_shuffle"
+       test_eth_rlp test_money test_settings_rules test_keypad_shuffle
+       test_settle_rules"
 out=$(mktemp -d)
 for t in $TESTS; do
   if g++ -std=c++14 -Wall $SAN -Imain -Icryptnox-sdk-esp32/cryptnox-sdk-cpp \
@@ -96,7 +97,8 @@ step "CA bundle"
 expiring=$(cat certificates/*.pem | awk 'BEGIN { cmd = "openssl x509 -noout -subject -checkend 15552000 | paste -sd \" \"" }
   /BEGIN CERT/ { b = "" } { b = b $0 "\n" } /END CERT/ { printf "%s", b | cmd; close(cmd) }' | grep 'will expire$')
 [ -z "$expiring" ] && ok "no root expires within 180 days" || bad "roots expiring within 180 days: $expiring"
-grep -qx 'CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_NONE=y' sdkconfig.defaults &&
+# tr: an autocrlf checkout ends every line in \r, which -x would never match.
+tr -d '\r' < sdkconfig.defaults | grep -qx 'CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_NONE=y' &&
   ok "IDF's default bundle is off" || bad "sdkconfig.defaults no longer selects DEFAULT_NONE"
 
 step "fuzz corpus replay"

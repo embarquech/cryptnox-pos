@@ -11,27 +11,60 @@
  */
 
 #include "pos_app.h"
+#include <stdarg.h>   /* SdkLogger::add */
 
-/* Quiet CW_Logger: swallows the SDK's verbose connection/retry chatter on the
- * UART. Our own logs go through ESP_LOGx. */
-class NullLogger : public CW_Logger {
+/* CW_Logger onto ESP_LOGW, one log line per println. Not a null sink: outside
+ * CW_DEBUG_LOGGING the SDK prints next to nothing, and one of the few lines it
+ * does print is the CW_VERIFY_CERT=0 warning it deliberately keeps out of the
+ * debug switch so that build can never run silently.
+ * ponytail: one static line buffer, fine while only the main task drives the SDK. */
+class SdkLogger : public CW_Logger {
 public:
     bool begin(unsigned long) override { return true; }
-    void print(const __FlashStringHelper*) override {}
-    void print(const char*) override {}
-    void print(char) override {}
-    void print(uint8_t, int) override {}
-    void print(uint16_t, int) override {}
-    void print(uint32_t, int) override {}
-    void print(int, int) override {}
-    void println() override {}
-    void println(const __FlashStringHelper*) override {}
-    void println(const char*) override {}
-    void println(char) override {}
-    void println(uint8_t, int) override {}
-    void println(uint16_t, int) override {}
-    void println(uint32_t, int) override {}
-    void println(int, int) override {}
+    void print(const __FlashStringHelper *s) override { add("%s", reinterpret_cast<const char *>(s)); }
+    void print(const char *s) override { add("%s", (s != NULL) ? s : ""); }
+    void print(char c) override { add("%c", c); }
+    void print(uint8_t v, int base) override { num(v, base); }
+    void print(uint16_t v, int base) override { num(v, base); }
+    void print(uint32_t v, int base) override { num(v, base); }
+    void print(int v, int base) override {
+        if (base == 16) { num(static_cast<uint32_t>(v), base); } else { add("%d", v); }
+    }
+    void println() override { flush(); }
+    void println(const __FlashStringHelper *s) override { print(s); flush(); }
+    void println(const char *s) override { print(s); flush(); }
+    void println(char c) override { print(c); flush(); }
+    void println(uint8_t v, int base) override { print(v, base); flush(); }
+    void println(uint16_t v, int base) override { print(v, base); flush(); }
+    void println(uint32_t v, int base) override { print(v, base); flush(); }
+    void println(int v, int base) override { print(v, base); flush(); }
+
+private:
+    char   m_line[160] = "";
+    size_t m_len       = 0U;
+
+    void num(uint32_t v, int base) {
+        /* Not a ternary: cppcheck cannot expand PRIX32/PRIu32 and reads the
+         * two branches as the same "%" (duplicateExpressionTernary). */
+        if (base == 16) { add("%" PRIX32, v); }
+        else            { add("%" PRIu32, v); }
+    }
+    void add(const char *fmt, ...) __attribute__((format(printf, 2, 3))) {
+        if (m_len >= sizeof(m_line) - 1U) { return; }   /* overlong: truncated */
+        va_list ap;
+        va_start(ap, fmt);
+        const int w = vsnprintf(&m_line[m_len], sizeof(m_line) - m_len, fmt, ap);
+        va_end(ap);
+        if (w > 0) {
+            m_len += static_cast<size_t>(w);
+            if (m_len > sizeof(m_line) - 1U) { m_len = sizeof(m_line) - 1U; }
+        }
+    }
+    void flush() {
+        ESP_LOGW("sdk", "%s", m_line);
+        m_line[0] = '\0';
+        m_len     = 0U;
+    }
 };
 
 /* PN532 on I²C, wired to the CYD CN1 connector. */
@@ -231,6 +264,7 @@ void boot_fault(ui_boot_err_t kind, const char *detail)
 
 static bool resolve_evm_payout(bool *rejected)
 {
+    pos_addr_clear(&s_dest);
     if (settings_get_payout(false, s_payout_eth, sizeof(s_payout_eth)) &&
         !eth_addr_parse(s_payout_eth, s_dest.addr)) {
         ESP_LOGE(TAG, "stored Ethereum payout address rejected");
@@ -322,7 +356,7 @@ bool run_wizard(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
                     /* Refuse to leave the address step with nothing set: with no
                      * payout address the wizard would end on a till that cannot
                      * take a payment. */
-                    if (!settings_has_payout(false) && !settings_has_payout(true)) {
+                    if (!pos_any_payout()) {
                         prov_set_note("Set at least one payout address first.");
                         break;
                     }
@@ -365,7 +399,7 @@ bool run_wizard(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
             case UI_EVENT_CARD_PIN: {
                 char   pin[16]   = { 0 };
                 size_t pin_chars = ui_take_pin(pin, sizeof(pin));
-                char   err[48]   = { 0 };
+                char   err[128]  = { 0 };
                 const bool got = card_read_payouts(wallet, transport, crypto,
                                                    pin, pin_chars,
                                                    card_eth, sizeof(card_eth),
@@ -380,7 +414,9 @@ bool run_wizard(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
                     ui_set_prov_note(err);   /* and on the panel they tapped */
                     break;
                 }
-                prov_set_note("Accept each address on the terminal screen.");
+                /* err on success: an address the card could not give, said. */
+                prov_set_note((err[0] != '\0') ? err
+                                               : "Accept each address on the terminal screen.");
                 /* Ethereum first if there is one; Tron and Solana wait in
                  * card_tron / card_sol and are offered as each proposal resolves. */
                 if (card_eth[0] != '\0') {
@@ -613,7 +649,7 @@ pos_hw_t pos_boot(void)
 
     /* ── Wallet ────────────────────────────────────────────────── */
     ui_set_boot_status("Opening wallet");
-    static NullLogger logger;
+    static SdkLogger logger;
     (void)logger.begin(115200UL);
     static ESP32CryptoProvider cryptoProvider;
 
@@ -636,6 +672,7 @@ pos_hw_t pos_boot(void)
         ESP_LOGE(TAG, "Bad TRON_ADDR_TO in config");
         boot_fault(UI_BOOT_ERR_CONFIG, "Bad TRON_ADDR_TO in config");
     }
+    pos_addr_clear(&s_tron_dest);
     (void)CW_Utils::safe_memcpy(s_tron_dest.addr, sizeof(s_tron_dest.addr),
                                 &tron_to21[1], ETH_ADDR_LEN);
     (void)CW_Utils::safe_memcpy(s_tron_dest.addr_echo,
@@ -782,7 +819,7 @@ pos_hw_t pos_boot(void)
      * RNG, which is only true random while the RF subsystem runs (SEC-001). */
     net_wifi_init();
     const bool no_code   = !settings_has_admin_code();
-    const bool no_payout = !settings_has_payout(false) && !settings_has_payout(true);
+    const bool no_payout = !pos_any_payout();
     const bool setup_run = no_code || no_payout;
     if (no_code) {
         ESP_LOGI(TAG, "no admin code - first-run setup");
@@ -819,8 +856,7 @@ pos_hw_t pos_boot(void)
      * power cut. It comes up offline rather than into setup: Wi-Fi re-join and SNTP
      * retry in the background, and sales are refused until both are back (see
      * UI_EVENT_AMOUNT_CONFIRMED). */
-    const bool unattended = settings_has_wifi() &&
-                            (settings_has_payout(false) || settings_has_payout(true));
+    const bool unattended = settings_has_wifi() && pos_any_payout();
     while (true) {
         const bool joined = try_saved && wifi_try_saved();
         if (!joined && try_saved && unattended) {
@@ -838,8 +874,7 @@ pos_hw_t pos_boot(void)
                 /* Cut short only for a terminal with a payout address: an admin
                  * code proves setup started, not that it finished, and a terminal
                  * with no address needs the whole wizard. */
-                const bool configured = settings_has_payout(false) ||
-                                        settings_has_payout(true);
+                const bool configured = pos_any_payout();
                 (void)run_wizard(wallet, nfcTransport, cryptoProvider, configured);
                 /* Only reached if the SoftAP would not come up. */
                 ESP_LOGW(TAG, "no setup portal - panel Wi-Fi picker");

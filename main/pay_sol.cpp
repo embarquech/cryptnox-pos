@@ -15,6 +15,8 @@
 
 #include "pos_app.h"
 
+#include "sodium/crypto_sign.h"   /* Ed25519 verify; libsodium via arduino-esp32 */
+
 /* m/44'/501'/0'/0' — the path Phantom and Solflare use, all hardened (Ed25519
  * derivation, SLIP-0010, has no unhardened children). */
 extern const uint8_t SOL_DERIVE_PATH[16] = {   /* also read by card_read_payouts */
@@ -106,9 +108,13 @@ bcast_t sign_and_broadcast_sol(CryptnoxWallet &wallet, Pn532NfcTransport &transp
     uint64_t have = 0U;
     if (!sol_rpc_get_balance(from_b58, &have)) {
         ESP_LOGW(TAG, "pre-flight: SOL balance read failed - letting it run");
-    } else if (have < (lamports + SOL_BASE_FEE_LAMPORTS)) {
+    } else if ((have != (lamports + SOL_BASE_FEE_LAMPORTS)) &&
+               (have < (lamports + SOL_BASE_FEE_LAMPORTS + SOL_RENT_EXEMPT_LAMPORTS))) {
+        /* The card must keep its rent-exempt floor after paying, or the node
+         * refuses with a rent error the operator cannot act on. Draining it to
+         * exactly 0 is allowed: an emptied account owes no rent. */
         wallet.disconnect(session);
-        (void)snprintf(err_out, err_max, "Not enough SOL for amount + fee");
+        (void)snprintf(err_out, err_max, "Not enough SOL (amount + fee + reserve)");
         return BCAST_FAILED;
     } else {
         /* funded */
@@ -126,7 +132,10 @@ bcast_t sign_and_broadcast_sol(CryptnoxWallet &wallet, Pn532NfcTransport &transp
     if (sol_transfer_message(from, s_sol_dest.addr, blockhash, lamports,
                              msg, sizeof(msg)) != SOL_TRANSFER_MSG_LEN) {
         wallet.disconnect(session);
-        (void)snprintf(err_out, err_max, "Card pays itself - use another card");
+        (void)snprintf(err_out, err_max, "%s",
+                       (memcmp(from, s_sol_dest.addr, SOL_KEY_LEN) == 0)
+                           ? "Card pays itself - use another card"
+                           : "No usable Solana payout address");
         return BCAST_FAILED;
     }
 
@@ -144,6 +153,14 @@ bcast_t sign_and_broadcast_sol(CryptnoxWallet &wallet, Pn532NfcTransport &transp
                    static_cast<uint8_t>(sizeof(msg)), SOL_DERIVE_PATH,
                    static_cast<uint8_t>(sizeof(SOL_DERIVE_PATH)),
                    pin, pin_chars, sig, err_out, err_max)) {
+        return BCAST_FAILED;
+    }
+    /* Under the key the card just exported, as EVM does with eth_sig_parity:
+     * a signature that does not verify is an internal inconsistency, and
+     * broadcasting it would only be refused after the customer walked off. */
+    if (crypto_sign_verify_detached(sig, msg, sizeof(msg), from) != 0) {
+        ESP_LOGE(TAG, "signature does not verify under the card's own key");
+        (void)snprintf(err_out, err_max, "Signature check failed");
         return BCAST_FAILED;
     }
 
@@ -168,7 +185,10 @@ bcast_t sign_and_broadcast_sol(CryptnoxWallet &wallet, Pn532NfcTransport &transp
      * and a reset between the send and its answer is what this record is for. */
     fl->sol              = true;
     fl->sol_valid_height = valid_height;
-    inflight_persist(fl);
+    if (!inflight_persist(fl)) {
+        (void)snprintf(err_out, err_max, "Storage error - not sent");
+        return BCAST_FAILED;
+    }
 
     switch (sol_rpc_send(tx, sizeof(tx), fl->hash, err_out, err_max)) {
         case SOL_SEND_OK:
@@ -188,6 +208,7 @@ eth_rpc_receipt_result_t sol_status_as_eth(sol_status_t s)
     switch (s) {
         case SOL_STATUS_SUCCESS: return ETH_RPC_RECEIPT_SUCCESS;
         case SOL_STATUS_FAILED:  return ETH_RPC_RECEIPT_REVERTED;
+        case SOL_STATUS_UNSEEN:  /* fall through: expiry is pay.cpp's call */
         case SOL_STATUS_PENDING: return ETH_RPC_RECEIPT_PENDING;
         default:                 return ETH_RPC_RECEIPT_RPC_ERROR;
     }

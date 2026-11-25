@@ -220,6 +220,19 @@ static inline bool pos_chain_has_payout(pos_chain_t c)
     return pos_net_has_payout(pos_net_of(c));
 }
 
+/**
+ * @brief Whether any network has a payout address an operator chose — the
+ *        "is this terminal configured?" test. Walks the enum, so a network added
+ *        later counts without touching the callers.
+ */
+static inline bool pos_any_payout(void)
+{
+    for (int n = 0; n < (int)POS_NET__COUNT; n++) {
+        if (pos_net_has_payout((pos_net_t)n)) { return true; }
+    }
+    return false;
+}
+
 /** @brief Which payout a chain spends: 0 EVM, 1 Tron, 2 Solana (s_payout_bad). */
 static inline unsigned pos_payout_idx(pos_chain_t c)
 {

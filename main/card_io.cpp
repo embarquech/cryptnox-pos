@@ -35,6 +35,12 @@ static const char *card_fault(Pn532NfcTransport &transport)
     if (!transport.sendAPDU(SELECT, static_cast<uint8_t>(sizeof(SELECT)), r, n)) {
         return NULL;   /* card gone or not answering — the caller's own story */
     }
+    if (n >= 4U) {
+        /* r[1..3] is the applet version (card_status.h). One line answers
+         * "does this card do Ed25519 (applet 2.0+)?" from the log. */
+        ESP_LOGI(TAG, "card applet %u.%u.%u", static_cast<unsigned>(r[1]),
+                 static_cast<unsigned>(r[2]), static_cast<unsigned>(r[3]));
+    }
     const card_state_t st = card_state(r, n);
     if (st != CARD_READY) {
         ESP_LOGW(TAG, "card refused: state %d", static_cast<int>(st));
@@ -316,6 +322,14 @@ bool card_read_payouts(CryptnoxWallet &wallet,
     if ((eth_out[0] == '\0') && (tron_out[0] == '\0') && (sol_out[0] == '\0')) {
         (void)snprintf(err, err_n, "Card gave no usable address");
         return false;
+    }
+    /* Set on success too: otherwise a card whose applet predates Ed25519 looks
+     * exactly like firmware without Solana. The callers show it on the phone. */
+    err[0] = '\0';
+    if (sol_out[0] == '\0') {
+        (void)snprintf(err, err_n, "No Solana address from this card (needs "
+                                   "applet 2.0+). Accept the others on the "
+                                   "terminal screen.");
     }
     ESP_LOGI(TAG, "card addresses: eth=%s tron=%s sol=%s", eth_out, tron_out, sol_out);
     return true;

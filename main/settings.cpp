@@ -346,14 +346,33 @@ static uint32_t fee_get(const char *key, uint32_t dflt)
     return ((v < FEE_GWEI_MIN) || (v > FEE_GWEI_MAX)) ? dflt : v;
 }
 
+/* The two fees are written as two NVS keys, and NVS makes each write atomic but
+ * not the pair: a power cut between them leaves a new max with an old priority,
+ * which can fail fee_pair_check and break every EVM sale. So the pair is
+ * checked again on every read, and a pair that does not hold reads as both
+ * defaults — never one stored value matched with one default. */
+static void fees_get(uint32_t *max_gwei, uint32_t *prio_gwei)
+{
+    *max_gwei  = fee_get(K_MAX_FEE, DEFAULT_MAX_FEE_GWEI);
+    *prio_gwei = fee_get(K_PRIO_FEE, DEFAULT_PRIORITY_FEE_GWEI);
+    if (fee_pair_check(*max_gwei, *prio_gwei) != FEE_PAIR_OK) {
+        *max_gwei  = DEFAULT_MAX_FEE_GWEI;
+        *prio_gwei = DEFAULT_PRIORITY_FEE_GWEI;
+    }
+}
+
 uint32_t settings_get_max_fee_gwei(void)
 {
-    return fee_get(K_MAX_FEE, DEFAULT_MAX_FEE_GWEI);
+    uint32_t max_gwei, prio_gwei;
+    fees_get(&max_gwei, &prio_gwei);
+    return max_gwei;
 }
 
 uint32_t settings_get_priority_fee_gwei(void)
 {
-    return fee_get(K_PRIO_FEE, DEFAULT_PRIORITY_FEE_GWEI);
+    uint32_t max_gwei, prio_gwei;
+    fees_get(&max_gwei, &prio_gwei);
+    return prio_gwei;
 }
 
 bool settings_set_fees_gwei(uint32_t max_gwei, uint32_t prio_gwei)
@@ -614,10 +633,23 @@ bool settings_wipe_if_new_build(void)
         return false;
     }
 
-    ESP_LOGW(TAG, "stamped %u, running build %u - erasing NVS",
+    ESP_LOGW(TAG, "stamped %u, running build %u - erasing settings",
              (unsigned)stored, (unsigned)BUILD_ID);
-    esp_err_t err = nvs_flash_erase();
-    if (err == ESP_OK) { err = nvs_flash_init(); }
+    /* What another image could have planted: settings (payout addresses, the
+     * admin code), the portal's keys, and the Wi-Fi driver's own copy of the
+     * last network. NOT the whole partition: "harden" holds the tamper counter,
+     * and a reflash must not be a way to reset it. */
+    static const char *const WIPED[] = { NS_SETTINGS, "prov", "nvs.net80211" };
+    esp_err_t err = ESP_OK;
+    for (size_t i = 0U; (i < (sizeof(WIPED) / sizeof(WIPED[0]))) && (err == ESP_OK); i++) {
+        nvs_handle_t w;
+        err = nvs_open(WIPED[i], NVS_READWRITE, &w);
+        if (err == ESP_OK) {
+            err = nvs_erase_all(w);
+            if (err == ESP_OK) { err = nvs_commit(w); }
+            nvs_close(w);
+        }
+    }
     if (err != ESP_OK) {
         /* No stamp written, so the next boot retries. Meanwhile the unit keeps
          * its old settings: one that still takes payments beats a brick. */
