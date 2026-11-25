@@ -90,6 +90,9 @@ int main(void)
     /* Refusals: nothing moved, paying yourself, no room. */
     assert(sol_transfer_message(from, to, bh, 0U, msg, sizeof(msg)) == 0U);
     assert(sol_transfer_message(from, from, bh, 1U, msg, sizeof(msg)) == 0U);
+    /* The System Program (all zeros) is never a payee: a wiped payout store. */
+    (void)memset(zero, 0, sizeof(zero));
+    assert(sol_transfer_message(from, zero, bh, 1U, msg, sizeof(msg)) == 0U);
     assert(sol_transfer_message(from, to, bh, 1U, msg, SOL_TRANSFER_MSG_LEN - 1U) == 0U);
 
     /* The wire form: solders' Transaction.populate(message, [sig]). */

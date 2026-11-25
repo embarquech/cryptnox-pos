@@ -199,7 +199,7 @@ bool https_post_json(const char *url, const char *body,
 
     {
         int64_t content_length = esp_http_client_fetch_headers(client);
-        (void)content_length;  /* may be -1 for chunked; we read until EOF */
+        /* -1 for chunked; we read until EOF, then check completeness below */
 
         /* Reject the response before reading the body if the authenticated
          * Date proves our SNTP-supplied clock was spoofed. Consistent with
@@ -212,7 +212,7 @@ bool https_post_json(const char *url, const char *body,
 
         wdt_feed();   /* the handshake and headers are done; the body follows */
         int  total = 0;
-        int  read;
+        int  read  = 0;
         bool full  = false;
         do {
             int space = static_cast<int>(resp_buf_size - 1U) - total;
@@ -223,13 +223,18 @@ bool https_post_json(const char *url, const char *body,
 
         resp_buf[total] = '\0';
 
-        /* A body that filled the buffer and was not finished is a truncated
-         * response, and used to be reported as success — JSON cut mid-string that
-         * the parsers then had to be lucky about. Failure instead: the callers
-         * already treat "no usable answer" as retry or Unconfirmed. */
-        if (full && !esp_http_client_is_complete_data_received(client)) {
-            ESP_LOGE(TAG, "response larger than %u bytes - dropped",
-                     static_cast<unsigned>(resp_buf_size - 1U));
+        /* A body that was not finished is a truncated response, whether the
+         * buffer filled or the connection dropped first — JSON cut mid-string
+         * that the parsers then had to be lucky about. Failure instead: the
+         * callers already treat "no usable answer" as retry or Unconfirmed.
+         * Only checkable with a length or chunking to measure against; a body
+         * delimited by the connection closing has neither. */
+        const bool measurable = (content_length >= 0) ||
+                                esp_http_client_is_chunked_response(client);
+        if ((read < 0) ||
+            ((full || measurable) && !esp_http_client_is_complete_data_received(client))) {
+            ESP_LOGE(TAG, "response %s - dropped",
+                     full ? "larger than the buffer" : "cut short");
             goto cleanup;   /* success stays false */
         }
 

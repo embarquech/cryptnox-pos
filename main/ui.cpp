@@ -680,8 +680,11 @@ static void ui_task(void *arg) {
         /* A value proposed from the config page. Built here, on the UI task, and
          * after the screen render above — a modal raised straight from the main or
          * HTTP task would be touching LVGL from two tasks at once. Held, not
-         * dropped, while "Not saved" is up (see s_not_saved_modal). */
-        if (s_addr_modal_dirty && !s_not_saved_modal) {
+         * dropped, while "Not saved" is up (see s_not_saved_modal) or a firmware
+         * image waits on its card: the proposal would replace that card, and an
+         * OTA card is never raised again. */
+        if (s_addr_modal_dirty && !s_not_saved_modal && !s_ota_modal_dirty &&
+            !ota_staged(NULL, 0U, NULL)) {
             s_addr_modal_dirty = false;
             build_prov_confirm();
         }

@@ -55,8 +55,8 @@ def efuse(port, *args):
     return [sys.executable, "-m", "espefuse", "--port", port, *args]
 
 
-def fresh_check(port):
-    """Abort unless every secure eFuse is still in its virgin state."""
+def read_fuses(port):
+    """espefuse summary as a dict of name -> {"value": ...}."""
     out = subprocess.check_output(
         efuse(port, "summary", "--format", "json"), text=True)
     # espefuse can print a connection banner before (and log lines after) the
@@ -67,7 +67,17 @@ def fresh_check(port):
         sys.exit("ABORT: espefuse returned no JSON summary (is the port free? "
                  "close any idf.py monitor / serial monitor and retry).\n"
                  "--- espefuse output ---\n" + out[:400])
-    fuses = json.loads(out[start:end + 1])
+    return json.loads(out[start:end + 1])
+
+
+def fuse_set(v):
+    """A boolean or counter eFuse as burned / not burned."""
+    return v not in (False, 0, "0", None, "False")
+
+
+def fresh_check(port):
+    """Abort unless every secure eFuse is still in its virgin state."""
+    fuses = read_fuses(port)
 
     def val(name):
         return fuses.get(name, {}).get("value")
@@ -90,7 +100,15 @@ def main():
     ap.add_argument("--build-dir", default="build")
     ap.add_argument("--yes", action="store_true",
                     help="Confirm the IRREVERSIBLE eFuse burns (required)")
+    ap.add_argument("--verify", action="store_true",
+                    help="Burn nothing: check the lock-down after the first boot")
+    ap.add_argument("--release", action="store_true",
+                    help="With --verify: also require the release-mode fuses")
     args = ap.parse_args()
+
+    if args.verify:
+        verify(args.port, args.release)
+        return
 
     if (args.key is not None) and not os.path.isfile(args.key):
         sys.exit("Key not found: %s" % args.key)
@@ -140,7 +158,41 @@ def main():
 
     print("\nProvisioning written. RESET the board now: the bootloader finalizes "
           "Secure Boot on first boot (burns the key digest + ABS_DONE_1).\n"
-          "Verify after:  espefuse.py --port %s summary | findstr ABS_DONE_1" % args.port)
+          "Then verify:  python tools/secure_provision.py --port %s --verify"
+          "  (add --release for a release build)" % args.port)
+
+
+def verify(port, release):
+    """Exit non-zero unless the board is locked the way its build says.
+
+    The bootloader burns the Secure Boot digest and ABS_DONE_1 on first boot,
+    and a release build also burns the download-mode lockdown. None of that is
+    visible from this script's own run, so it is read back afterwards rather
+    than assumed. Expected names are espefuse's for the classic ESP32.
+    """
+    fuses = read_fuses(port)
+
+    def val(name):
+        return fuses.get(name, {}).get("value")
+
+    want = ["ABS_DONE_1"]                      # Secure Boot v2 on
+    if release:
+        want += ["DISABLE_DL_ENCRYPT", "DISABLE_DL_DECRYPT", "DISABLE_DL_CACHE",
+                 "JTAG_DISABLE"]
+    bad = [n for n in want if not fuse_set(val(n))]
+    try:
+        cnt = int(str(val("FLASH_CRYPT_CNT")), 0)
+    except ValueError:
+        cnt = 0
+    # Odd = encryption on. Release mode burns every bit (0x7F) so it can never
+    # be flipped back to plaintext.
+    if cnt % 2 == 0:
+        bad.append("FLASH_CRYPT_CNT (=%d, not odd: encryption off)" % cnt)
+    elif release and cnt != 0x7F:
+        bad.append("FLASH_CRYPT_CNT (=0x%X, release expects 0x7F)" % cnt)
+    if bad:
+        sys.exit("NOT LOCKED: " + ", ".join(bad))
+    print("Locked: %s" % ", ".join(want + ["FLASH_CRYPT_CNT=0x%X" % cnt]))
 
 
 if __name__ == "__main__":
