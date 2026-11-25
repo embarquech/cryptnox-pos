@@ -34,7 +34,6 @@ static lv_style_t s_st_scrollbar;
 static lv_style_t s_st_track;     /* slider/arc/spinner background */
 static lv_style_t s_st_ink;       /* their filled part and knob    */
 static lv_style_t s_st_field;     /* text entry                    */
-static lv_style_t s_st_key;       /* one key of the keyboard       */
 
 static void theme_styles_init(void)
 {
@@ -98,14 +97,6 @@ static void theme_styles_init(void)
     lv_style_set_radius(&s_st_field, 10);
     lv_style_set_border_width(&s_st_field, 0);
     lv_style_set_text_color(&s_st_field, COL_TEXT);
-
-    /* White rounded keys on the grey field. */
-    lv_style_init(&s_st_key);
-    lv_style_set_bg_color(&s_st_key, COL_BG);
-    lv_style_set_bg_opa(&s_st_key, LV_OPA_COVER);
-    lv_style_set_radius(&s_st_key, 8);
-    lv_style_set_border_width(&s_st_key, 0);
-    lv_style_set_text_color(&s_st_key, COL_TEXT);
 }
 
 static void theme_apply(lv_theme_t *th, lv_obj_t *obj)
@@ -142,9 +133,6 @@ static void theme_apply(lv_theme_t *th, lv_obj_t *obj)
         lv_obj_add_style(obj, &s_st_ink, LV_PART_INDICATOR);
     } else if (lv_obj_check_type(obj, &lv_textarea_class)) {
         lv_obj_add_style(obj, &s_st_field, LV_PART_MAIN);
-    } else if (lv_obj_check_type(obj, &lv_keyboard_class)) {
-        lv_obj_add_style(obj, &s_st_field, LV_PART_MAIN);
-        lv_obj_add_style(obj, &s_st_key, LV_PART_ITEMS);
     }
 }
 

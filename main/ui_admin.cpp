@@ -138,8 +138,8 @@ void build_settings(void) {
     CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(cur_pass), sizeof(cur_pass));
 
     /* Read-only caption/value pair, not a tappable pill: the network is set from
-     * the Configure page, so nobody types a passphrase on a resistive panel. The
-     * on-device picker appears only when the terminal cannot re-join (wifi_picker). */
+     * the Configure page, so nobody types a passphrase on a resistive panel. A
+     * terminal that cannot re-join goes back to the setup portal, never a picker. */
     lv_obj_t *wl = make_field(t_wifi, "Network",
                               have_wifi ? cur_ssid : "Not configured");
     /* An SSID is 32 arbitrary characters; elide it on real glyph widths. */

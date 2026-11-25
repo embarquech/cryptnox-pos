@@ -282,10 +282,8 @@ pos_hw_t pos_boot(void);
 extern const char *const NOTE_JOIN_FAILED;
 extern const char *const NOTE_NO_TIME;
 [[noreturn]] void boot_fault(ui_boot_err_t kind, const char *detail);
-void wifi_keep_or_drop(bool keep);
 void wait_for_ui_event(ui_event_t want);
 bool wifi_try_saved(void);
-bool wifi_picker(const char *note);
 bool run_wizard(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
                 CW_CryptoProvider &crypto, bool wifi_only);
 bool sync_time(void);

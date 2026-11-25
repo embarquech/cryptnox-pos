@@ -99,13 +99,9 @@ bool      s_charge_busy = false;
 lv_obj_t *s_pin_ta      = NULL;
 char      s_pin[16]     = {0};
 uint8_t   s_pin_len     = 0;
-net_wifi_ap_t s_aps[WIFI_MAX_APS];
-uint16_t      s_ap_count = 0;
-char          s_wifi_ssid[33] = {0};   /* selected network          */
-char          s_wifi_pass[65] = {0};   /* entered passphrase (handoff) */
-char          s_wifi_note[64] = {0};   /* why the picker reopened (may be empty) */
-lv_obj_t     *s_wifi_pass_ta  = NULL;
-lv_obj_t     *s_wifi_eye_lbl  = NULL;   /* glyph swapped on reveal/hide */
+char          s_wifi_ssid[33] = {0};   /* network from the config page (handoff) */
+char          s_wifi_pass[65] = {0};   /* its passphrase (handoff) */
+char          s_wifi_note[64] = {0};   /* why the network change failed */
 lv_obj_t     *s_pin_eye_lbl   = NULL;   /* same, on the card-PIN keypad */
 lv_obj_t     *s_admin_eye_lbl = NULL;   /* same, on the admin-code keypad */
 
@@ -275,8 +271,7 @@ uint64_t amount_cents_max(void) {
  * from a customer left alone with the terminal.
  *
  * No code stored means first-run setup has not finished, so the request is
- * ignored rather than let through (reachable by backing out of the first-run
- * Wi-Fi picker onto the amount screen).
+ * ignored rather than let through.
  *
  * Called from the swipe gesture, which arms the full lockout penalty: a gesture
  * that skipped it would be a cheaper way in.
@@ -427,19 +422,13 @@ void btn_event_cb(lv_event_t *e) {
             s_cal_ymin = s_cal_prev[2]; s_cal_ymax = s_cal_prev[3];
             request_screen(UI_SCREEN_SETTINGS);
             break;
-        case ACT_WIFI:
-            settings_persist();
-            set_wifi_progress("Scanning...", NULL);
-            request_screen(UI_SCREEN_WIFI_CONNECTING);
-            if (s_cb != NULL) { s_cb(UI_EVENT_WIFI_SCAN, 0); }
-            break;
         case ACT_WIFI_CANCEL:
+            /* Giving up on the change closes the config page, as its own
+             * Close does: it should not outlive the operator. */
             CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_wifi_pass),
                                   sizeof(s_wifi_pass));
+            request_prov_stop();
             request_screen(UI_SCREEN_AMOUNT);
-            break;
-        case ACT_WIFI_PASS_REVEAL:
-            code_field_reveal(s_wifi_pass_ta, s_wifi_eye_lbl);
             break;
         case ACT_PIN_REVEAL:
             code_field_reveal(s_pin_ta, s_pin_eye_lbl);
@@ -767,13 +756,8 @@ extern "C" size_t ui_take_pin(char *out, size_t n) {
     return len;
 }
 
-extern "C" void ui_show_wifi_list(const net_wifi_ap_t *aps, uint16_t n,
-                                  const char *note) {
+extern "C" void ui_show_wifi_failed(const char *note) {
     UiLock lk;   /* shared with the UI task - see s_ui_mx */
-    s_ap_count = (n > WIFI_MAX_APS) ? WIFI_MAX_APS : n;
-    for (uint16_t i = 0U; i < s_ap_count; i++) {
-        s_aps[i] = aps[i];
-    }
     /* Set on every call, so an earlier failure's note cannot linger. */
     if (note != NULL) {
         strncpy(s_wifi_note, note, sizeof(s_wifi_note) - 1);

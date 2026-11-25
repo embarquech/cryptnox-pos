@@ -87,42 +87,17 @@ private:
 #define WIFI_SAVED_ATTEMPTS  3U
 #define TIME_SYNC_ATTEMPTS   3U
 
-/* Picker notes, shared by boot and the settings Wi-Fi change. */
+/* Network-failure notes, shared by the setup wizard and the config-page change. */
 const char *const NOTE_JOIN_FAILED =
     "Could not join that network - check the password";
 const char *const NOTE_NO_TIME =
     "No network time - this Wi-Fi has no usable internet";
 
-/* Credentials the picker just joined with, held until a clock sync proves the
- * network usable end to end (see wifi_keep_or_drop). Associating is not enough:
- * a captive-portal or offline AP joins fine and would then be reached for on
- * every boot. Deferring the write also means a transient NTP outage never
- * erases a saved network that does work. */
-static char s_join_ssid[33] = { 0 };
-static char s_join_pass[65] = { 0 };
-
-/**
- * @brief Persist or discard the pending picker credentials, then scrub them.
- *
- * @param[in] keep true once the clock is set — the only proof the network is
- *                 actually usable; false to drop them unpersisted.
- */
-void wifi_keep_or_drop(bool keep)
-{
-    if (keep && (s_join_ssid[0] != '\0')) {
-        settings_set_wifi(s_join_ssid, s_join_pass);
-        ESP_LOGI(TAG, "saved network '%s' (clock synced)", s_join_ssid);
-    }
-    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_join_pass), sizeof(s_join_pass));
-    (void)memset(s_join_ssid, 0, sizeof(s_join_ssid));
-}
-
 /**
  * @brief Block until the UI reports @p want, discarding anything else.
  *
  * For the modal first-run steps. The queue is flushed on the way out so a
- * repeated tap is not read by the next stage (wifi_picker() would rescan and
- * throw away a half-typed password).
+ * repeated tap is not read by the next stage.
  */
 void wait_for_ui_event(ui_event_t want)
 {
@@ -164,61 +139,6 @@ bool wifi_try_saved(void)
                  ssid, WIFI_SAVED_ATTEMPTS);
     }
     return ok;
-}
-
-/**
- * @brief Run the panel network picker (scan → list → keyboard → connect) until
- *        connected.
- *
- * Blocks until a connection succeeds. The fallback to the browser setup
- * (@ref run_wizard): reached from the settings menu, or when the SoftAP could not
- * come up.
- *
- * A network joined here is not persisted: the credentials are staged for
- * @ref wifi_keep_or_drop, which the caller invokes once the clock proves the uplink
- * usable.
- *
- * @param[in] note One-line reason shown above the picker, or NULL.
- * @return true always: the picker took the screen, so restore the splash.
- */
-bool wifi_picker(const char *note)
-{
-    net_wifi_ap_t aps[16];
-    uint16_t n = net_wifi_scan(aps, 16);
-    ui_show_wifi_list(aps, n, note);
-
-    ui_msg_t msg;
-    while (true) {
-        if (xQueueReceive(s_ui_queue, &msg, portMAX_DELAY) != pdTRUE) { continue; }
-
-        if (msg.event == UI_EVENT_WIFI_TRY) {
-            char w_ssid[33] = { 0 };
-            char w_pass[65] = { 0 };
-            bool ok = false;
-            if (ui_take_wifi_creds(w_ssid, sizeof(w_ssid),
-                                   w_pass, sizeof(w_pass)) > 0U) {
-                /* Interactive: the operator expects to see the attempt. */
-                ui_show_wifi_connecting(w_ssid);
-                ok = net_wifi_connect(w_ssid, w_pass);
-                if (ok) {
-                    /* Staged, not saved — wifi_keep_or_drop() decides once the
-                     * clock has proven this network carries real internet. */
-                    (void)snprintf(s_join_ssid, sizeof(s_join_ssid), "%s", w_ssid);
-                    (void)snprintf(s_join_pass, sizeof(s_join_pass), "%s", w_pass);
-                }
-            }
-            CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(w_pass), sizeof(w_pass));
-            if (ok) { return true; }   /* the picker owns the screen */
-            note = NOTE_JOIN_FAILED;
-        } else if (msg.event == UI_EVENT_WIFI_SCAN) {
-            note = NULL;   /* rescan asked for — the old reason is stale */
-        }
-
-        /* WIFI_SCAN, a failed connect, or any stray event: re-scan and show
-         * the list again so the user stays in setup until connected. */
-        n = net_wifi_scan(aps, 16);
-        ui_show_wifi_list(aps, n, note);
-    }
 }
 
 /**
@@ -297,14 +217,14 @@ static bool resolve_evm_payout(bool *rejected)
  *                      network. No admin code: the form can only propose what the
  *                      panel must accept, and the AP passphrase on that panel is
  *                      the perimeter (see prov_set_wifi_only).
- * @return false if the portal could not be raised; the caller falls back to the
- *         panel.
+ * @return false if the portal could not be raised; the caller retries. Otherwise
+ *         it does not return (setup ends in a restart).
  */
 bool run_wizard(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
                        CW_CryptoProvider &crypto, bool wifi_only)
 {
     if (!prov_start(PROV_MODE_WIZARD, ui_event_dispatch)) {
-        ESP_LOGE(TAG, "setup portal unavailable - falling back to the panel");
+        ESP_LOGE(TAG, "setup portal unavailable");
         return false;
     }
 
@@ -807,13 +727,12 @@ pos_hw_t pos_boot(void)
      *     the wizard on such a terminal (an admin code survives an update).
      *
      * The admin code is the one step that stays on this panel: its value is that
-     * it is never on a network. It must also exist first, because the Wi-Fi
-     * picker's back arrow (honoured by the UI task alone) lands on the amount
-     * screen with the burger menu while main is still in setup; with no code, that
-     * menu would open the settings freely. The creation screen has no way out.
+     * it is never on a network. It must also exist first, so that no screen
+     * reached during setup can open the settings without it. The creation screen
+     * has no way out.
      *
      * run_wizard() ends in a restart, which applies the addresses. It only returns
-     * if the portal could not be raised; the panel picker below is the fallback.
+     * if the portal could not be raised; the network loop below retries it.
      *
      * Wi-Fi starts first: the admin pad's digit shuffle draws from the hardware
      * RNG, which is only true random while the RF subsystem runs (SEC-001). */
@@ -845,11 +764,9 @@ pos_hw_t pos_boot(void)
      * failed sync sends the operator back to setup with the reason.
      *
      * A configured terminal (a payout address, not merely an admin code) that only
-     * lost its network gets the wizard cut short to the Wi-Fi step. The panel
-     * picker is only reached when the SoftAP would not come up. */
+     * lost its network gets the wizard cut short to the Wi-Fi step. There is no
+     * panel picker: every passphrase is typed on the phone. */
     bool        try_saved  = true;
-    /* The block above already ran the full wizard, so it has had its turn. */
-    bool        offer_setup = !setup_run;
     const char *net_note   = NULL;
     bool        synced     = false;
     /* A fully set-up terminal boots unattended, often before the router after a
@@ -867,35 +784,38 @@ pos_hw_t pos_boot(void)
             break;
         }
         if (!joined) {
-            /* No usable saved network. The browser flow first, once; then the panel
-             * picker, which is also where a failed clock sync sends us. */
-            if (offer_setup) {
-                offer_setup = false;
-                /* Cut short only for a terminal with a payout address: an admin
-                 * code proves setup started, not that it finished, and a terminal
-                 * with no address needs the whole wizard. */
-                const bool configured = pos_any_payout();
-                (void)run_wizard(wallet, nfcTransport, cryptoProvider, configured);
-                /* Only reached if the SoftAP would not come up. */
-                ESP_LOGW(TAG, "no setup portal - panel Wi-Fi picker");
-            }
+            /* No usable saved network, or one with no network time: recovered
+             * from the phone, through the setup portal. The wizard verifies its
+             * own join and ends in a restart, so this does not return. */
             /* Only blame the saved network if there was one — on a terminal that
              * has never been on a network this is the first screen, not a failure. */
             if ((net_note == NULL) && settings_has_wifi()) {
                 net_note = "Could not join the saved network";
             }
-            (void)wifi_picker(net_note);
-            ui_show_splash();   /* the picker took the screen */
+            /* Cut short only for a terminal with a payout address: an admin code
+             * proves setup started, not that it finished, and a terminal with no
+             * address needs the whole wizard. */
+            const bool configured = pos_any_payout();
+            while (true) {
+                ui_set_prov_note(net_note);
+                (void)run_wizard(wallet, nfcTransport, cryptoProvider, configured);
+                /* The SoftAP would not come up: a transient resource failure,
+                 * not a reason to carry a keyboard. Say so and retry. */
+                ESP_LOGW(TAG, "no setup portal - retrying");
+                ui_show_splash();
+                ui_set_boot_status("Setup Wi-Fi would not start - retrying");
+                wdt_feed();
+                vTaskDelay(pdMS_TO_TICKS(5000));
+            }
         }
 
         ui_set_boot_status("Syncing clock");
         if (sync_time()) {
-            wifi_keep_or_drop(true);    /* proven usable — safe to persist */
             synced = true;
             break;
         }
         ESP_LOGE(TAG, "SNTP time sync failed on this network");
-        if (joined && unattended) {
+        if (unattended) {
             /* The saved network, up but without time yet — a WAN link that is
              * slower to return than the LAN. Keep it; SNTP retries by itself.
              * (Re-subscribed in case the failure was the back-dated-clock
@@ -904,10 +824,11 @@ pos_hw_t pos_boot(void)
             net_time_background();
             break;
         }
-        /* Drop the staged credentials, but leave an already-saved network alone:
-         * the outage is often transient. */
-        wifi_keep_or_drop(false);
-        /* Force the picker: retrying the same network loops straight back here. */
+        /* Leave the saved network stored (the outage is often transient) but
+         * drop the association: the setup portal's HTTP server binds every
+         * interface and must not be reachable from the venue LAN. Retrying the
+         * same network would loop straight back here, so go to setup. */
+        net_wifi_disconnect();
         try_saved = false;
         net_note  = NOTE_NO_TIME;
     }

@@ -37,8 +37,7 @@ typedef enum {
     UI_SCREEN_AMOUNT,      /**< Amount entry with +/- buttons.             */
     UI_SCREEN_CONFIRM,     /**< Amount + destination review.               */
     UI_SCREEN_PIN,         /**< Numeric keypad to enter the card PIN.      */
-    UI_SCREEN_WIFI_LIST,   /**< Scanned Wi-Fi networks to pick from.       */
-    UI_SCREEN_WIFI_PASS,   /**< Keyboard to enter the Wi-Fi password.      */
+    UI_SCREEN_WIFI_LIST,   /**< Why a network change failed; retry on the phone. */
     UI_SCREEN_WIFI_CONNECTING, /**< "Connecting…" while main associates.   */
     UI_SCREEN_SETTINGS,    /**< Full-screen settings (tabs).               */
     UI_SCREEN_TX_STATUS,   /**< Card wait / signing / broadcast progress.  */
@@ -57,7 +56,6 @@ typedef enum {
     UI_EVENT_CONFIRM_OK,        /**< Send tapped on the Confirm screen.    */
     UI_EVENT_CONFIRM_CANCEL,    /**< Cancel tapped (Confirm or card wait). */
     UI_EVENT_PIN_ENTERED,       /**< PIN keypad validated; fetch via ui_take_pin. */
-    UI_EVENT_WIFI_SCAN,         /**< User opened the Wi-Fi picker; main should scan. */
     UI_EVENT_WIFI_TRY,          /**< Wi-Fi creds entered; fetch via ui_take_wifi_creds. */
     UI_EVENT_TX_RETRY,          /**< New sale after Done/Failed, or Clear on
                                      Unconfirmed.                         */
@@ -196,15 +194,14 @@ void ui_set_tx_info(const char *info);
 size_t ui_take_pin(char *out, size_t n);
 
 /**
- * @brief Show the scanned Wi-Fi networks for the user to pick from.
+ * @brief Say why a network change from the config page failed.
  *
- * @param[in] aps  Array of scanned APs (copied internally).
- * @param[in] n    Number of entries in @p aps.
- * @param[in] note Optional one-line reason the picker (re)opened, shown above
- *                 the list; copied internally, NULL for none. Applied on every
- *                 call, so a stale note cannot survive a later render.
+ * There is no picker on the panel: every passphrase is typed on the phone. The
+ * screen gives the reason and points back to the config page, which is still up.
+ *
+ * @param[in] note One-line reason; copied internally, NULL for none.
  */
-void ui_show_wifi_list(const net_wifi_ap_t *aps, uint16_t n, const char *note);
+void ui_show_wifi_failed(const char *note);
 
 /**
  * @brief Show a startup fault, naming the cause and what to do about it.
@@ -243,7 +240,7 @@ void ui_refresh_addresses_for(uint8_t chain);
 /**
  * @brief Show a "Connecting to <ssid>…" screen while main associates.
  *
- * Interactive picker only; unattended boot reports through
+ * Joins asked for from the config page only; unattended boot reports through
  * @ref ui_set_boot_status and stays on the splash.
  */
 void ui_show_wifi_connecting(const char *ssid);
@@ -319,7 +316,7 @@ void ui_show_admin_set(void);
 size_t ui_take_wifi_creds(char *ssid, size_t ssid_n, char *pass, size_t pass_n);
 
 /**
- * @brief Load credentials into the same handoff buffers the picker fills.
+ * @brief Load credentials into the UI's Wi-Fi handoff buffers.
  *
  * Lets the setup page hand Wi-Fi credentials to main through the existing
  * @ref UI_EVENT_WIFI_TRY path, so a form submission and a screen tap reach the

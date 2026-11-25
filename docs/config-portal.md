@@ -117,9 +117,10 @@ called with Wi-Fi started, and by the time a portal opens it is.
 Steps 1 and 6 are on the panel, and the four in between are in the browser. There
 is deliberately **no "use this screen instead"** escape: typing a payout address or
 a venue passphrase on a resistive 240x320 panel is the thing this module exists to
-avoid, and a second, worse path meant maintaining two of everything. The panel
-picker still exists (`wifi_picker()` in `main/boot.cpp`) but it is now the
-settings-menu route and the fallback for when the SoftAP itself will not come up.
+avoid, and a second, worse path meant maintaining two of everything. There is no
+panel Wi-Fi picker or keyboard at all: a terminal that cannot join goes back to
+this portal, and if the SoftAP itself will not come up the boot retries it and
+says so on the splash.
 
 **A configured terminal whose network has gone** gets `2 → 5 → 6`, and no admin code:
 the addresses are already set and there is no code to create, so the page opens
@@ -238,9 +239,7 @@ Three panel controls are deliberately *not* settings, and stay where they are:
   a sale is charged in is a shift-time choice made with a customer waiting, not
   something an administrator sets once;
 * the factory reset on the About tab — the recovery path, which has to work when
-  this page cannot be reached at all;
-* the Wi-Fi picker the terminal raises by itself when it cannot re-join, for the
-  same reason.
+  this page cannot be reached at all.
 
 A gas cap is stored straight from this page rather than proposed on the panel like
 an address: an address decides *who* gets the money and has to be read back by a

@@ -309,107 +309,32 @@ static void build_header_back(const char *title) {
     (void)make_icon_button(LV_SYMBOL_LEFT, ACT_WIFI_CANCEL);
 }
 
-static void wifi_item_cb(lv_event_t *e) {
-    intptr_t idx = reinterpret_cast<intptr_t>(lv_event_get_user_data(e));
-    if ((idx < 0) || (idx >= s_ap_count)) { return; }
-    strncpy(s_wifi_ssid, s_aps[idx].ssid, sizeof(s_wifi_ssid) - 1);
-    s_wifi_ssid[sizeof(s_wifi_ssid) - 1] = '\0';
-    request_screen(UI_SCREEN_WIFI_PASS);
-}
+/* No network picker and no keyboard here: every passphrase is typed on the
+ * phone, through the config page. This screen only says why the change failed
+ * and sends the operator back there; the page is still up. */
 void build_wifi_list(void) {
     clear_screen();
     build_header_back("Wi-Fi");
 
-    /* Why the picker opened, otherwise the operator lands in Wi-Fi setup with no
-     * idea what failed. */
-    lv_coord_t list_y = 48;
+    lv_coord_t y = 56;
     if (s_wifi_note[0] != '\0') {
         lv_obj_t *note = make_label(lv_scr_act(), s_wifi_note, COL_DANGER,
-                                    &font_inter_14,
-                                    LV_ALIGN_TOP_MID, 0, 50);
+                                    &font_inter_14, LV_ALIGN_TOP_MID, 0, y);
         lv_label_set_long_mode(note, LV_LABEL_LONG_WRAP);
         lv_obj_set_width(note, 216);
         lv_obj_set_style_text_align(note, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        /* Measure rather than assume two lines: the list then clears the note at
-         * any wrap depth, so a longer message can never overprint it. */
+        /* Measured, so the hint clears the note at any wrap depth. */
         lv_obj_update_layout(note);
-        list_y = 50 + lv_obj_get_height(note) + 6;
+        y += lv_obj_get_height(note) + 12;
     }
 
-    if (s_ap_count == 0U) {
-        make_label(lv_scr_act(), "No networks found", COL_DIM,
-                   &font_inter_14, LV_ALIGN_CENTER, 0, 0);
-        make_button(lv_scr_act(), "Rescan", COL_ACTION, COL_BG, 140, ACT_BTN_H,
-                    LV_ALIGN_BOTTOM_MID, 0, ACT_BTN_Y, ACT_WIFI,
-                    &font_pjs_20_semibold);
-        return;
-    }
-
-    lv_obj_t *list = lv_list_create(lv_scr_act());
-    lv_obj_set_size(list, SCR_W - 12, SCR_H - 4 - list_y);
-    lv_obj_align(list, LV_ALIGN_TOP_MID, 0, list_y);
-    lv_obj_set_style_bg_color(list, COL_BG, LV_PART_MAIN);
-    lv_obj_set_style_border_width(list, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_row(list, 4, LV_PART_MAIN);
-
-    for (uint16_t i = 0U; i < s_ap_count; i++) {
-        lv_obj_t *btn = lv_list_add_btn(list, LV_SYMBOL_WIFI, s_aps[i].ssid);
-        lv_obj_set_style_bg_color(btn, COL_SURFACE, LV_PART_MAIN);
-        lv_obj_set_style_text_color(btn, COL_TEXT, LV_PART_MAIN);
-        lv_obj_set_style_radius(btn, 8, LV_PART_MAIN);
-        lv_obj_add_event_cb(btn, wifi_item_cb, LV_EVENT_CLICKED,
-                            reinterpret_cast<void *>(static_cast<intptr_t>(i)));
-    }
-}
-
-static void wifi_pass_kb_cb(lv_event_t *e) {
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_READY) {            /* keyboard check-mark */
-        if (s_wifi_pass_ta != NULL) {
-            const char *p = lv_textarea_get_text(s_wifi_pass_ta);
-            strncpy(s_wifi_pass, (p != NULL) ? p : "", sizeof(s_wifi_pass) - 1);
-            s_wifi_pass[sizeof(s_wifi_pass) - 1] = '\0';
-        }
-        set_wifi_progress("Connecting to", s_wifi_ssid);
-        request_screen(UI_SCREEN_WIFI_CONNECTING);
-        if (s_cb != NULL) { s_cb(UI_EVENT_WIFI_TRY, 0); }
-    } else if (code == LV_EVENT_CANCEL) {     /* keyboard close */
-        request_screen(UI_SCREEN_WIFI_LIST);
-    }
-}
-void build_wifi_pass(void) {
-    clear_screen();
-    make_label(lv_scr_act(), s_wifi_ssid, COL_TEXT, &font_inter_14_medium,
-               LV_ALIGN_TOP_MID, 0, 6);
-
-    s_wifi_pass_ta = lv_textarea_create(lv_scr_act());
-    lv_textarea_set_one_line(s_wifi_pass_ta, true);
-    lv_textarea_set_text(s_wifi_pass_ta, "");
-    lv_textarea_set_placeholder_text(s_wifi_pass_ta, "Password");
-    /* Masked by default: this screen faces the customer. The eye beside it
-     * reveals on demand, for checking a long passphrase. */
-    lv_textarea_set_password_mode(s_wifi_pass_ta, true);
-    /* Echo each character briefly, then mask — long enough to catch a typo,
-     * a third of LVGL's 1500 ms default on a customer-facing screen. The eye
-     * stays the way to re-read the whole passphrase, on the merchant's terms. */
-    lv_textarea_set_password_show_time(s_wifi_pass_ta, 500);
-    /* Same sizing rule as the card PIN and admin code fields: field and eye are
-     * one group, sized to the full-width keyboard less a margin either side, and
-     * centred as a pair. */
-    lv_obj_set_width(s_wifi_pass_ta, CODE_FIELD_W(SCR_W - (2 * FIELD_PAD_V)));
-    lv_obj_align(s_wifi_pass_ta, LV_ALIGN_TOP_MID, CODE_FIELD_X, 28);
-    lv_obj_set_style_pad_ver(s_wifi_pass_ta, FIELD_PAD_V, LV_PART_MAIN);
-
-    /* make_icon_button() places itself top-left for the burger; move it beside
-     * the field. Keep the label handle so the glyph can be swapped in place. Same
-     * pair on the card-PIN screen — see build_pin(). */
-    lv_obj_t *eye = make_icon_button(LV_SYMBOL_EYE_OPEN, ACT_WIFI_PASS_REVEAL);
-    lv_obj_align_to(eye, s_wifi_pass_ta, LV_ALIGN_OUT_RIGHT_MID, CODE_EYE_GAP, 0);
-    s_wifi_eye_lbl = lv_obj_get_child(eye, 0);
-
-    lv_obj_t *kb = lv_keyboard_create(lv_scr_act());
-    lv_keyboard_set_textarea(kb, s_wifi_pass_ta);
-    lv_obj_add_event_cb(kb, wifi_pass_kb_cb, LV_EVENT_ALL, NULL);
+    lv_obj_t *hint = make_label(lv_scr_act(),
+                                "Choose the network again on the configuration "
+                                "page, or go back to close it.",
+                                COL_DIM, &font_inter_14, LV_ALIGN_TOP_MID, 0, y);
+    lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(hint, 216);
+    lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
 }
 void build_wifi_connecting(void) {
     clear_screen();

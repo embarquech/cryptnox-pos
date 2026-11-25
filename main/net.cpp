@@ -16,6 +16,7 @@
 #include "civil_time.h"
 
 #include <string.h>
+#include <ctype.h>      /* isxdigit — the 64-hex PSK check */
 #include <stdlib.h>     /* malloc, free */
 #include <time.h>       /* time */
 #include <sys/time.h>   /* settimeofday — clearing a back-dated clock */
@@ -375,6 +376,24 @@ uint16_t net_wifi_scan(net_wifi_ap_t *out, uint16_t max)
 
 bool net_wifi_connect(const char *ssid, const char *password)
 {
+    /* Empty (open), 8-63 characters, or a 64-hex raw PSK. Anything else makes
+     * esp_wifi_set_config() fail with ESP_ERR_WIFI_PASSWORD, which the
+     * ESP_ERROR_CHECK below would turn into a reboot. */
+    if ((ssid == NULL) || (password == NULL)) { return false; }
+    const size_t plen = strlen(password);
+    bool pass_ok = (plen == 0U) || ((plen >= 8U) && (plen <= 63U));
+    if (plen == 64U) {
+        pass_ok = true;
+        for (size_t i = 0U; i < plen; i++) {
+            if (isxdigit(static_cast<unsigned char>(password[i])) == 0) { pass_ok = false; }
+        }
+    }
+    if (!pass_ok) {
+        ESP_LOGW(TAG, "Wi-Fi '%s': passphrase length %u is not valid", ssid,
+                 static_cast<unsigned>(plen));
+        return false;
+    }
+
     wdt_feed();   /* up to WIFI_TIMEOUT_MS below */
     net_wifi_init();
 
@@ -396,7 +415,8 @@ bool net_wifi_connect(const char *ssid, const char *password)
     wifi_config_t wifi_cfg;
     CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(&wifi_cfg), sizeof(wifi_cfg));
     (void)strncpy(reinterpret_cast<char *>(wifi_cfg.sta.ssid),     ssid,     sizeof(wifi_cfg.sta.ssid)     - 1U);
-    (void)strncpy(reinterpret_cast<char *>(wifi_cfg.sta.password), password, sizeof(wifi_cfg.sta.password) - 1U);
+    /* The whole field: a 64-hex PSK fills it exactly, with no terminator. */
+    (void)memcpy(wifi_cfg.sta.password, password, plen);
     /* Open networks have an empty passphrase; otherwise require WPA2+. */
     wifi_cfg.sta.threshold.authmode =
         (password[0] == '\0') ? WIFI_AUTH_OPEN : WIFI_AUTH_WPA2_PSK;
