@@ -26,7 +26,7 @@ extern "C" {
 #include "keccak256.h"
 }
 
-#include "config.h"   /* MAX_FEE / MAX_PRIORITY_FEE — compile-time fee defaults */
+#include "config_defaults.h"   /* config.h + fallbacks (SOL_ADDR_TO) */
 
 /* Same guard main.cpp carries: a config.h without the contract compiles to an
  * empty string that fails its decode and disables the asset. */
@@ -72,6 +72,8 @@ static const char *const TAG = "settings";
 #define K_PAY_ETH2    "pay_eth_e"
 #define K_PAY_TRX     "pay_trx"
 #define K_PAY_TRX2    "pay_trx_e"
+#define K_PAY_SOL     "pay_sol"
+#define K_PAY_SOL2    "pay_sol_e"
 /* Token contracts, same treatment — see settings_get_contract. One key pair per
  * deployment, so a network switch never carries a testnet contract to mainnet. */
 #define K_CT_ETH      "ct_eth"
@@ -544,6 +546,25 @@ bool settings_set_payout(bool tron, const char *addr)
     return tron
         ? dual_set(K_PAY_TRX, K_PAY_TRX2, true,  "payout(tron)", addr)
         : dual_set(K_PAY_ETH, K_PAY_ETH2, false, "payout(eth)",  addr);
+}
+
+bool settings_get_payout_sol(char *out, size_t n)
+{
+    return dual_get(K_PAY_SOL, K_PAY_SOL2, SOL_ADDR_TO, "payout(sol)", out, n);
+}
+
+bool settings_has_payout_sol(void)
+{
+    char scratch[SETTINGS_PAYOUT_MAX];
+    const bool stored = settings_get_payout_sol(scratch, sizeof(scratch));
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(scratch), sizeof(scratch));
+    return stored;
+}
+
+bool settings_set_payout_sol(const char *addr)
+{
+    /* "tron" = stored as given; base58 has no prefix to normalise. */
+    return dual_set(K_PAY_SOL, K_PAY_SOL2, true, "payout(sol)", addr);
 }
 
 bool settings_get_contract(pos_chain_t chain, char *out, size_t n)

@@ -254,7 +254,7 @@ enum BtnAction {
     ACT_PROV_OK, ACT_PROV_NO, ACT_PROV_FINISH,
     ACT_RESET, ACT_RESET_CONFIRM, ACT_MODAL_CLOSE,
     /* Asset selector (amount screen and the Tx tab): network, then the coin. */
-    ACT_NET_PICK, ACT_NET_ETH, ACT_NET_POLY, ACT_NET_TRON,
+    ACT_NET_PICK, ACT_NET_ETH, ACT_NET_POLY, ACT_NET_TRON, ACT_NET_SOL,
     /* The admin web page: open it (QR to scan), close it, resolve an upload. */
     ACT_PORTAL, ACT_PORTAL_CLOSE, ACT_OTA_OK, ACT_OTA_NO,
     /* Touch calibration: start it, keep the result, put the old one back. */
@@ -418,7 +418,7 @@ extern uint64_t s_confirm_amount;
 extern char     s_confirm_addr[64];
 extern char     s_confirm_fee[40];
 extern ui_tx_state_t s_tx_state;
-extern char          s_tx_info[72];
+extern char          s_tx_info[96];
 extern lv_obj_t     *s_tx_info_lbl;
 extern uint8_t  s_cal_step;
 extern int16_t  s_cal_raw[2][2];

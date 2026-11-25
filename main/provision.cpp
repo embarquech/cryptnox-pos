@@ -44,6 +44,7 @@
 
 #include "addr_check.h"
 #include "eth_addr.h"
+#include "sol_tx.h"   /* sol_addr_decode — a Solana address is 32 bytes of base58 */
 #include "form_parse.h"
 #include "json_out.h"
 #include "net.h"
@@ -493,6 +494,7 @@ static const char *ask_label(prov_ask_t k)
         case PROV_ASK_PAYOUT_TRON:   return "Tron payout address";
         case PROV_ASK_CONTRACT_ETH:  return "ERC-20 token contract";
         case PROV_ASK_CONTRACT_TRON: return "TRC-20 token contract";
+        case PROV_ASK_PAYOUT_SOL:    return "Solana payout address";
         default:                     return "";
     }
 }
@@ -528,7 +530,7 @@ static esp_err_t state_get(httpd_req_t *req)
      * business learning the payout addresses or the venue's network name. The
      * firmware version it can see, because the update page is useless without it
      * and it is stamped on the About screen anyway. */
-    char body[928];
+    char body[1100];
     if (!authed(req)) {
         (void)snprintf(body, sizeof(body),
                        "{\"mode\":\"%s\",\"step\":\"%s\",\"authed\":false,"
@@ -540,6 +542,7 @@ static esp_err_t state_get(httpd_req_t *req)
     } else {
         char pay_eth[SETTINGS_PAYOUT_MAX] = "";
         char pay_trx[SETTINGS_PAYOUT_MAX] = "";
+        char pay_sol[SETTINGS_PAYOUT_MAX] = "";
         char ct_eth[SETTINGS_PAYOUT_MAX]  = "";
         char ct_trx[SETTINGS_PAYOUT_MAX]  = "";
         /* Payout: the stored value only. A browser asking "who gets paid" must not
@@ -549,6 +552,7 @@ static esp_err_t state_get(httpd_req_t *req)
          * Empty means empty, and the page says "not set" because it is. */
         if (!settings_get_payout(false, pay_eth, sizeof(pay_eth))) { pay_eth[0] = '\0'; }
         if (!settings_get_payout(true,  pay_trx, sizeof(pay_trx))) { pay_trx[0] = '\0'; }
+        if (!settings_get_payout_sol(pay_sol, sizeof(pay_sol)))   { pay_sol[0] = '\0'; }
 
         /* Contracts: the value actually in use, plus whether an operator chose it.
          *
@@ -596,7 +600,7 @@ static esp_err_t state_get(httpd_req_t *req)
         (void)snprintf(body, sizeof(body),
                        "{\"mode\":\"%s\",\"step\":\"%s\",\"authed\":true,"
                        "\"auth_pending\":false,\"version\":\"%s\","
-                       "\"pay_eth\":\"%s\",\"pay_trx\":\"%s\","
+                       "\"pay_eth\":\"%s\",\"pay_trx\":\"%s\",\"pay_sol\":\"%s\","
                        "\"ct_eth\":\"%s\",\"ct_trx\":\"%s\","
                        "\"ct_eth_own\":%s,\"ct_trx_own\":%s,"
                        "\"ssid\":\"%s\",\"pending\":\"%s\",\"note\":\"%s\","
@@ -604,7 +608,7 @@ static esp_err_t state_get(httpd_req_t *req)
                        "\"tz_off\":%d,\"tz_dst\":%u,\"scan_gen\":%u,\"win\":%u}",
                        (s_mode == PROV_MODE_WIZARD) ? "wizard" : "admin",
                        step_name(s_step), ota_running_version(),
-                       pay_eth, pay_trx, ct_eth, ct_trx,
+                       pay_eth, pay_trx, pay_sol, ct_eth, ct_trx,
                        ct_eth_own ? "true" : "false",
                        ct_trx_own ? "true" : "false",
                        ssid_json, ask_label(ask), note,
@@ -752,6 +756,25 @@ static esp_err_t value_post(httpd_req_t *req, bool contract)
     char net[8] = { 0 };
     (void)form_field(body, "addr", addr, sizeof(addr));
     (void)form_field(body, "net", net, sizeof(net));
+
+    /* Solana: payout only (native SOL has no contract), and the whole check is
+     * the decode — base58 that is exactly 32 bytes. No checksum exists to test,
+     * which is why the panel read-back matters more here, not less. */
+    if (strcmp(net, "sol") == 0) {
+        uint8_t key[SOL_KEY_LEN];
+        if (contract || !sol_addr_decode(addr, key)) {
+            return reply(req, "400 Bad Request",
+                         "That is not a Solana address (base58, 32 to 44 "
+                         "characters).");
+        }
+        if (!prov_propose(PROV_ASK_PAYOUT_SOL, addr)) {
+            return reply(req, "409 Conflict",
+                         "Something is already waiting to be accepted on the "
+                         "terminal screen. Deal with that one first.");
+        }
+        return ok(req, "Now check that value on the terminal screen and accept it "
+                       "there. It is not stored until you do.");
+    }
 
     const bool tron = (strcmp(net, "tron") == 0);
     if (!addr_plausible(tron, addr)) {
@@ -1578,6 +1601,8 @@ bool prov_pending_commit(bool accept)
                 stored = settings_set_payout(false, s_ask_val);   break;
             case PROV_ASK_PAYOUT_TRON:
                 stored = settings_set_payout(true, s_ask_val);    break;
+            case PROV_ASK_PAYOUT_SOL:
+                stored = settings_set_payout_sol(s_ask_val);      break;
             case PROV_ASK_CONTRACT_ETH:
                 stored = settings_set_contract(POS_CHAIN_ETH_USDC, s_ask_val);  break;
             case PROV_ASK_CONTRACT_TRON:

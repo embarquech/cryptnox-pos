@@ -34,6 +34,7 @@ bool CW_Utils::fill_secure_random(uint8_t *dest, size_t len)
 static void set_addr(pos_addr_t *to, uint8_t seed)
 {
     size_t i;
+    memset(to, 0, sizeof(*to));   /* the unused tail is compared too */
     for (i = 0U; i < ETH_ADDR_LEN; i++) {
         to->addr[i]      = static_cast<uint8_t>(seed + i);
         to->addr_echo[i] = static_cast<uint8_t>(seed + i);

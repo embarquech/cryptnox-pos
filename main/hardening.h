@@ -61,9 +61,13 @@ typedef struct {
                                      independently — anti-symmetric like bool32 */
 } pos_amount_t;
 
+/* Wide enough for a Solana key. EVM and Tron fill the first ETH_ADDR_LEN bytes
+ * and leave the rest zero in both copies, so the full-width compare still holds. */
+#define POS_ADDR_LEN  32U
+
 typedef struct {
-    uint8_t addr[ETH_ADDR_LEN];       /**< primary recipient              */
-    uint8_t addr_echo[ETH_ADDR_LEN];  /**< parsed independently, compared */
+    uint8_t addr[POS_ADDR_LEN];       /**< primary recipient              */
+    uint8_t addr_echo[POS_ADDR_LEN];  /**< parsed independently, compared */
 } pos_addr_t;
 
 /** @brief Write both amount stores from one value (two independent writes). */
@@ -99,7 +103,7 @@ static inline bool32 address_consistent(const pos_addr_t *a)
 {
     /* ponytail: C++-only; every consumer is a .cpp. Restore a memcmp #else
      * branch if a C translation unit ever needs this header. */
-    return CW_Utils::secure_compare(a->addr, a->addr_echo, ETH_ADDR_LEN) ? TRUE32
+    return CW_Utils::secure_compare(a->addr, a->addr_echo, POS_ADDR_LEN) ? TRUE32
                                                                         : FALSE32;
 }
 

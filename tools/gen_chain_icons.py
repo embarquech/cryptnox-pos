@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: LGPL-3.0-or-later
 # Copyright (c) 2026 Cryptnox SA
-"""Draw the chain/asset marks as LVGL images: USDC, TRON, Tether, Ethereum, Polygon.
+"""Draw the chain/asset marks as LVGL images: USDC, TRON, Tether, Ethereum, Polygon,
+Solana.
 
 TRON, Tether, Ethereum and Polygon are geometry, not artwork files — simple
 enough to draw (a faceted triangle, a crossed stem, a stretched octahedron, a
@@ -33,6 +34,8 @@ TRON_RED  = (0xE7, 0x39, 0x2E)
 USDT_GRN  = (0x26, 0xA1, 0x7B)
 ETH_BLUE  = (0x62, 0x7E, 0xEA)
 POLY_PURP = (0x82, 0x47, 0xE5)   # Polygon brand purple
+SOL_PURP  = (0x99, 0x45, 0xFF)   # Solana's gradient, purple end
+SOL_GRN   = (0x14, 0xF1, 0x95)   # ... and green end
 WHITE     = (0xFF, 0xFF, 0xFF)
 
 COIN = 30      # asset mark in a pill's icon slot
@@ -130,6 +133,36 @@ def polygon(px, ring=False, hollow=True, k=1.0):
     return img
 
 
+def solana(px, ring=False, k=1.0):
+    """Solana: three slanted bars, the middle one mirrored, on the brand's
+    purple-to-green gradient (bottom-left to top-right) instead of a flat disc."""
+    img, d = _canvas(px)
+    n = px * SS
+    grad = Image.new("RGBA", (n, n))
+    gp = grad.load()
+    for y in range(n):
+        for x in range(n):
+            t = (x + (n - 1 - y)) / (2.0 * (n - 1))
+            gp[x, y] = tuple(int(SOL_PURP[i] + (SOL_GRN[i] - SOL_PURP[i]) * t)
+                             for i in range(3)) + (255,)
+    mask = Image.new("L", (n, n), 0)
+    md = ImageDraw.Draw(mask)
+    if ring:
+        d.ellipse([0, 0, n - 1, n - 1], fill=WHITE + (255,))
+        pad = int(1.6 * SS)
+        md.ellipse([pad, pad, n - 1 - pad, n - 1 - pad], fill=255)
+    else:
+        md.ellipse([0, 0, n - 1, n - 1], fill=255)
+    img.paste(grad, (0, 0), mask)
+
+    s = 0.08   # how far each bar leans: top edge shifted s against the bottom
+    for y0, y1, lean in ((0.27, 0.38, s), (0.445, 0.555, -s), (0.62, 0.73, s)):
+        x0, x1 = 0.22 + max(lean, 0), 0.78 + min(lean, 0)   # top edge
+        pts = [(x0, y0), (x1, y0), (x1 - lean, y1), (x0 - lean, y1)]
+        _poly(d, px, _fit(pts, k), WHITE + (255,))
+    return img
+
+
 def usdc(px):
     """Circle's own mark, alpha preserved. Already a filled disc, so no ring."""
     img = Image.open(USDC_SRC).convert("RGBA")
@@ -154,9 +187,11 @@ ICONS = [
     ("icon_usdt", COIN, lambda: usdt(COIN)),
     ("icon_eth",  COIN, lambda: eth(COIN)),
     ("icon_poly", COIN, lambda: polygon(COIN)),
+    ("icon_sol",  COIN, lambda: solana(COIN)),
     ("chip_tron", CHIP, lambda: tron(CHIP, ring=True, facets=False, k=0.60)),
     ("chip_eth",  CHIP, lambda: eth(CHIP, ring=True, k=0.62)),
     ("chip_poly", CHIP, lambda: polygon(CHIP, ring=True, hollow=False, k=0.66)),
+    ("chip_sol",  CHIP, lambda: solana(CHIP, ring=True, k=0.66)),
 ]
 
 HDR = ("/*\n * SPDX-License-Identifier: LGPL-3.0-or-later\n"

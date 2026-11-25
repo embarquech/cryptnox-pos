@@ -297,6 +297,7 @@ bool run_wizard(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
      * the second is parked here until the first is resolved. */
     char card_eth[SETTINGS_PAYOUT_MAX]  = "";
     char card_tron[SETTINGS_PAYOUT_MAX] = "";
+    char card_sol[SETTINGS_PAYOUT_MAX]  = "";
 
     ui_msg_t msg;
     while (true) {
@@ -355,6 +356,7 @@ bool run_wizard(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
                  * it. */
                 card_eth[0]  = '\0';
                 card_tron[0] = '\0';
+                card_sol[0]  = '\0';
                 s_user_cancelled = false;
                 prov_set_note("Follow the terminal screen.");
                 ui_show_card_pin();
@@ -368,6 +370,7 @@ bool run_wizard(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
                                                    pin, pin_chars,
                                                    card_eth, sizeof(card_eth),
                                                    card_tron, sizeof(card_tron),
+                                                   card_sol, sizeof(card_sol),
                                                    err, sizeof(err));
                 CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(pin), sizeof(pin));
 
@@ -378,14 +381,17 @@ bool run_wizard(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
                     break;
                 }
                 prov_set_note("Accept each address on the terminal screen.");
-                /* Ethereum first if there is one; the Tron one waits in card_tron
-                 * and is offered when this proposal is resolved. */
+                /* Ethereum first if there is one; Tron and Solana wait in
+                 * card_tron / card_sol and are offered as each proposal resolves. */
                 if (card_eth[0] != '\0') {
                     (void)prov_propose(PROV_ASK_PAYOUT_ETH, card_eth);
                     card_eth[0] = '\0';
                 } else if (card_tron[0] != '\0') {
                     (void)prov_propose(PROV_ASK_PAYOUT_TRON, card_tron);
                     card_tron[0] = '\0';
+                } else if (card_sol[0] != '\0') {
+                    (void)prov_propose(PROV_ASK_PAYOUT_SOL, card_sol);
+                    card_sol[0] = '\0';
                 }
                 break;
             }
@@ -401,6 +407,9 @@ bool run_wizard(CryptnoxWallet &wallet, Pn532NfcTransport &transport,
                 if (card_tron[0] != '\0') {
                     (void)prov_propose(PROV_ASK_PAYOUT_TRON, card_tron);
                     card_tron[0] = '\0';
+                } else if (card_sol[0] != '\0') {
+                    (void)prov_propose(PROV_ASK_PAYOUT_SOL, card_sol);
+                    card_sol[0] = '\0';
                 }
                 break;
 
@@ -636,6 +645,23 @@ pos_hw_t pos_boot(void)
      * actually go. */
     ESP_LOGI(TAG, "Tron recipient: %s", s_payout_tron);
 
+    /* Solana recipient: base58 to exactly 32 bytes, decoded twice into the dual
+     * store. Not fatal like Tron's: Solana is optional, and with no usable
+     * recipient it is not offered (pos_chain_has_payout) or, if a stored one is
+     * bad, every Solana sale is refused (s_payout_bad[2]). */
+    const bool sol_stored = settings_get_payout_sol(s_payout_sol, sizeof(s_payout_sol));
+    if (!sol_addr_decode(s_payout_sol, s_sol_dest.addr) ||
+        !sol_addr_decode(s_payout_sol, s_sol_dest.addr_echo)) {
+        CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(&s_sol_dest),
+                              sizeof(s_sol_dest));
+        if (sol_stored) {
+            ESP_LOGE(TAG, "stored Solana payout address rejected - sales refused");
+            s_payout_bad[2] = true;
+        }
+    } else {
+        ESP_LOGI(TAG, "Solana recipient: %s", s_payout_sol);
+    }
+
     /* Every token's contract, parsed twice into its own store. Non-fatal: a
      * placeholder contract must still boot; selecting that asset is refused. */
     for (size_t i = 0U; i < TOKEN_CFG_COUNT; i++) {
@@ -648,10 +674,16 @@ pos_hw_t pos_boot(void)
      * already be one (Ethereum configured, Tron not, chain still Tron), which
      * would look normal and pay the compile-time recipient. Corrected here, where
      * both the stored chain and the resolved addresses are in hand. */
-    if (!settings_has_payout(chain_is_tron())) {
-        if (settings_has_payout(!chain_is_tron())) {
-            const pos_chain_t to = chain_is_tron() ? POS_CHAIN_ETH_USDC
-                                                   : POS_CHAIN_TRON_TRX;
+    if (!pos_chain_has_payout(settings_get_chain())) {
+        /* The first network, in this order, that has a payout of its own. */
+        static const pos_chain_t FALLBACK[] = {
+            POS_CHAIN_ETH_USDC, POS_CHAIN_TRON_TRX, POS_CHAIN_SOL_NATIVE
+        };
+        pos_chain_t to = POS_CHAIN__COUNT;
+        for (size_t i = 0U; i < (sizeof(FALLBACK) / sizeof(FALLBACK[0])); i++) {
+            if (pos_chain_has_payout(FALLBACK[i])) { to = FALLBACK[i]; break; }
+        }
+        if (to != POS_CHAIN__COUNT) {
             ESP_LOGW(TAG, "selected chain has no payout address - switching to %d",
                      static_cast<int>(to));
             settings_set_chain(to);
@@ -708,6 +740,10 @@ pos_hw_t pos_boot(void)
      * pinning makes an attacker beat both that check and TLS. */
     tron_rpc_set_ca_cert(TRON_CA_CERT_PEM);
 #endif
+    sol_rpc_init(settings_net_str(SOL_URL, SOL_URL_MAIN));
+#ifdef SOL_CA_CERT_PEM
+    sol_rpc_set_ca_cert(SOL_CA_CERT_PEM);
+#endif
     /* Name the unpinned endpoints: each trusts any of the ~150 CAs in the
      * bundle. A release build should normally have none of these lines. */
 #ifndef RPC_CA_CERT_PEM
@@ -718,6 +754,9 @@ pos_hw_t pos_boot(void)
 #endif
 #ifndef TRON_CA_CERT_PEM
     ESP_LOGW(TAG, "TLS: Tron RPC not pinned (TRON_CA_CERT_PEM) - full CA bundle");
+#endif
+#ifndef SOL_CA_CERT_PEM
+    ESP_LOGW(TAG, "TLS: Solana RPC not pinned (SOL_CA_CERT_PEM) - full CA bundle");
 #endif
     /* ── Not configured: greet, take the admin code, then hand over to the browser ──
      *

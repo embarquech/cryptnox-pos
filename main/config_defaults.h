@@ -95,4 +95,17 @@
 #define TRON_ADDR_USDC_MAIN  ""
 #endif
 
+/* Solana post-dates every config.h in the field, so a file without it gets the
+ * public endpoints and no fallback recipient: Solana shows "No payout set" until
+ * an address is proposed from the config page and accepted on the panel. */
+#ifndef SOL_URL
+#define SOL_URL  "https://api.devnet.solana.com"
+#endif
+#ifndef SOL_URL_MAIN
+#define SOL_URL_MAIN  "https://api.mainnet-beta.solana.com"
+#endif
+#ifndef SOL_ADDR_TO
+#define SOL_ADDR_TO  ""
+#endif
+
 #endif /* CONFIG_DEFAULTS_H */

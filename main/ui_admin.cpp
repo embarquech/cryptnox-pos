@@ -172,7 +172,7 @@ void build_settings(void) {
      * All read-only: settings are proposed from the config page and accepted on
      * this panel, since a resistive screen is the wrong place to retype an
      * address. The selector picks which asset's rows to show (s_view_chain). ── */
-    const bool tron = pos_chain_is_tron(s_view_chain);
+    const bool evm = pos_chain_is_evm(s_view_chain);
     ui_refresh_addresses_for(static_cast<uint8_t>(s_view_chain));
     /* Ticker over network, split across the pill's two lines so both fit
      * make_pill's 140px cap at full length. */
@@ -190,7 +190,7 @@ void build_settings(void) {
     /* Say out loud when the recipient is the compile-time one rather than an
      * address somebody chose: this is the row an operator checks to answer "where
      * does my money go". The sale is refused at the confirm step, so say that. */
-    if (!settings_has_payout(tron)) {
+    if (!pos_chain_has_payout(s_view_chain)) {
         lv_obj_t *w = make_label(t_tx, "Not configured - this terminal cannot "
                                        "take payments. Set it from the "
                                        "Configure page.",
@@ -200,9 +200,10 @@ void build_settings(void) {
         lv_label_set_long_mode(w, LV_LABEL_LONG_WRAP);
     }
 
-    /* The gas the terminal is willing to pay, as two read-only rows. Tron has no
-     * such setting (bandwidth, compile-time energy cap), so the rows are absent. */
-    if (!tron) {
+    /* The gas the terminal is willing to pay, as two read-only rows. Tron and
+     * Solana have no such setting (bandwidth / energy cap, a fixed base fee), so
+     * the rows are absent. */
+    if (evm) {
         char fee[16];
         snprintf(fee, sizeof(fee), "%u",
                  static_cast<unsigned>(settings_get_max_fee_gwei()));
@@ -217,7 +218,7 @@ void build_settings(void) {
      * sets (same action as the Wi-Fi and About rows). The subtitle names the fees
      * where there are any; both forms fit make_pill's 140px subtitle cap. */
     lv_obj_t *tpill = make_pill(t_tx, "Configure",
-                                tron ? "Open in a browser" : "Fees in a browser",
+                                evm ? "Fees in a browser" : "Open in a browser",
                                 TAB_W, 0, ACT_PORTAL);
     lv_obj_align(make_glyph_disc(tpill, LV_SYMBOL_SETTINGS, COL_ACCENT, COIN_SZ),
                  LV_ALIGN_LEFT_MID, PILL_ICON_X, 0);
@@ -651,7 +652,7 @@ static void pill_disable(lv_obj_t *p) {
 /* Which action opens step 2 for a network, in pos_net_t order. Kept here
  * rather than in assets.h because an action is a UI concept. */
 static const BtnAction NET_ACT[POS_NET__COUNT] = {
-    ACT_NET_ETH, ACT_NET_POLY, ACT_NET_TRON
+    ACT_NET_ETH, ACT_NET_POLY, ACT_NET_TRON, ACT_NET_SOL
 };
 void open_network_picker(void) {
     /* Same growth rule as step 2 — header + rows + the Cancel button — so a
@@ -672,7 +673,7 @@ void open_network_picker(void) {
          * take Tron payments to the compile-time recipient — somebody else's
          * address — and look entirely normal doing it. Polygon shares the
          * Ethereum payout address (same EVM account). */
-        const bool have = settings_has_payout(i == (int)POS_NET_TRON);
+        const bool have = pos_net_has_payout(static_cast<pos_net_t>(i));
         lv_coord_t y = static_cast<lv_coord_t>(22 + (i * (PILL_H + 2)));
         /* Kept under this pill's 130px subtitle cap
          * (PICK_W - PILL_TEXT_X - PILL_TEXT_PAD_R) so it is not elided. */

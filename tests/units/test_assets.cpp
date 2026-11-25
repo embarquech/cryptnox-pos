@@ -58,11 +58,12 @@ int main(void)
         const pos_asset_t *a = pos_asset_of(chain);
         assert((a->net == POS_NET_TRON)  == pos_chain_is_tron(chain));
         assert((a->net == POS_NET_POLY)  == pos_chain_is_polygon(chain));
+        assert((a->net == POS_NET_SOL)   == pos_chain_is_sol(chain));
         /* `native` is the table's own word for it; on the EVM networks it must
          * mean what the signing fork means by it. Native TRX is native here but
          * deliberately not pos_chain_is_native_evm — that predicate only steers
-         * the Ethereum-side fork. */
-        if (a->net != POS_NET_TRON) {
+         * the Ethereum-side fork. Native SOL likewise. */
+        if (pos_chain_is_evm(chain)) {
             assert(a->native == pos_chain_is_native_evm(chain));
         }
     }
@@ -126,11 +127,13 @@ int main(void)
     assert(pos_net_of(POS_CHAIN_POLY_USDT) == POS_NET_POLY);
 
     /* Decimals and marks. 18 is the one that turns a keypad amount into wei with
-     * a 10^12 multiply, so only the EVM coins may carry it; and every token wears
+     * a 10^12 multiply, so only the EVM coins may carry it; SOL's 9 is the
+     * x1000 in pay_sol.cpp's units_to_lamports; and every token wears
      * a mark of its own — the old ticker lookup put USDC on anything not USDT. */
     for (size_t i = 0U; i < POS_ASSET_COUNT; i++) {
         const pos_asset_t *a = &POS_ASSETS[i];
-        assert(a->decimals == (pos_chain_is_native_evm(a->chain) ? 18U : 6U));
+        assert(a->decimals == (pos_chain_is_native_evm(a->chain) ? 18U
+                               : pos_chain_is_sol(a->chain)  ? 9U : 6U));
         assert((a->coin == POS_COIN_NET) == a->native);
         if (a->coin == POS_COIN_USDC) { assert(strcmp(a->ticker, "USDC") == 0); }
         if (a->coin == POS_COIN_USDT) { assert(strcmp(a->ticker, "USDT") == 0); }
