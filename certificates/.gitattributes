@@ -1,0 +1,3 @@
+# Trust-store files are hashed byte for byte (scripts/checks.sh); never convert line endings.
+*.pem -text
+*.sha256 -text

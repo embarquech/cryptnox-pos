@@ -47,10 +47,62 @@ a bug report if something goes wrong. For the board's own output afterwards, pic
 No port listed? The board's USB-serial chip (CH340 on most Cheap Yellow Displays) may need its
 driver installed first.
 
+.. _browser-compatibility:
+
+Browser compatibility
+^^^^^^^^^^^^^^^^^^^^^
+
+The installer talks to the board through the browser's **Web Serial API**, which only
+Chromium-based browsers on a computer provide.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 15 50
+
+   * - Browser
+     - Works
+     - Notes
+   * - Google Chrome 89 or later
+     - Yes
+     - Windows, macOS, Linux and ChromeOS. Recommended.
+   * - Microsoft Edge 89 or later
+     - Yes
+     - Windows, macOS and Linux.
+   * - Opera 76 or later
+     - Yes
+     - Chromium-based; works, but less tested than Chrome and Edge.
+   * - Firefox
+     - No
+     - No Web Serial support.
+   * - Safari
+     - No
+     - No Web Serial support.
+   * - Any browser on a phone or tablet
+     - No
+     - Use a computer; the board must be connected to it over USB.
+
+Also check that:
+
+* the page is opened over **HTTPS**, as on docs.cryptnox.com. Web Serial is blocked on plain
+  ``http://`` pages and on local files;
+* no other program holds the serial port: close the Arduino IDE serial monitor,
+  ``idf.py monitor``, PuTTY and any other browser tab with the installer open;
+* on **Linux**, your user can open the port. Add it to the ``dialout`` group (``uucp`` on Arch),
+  then log out and back in:
+
+  .. code-block:: text
+
+     sudo usermod -aG dialout $USER
+
+If none of these browsers is available, flash the :ref:`prebuilt image <prebuilt-image>` with
+``esptool`` instead.
+
 .. warning::
 
    Do not use the browser installer on a terminal provisioned with the
    :ref:`secure build <secure-build>`: it writes a plaintext image.
+
+.. _prebuilt-image:
 
 Prebuilt image (no toolchain)
 -----------------------------
@@ -76,7 +128,8 @@ Over USB, with ``esptool`` (``pip install esptool``), on the port the board enum
    python -m esptool --chip esp32 --port COM3 -b 460800 write_flash 0x0 cryptnox-pos-v1.0.0-full.bin
 
 Without installing anything, Espressif's `web flasher <https://espressif.github.io/esptool-js/>`__
-in Chrome or Edge does the same with flash address ``0x0``. The board restarts into first-time
+does the same with flash address ``0x0``; it has the same
+:ref:`browser requirements <browser-compatibility>` as the installer above. The board restarts into first-time
 setup.
 
 Building from source
