@@ -263,6 +263,11 @@ void build_prov_confirm(void) {
     (void)make_button(card, "Reject", COL_SURFACE, COL_TEXT, OTA_TEXT_W, 40,
                       LV_ALIGN_BOTTOM_MID, 0, -2, ACT_PROV_NO,
                       &font_pjs_20_semibold);
+    /* Set last: open_modal() cleared both. Portal, so the page's deadline takes
+     * it down with the value prov_stop drops; prov, so a screen change re-raises
+     * it instead of losing it. */
+    s_portal_modal = true;
+    s_prov_modal   = true;
 }
 
 /* "Hold your card to the reader" while an address is derived from it. Its own

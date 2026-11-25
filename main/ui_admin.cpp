@@ -422,12 +422,30 @@ static lv_obj_t *s_modal = NULL;
  * itself after PROV_WINDOW_MIN, and a leftover overlay swallows every touch and
  * would block payments until a power cycle, so the UI task clears it then. */
 bool s_portal_modal = false;
+/* Whether that modal is the payout/contract proposal (build_prov_confirm). */
+bool s_prov_modal = false;
 void close_modal(void) {
     if (s_modal != NULL) {
         lv_obj_del(s_modal);
         s_modal = NULL;
     }
     s_portal_modal = false;
+    s_prov_modal   = false;
+}
+
+/* Accept tapped, nothing stored. Said, because a card that just closes reads as
+ * a save and the merchant would believe the takings now go to the new address. */
+void open_prov_not_saved(void) {
+    lv_obj_t *card = open_modal(OTA_CARD_W, 200);
+    lv_obj_t *m = ota_text(card, NULL,
+             "Not saved.\n\n"
+             "The config page closed or the value was refused, so nothing "
+             "changed. Open the config page and send it again.",
+             COL_TEXT, &font_inter_14);
+    ota_fit_card(card, m, 42);
+    make_button(card, "Close", COL_ACTION, COL_BG, OTA_TEXT_W, 40,
+                LV_ALIGN_BOTTOM_MID, 0, -2, ACT_MODAL_CLOSE,
+                &font_pjs_20_semibold);
 }
 
 /* Dimmed overlay + centred card on the top layer, so it floats above the

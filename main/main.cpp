@@ -109,7 +109,7 @@ extern "C" void app_main(void)
                  * makes would fail after the card and PIN; without a clock TLS
                  * cannot validate a certificate. */
                 if (!net_wifi_online() || (wall_ms() == 0U)) {
-                    ui_show_tx_status(UI_TX_STATE_FAILED,
+                    ui_show_tx_status(UI_TX_STATE_REFUSED,
                                       !net_wifi_online()
                                           ? "Offline - re-joining the Wi-Fi"
                                           : "Waiting for network time");
@@ -122,7 +122,7 @@ extern "C" void app_main(void)
                  * looking entirely normal. A till never told where the money goes
                  * declines the sale, as it does for an unset token contract. */
                 if (!pos_chain_has_payout(settings_get_chain())) {
-                    ui_show_tx_status(UI_TX_STATE_FAILED,
+                    ui_show_tx_status(UI_TX_STATE_REFUSED,
                                       "Payout address not configured");
                     pos_amount_set(&pending_amount, 0U);
                     break;
@@ -130,7 +130,7 @@ extern "C" void app_main(void)
                 /* Set, but it failed the checksum at boot: the dual store holds
                  * the config.h fallback, which nobody chose for this till. */
                 if (s_payout_bad[pos_payout_idx(settings_get_chain())]) {
-                    ui_show_tx_status(UI_TX_STATE_FAILED,
+                    ui_show_tx_status(UI_TX_STATE_REFUSED,
                                       "Payout address invalid - set it again");
                     pos_amount_set(&pending_amount, 0U);
                     break;
@@ -139,7 +139,7 @@ extern "C" void app_main(void)
                 /* Say so here rather than after the customer has tapped a card:
                  * a placeholder contract means this asset was never set up. */
                 if ((tok != NULL) && !tok->ok) {
-                    ui_show_tx_status(UI_TX_STATE_FAILED,
+                    ui_show_tx_status(UI_TX_STATE_REFUSED,
                                       "Token contract not configured");
                     pos_amount_set(&pending_amount, 0U);
                     break;
@@ -147,7 +147,7 @@ extern "C" void app_main(void)
                 char dec_err[64];
                 if (!token_decimals_ok(settings_get_chain(), dec_err,
                                        sizeof(dec_err))) {
-                    ui_show_tx_status(UI_TX_STATE_FAILED, dec_err);
+                    ui_show_tx_status(UI_TX_STATE_REFUSED, dec_err);
                     pos_amount_set(&pending_amount, 0U);
                     break;
                 }
@@ -159,7 +159,7 @@ extern "C" void app_main(void)
                     ((tok != NULL) &&
                      !IS_TRUE32(address_consistent(&tok->addr)))) {
                     pos_handle_anomaly("pre-display reconcile");
-                    ui_show_tx_status(UI_TX_STATE_FAILED, "Integrity check failed");
+                    ui_show_tx_status(UI_TX_STATE_REFUSED, "Integrity check failed");
                     pos_amount_set(&pending_amount, 0U);
                     break;
                 }
@@ -184,19 +184,24 @@ extern "C" void app_main(void)
             }
 
             case UI_EVENT_CONFIRM_CANCEL:
+                /* The confirmed amount goes with the screen, so a PIN event
+                 * arriving after Cancel is caught as stale below. */
+                pos_amount_set(&pending_amount, 0U);
                 ui_show_amount_entry();
                 break;
 
             case UI_EVENT_PIN_ENTERED: {
+                /* Fetch the keypad PIN first (UI wipes its own copy on read), so a
+                 * dropped event cannot leave it sitting in the UI's buffer. */
+                char   pin[16]   = { 0 };
+                size_t pin_chars = ui_take_pin(pin, sizeof(pin));
                 if (pending_amount.amount_minor == 0U) {
                     /* No fresh AMOUNT_CONFIRMED preceded this — likely a stale
                      * event from a stuck touch or queue replay. Drop it. */
+                    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(pin), sizeof(pin));
                     ESP_LOGW(TAG, "stale PIN_ENTERED ignored");
                     break;
                 }
-                /* Fetch the keypad PIN (UI wipes its own copy on read). */
-                char   pin[16]   = { 0 };
-                size_t pin_chars = ui_take_pin(pin, sizeof(pin));
 
                 s_user_cancelled = false;
                 char err_msg[64] = { 0 };
@@ -332,7 +337,7 @@ extern "C" void app_main(void)
                     /* No setup screen mid-shift: show the reason on the failure
                      * screen rather than dropping silently back to the keypad. */
                     prov_set_note(err);
-                    ui_show_tx_status(UI_TX_STATE_FAILED, err);
+                    ui_show_tx_status(UI_TX_STATE_REFUSED, err);
                     break;
                 }
                 ui_show_amount_entry();
