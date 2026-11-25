@@ -42,6 +42,11 @@ extern "C" {
 /** @brief Lamports per signature — the whole fee of a native transfer. */
 #define SOL_BASE_FEE_LAMPORTS  5000ULL
 
+/** @brief Rent-exempt minimum of a 0-data System account. From the rent sysvar,
+ *         unchanged for years; a stale value only refuses a sale the node would
+ *         refuse anyway. */
+#define SOL_RENT_EXEMPT_LAMPORTS  890880ULL
+
 /**
  * @brief Base58-encode @p n bytes (Bitcoin alphabet, leading zeros as '1').
  * @return false if @p out is too small; @p out is then "".

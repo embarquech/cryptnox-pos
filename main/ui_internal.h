@@ -479,7 +479,7 @@ void set_wifi_progress(const char *caption, const char *name);
 uint64_t amount_cents_max(void);
 void charge_set_busy(void);
 void code_field_reveal(lv_obj_t *ta, lv_obj_t *eye_lbl);
-void pin_field_sync(bool echo_last);
+void pin_field_sync(void);
 void btn_event_cb(lv_event_t *e);
 lv_obj_t *make_button(lv_obj_t *parent, const char *label, lv_color_t bg,
                              lv_color_t fg, lv_coord_t w, lv_coord_t h,
@@ -515,6 +515,7 @@ void build_touch_cal(void);
 void touch_cal_poll(void);
 extern bool s_portal_modal;
 extern bool s_prov_modal;
+extern bool s_not_saved_modal;
 void close_modal(void);
 void open_prov_not_saved(void);
 lv_obj_t *open_modal(lv_coord_t w, lv_coord_t h);

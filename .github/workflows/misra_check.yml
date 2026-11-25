@@ -83,6 +83,19 @@ jobs:
                -I cryptnox-sdk-esp32/cryptnox-sdk-cpp \
                -I /usr/include/cjson
 
+      # The rest of the host-buildable parsers: the Tron and Solana transaction
+      # builders, keccak and the clock maths. Advisory until a first run is
+      # clean, then move them into the gating list above.
+      - name: clang-tidy, wider set (advisory)
+        continue-on-error: true
+        run: |
+          clang-tidy \
+            main/tron_tx.cpp main/sol_tx.cpp main/keccak256.cpp main/civil_time.cpp \
+            -- -std=c++17 \
+               -I main \
+               -I cryptnox-sdk-esp32/cryptnox-sdk-cpp \
+               -I /usr/include/cjson
+
       # And the real MISRA rule numbers, from cppcheck's MISRA C 2012 addon.
       # Advisory only: it is a C rule set pointed at C++, so a good part of what
       # it reports is not a defect here and wants a deviation record rather than

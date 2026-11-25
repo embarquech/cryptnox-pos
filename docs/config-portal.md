@@ -167,14 +167,21 @@ already validates. Three seconds during setup buys reusing those checks verbatim
 
 ### Payout addresses from a Cryptnox card
 
-The alternative to typing 42 characters. One tap reads both networks —
-`m/44'/60'/0'/0/0` for Ethereum, `m/44'/195'/0'/0/0` for Tron — and each address
+The alternative to typing 42 characters. One tap reads all three networks —
+`m/44'/60'/0'/0/0` for Ethereum, `m/44'/195'/0'/0/0` for Tron, and the Ed25519 key
+at `m/44'/501'/0'/0'` for Solana — and each address
 goes through the same accept-on-the-panel handshake a typed one does, because "the
 card said so" is not the same claim as "the operator checked it". A customer's card
 presented at the wrong moment would otherwise redirect the takings.
 
 The card will not export a public key without a verified PIN, so this needs the
 card PIN on the keypad first, exactly as signing does.
+
+**Solana needs applet 2.0.** An older card has no Ed25519 key: it still gives its
+Ethereum and Tron addresses, and the page says the card has no Solana key, so "this
+card is too old" never looks like "this firmware has no Solana". The addresses are
+proposed one at a time — Ethereum first, then Tron, then Solana — each waiting for
+the previous card on the panel to be answered.
 
 **A card that was never set up is named as such.** A card out of its envelope has
 no PIN and no key, and the applet says so in the clear in its SELECT response —
@@ -205,9 +212,12 @@ looking entirely normal. Three things changed:
 
 `settings_has_payout()` is the question being asked, and it means *stored*, not
 *resolvable* — the `config.h` fallback still supplies the value, it just no longer
-counts as configured.
+counts as configured. `pos_chain_has_payout()` asks it per network, Solana
+included, so a terminal set up for Solana alone counts as configured and leaves
+the wizard.
 
-There are two payout addresses for three networks. Polygon is EVM — same card key,
+There are three payout addresses for four networks — Ethereum, Tron, Solana.
+Polygon is EVM — same card key,
 same `m/44'/60'/0'/0/0` derivation, same `0x` address — so it spends the Ethereum
 one, and `settings_has_payout(false)` is what the Polygon row in the picker asks.
 The page and the panel both say so where the address is entered and where it is
@@ -283,7 +293,7 @@ Everything except `GET /` and `GET /api/state` requires the session token.
 | `GET /api/state` | mode, step, `authed`, version; and once authorised the addresses, contracts, SSID, pending value, note, `mainnet`, gas caps, scan generation |
 | `GET /api/scan` | the device's last Wi-Fi scan |
 | `POST /api/auth` | ask to be authorised → returns the token; the panel decides (except the Wi-Fi-only wizard, which grants it) |
-| `POST /api/payout` | `net=eth\|tron`, `addr=…` → proposed, panel confirms |
+| `POST /api/payout` | `net=eth\|tron\|sol`, `addr=…` → proposed, panel confirms |
 | `POST /api/contract` | same shape, for the ERC-20 / TRC-20 contract |
 | `POST /api/fees` | `max=…`, `prio=…` in Gwei → stored directly, 1&ndash;500 each and the tip no higher than the max |
 | `POST /api/network` | `net=main\|test` → stored directly, then the terminal restarts to apply it |

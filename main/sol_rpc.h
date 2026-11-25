@@ -34,7 +34,8 @@ typedef enum {
 
 /** @brief Outcome of one status poll. */
 typedef enum {
-    SOL_STATUS_PENDING,    /**< Not seen, or only "processed" — poll again.    */
+    SOL_STATUS_UNSEEN,     /**< Never seen — the only status that can expire.  */
+    SOL_STATUS_PENDING,    /**< Seen, only "processed" — poll, never expire.   */
     SOL_STATUS_SUCCESS,    /**< Confirmed with no error — final.               */
     SOL_STATUS_FAILED,     /**< Confirmed with an error — nothing moved.       */
     SOL_STATUS_RPC_ERROR,  /**< Transport or parse error (transient).          */
@@ -55,8 +56,8 @@ bool sol_rpc_get_balance(const char *addr_b58, uint64_t *lamports);
  */
 bool sol_rpc_latest_blockhash(uint8_t blockhash[32], uint64_t *last_valid_height);
 
-/** @brief Current block height at "confirmed". */
-bool sol_rpc_block_height(uint64_t *height);
+/** @brief Current block height at "confirmed", and the slot it was read at. */
+bool sol_rpc_block_height(uint64_t *height, uint64_t *slot);
 
 /**
  * @brief sendTransaction, base64, with preflight.
@@ -68,8 +69,11 @@ bool sol_rpc_block_height(uint64_t *height);
 sol_send_t sol_rpc_send(const uint8_t *tx, size_t tx_len, const char *sig_b58,
                         char *err, size_t err_n);
 
-/** @brief getSignatureStatuses for one signature. */
-sol_status_t sol_rpc_get_status(const char *sig_b58);
+/**
+ * @brief getSignatureStatuses for one signature, full history.
+ * @param min_slot An answer from a node behind this slot is RPC_ERROR (0: any).
+ */
+sol_status_t sol_rpc_get_status(const char *sig_b58, uint64_t min_slot);
 
 #ifdef __cplusplus
 }

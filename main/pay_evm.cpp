@@ -397,7 +397,10 @@ bcast_t sign_and_broadcast(CryptnoxWallet &wallet,
                                 ETH_ADDR_LEN);
     fl->amount  = amount_units;
     fl->polygon = polygon;
-    inflight_persist(fl);
+    if (!inflight_persist(fl)) {
+        (void)snprintf(err_out, err_max, "Storage error - not sent");
+        return BCAST_FAILED;
+    }
 
     /* Roomier than err_out so the node's sentence arrives whole and is clipped
      * once, at the point that knows the panel's width. */
@@ -409,6 +412,13 @@ bcast_t sign_and_broadcast(CryptnoxWallet &wallet,
             /* An earlier attempt at these exact bytes got through. */
             ESP_LOGW(TAG, "node already has %s", fl->hash);
             return BCAST_SENT;
+        }
+        if (strstr(node_err, "nonce too low") != NULL) {
+            /* The nonce is taken: possibly by these bytes through another node
+             * or an earlier try. Money may have moved, so the receipt decides,
+             * never a "Nothing charged" refusal. */
+            ESP_LOGW(TAG, "nonce too low - polling %s", fl->hash);
+            return BCAST_UNKNOWN;
         }
         if (node_err[0] == '\0') {
             /* No refusal, just no answer: a timeout, a dropped TLS session, a

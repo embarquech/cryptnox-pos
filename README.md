@@ -25,9 +25,10 @@ The user selects an amount on the touchscreen, taps a **Cryptnox smart card** on
 the attached PN532 reader, and the terminal signs and broadcasts an EIP-1559
 transfer via a JSON-RPC endpoint (PublicNode by default), then waits for the
 on-chain receipt before showing **Approved**. The asset is picked on the device —
-ETH, USDC or USDT on Ethereum, POL, USDC or USDT on Polygon, and TRX or USDT on
-Tron. Whether those are the production networks or their test deployments
-(Sepolia, Amoy, Nile) is a runtime setting on the config page; it defaults to
+ETH, USDC or USDT on Ethereum, POL, USDC or USDT on Polygon, TRX or USDT on
+Tron, and native SOL on Solana. Whether those are the production networks or
+their test deployments (Sepolia, Amoy, Nile, Solana Devnet) is a runtime setting
+on the config page; it defaults to
 **production**, and the terminal restarts to apply a change. USDC on Tron is a
 testnet-only selection — Circle wound it down in 2024&ndash;25.
 
@@ -161,7 +162,8 @@ and fill in:
 | `ADDR_USDT` | USDT ERC-20 contract on Sepolia. Not settable on the device — the one NVS contract slot is USDC's — and not fatal if unset: USDT on Ethereum is then refused at the confirm step. Its `decimals()` **must be 6**. Same EIP-55 rule as `ADDR_TO` |
 | `POLY_RPC_URL`, `CHAIN_ID_AMOY`, `POLY_ADDR_USDC`, `POLY_ADDR_USDT` | Polygon Amoy endpoint, chain id and the two token contracts on that network. Polygon reuses the whole Ethereum path — same card key, same payout address — so only these differ. `POLY_CA_CERT_PEM` pins its certificate; `POLY_MIN_PRIORITY_FEE_GWEI` (default 30) is the tip floor, since Amoy drops anything under ~25 Gwei and the fee steppers are shared with Ethereum |
 | `TRON_ADDR_USDC` | USDC TRC-20 contract on Nile. Config-only and non-fatal, like `ADDR_USDT`. Testnet only: Circle wound USDC on Tron down in 2024–25, so there is no mainnet asset to graduate to |
-| `RPC_URL_MAIN`, `POLY_RPC_URL_MAIN`, `TRON_URL_MAIN`, `CHAIN_ID_MAINNET`, `CHAIN_ID_POLYGON`, `ADDR_USDC_MAIN`, `ADDR_USDT_MAIN`, `POLY_ADDR_USDC_MAIN`, `POLY_ADDR_USDT_MAIN`, `TRON_ADDR_USDT_MAIN`, `TRON_ADDR_USDC_MAIN` | The production half of every pair above, selected at run time from the config page's Network section (default: production). Same rules throughout — EIP-55 form, `decimals()` **must be 6**, unset means that asset is refused rather than the terminal failing to boot. `tests/units/test_networks.cpp` checks each one parses; **verify against a block explorer** that it is the right contract before taking real money. A TLS pin applies to the production endpoint too, so it has to cover whichever network the terminal is switched to |
+| `RPC_URL_MAIN`, `POLY_RPC_URL_MAIN`, `TRON_URL_MAIN`, `CHAIN_ID_MAINNET`, `CHAIN_ID_POLYGON`, `ADDR_USDC_MAIN`, `ADDR_USDT_MAIN`, `POLY_ADDR_USDC_MAIN`, `POLY_ADDR_USDT_MAIN`, `TRON_ADDR_USDT_MAIN`, `TRON_ADDR_USDC_MAIN` | The production half of every pair above, selected at run time from the config page's Network section (default: production). The endpoints and chain ids are **required** — the build stops if one is missing, rather than putting a testnet URL behind the Production switch. Same rules throughout — EIP-55 form, `decimals()` **must be 6**, unset means that asset is refused rather than the terminal failing to boot. `tests/units/test_networks.cpp` checks each one parses; **verify against a block explorer** that it is the right contract before taking real money. A TLS pin applies to the production endpoint too, so it has to cover whichever network the terminal is switched to |
+| `SOL_URL`, `SOL_URL_MAIN`, `SOL_ADDR_TO`, `SOL_CA_CERT_PEM` | Solana Devnet and mainnet JSON-RPC endpoints, an optional base58 fallback recipient, and an optional TLS pin. The card signs with its Ed25519 key at `m/44'/501'/0'/0'`, which needs **applet 2.0**; an older card reads its Ethereum and Tron addresses and is told it has no Solana key. **`SOL_URL_MAIN` is required** — the build stops without it, like every other production endpoint. `api.mainnet-beta.solana.com` works on the bench but is the Foundation's rate-limited shared pool, not meant for production: use your own provider. With no `SOL_ADDR_TO`, Solana is offered only once a payout address is set on the device |
 | `CHAIN_ID_SEPOLIA`, `MAX_PRIORITY_FEE`, `MAX_FEE`, `GAS_LIMIT_ERC20` | Chain ID and EIP-1559 gas parameters (the fees are first-boot defaults, editable at run time in the settings) |
 | `GAS_LIMIT_NATIVE` | Gas for a plain ETH/POL transfer — exactly 21000, since no contract runs. Optional; defaults to 21000 |
 
@@ -230,6 +232,9 @@ automatically at build time):
 idf.py -D "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.defaults.flash_encryption" build
 ```
 (PowerShell: quote the whole `-D` argument as shown, because of the `;`.)
+`SDKCONFIG_DEFAULTS` is read **only when no `sdkconfig` exists** — in a checkout
+that has already built, delete `sdkconfig` first, or the overlay is silently
+ignored and you build the dev configuration.
 
 **Step 3 — provision a fresh board (one command, IRREVERSIBLE):**
 ```
@@ -238,11 +243,15 @@ python tools/secure_provision.py --port COMx --baud 921600 --yes
 It checks the board is fresh, burns the flash-encryption key, enables Flash
 Encryption, then flashes the signed + pre-encrypted bootloader/table/app. After
 it finishes, **reset the board**: the bootloader finalizes Secure Boot on first
-boot (burns the public-key digest + `ABS_DONE_1`). Verify:
+boot (burns the public-key digest + `ABS_DONE_1`). Then verify — it burns
+nothing, and exits non-zero unless the board is locked:
 ```
-espefuse.py --port COMx summary | findstr "FLASH_CRYPT_CNT ABS_DONE_1"
+python tools/secure_provision.py --port COMx --verify             # development
+python tools/secure_provision.py --port COMx --verify --release   # production
 ```
-→ `FLASH_CRYPT_CNT` odd and `ABS_DONE_1 = True` = fully hardened.
+Development checks `ABS_DONE_1` and an odd `FLASH_CRYPT_CNT`; `--release` also
+requires `DISABLE_DL_ENCRYPT/DECRYPT/CACHE`, `JTAG_DISABLE` and
+`FLASH_CRYPT_CNT = 0x7F`.
 
 **Routine reflash afterwards** (board already provisioned, Flash Encryption
 active — never use plain `idf.py flash`, it would write plaintext the chip
@@ -260,10 +269,13 @@ python tools/secure_flash.py --package    # -> dist/cryptnox_pos-encrypted-full.
 > [!WARNING]
 > Steps 2–3 use the `flash_encryption` overlay = **Development** mode: the board
 > stays reflashable with verbose logs while you validate. For the locked
-> **production** image, layer the release overlay on top and reflash:
+> **production** image, build with the release script:
 > ```
-> idf.py -D "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.defaults.flash_encryption;sdkconfig.defaults.release" build
+> scripts\idf-release.bat
 > ```
+> It builds into `build-release/` from a fresh `sdkconfig` with all three
+> overlays, and fails unless every release setting is in the result. Flash and
+> provision from that folder with `--build-dir build-release`.
 > Release mode permanently disables plaintext UART flashing + flash dumps and
 > silences the boot log — IRREVERSIBLE, manufacturing only. Note: on the classic
 > ESP32 encrypted NVS **requires** Flash Encryption (no HMAC eFuse scheme), so

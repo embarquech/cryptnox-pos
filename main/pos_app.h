@@ -182,7 +182,7 @@ typedef struct {
 } inflight_t;
 
 extern inflight_t s_inflight;
-void     inflight_persist(const inflight_t *fl);
+bool     inflight_persist(const inflight_t *fl);
 uint64_t wall_ms(void);
 void     settle_inflight(void);
 

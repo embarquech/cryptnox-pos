@@ -329,11 +329,11 @@ void settings_inflight_clear(void);
  */
 
 /**
- * @brief Erase NVS unless this exact build is the one that wrote it.
+ * @brief Erase the settings, portal and Wi-Fi namespaces unless this exact
+ *        build is the one that wrote them. The tamper counter is kept.
  *
  * Call once at the top of @c app_main, right after @c nvs_flash_init() and
- * before anything else opens NVS (@c nvs_flash_erase() cannot run with handles
- * outstanding). Handles its own re-init and stamps @ref BUILD_ID.
+ * before anything else reads settings. Stamps @ref BUILD_ID.
  *
  * A security control: the firmware is open source, so any other image could
  * have written anything into NVS, a payout address above all. The test is
