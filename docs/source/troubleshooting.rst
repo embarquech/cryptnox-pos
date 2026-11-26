@@ -46,7 +46,9 @@ Frequently asked questions
 
 **Which card pays?**
    Any Cryptnox Hardware Wallet card with applet v1.6.0 or later that holds a seed. The
-   cardholder's own self-custody card, not a card issued by the merchant.
+   cardholder's own self-custody card, not a card issued by the merchant. **Solana needs
+   applet 2.0 or later**: it signs with Ed25519, which earlier applets do not have, so such
+   a card pays on the other networks and is refused for SOL.
 
 **Does the terminal hold any keys?**
    No. The card signs inside its EAL6+ certified secure element after PIN verification. The

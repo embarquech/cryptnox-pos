@@ -12,7 +12,10 @@
 *.jpg   binary
 *.jpeg  binary
 *.ico   binary
+*.ttf   binary
 *.woff  binary
 *.woff2 binary
 *.bin   binary
 *.der   binary
+# Fritzing sketch — a zip under another name.
+*.fzz   binary

@@ -22,7 +22,9 @@ What you need
        I²C.
    * - Cryptnox Hardware Wallet card
      - Applet **v1.6.0 or later** (the `Dual Card Set
-       <https://shop.cryptnox.com/product/hardware-wallet-smartcard-dual/>`__ ships v1.6.1).
+       <https://shop.cryptnox.com/product/hardware-wallet-smartcard-dual/>`__ ships applet
+       v1.6.1). **Solana needs applet 2.0 or later** — it signs with Ed25519, which earlier
+       applets do not have, so such a card pays on the other networks and is refused for SOL.
        The card must be initialised with a seed; see :ref:`preparing-the-card`.
    * - Four jumper wires and a USB cable
      - Female-to-female Dupont wires between the CYD's CN1 header and the PN532; a data USB
