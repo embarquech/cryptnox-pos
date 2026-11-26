@@ -220,11 +220,16 @@ In the repo:
 - `tools/secure_provision.py` — one-shot factory provisioning of a fresh board.
 - `tools/secure_flash.py` — pre-encrypt + flash for routine reflashing.
 
-**Step 1 — generate both keys, ONCE per product (store OFFLINE, gitignored):**
+**Step 1 — generate both keys, ONCE per product, into a folder outside the
+checkout (store it OFFLINE), and point `CRYPTNOX_KEY_DIR` at it:**
 ```
-espsecure.py generate_flash_encryption_key --keylen 256 secure_keys/flash_encryption_key.bin
-espsecure.py generate_signing_key --version 2 secure_keys/secure_boot_signing_key.pem
+set CRYPTNOX_KEY_DIR=E:\cryptnox-keys
+espsecure.py generate_flash_encryption_key --keylen 256 %CRYPTNOX_KEY_DIR%\flash_encryption_key.bin
+espsecure.py generate_signing_key --version 2 %CRYPTNOX_KEY_DIR%\secure_boot_signing_key.pem
 ```
+`tools/secure_provision.py` and `tools/secure_flash.py` read their keys from
+there (falling back to `./secure_keys`, with a warning). `scripts/idf-release.bat`
+refuses to build without it, and signs with the key it names.
 
 **Step 2 — build with the secure overlay** (the bootloader + app are signed
 automatically at build time):

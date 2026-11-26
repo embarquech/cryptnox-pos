@@ -495,14 +495,18 @@ void build_confirm(void) {
  * their prefixes on the heap are the price of the eye. */
 #define PIN_MAX_DIGITS 9U
 static_assert(PIN_MAX_DIGITS < sizeof(s_pin), "s_pin holds the PIN and its NUL");
+static_assert(ADMIN_CODE_MAX < sizeof(s_pin), "code_field_sync shows the admin code in an s_pin-sized buffer");
 
-void pin_field_sync(void) {
-    if (s_pin_ta == NULL) { return; }
-    const bool masked = lv_textarea_get_password_mode(s_pin_ta);
+/* Both secret pads use it: the card PIN (s_pin) and the admin code
+ * (s_admin_code). */
+void code_field_sync(lv_obj_t *ta, const char *code, size_t len) {
+    if (ta == NULL) { return; }
+    const bool masked = lv_textarea_get_password_mode(ta);
     char shown[sizeof(s_pin)];
-    for (size_t i = 0U; i < s_pin_len; i++) { shown[i] = masked ? '0' : s_pin[i]; }
-    shown[s_pin_len] = '\0';
-    lv_textarea_set_text(s_pin_ta, shown);
+    if (len >= sizeof(shown)) { len = sizeof(shown) - 1U; }
+    for (size_t i = 0U; i < len; i++) { shown[i] = masked ? '0' : code[i]; }
+    shown[len] = '\0';
+    lv_textarea_set_text(ta, shown);
     CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(shown), sizeof(shown));
 }
 
@@ -541,13 +545,13 @@ static void pin_kbd_cb(lv_event_t *e) {
     } else if (strcmp(txt, LV_SYMBOL_BACKSPACE) == 0) {
         if (s_pin_len > 0U) {
             s_pin[--s_pin_len] = '\0';
-            pin_field_sync();
+            code_field_sync(s_pin_ta, s_pin, s_pin_len);
         }
     } else if ((txt[0] >= '0') && (txt[0] <= '9') && (txt[1] == '\0')) {
         if (s_pin_len < PIN_MAX_DIGITS) {
             s_pin[s_pin_len++] = txt[0];
             s_pin[s_pin_len]   = '\0';
-            pin_field_sync();
+            code_field_sync(s_pin_ta, s_pin, s_pin_len);
         }
     }
 }
@@ -698,7 +702,7 @@ void build_pin(void) {
     /* The reveal eye exists because a PIN typed blind on a resistive panel and
      * refused costs a card attempt. Only on the setup read, though: during a sale
      * this screen faces the customer and the PIN is theirs, so there is no eye.
-     * No per-digit echo on either pad (see pin_field_sync); show-time 0 as well,
+     * No per-digit echo on either pad (see code_field_sync); show-time 0 as well,
      * or set_text's add_char path would flash the filler '0' on every key. */
     lv_obj_t *kb = make_numeric_keypad(pin_kbd_cb, card, CODE_KBD_W, 170);
     s_pin_ta = make_code_row(card, kb, PIN_MAX_DIGITS, "Card PIN", ACT_PIN_REVEAL,
