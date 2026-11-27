@@ -16,6 +16,7 @@
 #include "provision.h"
 
 #include <atomic>
+#include <ctype.h>   /* isxdigit - the 64-hex key check */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1012,13 +1013,20 @@ static esp_err_t wifi_post(httpd_req_t *req)
         return reply(req, "400 Bad Request", "A network name is required.");
     }
     /* Said here, where the phone can show it; net_wifi_connect() refuses the
-     * same lengths (and checks the 64-character form is hex). */
+     * same passwords, by the same rule. */
     const size_t plen = strlen(pass);
-    if ((plen != 0U) && ((plen < 8U) || (plen > 64U))) {
+    bool pass_ok = (plen == 0U) || ((plen >= 8U) && (plen <= 63U));
+    if (plen == 64U) {   /* 64 is only valid as the raw hex key */
+        pass_ok = true;
+        for (size_t i = 0U; i < plen; i++) {
+            if (isxdigit(static_cast<unsigned char>(pass[i])) == 0) { pass_ok = false; }
+        }
+    }
+    if (!pass_ok) {
         CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(pass), sizeof(pass));
         return reply(req, "400 Bad Request",
-                     "A Wi-Fi password is 8 to 63 characters (or none for an "
-                     "open network).");
+                     "A Wi-Fi password is 8 to 63 characters, or a 64-character "
+                     "hex key (or none for an open network).");
     }
 
     /* Staged into the UI's own handoff buffers and reported as the ordinary

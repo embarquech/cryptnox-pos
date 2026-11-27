@@ -28,22 +28,16 @@ Run from the repo root, inside the IDF environment:
 """
 
 import argparse
-import glob
 import json
 import os
 import subprocess
 import sys
 
-from fe_keys import board_key_path, board_mac
+from fe_keys import board_key_path, board_mac, shared_key_path
 
 # ESP32 classic default flash-encryption config (the IDF bootloader burns
 # FLASH_CRYPT_CONFIG to 0xF on first encrypted boot — host must match it).
 FLASH_CRYPT_CONF = "0xf"
-
-
-def find_key():
-    hits = sorted(glob.glob("secure_keys/flash_encryption_key.*"))
-    return hits[0] if hits else "secure_keys/flash_encryption_key.bin"
 
 
 def run(cmd):
@@ -74,7 +68,7 @@ def main():
         # shared file older boards were provisioned with. A package is not for
         # one board, so it needs the shared key or an explicit --key.
         per_board = board_key_path(board_mac(args.port)) if args.port else None
-        args.key = per_board if (per_board and os.path.isfile(per_board)) else find_key()
+        args.key = per_board if (per_board and os.path.isfile(per_board)) else shared_key_path()
     print("key: %s" % args.key)
     if not os.path.isfile(args.key):
         sys.exit("Key not found: %s (burn it once, keep the same file here)" % args.key)

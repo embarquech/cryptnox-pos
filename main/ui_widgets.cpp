@@ -379,6 +379,9 @@ void clear_screen(void) {
     lv_obj_t *scr = lv_scr_act();
     code_field_wipe(s_pin_ta);
     code_field_wipe(s_admin_ta);
+    /* Not a handoff like s_pin: nobody reads it once its screen is gone. */
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_admin_code), sizeof(s_admin_code));
+    s_admin_len = 0;
     lv_obj_clean(scr);
     lv_obj_set_style_bg_color(scr, COL_BG, LV_PART_MAIN);
     /* build_page() leaves a gradient on the screen, and the screen object

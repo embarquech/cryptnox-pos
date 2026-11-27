@@ -95,7 +95,7 @@ bool      s_charge_busy = false;
 
 /* PIN entry — s_pin is the live input and the handoff buffer read by main via
  * ui_take_pin() and wiped on read; the textarea only displays it (see
- * pin_field_sync). */
+ * code_field_sync). */
 lv_obj_t *s_pin_ta      = NULL;
 char      s_pin[16]     = {0};
 uint8_t   s_pin_len     = 0;
@@ -142,6 +142,9 @@ char          s_boot_detail[64]     = {0};
 lv_obj_t     *s_admin_ta      = NULL;
 lv_obj_t     *s_admin_note_lbl = NULL;
 char          s_admin_first[ADMIN_CODE_MAX + 1] = {0};  /* 1st of 2 passes */
+/* The code being typed; the textarea only displays it, as for s_pin. */
+char          s_admin_code[ADMIN_CODE_MAX + 1] = {0};
+uint8_t       s_admin_len = 0;
 char          s_admin_note[48] = {0};
 bool          s_admin_confirming = false;   /* 2nd pass of the creation */
 static bool          s_welcome_sent     = false;   /* Start already reported */
@@ -432,10 +435,11 @@ void btn_event_cb(lv_event_t *e) {
             break;
         case ACT_PIN_REVEAL:
             code_field_reveal(s_pin_ta, s_pin_eye_lbl);
-            pin_field_sync();   /* the field holds filler while masked */
+            code_field_sync(s_pin_ta, s_pin, s_pin_len);   /* filler while masked */
             break;
         case ACT_ADMIN_REVEAL:
             code_field_reveal(s_admin_ta, s_admin_eye_lbl);
+            code_field_sync(s_admin_ta, s_admin_code, s_admin_len);
             break;
         case ACT_RESET:
             open_reset_confirm();            /* ask before wiping */

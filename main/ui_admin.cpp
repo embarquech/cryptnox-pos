@@ -796,13 +796,18 @@ static void admin_set_note(const char *msg) {
     }
 }
 
+/* Empty the code and its field. */
+static void admin_code_clear(void) {
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_admin_code), sizeof(s_admin_code));
+    s_admin_len = 0;
+    code_field_sync(s_admin_ta, s_admin_code, s_admin_len);
+}
+
 static void admin_submit(void) {
     if (s_admin_ta == NULL) { return; }
 
     char code[ADMIN_CODE_MAX + 1] = {0};
-    const char *txt = lv_textarea_get_text(s_admin_ta);
-    strncpy(code, (txt != NULL) ? txt : "", sizeof(code) - 1);
-    code[sizeof(code) - 1] = '\0';
+    memcpy(code, s_admin_code, sizeof(code));   /* same size, NUL kept */
 
     if (s_req_screen == UI_SCREEN_ADMIN_SET) {
         if (!s_admin_confirming) {
@@ -824,7 +829,7 @@ static void admin_submit(void) {
                  * to Wi-Fi setup and leave a terminal whose menu — factory reset
                  * included — no code can ever open. */
                 admin_set_note("Storage error - try again");
-                lv_textarea_set_text(s_admin_ta, "");
+                admin_code_clear();
                 CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(code),
                                       sizeof(code));
                 return;
@@ -888,7 +893,7 @@ static void admin_submit(void) {
             } else {
                 admin_set_note("Wrong code");
             }
-            lv_textarea_set_text(s_admin_ta, "");
+            admin_code_clear();
         }
     }
     CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(code), sizeof(code));
@@ -903,9 +908,17 @@ static void admin_kbd_cb(lv_event_t *e) {
     if (strcmp(txt, LV_SYMBOL_OK) == 0) {
         admin_submit();
     } else if (strcmp(txt, LV_SYMBOL_BACKSPACE) == 0) {
-        lv_textarea_del_char(s_admin_ta);
+        if (s_admin_len > 0U) {
+            s_admin_code[--s_admin_len] = '\0';
+            code_field_sync(s_admin_ta, s_admin_code, s_admin_len);
+        }
     } else if ((txt[0] >= '0') && (txt[0] <= '9') && (txt[1] == '\0')) {
-        lv_textarea_add_char(s_admin_ta, static_cast<uint32_t>(txt[0]));
+        /* Into s_admin_code, never the widget: see code_field_sync. */
+        if (s_admin_len < ADMIN_CODE_MAX) {
+            s_admin_code[s_admin_len++] = txt[0];
+            s_admin_code[s_admin_len]   = '\0';
+            code_field_sync(s_admin_ta, s_admin_code, s_admin_len);
+        }
     }
 }
 
@@ -938,6 +951,11 @@ static void build_admin_screen(const char *title, bool allow_cancel,
      * the factory reset. */
     s_admin_ta = make_code_row(host, kb, ADMIN_CODE_MAX, hint, ACT_ADMIN_REVEAL,
                                &s_admin_eye_lbl);
+    /* No echo: it would flash the filler '0', as on the PIN pad. And a fresh
+     * code each time: the sheet path skips clear_screen. */
+    lv_textarea_set_password_show_time(s_admin_ta, 0);
+    CW_Utils::secure_wipe(reinterpret_cast<uint8_t *>(s_admin_code), sizeof(s_admin_code));
+    s_admin_len = 0;
 
     /* Note band above the keypad: wrong code, mismatch, or the remaining wait. */
     s_admin_note_lbl = make_label(host, s_admin_note, COL_DANGER,

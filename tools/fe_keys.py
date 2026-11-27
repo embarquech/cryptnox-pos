@@ -11,12 +11,19 @@ asking the board for its MAC. The older single shared file
 boards provisioned before this existed.
 """
 
+import glob
 import os
 import re
 import subprocess
 import sys
 
-KEY_DIR = "secure_keys"
+# Keys belong offline, not in the checkout: point CRYPTNOX_KEY_DIR at them.
+# ponytail: falls back to the old in-repo folder so existing setups still flash;
+# the release build (scripts/idf-release.bat) refuses to run without the variable.
+KEY_DIR = os.environ.get("CRYPTNOX_KEY_DIR", "secure_keys")
+if "CRYPTNOX_KEY_DIR" not in os.environ:
+    print("warning: CRYPTNOX_KEY_DIR not set - using keys in ./secure_keys",
+          file=sys.stderr)
 
 
 def board_mac(port):
@@ -32,3 +39,9 @@ def board_mac(port):
 
 def board_key_path(mac):
     return os.path.join(KEY_DIR, "flash_encryption_key_%s.bin" % mac)
+
+
+def shared_key_path():
+    """The single key boards provisioned before per-board keys share."""
+    hits = sorted(glob.glob(os.path.join(KEY_DIR, "flash_encryption_key.*")))
+    return hits[0] if hits else os.path.join(KEY_DIR, "flash_encryption_key.bin")

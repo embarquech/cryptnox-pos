@@ -35,20 +35,14 @@ Usage:
 """
 
 import argparse
-import glob
 import json
 import os
 import subprocess
 import sys
 
-from fe_keys import board_key_path, board_mac
+from fe_keys import board_key_path, board_mac, shared_key_path
 
 FLASH_CRYPT_CONF = "0xF"          # classic-ESP32 default key-tweak config
-
-
-def find_key():
-    hits = sorted(glob.glob("secure_keys/flash_encryption_key.*"))
-    return hits[0] if hits else "secure_keys/flash_encryption_key.bin"
 
 
 def efuse(port, *args):

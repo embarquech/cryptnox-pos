@@ -457,6 +457,8 @@ extern char          s_boot_detail[64];
 extern lv_obj_t     *s_admin_ta;
 extern lv_obj_t     *s_admin_note_lbl;
 extern char          s_admin_first[ADMIN_CODE_MAX + 1];
+extern char          s_admin_code[ADMIN_CODE_MAX + 1];
+extern uint8_t       s_admin_len;
 extern char          s_admin_note[48];
 extern bool          s_admin_confirming;
 extern char          s_welcome_sub[96];
@@ -479,7 +481,7 @@ void set_wifi_progress(const char *caption, const char *name);
 uint64_t amount_cents_max(void);
 void charge_set_busy(void);
 void code_field_reveal(lv_obj_t *ta, lv_obj_t *eye_lbl);
-void pin_field_sync(void);
+void code_field_sync(lv_obj_t *ta, const char *code, size_t len);
 void btn_event_cb(lv_event_t *e);
 lv_obj_t *make_button(lv_obj_t *parent, const char *label, lv_color_t bg,
                              lv_color_t fg, lv_coord_t w, lv_coord_t h,
