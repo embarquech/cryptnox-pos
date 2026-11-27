@@ -194,16 +194,17 @@ Snap it shut
 ~~~~~~~~~~~~
 
 .. figure:: _static/guides/assembly/08.png
-   :alt: The closed enclosure seen from the back
-   :width: 480px
+   :alt: The closed enclosure from the back, the label pressed on below the contactless symbol and its backing just peeled off beside it
+   :width: 545px
 
 * Line the halves up square, then press around the perimeter until the clips engage all the way round. You should hear them go.
 * To open it again, start at the seam on one of the long sides and work a thin blade round — never lever from a corner.
 * The contactless symbol on the lid marks where a card is read.
-* The back label — model, input rating and a QR code to the site — is in the repository
-  beside the shells: `label_POS-D_dymo11355.pdf
-  <https://github.com/cryptnox/cryptnox-pos/blob/main/hardware/case/label_POS-D_dymo11355.pdf>`__.
-  It is sized for Dymo 11355 stock (19 × 51 mm); print it at 100%.
+* **Print the label, cut along its outline, then peel the backing and press it on**,
+  clear of the contactless symbol. The file is `label_POS-D_dymo11355.pdf
+  <https://github.com/cryptnox/cryptnox-pos/blob/main/hardware/case/label_POS-D_dymo11355.pdf>`__,
+  beside the shells in the repository — sized for Dymo 11355 stock (19 × 51 mm), so
+  print it at 100%.
 
 
 Done
