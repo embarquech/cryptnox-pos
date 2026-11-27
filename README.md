@@ -63,7 +63,9 @@ testnet-only selection — Circle wound it down in 2024&ndash;25.
 
 ### Cryptnox Hardware Wallet smart cards
 
-Works with Cryptnox Hardware Wallet smart cards running firmware v1.6.0 or later.
+Works with Cryptnox Hardware Wallet smart cards running applet v1.6.0 or later.
+Solana needs applet 2.0 or later — it signs with Ed25519, which earlier applets do
+not have, so such a card pays on the other networks and is refused for SOL.
 
 | Smart card | Wallet version |
 |------|---------------|

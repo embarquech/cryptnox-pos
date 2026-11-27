@@ -1,0 +1,21 @@
+# Binary assets: never line-ending converted.
+#
+# Git guesses text vs binary from NUL bytes in the first 8 KB. A small,
+# generated PDF can have none, so autocrlf rewrites its newlines on checkout and
+# the xref offsets no longer match — a label that opens on the machine that
+# committed it and is corrupt everywhere else. The STL and 3mf files are only
+# safe today because the heuristic happens to get them right.
+*.pdf   binary
+*.stl   binary
+*.3mf   binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.ico   binary
+*.ttf   binary
+*.woff  binary
+*.woff2 binary
+*.bin   binary
+*.der   binary
+# Fritzing sketch — a zip under another name.
+*.fzz   binary
