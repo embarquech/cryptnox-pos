@@ -50,6 +50,12 @@ endif()
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 idf_build_set_property(POS_BUILD_ID ${POS_BUILD_ID})   # read by main/CMakeLists.txt
+# scripts/idf-release.bat passes -D CW_RELEASE=1. The SDK keys its release-only
+# #errors (CW_ALLOW_UNVERIFIED_CARD, CW_DEBUG_LOGGING) on it, since ESP-IDF
+# keeps assert() on and so never defines NDEBUG.
+if(CW_RELEASE)
+    idf_build_set_property(COMPILE_DEFINITIONS "CW_RELEASE=1" APPEND)
+endif()
 project(cryptnox_pos)
 
 # sdkconfig is gitignored and an existing one beats sdkconfig.defaults, so an old

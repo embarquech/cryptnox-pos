@@ -16,7 +16,8 @@ if exist build-release rmdir /s /q build-release
 mkdir build-release
 REM Last overlay wins, so this replaces the in-repo path from the encryption overlay.
 > build-release\keys.defaults echo CONFIG_SECURE_BOOT_SIGNING_KEY="%KEY%"
-idf.py -B build-release -D SDKCONFIG=build-release/sdkconfig -D "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.defaults.flash_encryption;sdkconfig.defaults.release;build-release/keys.defaults" build || exit /b 1
+idf.py -B build-release -D CW_RELEASE=1 -D SDKCONFIG=build-release/sdkconfig -D "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.defaults.flash_encryption;sdkconfig.defaults.release;build-release/keys.defaults" build || exit /b 1
+findstr /c:"CW_RELEASE:UNINITIALIZED=1" build-release\CMakeCache.txt >nul || (echo RELEASE CHECK FAILED: CW_RELEASE=1 not set & exit /b 1)
 findstr /c:"%KEY%" build-release\sdkconfig >nul || (echo RELEASE CHECK FAILED: signing key is not %KEY% & exit /b 1)
 for %%K in ("CONFIG_SECURE_FLASH_ENC_ENABLED=y" "CONFIG_SECURE_FLASH_ENCRYPTION_MODE_RELEASE=y" "CONFIG_SECURE_BOOT_V2_ENABLED=y" "CONFIG_NVS_ENCRYPTION=y" "CONFIG_LOG_DEFAULT_LEVEL_NONE=y") do (
     findstr /x /c:%%K build-release\sdkconfig >nul || (echo RELEASE CHECK FAILED: %%~K not set & exit /b 1)

@@ -298,7 +298,7 @@ bool card_read_payouts(CryptnoxWallet &wallet,
     uint8_t addr21[CW_TRON_ADDRESS_BYTES];
     if (wallet.getPublicKey(session, CW_TRON_DERIVE_PATH,
                             CW_TRON_PATH_LENGTH, pubkey) &&
-        CW_Tron::addressBytesFromPublicKey(pubkey, addr21)) {
+        CW_Tron::addressBytesFromPublicKey(pubkey, sizeof(pubkey), addr21)) {
         (void)CW_Tron::encodeAddress(addr21, crypto, tron_out, tron_n);
     } else {
         ESP_LOGW(TAG, "card would not export its Tron key");

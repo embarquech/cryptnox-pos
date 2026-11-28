@@ -56,7 +56,9 @@ jobs:
         run: |
           git config --global --add safe.directory '*'
           . "$IDF_PATH/export.sh"
+          # The release row sets CW_RELEASE=1 as scripts/idf-release.bat does.
           idf.py -B build-ci -D SDKCONFIG=build-ci/sdkconfig \
+                 -D CW_RELEASE=${{ matrix.name == 'release' && '1' || '0' }} \
                  -D "SDKCONFIG_DEFAULTS=${{ matrix.defaults }}" build
 
       - name: Check the release settings landed
