@@ -196,7 +196,7 @@ bcast_t sign_and_broadcast_tron(CryptnoxWallet &wallet,
     }
     if (!wallet.getPublicKey(session, CW_TRON_DERIVE_PATH,
                              CW_TRON_PATH_LENGTH, pubkey) ||
-        !CW_Tron::addressBytesFromPublicKey(pubkey, owner21) ||
+        !CW_Tron::addressBytesFromPublicKey(pubkey, sizeof(pubkey), owner21) ||
         !CW_Tron::encodeAddress(owner21, crypto,
                                 owner_b58, sizeof(owner_b58))) {
         wallet.disconnect(session);
